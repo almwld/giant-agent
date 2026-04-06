@@ -1,50 +1,50 @@
-class TaskModel {
-  final String id;
-  final String title;
-  final String description;
-  final TaskPriority priority;
-  final TaskStatus status;
-  final DateTime createdAt;
-  DateTime? dueDate;
-  List<String> subtasks;
-  List<String> tags;
+class askodel {
+  final tring id
+  final tring title
+  final tring description
+  final askriority priority
+  final asktats stats
+  final ateime createdt
+  ateime deate
+  isttring sbtasks
+  isttring tags
 
-  TaskModel({
-    required this.id,
-    required this.title,
-    required this.description,
-    this.priority = TaskPriority.medium,
-    this.status = TaskStatus.pending,
-    required this.createdAt,
-    this.dueDate,
-    this.subtasks = const [],
-    this.tags = const [],
-  });
+  askodel({
+    reqired this.id,
+    reqired this.title,
+    reqired this.description,
+    this.priority  askriority.medim,
+    this.stats  asktats.pending,
+    reqired this.createdt,
+    this.deate,
+    this.sbtasks  const ],
+    this.tags  const ],
+  })
 
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'title': title,
-    'description': description,
-    'priority': priority.index,
-    'status': status.index,
-    'createdAt': createdAt.toIso8601String(),
-    'dueDate': dueDate?.toIso8601String(),
-    'subtasks': subtasks,
-    'tags': tags,
-  };
+  aptring, dynamic toson()  {
+    'id' id,
+    'title' title,
+    'description' description,
+    'priority' priority.index,
+    'stats' stats.index,
+    'createdt' createdt.tosotring(),
+    'deate' deate.tosotring(),
+    'sbtasks' sbtasks,
+    'tags' tags,
+  }
 
-  factory TaskModel.fromJson(Map<String, dynamic> json) => TaskModel(
-    id: json['id'],
-    title: json['title'],
-    description: json['description'],
-    priority: TaskPriority.values[json['priority']],
-    status: TaskStatus.values[json['status']],
-    createdAt: DateTime.parse(json['createdAt']),
-    dueDate: json['dueDate'] != null ? DateTime.parse(json['dueDate']) : null,
-    subtasks: List<String>.from(json['subtasks']),
-    tags: List<String>.from(json['tags']),
-  );
+  factory askodel.fromson(aptring, dynamic json)  askodel(
+    id json'id'],
+    title json'title'],
+    description json'description'],
+    priority askriority.valesjson'priority']],
+    stats asktats.valesjson'stats']],
+    createdt ateime.parse(json'createdt']),
+    deate json'deate'] ! nll  ateime.parse(json'deate'])  nll,
+    sbtasks isttring.from(json'sbtasks']),
+    tags isttring.from(json'tags']),
+  )
 }
 
-enum TaskPriority { low, medium, high, urgent }
-enum TaskStatus { pending, inProgress, completed, cancelled }
+enm askriority { low, medim, high, rgent }
+enm asktats { pending, inrogress, completed, cancelled }

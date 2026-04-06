@@ -1,97 +1,97 @@
-import 'package:flutter/material.dart';
-import 'home_screen.dart';
+import 'packagefltter/material.dart'
+import 'home_screen.dart'
 
-class SplashScreen extends StatefulWidget {
-  const SplashScreen({super.key});
+class plashcreen extends tateflidget {
+  const plashcreen({sper.key})
 
-  @override
-  State<SplashScreen> createState() => _SplashScreenState();
+  override
+  tateplashcreen createtate()  _plashcreentate()
 }
 
-class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _fadeAnimation;
-  late Animation<double> _scaleAnimation;
+class _plashcreentate extends tateplashcreen with ingleickerrovidertateixin {
+  late nimationontroller _controller
+  late nimationdoble _fadenimation
+  late nimationdoble _scalenimation
 
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      duration: const Duration(seconds: 2),
-      vsync: this,
-    );
+  override
+  void inittate() {
+    sper.inittate()
+    _controller  nimationontroller(
+      dration const ration(seconds ),
+      vsync this,
+    )
     
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(_controller);
-    _scaleAnimation = Tween<double>(begin: 0.5, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.elasticOut),
-    );
+    _fadenimation  weendoble(begin ., end .).animate(_controller)
+    _scalenimation  weendoble(begin ., end .).animate(
+      rvednimation(parent _controller, crve rves.elastict),
+    )
     
-    _controller.forward();
+    _controller.forward()
     
-    Future.delayed(const Duration(seconds: 2), () {
-      Navigator.pushReplacement(
+    tre.delayed(const ration(seconds ), () {
+      avigator.psheplacement(
         context,
-        MaterialPageRoute(builder: (context) => const HomeScreen()),
-      );
-    });
+        aterialageote(bilder (context)  const omecreen()),
+      )
+    })
   }
 
-  @override
+  override
   void dispose() {
-    _controller.dispose();
-    super.dispose();
+    _controller.dispose()
+    sper.dispose()
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF6C63FF), Color(0xFF3F3D9E)],
+  override
+  idget bild(ildontext context) {
+    retrn caffold(
+      body ontainer(
+        decoration const oxecoration(
+          gradient inearradient(
+            begin lignment.topeft,
+            end lignment.bottomight,
+            colors olor(x), olor(x)],
           ),
         ),
-        child: Center(
-          child: FadeTransition(
-            opacity: _fadeAnimation,
-            child: ScaleTransition(
-              scale: _scaleAnimation,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    width: 120,
-                    height: 120,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(30),
+        child enter(
+          child aderansition(
+            opacity _fadenimation,
+            child caleransition(
+              scale _scalenimation,
+              child olmn(
+                mainxislignment ainxislignment.center,
+                children 
+                  ontainer(
+                    width ,
+                    height ,
+                    decoration oxecoration(
+                      color olors.white,
+                      borderadis orderadis.circlar(),
                     ),
-                    child: const Center(
-                      child: Text(
-                        '🧠',
-                        style: TextStyle(fontSize: 70),
+                    child const enter(
+                      child ext(
+                        '',
+                        style exttyle(fontize ),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 30),
-                  const Text(
-                    'Giant Agent',
-                    style: TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                  const izedox(height ),
+                  const ext(
+                    'iant gent',
+                    style exttyle(
+                      fontize ,
+                      fonteight onteight.bold,
+                      color olors.white,
                     ),
                   ),
-                  const SizedBox(height: 10),
-                  const Text(
-                    'الوكيل العملاق للذكاء الاصطناعي',
-                    style: TextStyle(fontSize: 16, color: Colors.white70),
+                  const izedox(height ),
+                  const ext(
+                    '   ',
+                    style exttyle(fontize , color olors.white),
                   ),
-                  const SizedBox(height: 40),
-                  const CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  const izedox(height ),
+                  const irclarrogressndicator(
+                    valeolor lwaystoppednimationolor(olors.white),
                   ),
                 ],
               ),
@@ -99,6 +99,6 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
           ),
         ),
       ),
-    );
+    )
   }
 }

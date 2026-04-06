@@ -1,66 +1,66 @@
-import 'package:flutter/material.dart';
-import '../services/agent_service.dart';
+import 'packagefltter/material.dart'
+import '../services/agent_service.dart'
 
-class BenchmarkScreen extends StatefulWidget {
-  const BenchmarkScreen({super.key});
+class enchmarkcreen extends tateflidget {
+  const enchmarkcreen({sper.key})
 
-  @override
-  State<BenchmarkScreen> createState() => _BenchmarkScreenState();
+  override
+  tateenchmarkcreen createtate()  _enchmarkcreentate()
 }
 
-class _BenchmarkScreenState extends State<BenchmarkScreen> {
-  final AgentService _agent = AgentService();
-  bool _isRunning = false;
-  String _results = '';
+class _enchmarkcreentate extends tateenchmarkcreen {
+  final gentervice _agent  gentervice()
+  bool _isnning  false
+  tring _reslts  ''
 
-  Future<void> _runBenchmark() async {
-    setState(() {
-      _isRunning = true;
-      _results = '';
-    });
+  trevoid _rnenchmark() async {
+    settate(() {
+      _isnning  tre
+      _reslts  ''
+    })
     
-    final result = await _agent.process('benchmark');
+    final reslt  await _agent.process('benchmark')
     
-    setState(() {
-      _results = result;
-      _isRunning = false;
-    });
+    settate(() {
+      _reslts  reslt
+      _isnning  false
+    })
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('⚡ اختبار الأداء'),
-        centerTitle: true,
-        backgroundColor: Colors.deepPurple,
+  override
+  idget bild(ildontext context) {
+    retrn caffold(
+      appar ppar(
+        title const ext('  '),
+        centeritle tre,
+        backgrondolor olors.deeprple,
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            ElevatedButton.icon(
-              onPressed: _isRunning ? null : _runBenchmark,
-              icon: const Icon(Icons.speed),
-              label: Text(_isRunning ? 'جاري الاختبار...' : 'ابدأ الاختبار'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.deepPurple,
-                minimumSize: const Size(double.infinity, 50),
+      body adding(
+        padding const dgensets.all(),
+        child olmn(
+          children 
+            levatedtton.icon(
+              onressed _isnning  nll  _rnenchmark,
+              icon const con(cons.speed),
+              label ext(_isnning  ' ...'  ' '),
+              style levatedtton.stylerom(
+                backgrondolor olors.deeprple,
+                minimmize const ize(doble.infinity, ),
               ),
             ),
-            const SizedBox(height: 20),
-            if (_results.isNotEmpty)
-              Expanded(
-                child: SingleChildScrollView(
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade800,
-                      borderRadius: BorderRadius.circular(12),
+            const izedox(height ),
+            if (_reslts.isotmpty)
+              xpanded(
+                child inglehildcrolliew(
+                  child ontainer(
+                    padding const dgensets.all(),
+                    decoration oxecoration(
+                      color olors.grey.shade,
+                      borderadis orderadis.circlar(),
                     ),
-                    child: Text(
-                      _results,
-                      style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                    child ext(
+                      _reslts,
+                      style const exttyle(fontamily 'monospace', fontize ),
                     ),
                   ),
                 ),
@@ -68,6 +68,6 @@ class _BenchmarkScreenState extends State<BenchmarkScreen> {
           ],
         ),
       ),
-    );
+    )
   }
 }

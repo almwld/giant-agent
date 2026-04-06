@@ -1,32 +1,32 @@
-import 'package:flutter/material.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'screens/nuclear_screen.dart';
+import 'packagefltter/material.dart'
+import 'packagepermission_handler/permission_handler.dart'
+import 'screens/nclear_screen.dart'
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await [Permission.storage].request();
-  runApp(const MyApp());
+  idgetsltterinding.ensrenitialized()
+  await ermission.storage].reqest()
+  rnpp(const ypp())
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class ypp extends tatelessidget {
+  const ypp({sper.key})
 
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Giant Agent X',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        primaryColor: Colors.deepPurple,
-        scaffoldBackgroundColor: Colors.black,
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Colors.deepPurple,
-          elevation: 0,
-          centerTitle: true,
+  override
+  idget bild(ildontext context) {
+    retrn aterialpp(
+      title 'iant gent ',
+      debghowheckedodeanner false,
+      theme hemeata(
+        brightness rightness.dark,
+        primaryolor olors.deeprple,
+        scaffoldackgrondolor olors.black,
+        apparheme const pparheme(
+          backgrondolor olors.deeprple,
+          elevation ,
+          centeritle tre,
         ),
       ),
-      home: const NuclearScreen(),
-    );
+      home const clearcreen(),
+    )
   }
 }

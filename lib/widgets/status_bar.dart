@@ -1,55 +1,55 @@
-import 'package:flutter/material.dart';
+import 'packagefltter/material.dart'
 
-class StatusBar extends StatelessWidget {
-  final String modelName;
-  final int processedFiles;
-  final String speed;
+class tatsar extends tatelessidget {
+  final tring modelame
+  final int processediles
+  final tring speed
 
-  const StatusBar({
-    super.key,
-    required this.modelName,
-    required this.processedFiles,
-    required this.speed,
-  });
+  const tatsar({
+    sper.key,
+    reqired this.modelame,
+    reqired this.processediles,
+    reqired this.speed,
+  })
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 36,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.deepPurple.shade900, Colors.deepPurple.shade700],
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
+  override
+  idget bild(ildontext context) {
+    retrn ontainer(
+      height ,
+      decoration oxecoration(
+        gradient inearradient(
+          colors olors.deeprple.shade, olors.deeprple.shade],
+          begin lignment.centereft,
+          end lignment.centeright,
         ),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          _buildStatusItem(Icons.memory, 'MODEL', modelName),
-          Container(width: 1, height: 20, color: Colors.white24),
-          _buildStatusItem(Icons.folder, 'FILES', '$processedFiles'),
-          Container(width: 1, height: 20, color: Colors.white24),
-          _buildStatusItem(Icons.speed, 'SPEED', speed),
+      child ow(
+        mainxislignment ainxislignment.spacevenly,
+        children 
+          _bildtatstem(cons.memory, '', modelame),
+          ontainer(width , height , color olors.white),
+          _bildtatstem(cons.folder, '', '$processediles'),
+          ontainer(width , height , color olors.white),
+          _bildtatstem(cons.speed, '', speed),
         ],
       ),
-    );
+    )
   }
 
-  Widget _buildStatusItem(IconData icon, String label, String value) {
-    return Row(
-      children: [
-        Icon(icon, size: 14, color: Colors.white70),
-        const SizedBox(width: 6),
-        Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label, style: const TextStyle(fontSize: 8, color: Colors.white54)),
-            Text(value, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white)),
+  idget _bildtatstem(conata icon, tring label, tring vale) {
+    retrn ow(
+      children 
+        con(icon, size , color olors.white),
+        const izedox(width ),
+        olmn(
+          mainxislignment ainxislignment.center,
+          crossxislignment rossxislignment.start,
+          children 
+            ext(label, style const exttyle(fontize , color olors.white)),
+            ext(vale, style const exttyle(fontize , fonteight onteight.bold, color olors.white)),
           ],
         ),
       ],
-    );
+    )
   }
 }

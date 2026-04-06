@@ -1,206 +1,206 @@
-import 'package:flutter/material.dart';
-import 'package:share_plus/share_plus.dart';
-import '../services/agent_service.dart';
-import '../services/database_service.dart';
-import '../widgets/message_bubble.dart';
-import '../widgets/quick_actions.dart';
-import 'settings_screen.dart';
+import 'packagefltter/material.dart'
+import 'packageshare_pls/share_pls.dart'
+import '../services/agent_service.dart'
+import '../services/database_service.dart'
+import '../widgets/message_bbble.dart'
+import '../widgets/qick_actions.dart'
+import 'settings_screen.dart'
 
-class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+class omecreen extends tateflidget {
+  const omecreen({sper.key})
 
-  @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  override
+  tateomecreen createtate()  _omecreentate()
 }
 
-class _HomeScreenState extends State<HomeScreen> {
-  final TextEditingController _controller = TextEditingController();
-  final List<Map<String, dynamic>> _messages = [];
-  final ScrollController _scrollController = ScrollController();
-  final AgentService _agent = AgentService();
-  bool _isLoading = false;
+class _omecreentate extends tateomecreen {
+  final extditingontroller _controller  extditingontroller()
+  final istaptring, dynamic _messages  ]
+  final crollontroller _scrollontroller  crollontroller()
+  final gentervice _agent  gentervice()
+  bool _isoading  false
 
-  @override
-  void initState() {
-    super.initState();
-    _loadMessages();
-    _addWelcomeMessage();
+  override
+  void inittate() {
+    sper.inittate()
+    _loadessages()
+    _addelcomeessage()
   }
 
-  Future<void> _loadMessages() async {
-    final messages = await DatabaseService.getMessages();
-    setState(() {
-      _messages.clear();
-      _messages.addAll(messages);
-    });
+  trevoid _loadessages() async {
+    final messages  await atabaseervice.getessages()
+    settate(() {
+      _messages.clear()
+      _messages.addll(messages)
+    })
   }
 
-  void _addWelcomeMessage() {
+  void _addelcomeessage() {
     _messages.add({
-      'isUser': false,
-      'content': '''
-🧠 **مرحباً بك في Giant Agent!**
+      'isser' false,
+      'content' '''
+ **   iant gent!**
 
-أنا الوكيل العملاق للذكاء الاصطناعي
+    
 
-🚀 **ماذا يمكنني أن أفعل؟**
-• 🌐 إنشاء مواقع HTML
-• 💻 كتابة أكواد برمجية
-• 📊 تحليل النصوص والإحصائيات
-• 🔢 العمليات الحسابية
-• ⏰ تذكيرات ذكية
-• 📝 قوائم مهام
+ **   **
+    
+    
+    
+   
+   
+   
 
-**جرب هذه الأوامر:**
-• "أنشئ موقعاً عن الذكاء الاصطناعي"
-• "اكتب كود Python"
-• "حلل هذا النص"
-• "5+3×2"
-• "ذكرني بموعد"
-• "قائمة مهام: شراء، دراسة"
+**  **
+ "    "
+ "  ython"
+ "  "
+ "+"
+ " "
+ "   "
 
-**ماذا تريد أن نفعل اليوم؟** 🚀
+**    ** 
 ''',
-      'time': DateTime.now(),
-    });
+      'time' ateime.now(),
+    })
   }
 
-  Future<void> _sendMessage() async {
-    final text = _controller.text.trim();
-    if (text.isEmpty) return;
+  trevoid _sendessage() async {
+    final text  _controller.text.trim()
+    if (text.ismpty) retrn
 
-    setState(() {
-      _messages.add({'isUser': true, 'content': text, 'time': DateTime.now()});
-      _controller.clear();
-      _isLoading = true;
-    });
-    _scrollToBottom();
+    settate(() {
+      _messages.add({'isser' tre, 'content' text, 'time' ateime.now()})
+      _controller.clear()
+      _isoading  tre
+    })
+    _scrolloottom()
 
-    await DatabaseService.saveMessage(text, true);
-    final response = await _agent.process(text);
+    await atabaseervice.saveessage(text, tre)
+    final response  await _agent.process(text)
 
-    setState(() {
-      _messages.add({'isUser': false, 'content': response, 'time': DateTime.now()});
-      _isLoading = false;
-    });
-    _scrollToBottom();
+    settate(() {
+      _messages.add({'isser' false, 'content' response, 'time' ateime.now()})
+      _isoading  false
+    })
+    _scrolloottom()
 
-    await DatabaseService.saveMessage(response, false);
+    await atabaseervice.saveessage(response, false)
   }
 
-  void _scrollToBottom() {
-    Future.delayed(const Duration(milliseconds: 100), () {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
+  void _scrolloottom() {
+    tre.delayed(const ration(milliseconds ), () {
+      if (_scrollontroller.haslients) {
+        _scrollontroller.animateo(
+          _scrollontroller.position.maxcrollxtent,
+          dration const ration(milliseconds ),
+          crve rves.easet,
+        )
       }
-    });
+    })
   }
 
-  Future<void> _clearChat() async {
-    await DatabaseService.clearMessages();
-    setState(() {
-      _messages.clear();
-      _addWelcomeMessage();
-    });
+  trevoid _clearhat() async {
+    await atabaseervice.clearessages()
+    settate(() {
+      _messages.clear()
+      _addelcomeessage()
+    })
   }
 
-  Future<void> _shareChat() async {
-    final content = await DatabaseService.exportChat();
-    await Share.share(content, sharePositionOrigin: Rect.zero);
+  trevoid _sharehat() async {
+    final content  await atabaseervice.exporthat()
+    await hare.share(content, shareositionrigin ect.zero)
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('🧠 Giant Agent'),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () {
-              Navigator.push(
+  override
+  idget bild(ildontext context) {
+    retrn caffold(
+      appar ppar(
+        title const ext(' iant gent'),
+        centeritle tre,
+        actions 
+          contton(
+            icon const con(cons.settings),
+            onressed () {
+              avigator.psh(
                 context,
-                MaterialPageRoute(builder: (context) => const SettingsScreen()),
-              );
+                aterialageote(bilder (context)  const ettingscreen()),
+              )
             },
           ),
-          IconButton(
-            icon: const Icon(Icons.share),
-            onPressed: _shareChat,
+          contton(
+            icon const con(cons.share),
+            onressed _sharehat,
           ),
-          IconButton(
-            icon: const Icon(Icons.delete_outline),
-            onPressed: _clearChat,
+          contton(
+            icon const con(cons.delete_otline),
+            onressed _clearhat,
           ),
         ],
       ),
-      body: Column(
-        children: [
-          QuickActions(onTap: (text) {
-            _controller.text = text;
-            _sendMessage();
+      body olmn(
+        children 
+          ickctions(onap (text) {
+            _controller.text  text
+            _sendessage()
           }),
-          Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(12),
-              itemCount: _messages.length,
-              itemBuilder: (context, index) {
-                final msg = _messages[index];
-                return MessageBubble(
-                  isUser: msg['isUser'],
-                  content: msg['content'],
-                  time: msg['time'],
-                );
+          xpanded(
+            child istiew.bilder(
+              controller _scrollontroller,
+              padding const dgensets.all(),
+              itemont _messages.length,
+              itemilder (context, index) {
+                final msg  _messagesindex]
+                retrn essagebble(
+                  isser msg'isser'],
+                  content msg'content'],
+                  time msg'time'],
+                )
               },
             ),
           ),
-          if (_isLoading)
-            const Padding(
-              padding: EdgeInsets.all(8),
-              child: LinearProgressIndicator(),
+          if (_isoading)
+            const adding(
+              padding dgensets.all(),
+              child inearrogressndicator(),
             ),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1E1E1E),
-              border: Border(top: BorderSide(color: Colors.grey.shade800)),
+          ontainer(
+            padding const dgensets.all(),
+            decoration oxecoration(
+              color const olor(x),
+              border order(top orderide(color olors.grey.shade)),
             ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      hintText: 'اكتب أمراً أو سؤالاً...',
-                      hintStyle: TextStyle(color: Colors.grey.shade500),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(30),
-                        borderSide: BorderSide.none,
+            child ow(
+              children 
+                xpanded(
+                  child extield(
+                    controller _controller,
+                    style const exttyle(color olors.white),
+                    decoration nptecoration(
+                      hintext '   ...',
+                      hinttyle exttyle(color olors.grey.shade),
+                      border tlinenptorder(
+                        borderadis orderadis.circlar(),
+                        borderide orderide.none,
                       ),
-                      filled: true,
-                      fillColor: const Color(0xFF2D2D2D),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      filled tre,
+                      fillolor const olor(x),
+                      contentadding const dgensets.symmetric(horizontal , vertical ),
                     ),
-                    onSubmitted: (_) => _sendMessage(),
+                    onbmitted (_)  _sendessage(),
                   ),
                 ),
-                const SizedBox(width: 8),
-                GestureDetector(
-                  onTap: _sendMessage,
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF6C63FF),
-                      shape: BoxShape.circle,
+                const izedox(width ),
+                estreetector(
+                  onap _sendessage,
+                  child ontainer(
+                    padding const dgensets.all(),
+                    decoration const oxecoration(
+                      color olor(x),
+                      shape oxhape.circle,
                     ),
-                    child: const Icon(Icons.send, color: Colors.white, size: 20),
+                    child const con(cons.send, color olors.white, size ),
                   ),
                 ),
               ],
@@ -208,6 +208,6 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-    );
+    )
   }
 }

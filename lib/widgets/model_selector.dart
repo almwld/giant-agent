@@ -1,76 +1,76 @@
-import 'package:flutter/material.dart';
-import '../services/model_service.dart';
+import 'packagefltter/material.dart'
+import '../services/model_service.dart'
 
-class ModelSelector extends StatefulWidget {
-  final VoidCallback onModelChanged;
+class odelelector extends tateflidget {
+  final oidallback onodelhanged
 
-  const ModelSelector({super.key, required this.onModelChanged});
+  const odelelector({sper.key, reqired this.onodelhanged})
 
-  @override
-  State<ModelSelector> createState() => _ModelSelectorState();
+  override
+  tateodelelector createtate()  _odelelectortate()
 }
 
-class _ModelSelectorState extends State<ModelSelector> {
-  List<Map<String, dynamic>> _models = [];
-  String _activeModelId = 'default';
+class _odelelectortate extends tateodelelector {
+  istaptring, dynamic _models  ]
+  tring _activeodeld  'defalt'
 
-  @override
-  void initState() {
-    super.initState();
-    _loadModels();
+  override
+  void inittate() {
+    sper.inittate()
+    _loadodels()
   }
 
-  Future<void> _loadModels() async {
-    final models = await ModelService.getAvailableModels();
-    final active = ModelService.getActiveModel();
-    setState(() {
-      _models = models;
-      _activeModelId = active['id'];
-    });
+  trevoid _loadodels() async {
+    final models  await odelervice.getvailableodels()
+    final active  odelervice.getctiveodel()
+    settate(() {
+      _models  models
+      _activeodeld  active'id']
+    })
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: Row(
-        children: [
-          const Icon(Icons.model_training, size: 18, color: Colors.white70),
-          const SizedBox(width: 8),
-          const Text('النموذج:', style: TextStyle(fontSize: 12, color: Colors.white70)),
-          const SizedBox(width: 8),
-          Expanded(
-            child: DropdownButton<String>(
-              value: _activeModelId,
-              dropdownColor: Colors.grey.shade800,
-              underline: Container(),
-              style: const TextStyle(color: Colors.white, fontSize: 12),
-              isExpanded: true,
-              items: _models.map((model) {
-                return DropdownMenuItem<String>(
-                  value: model['id'],
-                  child: Row(
-                    children: [
-                      Icon(Icons.check_circle, size: 14, color: model['status'] == 'active' ? Colors.green : Colors.grey),
-                      const SizedBox(width: 8),
-                      Text(model['name']),
-                      const SizedBox(width: 8),
-                      Text('(${model['size']})', style: const TextStyle(fontSize: 10, color: Colors.grey)),
+  override
+  idget bild(ildontext context) {
+    retrn ontainer(
+      padding const dgensets.symmetric(horizontal , vertical ),
+      child ow(
+        children 
+          const con(cons.model_training, size , color olors.white),
+          const izedox(width ),
+          const ext('', style exttyle(fontize , color olors.white)),
+          const izedox(width ),
+          xpanded(
+            child ropdownttontring(
+              vale _activeodeld,
+              dropdownolor olors.grey.shade,
+              nderline ontainer(),
+              style const exttyle(color olors.white, fontize ),
+              isxpanded tre,
+              items _models.map((model) {
+                retrn ropdownentemtring(
+                  vale model'id'],
+                  child ow(
+                    children 
+                      con(cons.check_circle, size , color model'stats']  'active'  olors.green  olors.grey),
+                      const izedox(width ),
+                      ext(model'name']),
+                      const izedox(width ),
+                      ext('(${model'size']})', style const exttyle(fontize , color olors.grey)),
                     ],
                   ),
-                );
-              }).toList(),
-              onChanged: (value) async {
-                if (value != null) {
-                  await ModelService.switchModel(value);
-                  _activeModelId = value;
-                  widget.onModelChanged();
+                )
+              }).toist(),
+              onhanged (vale) async {
+                if (vale ! nll) {
+                  await odelervice.switchodel(vale)
+                  _activeodeld  vale
+                  widget.onodelhanged()
                 }
               },
             ),
           ),
         ],
       ),
-    );
+    )
   }
 }

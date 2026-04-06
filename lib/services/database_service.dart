@@ -1,61 +1,61 @@
-import 'package:sqflite/sqflite.dart';
-import 'package:path_provider/path_provider.dart';
+import 'packagesqflite/sqflite.dart'
+import 'packagepath_provider/path_provider.dart'
 
-class DatabaseService {
-  static Database? _db;
+class atabaseervice {
+  static atabase _db
 
-  static Future<Database> get database async {
-    if (_db != null) return _db!;
-    _db = await _initDB();
-    return _db!;
+  static treatabase get database async {
+    if (_db ! nll) retrn _db!
+    _db  await _init()
+    retrn _db!
   }
 
-  static Future<Database> _initDB() async {
-    final dir = await getApplicationDocumentsDirectory();
-    final path = '${dir.path}/giant_agent.db';
+  static treatabase _init() async {
+    final dir  await getpplicationocmentsirectory()
+    final path  '${dir.path}/giant_agent.db'
     
-    return await openDatabase(
+    retrn await openatabase(
       path,
-      version: 1,
-      onCreate: (db, version) async {
-        await db.execute('''
-          CREATE TABLE messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            text TEXT,
-            isUser INTEGER,
-            time TEXT
+      version ,
+      onreate (db, version) async {
+        await db.execte('''
+            messages (
+            id    ,
+            text ,
+            isser ,
+            time 
           )
-        ''');
+        ''')
       },
-    );
+    )
   }
 
-  static Future<void> saveMessage(String text, bool isUser) async {
-    final db = await database;
+  static trevoid saveessage(tring text, bool isser) async {
+    final db  await database
     await db.insert('messages', {
-      'text': text,
-      'isUser': isUser ? 1 : 0,
-      'time': DateTime.now().toIso8601String(),
-    });
+      'text' text,
+      'isser' isser    ,
+      'time' ateime.now().tosotring(),
+    })
   }
 
-  static Future<List<Map<String, dynamic>>> getMessages() async {
-    final db = await database;
-    return await db.query('messages', orderBy: 'id DESC', limit: 100);
+  static treistaptring, dynamic getessages() async {
+    final db  await database
+    retrn await db.qery('messages', ordery 'id ', limit )
   }
 
-  static Future<void> clearMessages() async {
-    final db = await database;
-    await db.delete('messages');
+  static trevoid clearessages() async {
+    final db  await database
+    await db.delete('messages')
   }
 
-  static Future<String> exportChat() async {
-    final messages = await getMessages();
-    final content = messages.reversed.map((m) {
-      final time = DateTime.parse(m['time']);
-      return '${m['isUser'] == 1 ? '👤' : '🤖'} [${time.hour}:${time.minute}]: ${m['text']}';
-    }).join('\n');
+  static tretring exporthat() async {
+    final messages  await getessages()
+    final content  messages.reversed.map((m) {
+      final time  ateime.parse(m'time'])
+      retrn '${m'isser']    ''  ''} ${time.hor}${time.minte}] ${m'text']}'
+    }).join('n')
     
-    return 'محادثة Giant Agent\n${DateTime.now()}\n\n$content';
+    retrn ' iant gentn${ateime.now()}nn$content'
   }
 }
