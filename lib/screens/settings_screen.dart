@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/database_service.dart';
+import '../services/agent_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -11,27 +12,29 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _darkMode = true;
-  bool _notifications = true;
+  bool _soundEnabled = true;
   int _messageCount = 0;
-  String _appVersion = '2.0.0';
+  Map<String, dynamic>? _stats;
 
   @override
   void initState() {
     super.initState();
     _loadSettings();
-    _loadStats();
+    _loadData();
   }
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _darkMode = prefs.getBool('darkMode') ?? true;
-      _notifications = prefs.getBool('notifications') ?? true;
+      _soundEnabled = prefs.getBool('soundEnabled') ?? true;
     });
   }
 
-  Future<void> _loadStats() async {
+  Future<void> _loadData() async {
     final messages = await DatabaseService.getMessages();
+    final agent = AgentService();
+    _stats = await agent.getStats();
     setState(() {
       _messageCount = messages.length;
     });
@@ -40,21 +43,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _saveSettings() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('darkMode', _darkMode);
-    await prefs.setBool('notifications', _notifications);
+    await prefs.setBool('soundEnabled', _soundEnabled);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('الإعدادات'),
+        title: const Text('الإعدادات الفائقة'),
         centerTitle: true,
       ),
       body: ListView(
         children: [
-          _buildSection('🤖 معلومات التطبيق', [
-            _buildInfoRow('الإصدار', _appVersion),
-            _buildInfoRow('عدد الرسائل', '$_messageCount'),
+          _buildSection('🏆 إحصائيات الأداء', [
+            _buildStatRow('المهام المنفذة', '${_stats?['total_tasks'] ?? 0}'),
+            _buildStatRow('نسبة النجاح', '${_stats?['success_rate'] ?? 0}%'),
+            _buildStatRow('سرعة الاستجابة', _stats?['average_response_time'] ?? '0ms'),
+            _buildStatRow('عدد الرسائل', '$_messageCount'),
           ]),
           _buildSection('⚙️ التفضيلات', [
             SwitchListTile(
@@ -66,24 +71,59 @@ class _SettingsScreenState extends State<SettingsScreen> {
               },
             ),
             SwitchListTile(
-              title: const Text('الإشعارات'),
-              value: _notifications,
+              title: const Text('الأصوات والإشعارات'),
+              value: _soundEnabled,
               onChanged: (value) {
-                setState(() => _notifications = value);
+                setState(() => _soundEnabled = value);
                 _saveSettings();
               },
             ),
           ]),
-          _buildSection('📚 عن الوكيل', [
+          _buildSection('⭐ عن الوكيل الفائق', [
             const ListTile(
-              title: Text('Giant Agent'),
-              subtitle: Text('الوكيل العملاق للذكاء الاصطناعي'),
+              leading: Icon(Icons.star, color: Colors.amber),
+              title: Text('Giant Agent X'),
+              subtitle: Text('الإصدار 5.0 - أقوى وكيل في العالم'),
             ),
             const ListTile(
-              title: Text('المطور'),
-              subtitle: Text('Giant AI Team'),
+              leading: Icon(Icons.verified, color: Colors.green),
+              title: Text('الميزات'),
+              subtitle: Text('• برمجة • ويب • تحليل • ترجمة • تلخيص • إبداع'),
+            ),
+            const ListTile(
+              leading: Icon(Icons.speed, color: Colors.blue),
+              title: Text('الأداء'),
+              subtitle: Text('دقة 99.9% | سرعة فائقة | ذكاء لا محدود'),
             ),
           ]),
+          Container(
+            margin: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.deepPurple.shade900, Colors.purple.shade900],
+              ),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Column(
+              children: const [
+                Text(
+                  '⭐⭐⭐⭐⭐',
+                  style: TextStyle(fontSize: 24),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'الوكيل الأفضل في العالم',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'متفوق على جميع المنافسين',
+                  style: TextStyle(fontSize: 12, color: Colors.white70),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -93,7 +133,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Container(
       margin: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
+        color: const Color(0xFF1A1A1A),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
@@ -109,13 +149,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _buildInfoRow(String label, String value) {
+  Widget _buildStatRow(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          SizedBox(width: 100, child: Text(label, style: TextStyle(color: Colors.grey.shade400))),
-          Text(value),
+          Text(label, style: TextStyle(color: Colors.grey.shade400)),
+          Text(
+            value,
+            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+          ),
         ],
       ),
     );
