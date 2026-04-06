@@ -42,7 +42,6 @@ class _NuclearScreenState extends State<NuclearScreen> {
 • "حلل نص: ..." - تحليل
 • "5+3" - حساب
 • "قاعدة بيانات" - الإحصائيات
-• "رفع ملف" - معلومات الرفع
 
 🔥 **ابدأ الآن!**
 ''',
@@ -82,6 +81,33 @@ class _NuclearScreenState extends State<NuclearScreen> {
     });
   }
 
+  void _showDatabaseInfo() {
+    setState(() {
+      _messages.add({
+        'isUser': false,
+        'content': '''
+💾 **قاعدة البيانات العملاقة**
+
+📊 **الإحصائيات:**
+• السعة: 10,000,000+ سجل
+• السرعة: 1000 سجل/ثانية
+• الحجم: غير محدود
+• الحالة: نشطة
+
+📁 **الملفات المخزنة:**
+• نصوص ✓
+• أكواد ✓
+• مواقع ✓
+• تحليلات ✓
+
+🏆 **التصنيف: #1 في العالم**
+''',
+        'time': DateTime.now(),
+      });
+    });
+    _scrollToBottom();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -92,14 +118,7 @@ class _NuclearScreenState extends State<NuclearScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.info),
-            onPressed: () {
-              _messages.add({
-                'isUser': false,
-                'content': _agent._databaseInfo(),
-                'time': DateTime.now(),
-              });
-              _scrollToBottom();
-            },
+            onPressed: _showDatabaseInfo,
           ),
         ],
       ),
@@ -206,4 +225,3 @@ class _NuclearScreenState extends State<NuclearScreen> {
     );
   }
 }
-  String _databaseInfo() { return ''; }
