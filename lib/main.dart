@@ -20,6 +20,11 @@ class MyApp extends StatelessWidget {
         brightness: Brightness.dark,
         primaryColor: Colors.deepPurple,
         scaffoldBackgroundColor: Colors.black,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.deepPurple,
+          elevation: 0,
+          centerTitle: true,
+        ),
       ),
       home: const NuclearScreen(),
     );
