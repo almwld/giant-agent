@@ -30,18 +30,29 @@ jobs:
     - name: Build APK
       run: flutter build apk --release
     
-    - name: Upload APK
+    - name: Build Split APKs (per ABI)
+      run: flutter build apk --release --split-per-abi
+    
+    - name: Upload Universal APK
       uses: actions/upload-artifact@v4
       with:
-        name: giant-agent-apk
+        name: giant-agent-universal-apk
         path: build/app/outputs/flutter-apk/app-release.apk
     
-    - name: Create Release
-      uses: softprops/action-gh-release@v1
-      if: github.event_name == 'push'
+    - name: Upload ARM64 APK
+      uses: actions/upload-artifact@v4
       with:
-        tag_name: v1.0.${{ github.run_number }}
-        name: "Giant Agent v1.0.${{ github.run_number }}"
-        files: build/app/outputs/flutter-apk/app-release.apk
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        name: giant-agent-arm64-apk
+        path: build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
+    
+    - name: Upload ARM32 APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: giant-agent-arm32-apk
+        path: build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
+    
+    - name: Upload x86_64 APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: giant-agent-x64-apk
+        path: build/app/outputs/flutter-apk/app-x86_64-release.apk
