@@ -34,7 +34,6 @@ class _NuclearScreenState extends State<NuclearScreen> {
 • قاعدة بيانات عملاقة
 • إنشاء مواقع وأكواد
 • تحليل ذكي
-• رفع ملفات TXT/JSON/CSV
 
 ⚡ **الأوامر:**
 • "أنشئ موقعاً" - إنشاء HTML
@@ -81,33 +80,6 @@ class _NuclearScreenState extends State<NuclearScreen> {
     });
   }
 
-  void _showDatabaseInfo() {
-    setState(() {
-      _messages.add({
-        'isUser': false,
-        'content': '''
-💾 **قاعدة البيانات العملاقة**
-
-📊 **الإحصائيات:**
-• السعة: 10,000,000+ سجل
-• السرعة: 1000 سجل/ثانية
-• الحجم: غير محدود
-• الحالة: نشطة
-
-📁 **الملفات المخزنة:**
-• نصوص ✓
-• أكواد ✓
-• مواقع ✓
-• تحليلات ✓
-
-🏆 **التصنيف: #1 في العالم**
-''',
-        'time': DateTime.now(),
-      });
-    });
-    _scrollToBottom();
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -115,12 +87,6 @@ class _NuclearScreenState extends State<NuclearScreen> {
         title: const Text('💀 GIANT AGENT X'),
         centerTitle: true,
         backgroundColor: Colors.deepPurple,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.info),
-            onPressed: _showDatabaseInfo,
-          ),
-        ],
       ),
       body: Column(
         children: [
@@ -179,14 +145,6 @@ class _NuclearScreenState extends State<NuclearScreen> {
             ),
             child: Row(
               children: [
-                IconButton(
-                  icon: const Icon(Icons.attach_file, color: Colors.white),
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('📁 قريباً: رفع الملفات - تحديث قادم!')),
-                    );
-                  },
-                ),
                 Expanded(
                   child: TextField(
                     controller: _controller,
