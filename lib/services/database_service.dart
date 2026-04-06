@@ -12,7 +12,7 @@ class DatabaseService {
 
   static Future<Database> _initDB() async {
     final dir = await getApplicationDocumentsDirectory();
-    final path = '${dir.path}/giant_agent_x.db';
+    final path = '${dir.path}/giant_agent.db';
     
     return await openDatabase(
       path,
@@ -41,7 +41,7 @@ class DatabaseService {
 
   static Future<List<Map<String, dynamic>>> getMessages() async {
     final db = await database;
-    return await db.query('messages', orderBy: 'id DESC', limit: 200);
+    return await db.query('messages', orderBy: 'id DESC', limit: 100);
   }
 
   static Future<void> clearMessages() async {
@@ -56,6 +56,6 @@ class DatabaseService {
       return '${m['isUser'] == 1 ? '👤' : '🤖'} [${time.hour}:${time.minute}]: ${m['text']}';
     }).join('\n');
     
-    return '⚡ محادثة Giant Agent X - أقوى وكيل في العالم\n📅 ${DateTime.now()}\n\n$content\n\n⭐ متفوق على جميع المنافسين!';
+    return 'محادثة Giant Agent\n${DateTime.now()}\n\n$content';
   }
 }

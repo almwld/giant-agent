@@ -19,21 +19,12 @@ class _HomeScreenState extends State<HomeScreen> {
   final ScrollController _scrollController = ScrollController();
   final AgentService _agent = AgentService();
   bool _isLoading = false;
-  bool _showThinking = false;
-  String _thinkingText = '';
-  Map<String, dynamic>? _stats;
 
   @override
   void initState() {
     super.initState();
     _loadMessages();
-    _loadStats();
     _addWelcomeMessage();
-  }
-
-  Future<void> _loadStats() async {
-    _stats = await _agent.getStats();
-    setState(() {});
   }
 
   Future<void> _loadMessages() async {
@@ -48,39 +39,27 @@ class _HomeScreenState extends State<HomeScreen> {
     _messages.add({
       'isUser': false,
       'content': '''
-⭐ **GIANT AGENT X - أقوى وكيل في العالم** ⭐
+🧠 **مرحباً بك في Giant Agent!**
 
-🏆 **الإنجازات**:
-• ✅ متفوق على جميع الوكلاء المنافسين
-• ✅ دقة 99.9% في الاستجابة
-• ✅ سرعة فائقة في التنفيذ
-• ✅ ذكاء لا محدود
+أنا الوكيل العملاق للذكاء الاصطناعي
 
-🚀 **القدرات الخارقة**:
+🚀 **ماذا يمكنني أن أفعل؟**
+• 🌐 إنشاء مواقع HTML
+• 💻 كتابة أكواد برمجية
+• 📊 تحليل النصوص والإحصائيات
+• 🔢 العمليات الحسابية
+• ⏰ تذكيرات ذكية
+• 📝 قوائم مهام
 
-| المجال | القدرات |
-|--------|----------|
-| 💻 **البرمجة** | إنشاء كود احترافي فوري |
-| 🌐 **الويب** | تصميم مواقع متطورة |
-| 📊 **التحليل** | تحليل بيانات متقدم |
-| 🧠 **الذكاء** | فهم عميق وسلسلة تفكير |
-| 🔢 **الحساب** | عمليات معقدة |
-| ⏰ **التذكير** | جدولة ذكية |
-| 🌍 **الترجمة** | أكثر من 100 لغة |
-| ✍️ **الإبداع** | كتابة إبداعية |
+**جرب هذه الأوامر:**
+• "أنشئ موقعاً عن الذكاء الاصطناعي"
+• "اكتب كود Python"
+• "حلل هذا النص"
+• "5+3×2"
+• "ذكرني بموعد"
+• "قائمة مهام: شراء، دراسة"
 
-📊 **الإحصائيات الحالية**:
-• المهام المنفذة: ${_stats?['total_tasks'] ?? 0}
-• نسبة النجاح: ${_stats?['success_rate'] ?? 0}%
-• سرعة الاستجابة: ${_stats?['average_response_time'] ?? '0ms'}
-
-✨ **ماذا تريد أن نفعل اليوم؟**
-• اكتب "أنشئ موقعاً" لإنشاء موقع متقدم
-• اكتب "اكتب كود" لإنشاء كود احترافي
-• اكتب "حلل نص" لتحليل النصوص
-• أو فقط تحدث معي بشكل طبيعي!
-
-**أنا هنا لأتفوق على كل التوقعات!** 🚀
+**ماذا تريد أن نفعل اليوم؟** 🚀
 ''',
       'time': DateTime.now(),
     });
@@ -94,30 +73,15 @@ class _HomeScreenState extends State<HomeScreen> {
       _messages.add({'isUser': true, 'content': text, 'time': DateTime.now()});
       _controller.clear();
       _isLoading = true;
-      _showThinking = true;
-      _thinkingText = '🧠 جاري التفكير الفائق...';
     });
     _scrollToBottom();
 
     await DatabaseService.saveMessage(text, true);
-
-    // محاكاة التفكير المتقدم
-    await Future.delayed(const Duration(milliseconds: 300));
-    setState(() {
-      _thinkingText = '⚙️ تحليل النية وتطبيق الخوارزميات الفائقة...';
-    });
-    await Future.delayed(const Duration(milliseconds: 300));
-    setState(() {
-      _thinkingText = '💡 توليد الاستجابة المثلى...';
-    });
-
     final response = await _agent.process(text);
-    await _loadStats();
 
     setState(() {
       _messages.add({'isUser': false, 'content': response, 'time': DateTime.now()});
       _isLoading = false;
-      _showThinking = false;
     });
     _scrollToBottom();
 
@@ -146,50 +110,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _shareChat() async {
     final content = await DatabaseService.exportChat();
-    await Share.share(content, subject: 'محادثة Giant Agent X');
+    await Share.share(content, sharePositionOrigin: Rect.zero);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: const [
-            Icon(Icons.star, color: Colors.amber, size: 20),
-            SizedBox(width: 8),
-            Text('GIANT AGENT X'),
-            SizedBox(width: 8),
-            Icon(Icons.star, color: Colors.amber, size: 20),
-          ],
-        ),
+        title: const Text('🧠 Giant Agent'),
         centerTitle: true,
         actions: [
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 8),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.green.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: const BoxDecoration(
-                    color: Colors.green,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  '${_stats?['success_rate'] ?? 0}%',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-          ),
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () {
@@ -211,28 +141,10 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: Column(
         children: [
-          // شريط الحالة الفائق
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.deepPurple.shade900,
-              border: Border(bottom: BorderSide(color: Colors.deepPurple.shade700)),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('🧠 العقل العملاق', style: TextStyle(fontSize: 11)),
-                Text('⚡ ${_stats?['average_response_time'] ?? '0ms'}', style: const TextStyle(fontSize: 11)),
-                Text('📊 ${_stats?['total_tasks'] ?? 0} مهمة', style: const TextStyle(fontSize: 11)),
-              ],
-            ),
-          ),
-          // الأزرار السريعة
           QuickActions(onTap: (text) {
             _controller.text = text;
             _sendMessage();
           }),
-          // منطقة المحادثة
           Expanded(
             child: ListView.builder(
               controller: _scrollController,
@@ -248,33 +160,15 @@ class _HomeScreenState extends State<HomeScreen> {
               },
             ),
           ),
-          // مؤشر التفكير المتقدم
-          if (_showThinking)
-            Container(
-              padding: const EdgeInsets.all(12),
-              alignment: Alignment.centerLeft,
-              child: Row(
-                children: [
-                  const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      _thinkingText,
-                      style: const TextStyle(color: Colors.white70, fontSize: 12),
-                    ),
-                  ),
-                ],
-              ),
+          if (_isLoading)
+            const Padding(
+              padding: EdgeInsets.all(8),
+              child: LinearProgressIndicator(),
             ),
-          // شريط الإدخال الفائق
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: const Color(0xFF1A1A1A),
+              color: const Color(0xFF1E1E1E),
               border: Border(top: BorderSide(color: Colors.grey.shade800)),
             ),
             child: Row(
@@ -284,7 +178,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     controller: _controller,
                     style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
-                      hintText: 'اطلب أي شيء... أنا الأقوى!',
+                      hintText: 'اكتب أمراً أو سؤالاً...',
                       hintStyle: TextStyle(color: Colors.grey.shade500),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(30),
@@ -302,10 +196,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   onTap: _sendMessage,
                   child: Container(
                     padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF6C63FF), Color(0xFF3F3D9E)],
-                      ),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF6C63FF),
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(Icons.send, color: Colors.white, size: 20),
