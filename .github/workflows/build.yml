@@ -1,0 +1,95 @@
+name: Build Giant Agent APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+    
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.16.0'
+        channel: 'stable'
+    
+    - name: Get dependencies
+      run: flutter pub get
+    
+    - name: Create Android folder structure
+      run: |
+        mkdir -p android/app/src/main
+        mkdir -p android/app/src/main/res/values
+        mkdir -p android/app/src/main/res/drawable
+    
+    - name: Create AndroidManifest.xml
+      run: |
+        cat > android/app/src/main/AndroidManifest.xml << 'XML'
+        <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+            package="com.example.giant_agent">
+            <uses-permission android:name="android.permission.INTERNET"/>
+            <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+            <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+            <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+            <application
+                android:label="Giant Agent"
+                android:requestLegacyExternalStorage="true"
+                android:usesCleartextTraffic="true">
+                <activity
+                    android:name=".MainActivity"
+                    android:exported="true"
+                    android:theme="@style/LaunchTheme">
+                    <intent-filter>
+                        <action android:name="android.intent.action.MAIN"/>
+                        <category android:name="android.intent.category.LAUNCHER"/>
+                    </intent-filter>
+                </activity>
+            </application>
+        </manifest>
+        XML
+    
+    - name: Create styles.xml
+      run: |
+        cat > android/app/src/main/res/values/styles.xml << 'XML'
+        <?xml version="1.0" encoding="utf-8"?>
+        <resources>
+            <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
+                <item name="android:windowBackground">@android:color/black</item>
+            </style>
+        </resources>
+        XML
+    
+    - name: Create placeholder files
+      run: |
+        mkdir -p assets
+        echo "placeholder" > assets/placeholder.txt
+    
+    - name: Build APK
+      run: flutter build apk --release
+    
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: giant-agent-apk
+        path: build/app/outputs/flutter-apk/app-release.apk
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      if: github.event_name == 'push'
+      with:
+        tag_name: v1.0.${{ github.run_number }}
+        name: "Giant Agent v1.0.${{ github.run_number }}"
+        files: build/app/outputs/flutter-apk/app-release.apk
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
