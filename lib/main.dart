@@ -1,40 +1,32 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'screens/splash_screen.dart';
-import 'services/agent_service.dart';
+import 'screens/nuclear_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  await [
-    Permission.storage,
-  ].request();
-  
-  final agent = AgentService();
-  await agent.init();
-  
-  runApp(const MyApp());
+  await [Permission.storage].request();
+  runApp(const NuclearApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class NuclearApp extends StatelessWidget {
+  const NuclearApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Giant Agent',
+      title: 'Nuclear Giant Agent',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
-        primaryColor: const Color(0xFF6C63FF),
-        scaffoldBackgroundColor: const Color(0xFF121212),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF1E1E1E),
+        primaryColor: Colors.red.shade900,
+        scaffoldBackgroundColor: Colors.black,
+        appBarTheme: AppBarTheme(
+          backgroundColor: Colors.red.shade900,
           elevation: 0,
           centerTitle: true,
         ),
       ),
-      home: const SplashScreen(),
+      home: const NuclearScreen(),
     );
   }
 }

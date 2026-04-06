@@ -1,6 +1,6 @@
-name: giant_agent
-description: Giant AI Agent
-version: 1.0.0+1
+name: giant_agent_nuclear
+description: The Nuclear Giant Agent - Destroying All Competitors
+version: 10.0.0+1
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -13,6 +13,8 @@ dependencies:
   shared_preferences: ^2.2.0
   permission_handler: ^11.0.0
   share_plus: ^7.2.2
+  http: ^1.1.0
+  path: ^1.8.3
 
 dev_dependencies:
   flutter_test:
