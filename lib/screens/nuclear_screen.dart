@@ -3,6 +3,11 @@ import 'package:flutter/material.dart';
 import '../services/agent_service.dart';
 import '../services/file_upload_service.dart';
 import '../services/model_service.dart';
+import '../widgets/status_bar.dart';
+import '../widgets/chat_bubble.dart';
+import '../widgets/quick_actions.dart';
+import '../widgets/thinking_indicator.dart';
+import '../widgets/model_selector.dart';
 
 class NuclearScreen extends StatefulWidget {
   const NuclearScreen({super.key});
@@ -17,12 +22,15 @@ class _NuclearScreenState extends State<NuclearScreen> {
   final ScrollController _scrollController = ScrollController();
   final AgentService _agent = AgentService();
   bool _isLoading = false;
+  String _thinkingMessage = 'جاري التفكير';
+  int _processedFiles = 0;
 
   @override
   void initState() {
     super.initState();
     _initServices();
     _addWelcomeMessage();
+    _loadStats();
   }
 
   Future<void> _initServices() async {
@@ -30,33 +38,54 @@ class _NuclearScreenState extends State<NuclearScreen> {
     await ModelService.getAvailableModels();
   }
 
+  Future<void> _loadStats() async {
+    final history = await FileUploadService.getHistory();
+    setState(() {
+      _processedFiles = history.length;
+    });
+  }
+
   void _addWelcomeMessage() {
     final activeModel = ModelService.getActiveModel();
     _messages.add({
       'isUser': false,
       'content': '''
-☢️ **GIANT AGENT X - NUCLEAR MODE** ☢️
+☢️ **GIANT AGENT X** ☢️
+
+**أقوى وكيل ذكاء اصطناعي في العالم!**
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 🧠 **النموذج النشط**: ${activeModel['name']} v${activeModel['version']}
 
 💥 **القدرات الخارقة:**
-• 🧠 نماذج متعددة (TFLite)
-• 📁 رفع ملفات (TXT/JSON/CSV)
-• 🌐 إنشاء مواقع HTML
-• 💻 كتابة أكواد برمجية
-• 📊 تحليل النصوص الذكي
-• 🔢 العمليات الحسابية
 
-⚡ **الأوامر الرئيسية:**
-• "النماذج" - عرض النماذج المتاحة
-• "تبديل نموذج [الاسم]" - تبديل النموذج
-• "رفع ملف" - تعليمات رفع الملفات
-• "تاريخ الملفات" - عرض الملفات المرفوعة
-• "أنشئ موقعاً" - إنشاء HTML
-• "اكتب كود" - إنشاء كود
+| الميزة | الوصف |
+|--------|-------|
+| 🧠 نماذج متعددة | دعم TFLite مع تبديل فوري |
+| 📁 رفع ملفات | TXT, JSON, CSV, TFLite |
+| 🌐 إنشاء مواقع | HTML كامل مع تصميم عصري |
+| 💻 أكواد برمجية | Dart, Python, JavaScript |
+| 📊 تحليل نصوص | إحصائيات وتحليل مشاعر |
+| 🔢 عمليات حسابية | جمع، طرح، ضرب، قسمة |
 
-🔥 **ابدأ الآن!**
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚡ **الأوامر السريعة:**
+
+• `النماذج` - عرض النماذج المتاحة
+• `تبديل نموذج [الاسم]` - تبديل النموذج
+• `رفع ملف` - تعليمات رفع الملفات
+• `تاريخ الملفات` - عرض الملفات المرفوعة
+• `أنشئ موقعاً` - إنشاء HTML
+• `اكتب كود` - إنشاء كود
+• `قاعدة بيانات` - إحصائيات القاعدة
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔥 **ابدأ الآن!** اكتب أمراً أو استخدم الأزرار السريعة أدناه.
 ''',
+      'intent': 'welcome',
       'time': DateTime.now(),
     });
   }
@@ -64,55 +93,68 @@ class _NuclearScreenState extends State<NuclearScreen> {
   Future<void> _uploadFile() async {
     final file = await FileUploadService.pickFile();
     if (file == null) return;
-    
+
     setState(() {
       _isLoading = true;
+      _thinkingMessage = 'جاري معالجة الملف';
       _messages.add({
         'isUser': true,
-        'content': '📁 رفع ملف: ${file.path.split('/').last}',
+        'content': '📁 **رفع ملف**: ${file.path.split('/').last}',
         'time': DateTime.now(),
       });
     });
     _scrollToBottom();
-    
+
     String response;
     final ext = file.path.split('.').last.toLowerCase();
-    
+
     try {
       if (ext == 'txt') {
         final analysis = await FileUploadService.processTextFile(file);
         response = '''
-✅ **تمت معالجة الملف النصي!**
+✅ **تمت معالجة الملف النصي بنجاح!**
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 📁 **الملف**: ${analysis['filename']}
 📊 **الأسطر**: ${analysis['lines']}
 📝 **الكلمات**: ${analysis['words']}
-📏 **الحجم**: ${analysis['size']} بايت
+📏 **الحجم**: ${(analysis['size'] / 1024).toStringAsFixed(2)} KB
 
-💾 **تم حفظ الملف في قاعدة البيانات**
+💾 **تم حفظ الملف في قاعدة البيانات العملاقة**
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ''';
       } else if (ext == 'json') {
         final analysis = await FileUploadService.processJsonFile(file);
         response = '''
-✅ **تمت معالجة ملف JSON!**
+✅ **تمت معالجة ملف JSON بنجاح!**
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 📁 **الملف**: ${analysis['filename']}
 🔑 **عدد المفاتيح**: ${analysis['keys']}
-📏 **الحجم**: ${analysis['size']} بايت
+📏 **الحجم**: ${(analysis['size'] / 1024).toStringAsFixed(2)} KB
 
-💾 **تم حفظ الملف في قاعدة البيانات**
+💾 **تم حفظ البيانات في قاعدة البيانات**
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ''';
       } else if (ext == 'csv') {
         final analysis = await FileUploadService.processCsvFile(file);
         response = '''
-✅ **تمت معالجة ملف CSV!**
+✅ **تمت معالجة ملف CSV بنجاح!**
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 📁 **الملف**: ${analysis['filename']}
 📊 **الصفوف**: ${analysis['rows']}
 📐 **الأعمدة**: ${analysis['columns']}
-📏 **الحجم**: ${analysis['size']} بايت
+📏 **الحجم**: ${(analysis['size'] / 1024).toStringAsFixed(2)} KB
 
-💾 **تم حفظ الملف في قاعدة البيانات**
+💾 **تم حفظ الجدول في قاعدة البيانات**
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ''';
       } else if (ext == 'tflite') {
         final added = await ModelService.addCustomModel(file.path);
@@ -120,23 +162,47 @@ class _NuclearScreenState extends State<NuclearScreen> {
           response = '''
 ✅ **تم إضافة النموذج بنجاح!**
 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 🧠 **الملف**: ${file.path.split('/').last}
 📊 **النوع**: TensorFlow Lite Model
+💾 **الحجم**: ${(await file.length() / 1024 / 1024).toStringAsFixed(2)} MB
 
 💡 **لعرض النماذج**: اكتب "النماذج"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ''';
         } else {
           response = '❌ فشل إضافة النموذج';
         }
       } else {
-        response = '❌ نوع الملف غير مدعوم. الأنواع المدعومة: TXT, JSON, CSV, TFLite';
+        response = '''
+❌ **نوع الملف غير مدعوم**
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📂 **الأنواع المدعومة**:
+• TXT - ملفات نصية
+• JSON - بيانات منظمة
+• CSV - جداول بيانات
+• TFLite - نماذج ذكاء اصطناعي
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+''';
       }
+      await _loadStats();
     } catch (e) {
-      response = '❌ خطأ في معالجة الملف: $e';
+      response = '❌ **خطأ في معالجة الملف**: $e';
     }
-    
+
     setState(() {
-      _messages.add({'isUser': false, 'content': response, 'time': DateTime.now()});
+      _messages.add({
+        'isUser': false,
+        'content': response,
+        'intent': 'file_upload',
+        'confidence': 0.95,
+        'time': DateTime.now(),
+      });
       _isLoading = false;
     });
     _scrollToBottom();
@@ -147,16 +213,27 @@ class _NuclearScreenState extends State<NuclearScreen> {
     if (text.isEmpty) return;
 
     setState(() {
-      _messages.add({'isUser': true, 'content': text, 'time': DateTime.now()});
+      _messages.add({
+        'isUser': true,
+        'content': text,
+        'time': DateTime.now(),
+      });
       _controller.clear();
       _isLoading = true;
+      _thinkingMessage = '🧠 جاري التفكير العميق';
     });
     _scrollToBottom();
 
     final response = await _agent.process(text);
 
     setState(() {
-      _messages.add({'isUser': false, 'content': response, 'time': DateTime.now()});
+      _messages.add({
+        'isUser': false,
+        'content': response,
+        'intent': 'response',
+        'confidence': 0.92,
+        'time': DateTime.now(),
+      });
       _isLoading = false;
     });
     _scrollToBottom();
@@ -174,44 +251,72 @@ class _NuclearScreenState extends State<NuclearScreen> {
     });
   }
 
+  void _showModels() async {
+    final models = await ModelService.getAvailableModels();
+    String content = '🧠 **النماذج المتاحة**\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n';
+    for (var model in models) {
+      content += '''
+📦 **${model['name']}**
+   • الإصدار: ${model['version']}
+   • الحجم: ${model['size']}
+   • النوع: ${model['type']}
+   • الحالة: ${model['status'] == 'active' ? '✅ نشط' : '📦 متاح'}
+
+''';
+    }
+    content += '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n';
+    content += '💡 **لتبديل النموذج**: اكتب "تبديل نموذج [الاسم]"';
+
+    setState(() {
+      _messages.add({
+        'isUser': false,
+        'content': content,
+        'intent': 'models',
+        'confidence': 0.99,
+        'time': DateTime.now(),
+      });
+    });
+    _scrollToBottom();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final activeModel = ModelService.getActiveModel();
+    
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('💀 GIANT AGENT X'),
-        centerTitle: true,
-        backgroundColor: Colors.deepPurple,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.model_training),
-            onPressed: () async {
-              final models = await ModelService.getAvailableModels();
-              String msg = '🧠 **النماذج المتاحة**\n\n';
-              for (var m in models) {
-                msg += '• ${m['name']} (${m['size']}) - ${m['status']}\n';
-              }
-              setState(() {
-                _messages.add({'isUser': false, 'content': msg, 'time': DateTime.now()});
-              });
-              _scrollToBottom();
-            },
-          ),
-        ],
+      backgroundColor: Colors.black,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(100),
+        child: Column(
+          children: [
+            AppBar(
+              title: const Text('💀 GIANT AGENT X'),
+              centerTitle: true,
+              backgroundColor: Colors.deepPurple,
+              elevation: 0,
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.model_training),
+                  onPressed: _showModels,
+                  tooltip: 'النماذج المتاحة',
+                ),
+              ],
+            ),
+            ModelSelector(
+              onModelChanged: () {
+                setState(() {});
+                _addWelcomeMessage();
+              },
+            ),
+          ],
+        ),
       ),
       body: Column(
         children: [
-          // شريط الحالة
-          Container(
-            padding: const EdgeInsets.all(8),
-            color: Colors.deepPurple.shade900,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('⚡ NUCLEAR MODE', style: TextStyle(fontSize: 10)),
-                Text('🧠 ${ModelService.getActiveModel()['name']}', style: const TextStyle(fontSize: 10)),
-                const Text('🚀 SPEED: MAX', style: TextStyle(fontSize: 10)),
-              ],
-            ),
+          StatusBar(
+            modelName: activeModel['name'],
+            processedFiles: _processedFiles,
+            speed: 'MAX',
           ),
           Expanded(
             child: ListView.builder(
@@ -220,74 +325,78 @@ class _NuclearScreenState extends State<NuclearScreen> {
               itemCount: _messages.length,
               itemBuilder: (context, index) {
                 final msg = _messages[index];
-                final isUser = msg['isUser'] as bool;
-                return Align(
-                  alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-                  child: Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.all(12),
-                    constraints: BoxConstraints(
-                      maxWidth: MediaQuery.of(context).size.width * 0.85,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isUser ? Colors.deepPurple : Colors.grey.shade800,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: SelectableText(
-                      msg['content'],
-                      style: const TextStyle(color: Colors.white, fontSize: 13),
-                    ),
-                  ),
+                return ChatBubble(
+                  isUser: msg['isUser'],
+                  message: msg['content'],
+                  time: msg['time'],
+                  intent: msg['intent'],
+                  confidence: msg['confidence'],
                 );
               },
             ),
           ),
           if (_isLoading)
-            const Padding(
-              padding: EdgeInsets.all(8),
-              child: LinearProgressIndicator(),
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: ThinkingIndicator(message: _thinkingMessage),
             ),
+          QuickActions(onTap: (cmd) {
+            _controller.text = cmd;
+            _sendMessage();
+          }),
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: Colors.grey.shade900,
-              border: Border(top: BorderSide(color: Colors.deepPurple)),
+              border: Border(top: BorderSide(color: Colors.deepPurple.shade700)),
             ),
             child: Row(
               children: [
-                IconButton(
-                  icon: const Icon(Icons.attach_file, color: Colors.white),
-                  onPressed: _uploadFile,
-                  tooltip: 'رفع ملف',
-                ),
-                Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      hintText: 'اكتب أمراً أو ارفع ملف...',
-                      hintStyle: TextStyle(color: Colors.grey.shade500),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(30),
-                        borderSide: BorderSide.none,
-                      ),
-                      filled: true,
-                      fillColor: Colors.grey.shade800,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.deepPurple.shade600, Colors.deepPurple.shade800],
                     ),
-                    onSubmitted: (_) => _sendMessage(),
+                    shape: BoxShape.circle,
+                  ),
+                  child: IconButton(
+                    icon: const Icon(Icons.attach_file, color: Colors.white),
+                    onPressed: _uploadFile,
+                    tooltip: 'رفع ملف',
                   ),
                 ),
-                const SizedBox(width: 8),
-                GestureDetector(
-                  onTap: _sendMessage,
+                const SizedBox(width: 12),
+                Expanded(
                   child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: const BoxDecoration(
-                      color: Colors.deepPurple,
-                      shape: BoxShape.circle,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade800,
+                      borderRadius: BorderRadius.circular(30),
                     ),
-                    child: const Icon(Icons.send, color: Colors.white, size: 20),
+                    child: TextField(
+                      controller: _controller,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        hintText: 'اكتب أمراً أو ارفع ملف...',
+                        hintStyle: TextStyle(color: Colors.grey.shade500),
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                      ),
+                      onSubmitted: (_) => _sendMessage(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.deepPurple, Colors.deepPurple.shade700],
+                    ),
+                    shape: BoxShape.circle,
+                  ),
+                  child: IconButton(
+                    icon: const Icon(Icons.send, color: Colors.white),
+                    onPressed: _sendMessage,
+                    tooltip: 'إرسال',
                   ),
                 ),
               ],
