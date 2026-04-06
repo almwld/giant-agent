@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:math';
+import 'dart:convert';
 import 'package:path_provider/path_provider.dart';
 import 'model_service.dart';
 import 'file_upload_service.dart';
@@ -297,4 +298,3 @@ void main() {
     return responses[Random().nextInt(responses.length)];
   }
 }
-import 'dart:convert';
