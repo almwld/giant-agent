@@ -1,5 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../services/agent_service.dart';
+import '../services/file_upload_service.dart';
+import '../services/model_service.dart';
 
 class NuclearScreen extends StatefulWidget {
   const NuclearScreen({super.key});
@@ -18,34 +21,125 @@ class _NuclearScreenState extends State<NuclearScreen> {
   @override
   void initState() {
     super.initState();
+    _initServices();
     _addWelcomeMessage();
   }
 
+  Future<void> _initServices() async {
+    await FileUploadService.initDB();
+    await ModelService.getAvailableModels();
+  }
+
   void _addWelcomeMessage() {
+    final activeModel = ModelService.getActiveModel();
     _messages.add({
       'isUser': false,
       'content': '''
 ☢️ **GIANT AGENT X - NUCLEAR MODE** ☢️
 
-💥 **أقوى وكيل في العالم!**
+🧠 **النموذج النشط**: ${activeModel['name']} v${activeModel['version']}
 
-📊 **القدرات:**
-• معالجة 10,000+ نص في الثانية
-• قاعدة بيانات عملاقة
-• إنشاء مواقع وأكواد
-• تحليل ذكي
+💥 **القدرات الخارقة:**
+• 🧠 نماذج متعددة (TFLite)
+• 📁 رفع ملفات (TXT/JSON/CSV)
+• 🌐 إنشاء مواقع HTML
+• 💻 كتابة أكواد برمجية
+• 📊 تحليل النصوص الذكي
+• 🔢 العمليات الحسابية
 
-⚡ **الأوامر:**
+⚡ **الأوامر الرئيسية:**
+• "النماذج" - عرض النماذج المتاحة
+• "تبديل نموذج [الاسم]" - تبديل النموذج
+• "رفع ملف" - تعليمات رفع الملفات
+• "تاريخ الملفات" - عرض الملفات المرفوعة
 • "أنشئ موقعاً" - إنشاء HTML
 • "اكتب كود" - إنشاء كود
-• "حلل نص: ..." - تحليل
-• "5+3" - حساب
-• "قاعدة بيانات" - الإحصائيات
 
 🔥 **ابدأ الآن!**
 ''',
       'time': DateTime.now(),
     });
+  }
+
+  Future<void> _uploadFile() async {
+    final file = await FileUploadService.pickFile();
+    if (file == null) return;
+    
+    setState(() {
+      _isLoading = true;
+      _messages.add({
+        'isUser': true,
+        'content': '📁 رفع ملف: ${file.path.split('/').last}',
+        'time': DateTime.now(),
+      });
+    });
+    _scrollToBottom();
+    
+    String response;
+    final ext = file.path.split('.').last.toLowerCase();
+    
+    try {
+      if (ext == 'txt') {
+        final analysis = await FileUploadService.processTextFile(file);
+        response = '''
+✅ **تمت معالجة الملف النصي!**
+
+📁 **الملف**: ${analysis['filename']}
+📊 **الأسطر**: ${analysis['lines']}
+📝 **الكلمات**: ${analysis['words']}
+📏 **الحجم**: ${analysis['size']} بايت
+
+💾 **تم حفظ الملف في قاعدة البيانات**
+''';
+      } else if (ext == 'json') {
+        final analysis = await FileUploadService.processJsonFile(file);
+        response = '''
+✅ **تمت معالجة ملف JSON!**
+
+📁 **الملف**: ${analysis['filename']}
+🔑 **عدد المفاتيح**: ${analysis['keys']}
+📏 **الحجم**: ${analysis['size']} بايت
+
+💾 **تم حفظ الملف في قاعدة البيانات**
+''';
+      } else if (ext == 'csv') {
+        final analysis = await FileUploadService.processCsvFile(file);
+        response = '''
+✅ **تمت معالجة ملف CSV!**
+
+📁 **الملف**: ${analysis['filename']}
+📊 **الصفوف**: ${analysis['rows']}
+📐 **الأعمدة**: ${analysis['columns']}
+📏 **الحجم**: ${analysis['size']} بايت
+
+💾 **تم حفظ الملف في قاعدة البيانات**
+''';
+      } else if (ext == 'tflite') {
+        final added = await ModelService.addCustomModel(file.path);
+        if (added) {
+          response = '''
+✅ **تم إضافة النموذج بنجاح!**
+
+🧠 **الملف**: ${file.path.split('/').last}
+📊 **النوع**: TensorFlow Lite Model
+
+💡 **لعرض النماذج**: اكتب "النماذج"
+''';
+        } else {
+          response = '❌ فشل إضافة النموذج';
+        }
+      } else {
+        response = '❌ نوع الملف غير مدعوم. الأنواع المدعومة: TXT, JSON, CSV, TFLite';
+      }
+    } catch (e) {
+      response = '❌ خطأ في معالجة الملف: $e';
+    }
+    
+    setState(() {
+      _messages.add({'isUser': false, 'content': response, 'time': DateTime.now()});
+      _isLoading = false;
+    });
+    _scrollToBottom();
   }
 
   Future<void> _sendMessage() async {
@@ -87,6 +181,22 @@ class _NuclearScreenState extends State<NuclearScreen> {
         title: const Text('💀 GIANT AGENT X'),
         centerTitle: true,
         backgroundColor: Colors.deepPurple,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.model_training),
+            onPressed: () async {
+              final models = await ModelService.getAvailableModels();
+              String msg = '🧠 **النماذج المتاحة**\n\n';
+              for (var m in models) {
+                msg += '• ${m['name']} (${m['size']}) - ${m['status']}\n';
+              }
+              setState(() {
+                _messages.add({'isUser': false, 'content': msg, 'time': DateTime.now()});
+              });
+              _scrollToBottom();
+            },
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -94,12 +204,12 @@ class _NuclearScreenState extends State<NuclearScreen> {
           Container(
             padding: const EdgeInsets.all(8),
             color: Colors.deepPurple.shade900,
-            child: const Row(
+            child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('⚡ NUCLEAR MODE', style: TextStyle(fontSize: 10)),
-                Text('💾 DB: ACTIVE', style: TextStyle(fontSize: 10)),
-                Text('🚀 SPEED: MAX', style: TextStyle(fontSize: 10)),
+                const Text('⚡ NUCLEAR MODE', style: TextStyle(fontSize: 10)),
+                Text('🧠 ${ModelService.getActiveModel()['name']}', style: const TextStyle(fontSize: 10)),
+                const Text('🚀 SPEED: MAX', style: TextStyle(fontSize: 10)),
               ],
             ),
           ),
@@ -145,12 +255,17 @@ class _NuclearScreenState extends State<NuclearScreen> {
             ),
             child: Row(
               children: [
+                IconButton(
+                  icon: const Icon(Icons.attach_file, color: Colors.white),
+                  onPressed: _uploadFile,
+                  tooltip: 'رفع ملف',
+                ),
                 Expanded(
                   child: TextField(
                     controller: _controller,
                     style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
-                      hintText: 'اكتب أمراً...',
+                      hintText: 'اكتب أمراً أو ارفع ملف...',
                       hintStyle: TextStyle(color: Colors.grey.shade500),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(30),
