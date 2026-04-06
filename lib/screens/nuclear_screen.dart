@@ -407,3 +407,10 @@ class _NuclearScreenState extends State<NuclearScreen> {
     );
   }
 }
+
+  void _showBenchmark() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const BenchmarkScreen()),
+    );
+  }
