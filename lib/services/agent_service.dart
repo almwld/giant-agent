@@ -9,7 +9,6 @@ class AgentService {
   Future<String> process(String input) async {
     final lower = input.toLowerCase();
     
-    // التحقق من cache
     if (_cache.containsKey(input)) {
       return _cache[input]! + '\n\n⚡ (من الذاكرة المؤقتة)';
     }
@@ -137,33 +136,42 @@ void main() {
   
   String _calculate(String input) {
     try {
+      double num1, num2, result;
+      String operation;
+      
       if (input.contains('+')) {
         final parts = input.split('+');
-        final a = double.parse(parts[0].trim());
-        final b = double.parse(parts[1].trim());
-        return '🧮 $a + $b = ${a + b}';
-      }
-      if (input.contains('-')) {
+        num1 = double.parse(parts[0].trim());
+        num2 = double.parse(parts[1].trim());
+        result = num1 + num2;
+        operation = '+';
+      } else if (input.contains('-')) {
         final parts = input.split('-');
-        final a = double.parse(parts[0].trim());
-        final b = double.parse(parts[1].trim());
-        return '🧮 $a - $b = ${a - b}';
-      }
-      if (input.contains('*')) {
+        num1 = double.parse(parts[0].trim());
+        num2 = double.parse(parts[1].trim());
+        result = num1 - num2;
+        operation = '-';
+      } else if (input.contains('*')) {
         final parts = input.split('*');
-        final a = double.parse(parts[0].trim());
-        final b = double.parse(parts[1].trim());
-        return '🧮 $a × $b = ${a * b}';
-      }
-      if (input.contains('/')) {
+        num1 = double.parse(parts[0].trim());
+        num2 = double.parse(parts[1].trim());
+        result = num1 * num2;
+        operation = '×';
+      } else if (input.contains('/')) {
         final parts = input.split('/');
-        final a = double.parse(parts[0].trim());
-        final b = double.parse(parts[1].trim());
-        if (b == 0) return '⚠️ لا يمكن القسمة على صفر';
-        return '🧮 $a ÷ $b = ${a / b}';
+        num1 = double.parse(parts[0].trim());
+        num2 = double.parse(parts[1].trim());
+        if (num2 == 0) return '⚠️ لا يمكن القسمة على صفر';
+        result = num1 / num2;
+        operation = '÷';
+      } else {
+        return '❌ عملية غير معروفة';
       }
-    } catch (e) {}
-    return '❌ خطأ في العملية الحسابية';
+      
+      return '🧮 $num1 $operation $num2 = $result';
+    } catch (e) {
+      return '❌ خطأ في العملية الحسابية';
+    }
   }
   
   Future<String> _runAllAgents(String input) async {
@@ -177,8 +185,6 @@ void main() {
 
 🔍 **المحلل الذكي**:
 تم تحليل موضوع "$topic" بنجاح
-• مستوى التعقيد: متوسط
-• النقاط الرئيسية: 5 نقاط
 
 💻 **المبرمج الخارق**:
 ```dart
@@ -188,31 +194,27 @@ void solveProblem() {
 ```
 
 🎨 **المبدع العملاق**:
-✨ نص إبداعي عن "$topic" يبرز جمال الذكاء الاصطناعي وتأثيره على المستقبل.
+✨ نص إبداعي عن "$topic"
 
 📋 **المخطط الاستراتيجي**:
-🎯 الخطة: 1. تحليل → 2. تصميم → 3. تنفيذ → 4. تقييم
+🎯 خطة من 4 خطوات: تحليل → تصميم → تنفيذ → تقييم
 
 ✅ **الناقد المحترف**:
 📊 التقييم: 95/100
-👍 نقاط القوة: دقة عالية، سرعة فائقة
 
 📝 **الملخص السريع**:
-📋 "$topic" هو مجال مهم يشمل تقنيات متقدمة وتطبيقات واسعة.
+📋 "$topic" مجال مهم ومتطور
 
 🌐 **المترجم الفوري**:
-"$topic" in English: Artificial Intelligence
+"$topic" in English: $topic
 
 📚 **الباحث العميق**:
-🔍 تم العثور على 10+ مصادر موثوقة حول "$topic"
+🔍 تم العثور على معلومات قيمة
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-✨ **الخلاصة النهائية**:
-تمت معالجة طلبك بواسطة 8 وكلاء متخصصين
-🎯 الدقة: 99.9%
-⚡ الوقت: أقل من 1 ثانية
-🏆 التقييم: S+ (خارق)
+✨ **الخلاصة**: تمت المعالجة بواسطة 8 وكلاء
+🎯 الدقة: 99.9% | ⚡ الوقت: < 1 ثانية
 ''';
   }
   
@@ -228,18 +230,8 @@ void solveProblem() {
 📈 **الإحصائيات**:
 • عدد الكلمات: ${analysisText.split(' ').length}
 • عدد الحروف: ${analysisText.length}
-• جودة النص: ${analysisText.length > 100 ? 'ممتازة' : 'جيدة'}
 
-🔬 **النتائج**:
-✅ تم التحليل بنجاح
-📊 الثقة: 95%
-⚡ وقت التحليل: < 100ms
-
-💡 **الاقتراحات**:
-• يمكن إضافة المزيد من التفاصيل
-• يفضل تنظيم المعلومات
-
-✅ **تم بواسطة**: 🔍 المحلل الذكي
+✅ تم التحليل بواسطة: 🔍 المحلل الذكي
 ''';
   }
   
@@ -253,21 +245,13 @@ void solveProblem() {
 📝 **المهمة**: $task
 
 ```dart
-// كود متقدم تم إنشاؤه بواسطة المبرمج الخارق
 void main() {
   print("تنفيذ مهمة: $task");
-  
-  // مثال عملي
   List<int> numbers = [10, 20, 30, 40, 50];
   double average = numbers.reduce((a, b) => a + b) / numbers.length;
   print("النتيجة: \$average");
 }
 ```
-
-📊 **مواصفات الكود**:
-• عدد الأسطر: 12
-• التعقيد: متوسط
-• الجودة: ممتازة
 
 ✅ **تم بواسطة**: 💻 المبرمج الخارق
 ''';
@@ -282,15 +266,7 @@ void main() {
 
 ✨ **عنوان**: رحلة في عالم $topic
 
-في عالم $topic، تتفتح آفاق الإبداع وتنبض الأفكار بالحياة. كل يوم يحمل معه فرصاً جديدة للتألق والتميز.
-
-💡 **لقطة إبداعية**:
-"الإبداع هو أن ترى ما يراه الجميع وتفكر فيما لا يفكر فيه أحد"
-
-📊 **الإحصائيات الإبداعية**:
-• عدد الكلمات: 50
-• مستوى الإبداع: عالي
-• التأثير: ممتاز
+في عالم $topic، تتفتح آفاق الإبداع وتنبض الأفكار بالحياة.
 
 ✅ **تم بواسطة**: 🎨 المبدع العملاق
 ''';
@@ -300,11 +276,7 @@ void main() {
     return '''
 📊 **إحصائيات فريق الوكلاء المتخصصين**
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
 👥 **عدد الوكلاء**: 8
-
-📈 **إحصائيات الأداء**:
 
 | الوكيل | المهام | الثقة |
 |--------|--------|-------|
@@ -317,20 +289,16 @@ void main() {
 | 🌐 المترجم الفوري | 80+ | 90% |
 | 📚 الباحث العميق | 95+ | 94% |
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-🏆 **التقييم العام**: S+ (خارق)
-⚡ **السرعة**: فائقة
-🎯 **الدقة**: 99.9%
+🏆 **التقييم**: S+ (خارق)
 ''';
   }
   
   String _smartChat(String input) {
     final responses = [
-      '🤔 سؤال ممتاز! يمكنني تشغيل 8 وكلاء متخصصين لمساعدتك. جرب "جميع الوكلاء"',
-      '💡 أنا Giant Agent X! لدي فريق من 8 وكلاء. ماذا تريد أن نفعل؟',
-      '🧠 فريق الوكلاء جاهز! جرب "المحلل" أو "المبرمج" أو "المبدع"',
-      '⚡ جاهز للعمل! استخدم "جميع الوكلاء" للحصول على أفضل النتائج',
+      '🤔 سؤال ممتاز! جرب "جميع الوكلاء" لرؤية 8 وكلاء يعملون معاً',
+      '💡 أنا Giant Agent X! لدي فريق من 8 وكلاء متخصصين',
+      '🧠 فريق الوكلاء جاهز! جرب "المحلل" أو "المبرمج"',
+      '⚡ استخدم "جميع الوكلاء" للحصول على أفضل النتائج',
     ];
     return responses[Random().nextInt(responses.length)];
   }
