@@ -1,3 +1,5 @@
+import ../services/database_service.dart;
+import ../screens/settings_screen.dart;
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
@@ -72,6 +74,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _sendMessage() async {
+    await DatabaseService.saveMessage(text, true);
     final text = _controller.text.trim();
     if (text.isEmpty) return;
     
@@ -307,11 +310,13 @@ class _ChatScreenState extends State<ChatScreen> {
                       fillColor: Colors.grey.shade100,
                     ),
                     onSubmitted: (_) => _sendMessage(),
+    await DatabaseService.saveMessage(text, true);
                   ),
                 ),
                 const SizedBox(width: 8),
                 GestureDetector(
                   onTap: _sendMessage,
+    await DatabaseService.saveMessage(text, true);
                   child: Container(
                     padding: const EdgeInsets.all(12),
                     decoration: const BoxDecoration(

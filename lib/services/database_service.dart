@@ -1,61 +1,51 @@
-import 'packagesqflite/sqflite.dart'
-import 'packagepath_provider/path_provider.dart'
+import 'package:sqflite/sqflite.dart';
+import 'package:path_provider/path_provider.dart';
 
-class atabaseervice {
-  static atabase _db
-
-  static treatabase get database async {
-    if (_db ! nll) retrn _db!
-    _db  await _init()
-    retrn _db!
-  }
-
-  static treatabase _init() async {
-    final dir  await getpplicationocmentsirectory()
-    final path  '${dir.path}/giant_agent.db'
-    
-    retrn await openatabase(
-      path,
-      version ,
-      onreate (db, version) async {
-        await db.execte('''
-            messages (
-            id    ,
-            text ,
-            isser ,
-            time 
+class DatabaseService {
+  static Database? _db;
+  
+  static Future<Database> get database async {
+    if (_db != null) return _db!;
+    final dir = await getApplicationDocumentsDirectory();
+    _db = await openDatabase('${dir.path}/chat_history.db', version: 1,
+      onCreate: (db, version) async {
+        await db.execute('''
+          CREATE TABLE messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            text TEXT,
+            isUser INTEGER,
+            timestamp INTEGER
           )
-        ''')
-      },
-    )
+        ''');
+      });
+    return _db!;
   }
-
-  static trevoid saveessage(tring text, bool isser) async {
-    final db  await database
+  
+  static Future<void> saveMessage(String text, bool isUser) async {
+    final db = await database;
     await db.insert('messages', {
-      'text' text,
-      'isser' isser    ,
-      'time' ateime.now().tosotring(),
-    })
+      'text': text,
+      'isUser': isUser ? 1 : 0,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    });
   }
-
-  static treistaptring, dynamic getessages() async {
-    final db  await database
-    retrn await db.qery('messages', ordery 'id ', limit )
+  
+  static Future<List<Map<String, dynamic>>> getMessages() async {
+    final db = await database;
+    return await db.query('messages', orderBy: 'timestamp ASC');
   }
-
-  static trevoid clearessages() async {
-    final db  await database
-    await db.delete('messages')
+  
+  static Future<void> clearMessages() async {
+    final db = await database;
+    await db.delete('messages');
   }
-
-  static tretring exporthat() async {
-    final messages  await getessages()
-    final content  messages.reversed.map((m) {
-      final time  ateime.parse(m'time'])
-      retrn '${m'isser']    ''  ''} ${time.hor}${time.minte}] ${m'text']}'
-    }).join('n')
-    
-    retrn ' iant gentn${ateime.now()}nn$content'
+  
+  static Future<String> exportToText() async {
+    final messages = await getMessages();
+    String content = 'محادثة Giant Agent X\n${DateTime.now()}\n\n';
+    for (var msg in messages) {
+      content += '${msg['isUser'] == 1 ? '👤' : '🤖'} (${DateTime.fromMillisecondsSinceEpoch(msg['timestamp']).hour}:${DateTime.fromMillisecondsSinceEpoch(msg['timestamp']).minute}):\n${msg['text']}\n\n';
+    }
+    return content;
   }
 }
