@@ -1,97 +1,119 @@
-import 'packagefltter/material.dart'
-import 'home_screen.dart'
+import 'package:flutter/material.dart';
+import '../core/theme.dart';
 
-class plashcreen extends tateflidget {
-  const plashcreen({sper.key})
+class SplashScreen extends StatefulWidget {
+  const SplashScreen({super.key});
 
-  override
-  tateplashcreen createtate()  _plashcreentate()
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _plashcreentate extends tateplashcreen with ingleickerrovidertateixin {
-  late nimationontroller _controller
-  late nimationdoble _fadenimation
-  late nimationdoble _scalenimation
+class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _fadeAnimation;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _rotateAnimation;
 
-  override
-  void inittate() {
-    sper.inittate()
-    _controller  nimationontroller(
-      dration const ration(seconds ),
-      vsync this,
-    )
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(seconds: 2),
+      vsync: this,
+    );
     
-    _fadenimation  weendoble(begin ., end .).animate(_controller)
-    _scalenimation  weendoble(begin ., end .).animate(
-      rvednimation(parent _controller, crve rves.elastict),
-    )
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeIn),
+    );
+    _scaleAnimation = Tween<double>(begin: 0.5, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.elasticOut),
+    );
+    _rotateAnimation = Tween<double>(begin: 0, end: 2 * 3.14159).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
+    );
     
-    _controller.forward()
+    _controller.forward();
     
-    tre.delayed(const ration(seconds ), () {
-      avigator.psheplacement(
+    Future.delayed(const Duration(seconds: 3), () {
+      Navigator.pushReplacement(
         context,
-        aterialageote(bilder (context)  const omecreen()),
-      )
-    })
+        MaterialPageRoute(builder: (context) => const HomeScreen()),
+      );
+    });
   }
 
-  override
+  @override
   void dispose() {
-    _controller.dispose()
-    sper.dispose()
+    _controller.dispose();
+    super.dispose();
   }
 
-  override
-  idget bild(ildontext context) {
-    retrn caffold(
-      body ontainer(
-        decoration const oxecoration(
-          gradient inearradient(
-            begin lignment.topeft,
-            end lignment.bottomight,
-            colors olor(x), olor(x)],
-          ),
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: AppTheme.primaryGradient,
         ),
-        child enter(
-          child aderansition(
-            opacity _fadenimation,
-            child caleransition(
-              scale _scalenimation,
-              child olmn(
-                mainxislignment ainxislignment.center,
-                children 
-                  ontainer(
-                    width ,
-                    height ,
-                    decoration oxecoration(
-                      color olors.white,
-                      borderadis orderadis.circlar(),
-                    ),
-                    child const enter(
-                      child ext(
-                        '',
-                        style exttyle(fontize ),
-                      ),
+        child: Center(
+          child: FadeTransition(
+            opacity: _fadeAnimation,
+            child: ScaleTransition(
+              scale: _scaleAnimation,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  AnimatedBuilder(
+                    animation: _rotateAnimation,
+                    builder: (context, child) {
+                      return Transform.rotate(
+                        angle: _rotateAnimation.value,
+                        child: Container(
+                          width: 120,
+                          height: 120,
+                          decoration: BoxDecoration(
+                            gradient: AppTheme.secondaryGradient,
+                            borderRadius: BorderRadius.circular(30),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppTheme.primaryColor.withOpacity(0.5),
+                                blurRadius: 30,
+                                spreadRadius: 5,
+                              ),
+                            ],
+                          ),
+                          child: const Center(
+                            child: Text(
+                              'GX',
+                              style: TextStyle(
+                                fontSize: 40,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 40),
+                  const Text(
+                    'GIANT AGENT X',
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      letterSpacing: 2,
                     ),
                   ),
-                  const izedox(height ),
-                  const ext(
-                    'iant gent',
-                    style exttyle(
-                      fontize ,
-                      fonteight onteight.bold,
-                      color olors.white,
-                    ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    'الجيل القادم من الذكاء الاصطناعي',
+                    style: TextStyle(fontSize: 16, color: Colors.white70),
                   ),
-                  const izedox(height ),
-                  const ext(
-                    '   ',
-                    style exttyle(fontize , color olors.white),
-                  ),
-                  const izedox(height ),
-                  const irclarrogressndicator(
-                    valeolor lwaystoppednimationolor(olors.white),
+                  const SizedBox(height: 40),
+                  const CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                   ),
                 ],
               ),
@@ -99,6 +121,15 @@ class _plashcreentate extends tateplashcreen with ingleickerrovidertateixin {
           ),
         ),
       ),
-    )
+    );
+  }
+}
+
+class HomeScreen extends StatelessWidget {
+  const HomeScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Placeholder();
   }
 }
