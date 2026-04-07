@@ -1,15 +1,10 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:easy_localization/easy_localization.dart';
 import '../services/model_service.dart';
-import '../services/notification_service.dart';
-import '../services/translation_service.dart';
-import '../services/export_service.dart';
-import '../services/backup_service.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -18,13 +13,11 @@ class ChatScreen extends StatefulWidget {
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateMixin {
+class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _controller = TextEditingController();
   final List<Map<String, dynamic>> _messages = [];
   final ScrollController _scrollController = ScrollController();
   final ModelService _modelService = ModelService();
-  final NotificationService _notificationService = NotificationService();
-  final TranslationService _translationService = TranslationService();
   
   bool _isLoading = false;
   bool _isSidebarOpen = false;
@@ -34,19 +27,12 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
   
   List<Map<String, dynamic>> _models = [];
   Map<String, dynamic> _activeModel = {};
-  
-  // Tabs for multiple conversations
-  final List<Map<String, dynamic>> _conversations = [];
-  int _currentConversationIndex = 0;
-  
-  late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
     _init();
     _loadSettings();
-    _initNotifications();
   }
   
   Future<void> _loadSettings() async {
@@ -56,10 +42,6 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
       _fontSize = prefs.getDouble('font_size') ?? 14.0;
       _currentLanguage = prefs.getString('language') ?? 'ar';
     });
-  }
-  
-  Future<void> _initNotifications() async {
-    await _notificationService.init();
   }
 
   Future<void> _init() async {
@@ -96,66 +78,90 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
       _isLoading = false;
     });
     _scrollToBottom();
-    
-    // إشعار إذا كان هناك رد
-    if (!_doNotDisturb && _messages.length % 5 == 0) {
-      await _notificationService.showNotification('New Message', 'You have received a response');
-    }
   }
 
-  Future<void> _translateLastMessage() async {
-    if (_messages.isEmpty) return;
-    
-    final lastMessage = _messages.last;
-    final translated = await _translationService.translate(
-      lastMessage['content'],
-      to: _currentLanguage == 'ar' ? 'en' : 'ar',
-    );
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Translation: $translated')),
-    );
-  }
-
-  Future<void> _searchInConversation() async {
-    final query = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Search'),
-        content: TextField(
-          decoration: const InputDecoration(hintText: 'Enter search term...'),
-          onSubmitted: (value) => Navigator.pop(context, value),
-        ),
-      ),
-    );
-    
-    if (query != null && query.isNotEmpty) {
-      final results = _messages.where((msg) => 
-        msg['content'].toLowerCase().contains(query.toLowerCase())
-      ).toList();
+  Future<void> _pickFile() async {
+    FilePickerResult? result = await FilePicker.platform.pickFiles();
+    if (result != null) {
+      final file = File(result.files.single.path!);
+      final content = await file.readAsString();
       
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text('Search Results (${results.length})'),
-          content: SizedBox(
-            width: double.maxFinite,
-            height: 300,
-            child: ListView.builder(
-              itemCount: results.length,
-              itemBuilder: (context, index) {
-                final msg = results[index];
-                return ListTile(
-                  title: Text(msg['content'].length > 100 ? msg['content'].substring(0, 100) + '...' : msg['content']),
-                  subtitle: Text(msg['isUser'] ? 'User' : 'Agent'),
-                  onTap: () => Navigator.pop(context),
-                );
-              },
-            ),
-          ),
-        ),
-      );
+      setState(() {
+        _messages.add({
+          'isUser': true,
+          'content': '[File: ${result.files.single.name}]\n${content.length > 500 ? content.substring(0, 500) + '...' : content}',
+          'time': DateTime.now(),
+        });
+        _isLoading = true;
+      });
+      
+      final response = await _modelService.generateResponse('Analyze this file: $content');
+      
+      setState(() {
+        _messages.add({
+          'isUser': false,
+          'content': response,
+          'time': DateTime.now(),
+        });
+        _isLoading = false;
+      });
     }
+  }
+
+  Future<void> _pickImage() async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+    
+    if (image != null) {
+      setState(() {
+        _messages.add({
+          'isUser': true,
+          'content': '[Image: ${image.name}]',
+          'time': DateTime.now(),
+        });
+        _isLoading = true;
+      });
+      
+      final response = await _modelService.generateResponse('Describe this image');
+      
+      setState(() {
+        _messages.add({
+          'isUser': false,
+          'content': response,
+          'time': DateTime.now(),
+        });
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _newConversation() {
+    setState(() {
+      _messages.clear();
+    });
+  }
+
+  void _switchModel(String modelId) async {
+    await _modelService.switchModel(modelId);
+    setState(() {
+      _activeModel = _modelService.getActiveModel();
+      _isSidebarOpen = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Switched to: ${_activeModel['name']}')),
+    );
+  }
+
+  void _scrollToBottom() {
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
   void _showSettingsMenu() {
@@ -166,20 +172,16 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ListTile(
-              leading: const Icon(Icons.notifications_off),
+            SwitchListTile(
               title: const Text('Do Not Disturb'),
-              trailing: Switch(
-                value: _doNotDisturb,
-                onChanged: (value) {
-                  setState(() => _doNotDisturb = value);
-                  SharedPreferences.getInstance().then((prefs) => prefs.setBool('do_not_disturb', value));
-                  Navigator.pop(context);
-                },
-              ),
+              value: _doNotDisturb,
+              onChanged: (value) {
+                setState(() => _doNotDisturb = value);
+                SharedPreferences.getInstance().then((prefs) => prefs.setBool('do_not_disturb', value));
+                Navigator.pop(context);
+              },
             ),
             ListTile(
-              leading: const Icon(Icons.text_fields),
               title: const Text('Font Size'),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -203,7 +205,6 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
               ),
             ),
             ListTile(
-              leading: const Icon(Icons.language),
               title: const Text('Language'),
               trailing: DropdownButton<String>(
                 value: _currentLanguage,
@@ -222,18 +223,6 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
         ),
       ),
     );
-  }
-
-  void _scrollToBottom() {
-    Future.delayed(const Duration(milliseconds: 100), () {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      }
-    });
   }
 
   @override
@@ -291,16 +280,15 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
                         ),
                       ),
                       const Spacer(),
-                      // Advanced Action Buttons
                       IconButton(
-                        icon: const Icon(Icons.translate),
-                        onPressed: _translateLastMessage,
-                        tooltip: 'Translate',
+                        icon: const Icon(Icons.attach_file),
+                        onPressed: _pickFile,
+                        tooltip: 'Upload File',
                       ),
                       IconButton(
-                        icon: const Icon(Icons.search),
-                        onPressed: _searchInConversation,
-                        tooltip: 'Search',
+                        icon: const Icon(Icons.image),
+                        onPressed: _pickImage,
+                        tooltip: 'Upload Image',
                       ),
                       IconButton(
                         icon: const Icon(Icons.settings),
@@ -308,13 +296,8 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
                         tooltip: 'Settings',
                       ),
                       IconButton(
-                        icon: const Icon(Icons.share),
-                        onPressed: () => ExportService.exportAsText(_messages),
-                        tooltip: 'Export',
-                      ),
-                      IconButton(
                         icon: const Icon(Icons.add),
-                        onPressed: () => setState(() => _messages.clear()),
+                        onPressed: _newConversation,
                         tooltip: 'New Chat',
                       ),
                     ],
@@ -431,7 +414,7 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
             child: Column(
               children: [
                 ElevatedButton.icon(
-                  onPressed: () => setState(() => _messages.clear()),
+                  onPressed: _newConversation,
                   icon: const Icon(Icons.add),
                   label: const Text('New Chat'),
                   style: ElevatedButton.styleFrom(
@@ -445,21 +428,7 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
                 ),
                 const SizedBox(height: 8),
                 ElevatedButton.icon(
-                  onPressed: () => ExportService.exportAsPdf(_messages, 'Chat Export'),
-                  icon: const Icon(Icons.picture_as_pdf),
-                  label: const Text('Export PDF'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red,
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(double.infinity, 48),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                ElevatedButton.icon(
-                  onPressed: () => Share.share(_messages.last['content']),
+                  onPressed: () => Share.share(_messages.isNotEmpty ? _messages.last['content'] : ''),
                   icon: const Icon(Icons.share),
                   label: const Text('Share Last Message'),
                   style: ElevatedButton.styleFrom(
@@ -513,15 +482,7 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
                           child: const Text('Active', style: TextStyle(fontSize: 10, color: Color(0xFF10A37F))),
                         )
                       : null,
-                  onTap: () async {
-                    await _modelService.switchModel(model['id']);
-                    setState(() {
-                      _activeModel = _modelService.getActiveModel();
-                    });
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Switched to: ${model['name']}')),
-                    );
-                  },
+                  onTap: () => _switchModel(model['id']),
                 );
               },
             ),
@@ -531,63 +492,3 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
     );
   }
 }
-
-  // Voice Input
-  Future<void> _startVoiceInput() async {
-    final voiceService = VoiceService();
-    await voiceService.init();
-    
-    await voiceService.startListening((text) {
-      setState(() {
-        _controller.text = text;
-      });
-    });
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Listening... Speak now')),
-    );
-  }
-
-  // Text-to-Speech
-  Future<void> _speakLastMessage() async {
-    if (_messages.isEmpty) return;
-    final tts = TTSService();
-    await tts.init();
-    await tts.speak(_messages.last['content']);
-  }
-
-  // Analyze Image
-  Future<void> _analyzeImage() async {
-    final ImagePicker picker = ImagePicker();
-    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
-    
-    if (image != null) {
-      setState(() {
-        _messages.add({
-          'isUser': true,
-          'content': '[Analyzing Image: ${image.name}]',
-          'time': DateTime.now(),
-        });
-        _isLoading = true;
-      });
-      
-      final analysis = await ImageRecognitionService.analyzeImage(File(image.path));
-      
-      setState(() {
-        _messages.add({
-          'isUser': false,
-          'content': analysis,
-          'time': DateTime.now(),
-        });
-        _isLoading = false;
-      });
-    }
-  }
-
-  // Open Reminders
-  void _openReminders() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const RemindersScreen()),
-    );
-  }
