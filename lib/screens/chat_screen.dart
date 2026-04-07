@@ -498,3 +498,15 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 }
+
+  // تحديث النماذج
+  Future<void> _refreshModels() async {
+    await _modelService.refreshModels();
+    setState(() {
+      _models = _modelService.getModels();
+      _activeModel = _modelService.getActiveModel();
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Models refreshed')),
+    );
+  }
