@@ -36,3 +36,5 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   connectivity_plus: ^5.0.0
+  archive: ^3.4.0
+  path: ^1.8.3

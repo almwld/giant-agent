@@ -81,6 +81,14 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _sendMessage() async {
+    if (text.startsWith('مشروع:')) {
+      await _createProject(text.substring(7));
+      return;
+    }
+    if (text == 'نفذ') {
+      await _executeNextStep();
+      return;
+    }
     await DatabaseService.saveMessage(text, true);
     final text = _controller.text.trim();
     if (text.isEmpty) return;
@@ -330,12 +338,28 @@ class _ChatScreenState extends State<ChatScreen> {
                       fillColor: Colors.grey.shade100,
                     ),
                     onSubmitted: (_) => _sendMessage(),
+    if (text.startsWith('مشروع:')) {
+      await _createProject(text.substring(7));
+      return;
+    }
+    if (text == 'نفذ') {
+      await _executeNextStep();
+      return;
+    }
     await DatabaseService.saveMessage(text, true);
                   ),
                 ),
                 const SizedBox(width: 8),
                 GestureDetector(
                   onTap: _sendMessage,
+    if (text.startsWith('مشروع:')) {
+      await _createProject(text.substring(7));
+      return;
+    }
+    if (text == 'نفذ') {
+      await _executeNextStep();
+      return;
+    }
     await DatabaseService.saveMessage(text, true);
                   child: Container(
                     padding: const EdgeInsets.all(12),
@@ -354,3 +378,60 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 }
+
+  // نظام المهام المتعددة
+  final TaskManager _taskManager = TaskManager();
+  bool _hasActiveTask = false;
+  
+  Future<void> _createProject(String description) async {
+    final task = await _taskManager.createTask(description);
+    _hasActiveTask = true;
+    
+    String plan = '📋 **خطة المشروع:**\n\n';
+    for (var step in task['steps']) {
+      plan += '${step['step']}. ${step['action']}\n';
+    }
+    plan += '\n${_taskManager.getProgress()}';
+    
+    setState(() {
+      _messages.add({
+        'isUser': false,
+        'content': plan,
+        'time': DateTime.now(),
+      });
+    });
+  }
+  
+  Future<void> _executeNextStep() async {
+    final result = await _taskManager.executeNextStep();
+    
+    if (result['status'] == 'completed') {
+      _hasActiveTask = false;
+      setState(() {
+        _messages.add({
+          'isUser': false,
+          'content': result['message'],
+          'time': DateTime.now(),
+        });
+      });
+      
+      // عرض رابط الملف الناتج
+      if (result['output_file'] != null) {
+        setState(() {
+          _messages.add({
+            'isUser': false,
+            'content': '📁 **الملف الناتج:**\n${result['output_file']}',
+            'time': DateTime.now(),
+          });
+        });
+      }
+    } else {
+      setState(() {
+        _messages.add({
+          'isUser': false,
+          'content': '🔄 **الخطوة ${result['step']}:** ${result['action']}\n${result['result']}\n\n${_taskManager.getProgress()}',
+          'time': DateTime.now(),
+        });
+      });
+    }
+  }
