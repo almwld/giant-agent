@@ -44,7 +44,7 @@ android {
 
     defaultConfig {
         applicationId "com.example.giant_agent"
-        minSdk 21
+        minSdk 26
         targetSdk 34
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
