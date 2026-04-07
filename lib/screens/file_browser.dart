@@ -14,7 +14,6 @@ class _FileBrowserState extends State<FileBrowser> {
   List<FileSystemEntity> _files = [];
   String _currentPath = '/storage/emulated/0/';
   bool _isLoading = false;
-  String _error = '';
 
   @override
   void initState() {
@@ -26,17 +25,11 @@ class _FileBrowserState extends State<FileBrowser> {
     final status = await Permission.storage.request();
     if (status.isGranted) {
       _loadFiles();
-    } else {
-      setState(() => _error = 'صلاحية التخزين مطلوبة');
     }
   }
 
   Future<void> _loadFiles() async {
-    setState(() {
-      _isLoading = true;
-      _error = '';
-    });
-    
+    setState(() => _isLoading = true);
     try {
       final dir = Directory(_currentPath);
       if (await dir.exists()) {
@@ -45,73 +38,34 @@ class _FileBrowserState extends State<FileBrowser> {
           _files = files;
           _isLoading = false;
         });
-      } else {
-        setState(() {
-          _error = 'المجلد غير موجود';
-          _isLoading = false;
-        });
       }
     } catch (e) {
-      setState(() {
-        _error = 'خطأ: $e';
-        _isLoading = false;
-      });
+      setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _pickModelDirectly() async {
-    // استخدام FilePicker لاختيار أي ملف من الهاتف
+  Future<void> _pickModel() async {
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['tflite', 'onnx', 'gguf', 'bin'],
-      dialogTitle: 'اختر ملف النموذج',
+      allowedExtensions: ['tflite'],
     );
     
     if (result != null) {
       final filePath = result.files.single.path!;
       final fileName = result.files.single.name;
       
-      // إنشاء مجلد النماذج إذا لم يكن موجوداً
       final modelsDir = Directory('/storage/emulated/0/Download/models/');
       if (!await modelsDir.exists()) {
         await modelsDir.create(recursive: true);
       }
       
-      // نسخ الملف إلى مجلد النماذج
       final destPath = '/storage/emulated/0/Download/models/$fileName';
       await File(filePath).copy(destPath);
       
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('✅ تم نسخ النموذج: $fileName')),
       );
-      
       Navigator.pop(context, true);
-    }
-  }
-
-  Future<void> _selectModel(String path) async {
-    final fileName = path.split('/').last;
-    final fileExt = fileName.split('.').last.toLowerCase();
-    
-    if (fileExt == 'tflite' || fileExt == 'onnx' || fileExt == 'gguf' || fileExt == 'bin') {
-      // إنشاء مجلد النماذج إذا لم يكن موجوداً
-      final modelsDir = Directory('/storage/emulated/0/Download/models/');
-      if (!await modelsDir.exists()) {
-        await modelsDir.create(recursive: true);
-      }
-      
-      final destPath = '/storage/emulated/0/Download/models/$fileName';
-      await File(path).copy(destPath);
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('✅ تم اختيار النموذج: $fileName')),
-      );
-      
-      Navigator.pop(context, true);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('⚠️ هذا ليس ملف نموذج صالح (يجب أن يكون .tflite أو .onnx أو .gguf)')),
-      );
     }
   }
 
@@ -119,19 +73,18 @@ class _FileBrowserState extends State<FileBrowser> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('متصفح الملفات - ${_currentPath.split('/').last}'),
+        title: Text('متصفح الملفات'),
         centerTitle: true,
         actions: [
           IconButton(
             icon: const Icon(Icons.search),
-            onPressed: _pickModelDirectly,
-            tooltip: 'اختيار ملف',
+            onPressed: _pickModel,
+            tooltip: 'اختيار نموذج',
           ),
         ],
       ),
       body: Column(
         children: [
-          // أزرار سريعة
           Container(
             padding: const EdgeInsets.all(8),
             child: Wrap(
@@ -149,89 +102,62 @@ class _FileBrowserState extends State<FileBrowser> {
                     _loadFiles();
                   });
                 }),
-                _buildQuickButton('النماذج', Icons.model_training, () {
-                  setState(() {
-                    _currentPath = '/storage/emulated/0/Download/models/';
-                    _loadFiles();
-                  });
-                }),
-                _buildQuickButton('اختيار ملف', Icons.file_upload, _pickModelDirectly),
+                _buildQuickButton('اختيار نموذج', Icons.model_training, _pickModel),
               ],
             ),
           ),
-          // رسالة الخطأ
-          if (_error.isNotEmpty)
-            Container(
-              padding: const EdgeInsets.all(16),
-              color: Colors.red.shade50,
-              child: Text(_error, style: const TextStyle(color: Colors.red)),
-            ),
-          // قائمة الملفات
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
-                : _files.isEmpty
-                    ? const Center(child: Text('لا توجد ملفات في هذا المجلد'))
-                    : ListView.builder(
-                        itemCount: _files.length,
-                        itemBuilder: (context, index) {
-                          final file = _files[index];
-                          final isDirectory = FileSystemEntity.isDirectorySync(file.path);
-                          final fileName = file.path.split('/').last;
-                          final fileExt = fileName.split('.').last.toLowerCase();
-                          final isModel = fileExt == 'tflite' || fileExt == 'onnx' || fileExt == 'gguf' || fileExt == 'bin';
-                          
-                          String fileSize = '';
-                          if (!isDirectory) {
-                            try {
-                              final size = File(file.path).statSync().size;
-                              fileSize = _formatSize(size);
-                            } catch (e) {}
+                : ListView.builder(
+                    itemCount: _files.length,
+                    itemBuilder: (context, index) {
+                      final file = _files[index];
+                      final isDirectory = FileSystemEntity.isDirectorySync(file.path);
+                      final fileName = file.path.split('/').last;
+                      final isModel = fileName.endsWith('.tflite');
+                      
+                      return ListTile(
+                        leading: Icon(
+                          isDirectory ? Icons.folder : (isModel ? Icons.model_training : Icons.insert_drive_file),
+                          color: isDirectory ? Colors.blue : (isModel ? Colors.green : Colors.grey),
+                        ),
+                        title: Text(fileName),
+                        trailing: isModel
+                            ? ElevatedButton(
+                                onPressed: () async {
+                                  final modelsDir = Directory('/storage/emulated/0/Download/models/');
+                                  if (!await modelsDir.exists()) {
+                                    await modelsDir.create(recursive: true);
+                                  }
+                                  final destPath = '/storage/emulated/0/Download/models/$fileName';
+                                  await File(file.path).copy(destPath);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('✅ تم نسخ النموذج: $fileName')),
+                                  );
+                                  Navigator.pop(context, true);
+                                },
+                                child: const Text('تشغيل'),
+                              )
+                            : null,
+                        onTap: () {
+                          if (isDirectory) {
+                            setState(() {
+                              _currentPath = file.path;
+                              _loadFiles();
+                            });
                           }
-                          
-                          return ListTile(
-                            leading: Icon(
-                              isDirectory ? Icons.folder : (isModel ? Icons.model_training : Icons.insert_drive_file),
-                              color: isDirectory ? Colors.blue : (isModel ? Colors.green : Colors.grey),
-                              size: 32,
-                            ),
-                            title: Text(
-                              fileName,
-                              style: TextStyle(
-                                fontWeight: isModel ? FontWeight.bold : FontWeight.normal,
-                                color: isModel ? Colors.green : null,
-                              ),
-                            ),
-                            subtitle: isDirectory ? null : Text(fileSize),
-                            trailing: isModel
-                                ? ElevatedButton.icon(
-                                    onPressed: () => _selectModel(file.path),
-                                    icon: const Icon(Icons.play_arrow, size: 16),
-                                    label: const Text('تشغيل'),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.green,
-                                      foregroundColor: Colors.white,
-                                    ),
-                                  )
-                                : null,
-                            onTap: () {
-                              if (isDirectory) {
-                                setState(() {
-                                  _currentPath = file.path;
-                                  _loadFiles();
-                                });
-                              }
-                            },
-                          );
                         },
-                      ),
+                      );
+                    },
+                  ),
           ),
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _pickModelDirectly,
+        onPressed: _pickModel,
         child: const Icon(Icons.add),
-        tooltip: 'اختيار نموذج',
+        tooltip: 'إضافة نموذج',
       ),
     );
   }
@@ -246,12 +172,5 @@ class _FileBrowserState extends State<FileBrowser> {
         minimumSize: Size.zero,
       ),
     );
-  }
-
-  String _formatSize(int bytes) {
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
   }
 }
