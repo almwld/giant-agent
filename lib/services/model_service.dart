@@ -1,9 +1,7 @@
 import 'dart:io';
-import 'dart:convert';
-import 'dart:math';
-import 'package:path_provider/path_provider.dart';
-import 'package:sqflite/sqflite.dart';
+import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 class ModelService {
@@ -13,92 +11,51 @@ class ModelService {
   
   List<Map<String, dynamic>> _models = [];
   String _activeModelId = '';
-  bool _isInitialized = false;
-  Database? _db;
   
   Future<void> init() async {
-    if (_isInitialized) return;
-    
-    // طلب صلاحية التخزين
-    await Permission.storage.request();
-    
-    // تهيئة قاعدة البيانات
-    final docsDir = await getApplicationDocumentsDirectory();
-    _db = await openDatabase(
-      '${docsDir.path}/conversations.db',
-      version: 1,
-      onCreate: (db, version) async {
-        await db.execute('''
-          CREATE TABLE messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            role TEXT,
-            content TEXT,
-            timestamp INTEGER
-          )
-        ''');
-      },
-    );
-    
-    // البحث عن النماذج
-    await scanModels();
-    
-    _isInitialized = true;
+    await _scanModels();
   }
   
-  // مسح جميع مجلدات الهاتف بحثاً عن النماذج
-  Future<void> scanModels() async {
+  Future<void> _scanModels() async {
     _models.clear();
     
-    // قائمة المسارات للبحث
-    List<String> searchPaths = [
+    // المسارات الممكنة للنماذج
+    List<String> paths = [
       '/storage/emulated/0/Download/models/',
       '/sdcard/Download/models/',
-      '/storage/emulated/0/Phi3Model/',
-      '/storage/emulated/0/Android/data/com.example.giant_agent/files/models/',
       '/storage/emulated/0/Models/',
-      '/sdcard/Models/',
     ];
     
-    // البحث في كل مسار
-    for (String path in searchPaths) {
-      final dir = Directory(path);
+    for (String path in paths) {
+      Directory dir = Directory(path);
       if (await dir.exists()) {
         try {
-          final files = await dir.list().toList();
+          List<FileSystemEntity> files = await dir.list().toList();
           for (var file in files) {
-            if (file.path.endsWith('.tflite') || 
-                file.path.endsWith('.onnx') || 
-                file.path.endsWith('.gguf')) {
-              
-              final size = await File(file.path).length();
-              final sizeMB = (size / 1024 / 1024).toStringAsFixed(2);
-              
+            String fileName = file.path.split('/').last;
+            if (fileName.endsWith('.tflite') || fileName.endsWith('.onnx') || fileName.endsWith('.gguf')) {
+              File modelFile = File(file.path);
+              int size = await modelFile.length();
               _models.add({
-                'id': file.path.split('/').last.replaceAll('.tflite', '').replaceAll('.onnx', '').replaceAll('.gguf', ''),
-                'name': file.path.split('/').last,
+                'id': fileName,
+                'name': fileName,
                 'path': file.path,
-                'size': sizeMB,
-                'type': file.path.split('.').last,
-                'status': 'available',
-                'loaded': true,
+                'size': (size / 1024 / 1024).toStringAsFixed(2),
+                'type': fileName.split('.').last,
               });
             }
           }
-        } catch (e) {
-          print('Error scanning $path: $e');
-        }
+        } catch (e) {}
       }
     }
     
-    // إضافة نموذج مدمج
+    // نموذج افتراضي
     _models.add({
       'id': 'builtin',
       'name': 'Built-in AI',
       'path': null,
       'size': '0',
       'type': 'builtin',
-      'status': 'available',
-      'loaded': true,
     });
     
     if (_activeModelId.isEmpty && _models.isNotEmpty) {
@@ -106,50 +63,44 @@ class ModelService {
     }
   }
   
-  // إضافة نموذج من ملف يختاره المستخدم
+  Future<void> refreshModels() async {
+    await _scanModels();
+  }
+  
   Future<bool> addModelFromFile() async {
     try {
-      // طلب صلاحية التخزين أولاً
-      final status = await Permission.storage.request();
+      // طلب الصلاحية
+      PermissionStatus status = await Permission.storage.request();
       if (!status.isGranted) {
         return false;
       }
       
-      // اختيار ملف النموذج
+      // اختيار ملف
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['tflite', 'onnx', 'gguf'],
       );
       
       if (result != null) {
-        final file = File(result.files.single.path!);
-        final fileName = result.files.single.name;
+        String sourcePath = result.files.single.path!;
+        String fileName = result.files.single.name;
         
-        // إنشاء مجلد النماذج إذا لم يكن موجوداً
-        final modelsDir = Directory('/storage/emulated/0/Download/models/');
+        // مجلد الوجهة
+        Directory modelsDir = Directory('/storage/emulated/0/Download/models/');
         if (!await modelsDir.exists()) {
           await modelsDir.create(recursive: true);
         }
         
-        // نسخ الملف إلى مجلد النماذج
-        final newPath = '/storage/emulated/0/Download/models/$fileName';
-        await file.copy(newPath);
+        String destPath = '/storage/emulated/0/Download/models/$fileName';
+        await File(sourcePath).copy(destPath);
         
-        // إعادة مسح النماذج
-        await scanModels();
-        
+        await _scanModels();
         return true;
       }
       return false;
     } catch (e) {
-      print('Error adding model: $e');
       return false;
     }
-  }
-  
-  // تحديث النماذج
-  Future<void> refreshModels() async {
-    await scanModels();
   }
   
   List<Map<String, dynamic>> getModels() {
@@ -158,18 +109,13 @@ class ModelService {
   
   Map<String, dynamic> getActiveModel() {
     if (_models.isEmpty) {
-      return {
-        'id': 'builtin',
-        'name': 'Built-in AI',
-        'size': '0',
-        'type': 'builtin',
-      };
+      return {'id': 'builtin', 'name': 'Built-in AI', 'size': '0', 'type': 'builtin'};
     }
     return _models.firstWhere((m) => m['id'] == _activeModelId, orElse: () => _models.first);
   }
   
   Future<bool> switchModel(String modelId) async {
-    final model = _models.firstWhere((m) => m['id'] == modelId, orElse: () => {});
+    Map<String, dynamic>? model = _models.firstWhere((m) => m['id'] == modelId, orElse: () => {});
     if (model.isNotEmpty) {
       _activeModelId = modelId;
       return true;
@@ -177,143 +123,63 @@ class ModelService {
     return false;
   }
   
-  // حفظ رسالة
-  Future<void> saveMessage(String role, String content) async {
-    await _db?.insert('messages', {
-      'role': role,
-      'content': content,
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
-    });
-  }
-  
-  // توليد رد ذكي
+  // ردود ذكية
   Future<String> generateResponse(String input) async {
-    await saveMessage('user', input);
+    String lower = input.toLowerCase();
     
-    final lower = input.toLowerCase();
-    String response;
-    
-    if (lower.contains('مرحبا') || lower.contains('السلام')) {
-      response = 'مرحباً! 👋 أنا Giant Agent X. كيف يمكنني مساعدتك اليوم؟';
+    if (lower.contains('مرحبا')) {
+      return 'مرحباً! 👋 أنا Giant Agent X. كيف يمكنني مساعدتك؟';
+    } else if (lower.contains('كيف حالك')) {
+      return 'أنا بخير، شكراً! 🧠 جاهز لمساعدتك.';
+    } else if (lower.contains('شكرا')) {
+      return 'العفو! 🤝 دائماً في خدمتك.';
+    } else if (lower.contains('وداعا')) {
+      return 'وداعاً! 👋 سعدت بمساعدتك.';
+    } else if (lower.contains('كود')) {
+      return '```dart\nvoid main() {\n  print("Hello from Giant Agent X!");\n}\n```';
+    } else if (lower.contains('موقع')) {
+      return '<html><body><h1>Giant Agent X</h1></body></html>';
+    } else if (lower.contains('حلل')) {
+      String text = input.replaceAll('حلل', '').trim();
+      return '📊 تحليل النص:\nالطول: ${text.length} حرف\nالكلمات: ${text.split(' ').length} كلمة';
+    } else if (lower.contains('+') || lower.contains('-') || lower.contains('*') || lower.contains('/')) {
+      return _calculate(input);
+    } else {
+      List<String> responses = [
+        'سؤال جيد! كيف يمكنني مساعدتك؟',
+        'أفهم ما تقصد. هل تريد معرفة المزيد؟',
+        'هذا مثير للاهتمام! أخبرني أكثر.',
+        'شكراً على سؤالك. دعني أفكر في الأمر...',
+      ];
+      return responses[DateTime.now().second % responses.length];
     }
-    else if (lower.contains('كيف حالك')) {
-      response = 'أنا بخير، شكراً لسؤالك! 🧠 جاهز لمساعدتك في أي وقت.';
-    }
-    else if (lower.contains('شكرا')) {
-      response = 'العفو! 🤝 دائماً في خدمتك.';
-    }
-    else if (lower.contains('وداعا')) {
-      response = 'وداعاً! 👋 سعدت بمساعدتك.';
-    }
-    else if (lower.contains('كود') || lower.contains('code')) {
-      response = await _generateCode(input);
-    }
-    else if (lower.contains('موقع') || lower.contains('site')) {
-      response = await _generateWebsite(input);
-    }
-    else if (lower.contains('حلل')) {
-      response = _analyzeText(input);
-    }
-    else if (lower.contains('+') || lower.contains('-') || lower.contains('*') || lower.contains('/')) {
-      response = _calculate(input);
-    }
-    else if (lower.contains('مساعدة') || lower.contains('help')) {
-      response = _getHelp();
-    }
-    else {
-      response = _getGeneralResponse(input);
-    }
-    
-    await saveMessage('agent', response);
-    return response;
-  }
-  
-  Future<String> _generateCode(String input) async {
-    return '''
-```dart
-// كود تم إنشاؤه بواسطة Giant Agent X
-void main() {
-  print("Hello from Giant Agent X!");
-  print("مرحباً من الوكيل العملاق!");
-}
-```
-''';
-  }
-  
-  Future<String> _generateWebsite(String input) async {
-    return '''
-```html
-<!DOCTYPE html>
-<html>
-<head><title>Giant Agent</title></head>
-<body><h1>Hello from Giant Agent X!</h1></body>
-</html>
-```
-''';
-  }
-  
-  String _analyzeText(String input) {
-    final text = input.replaceAll('حلل', '').trim();
-    if (text.isEmpty) return 'الرجاء إدخال النص للتحليل';
-    return '📊 تم تحليل النص بنجاح.\nالطول: ${text.length} حرف\nالكلمات: ${text.split(' ').length} كلمة';
   }
   
   String _calculate(String input) {
     try {
       if (input.contains('+')) {
-        final parts = input.split('+');
-        final a = double.tryParse(parts[0].trim()) ?? 0;
-        final b = double.tryParse(parts[1].trim()) ?? 0;
+        List<String> parts = input.split('+');
+        double a = double.parse(parts[0].trim());
+        double b = double.parse(parts[1].trim());
         return 'النتيجة: ${a + b}';
-      }
-      if (input.contains('-')) {
-        final parts = input.split('-');
-        final a = double.tryParse(parts[0].trim()) ?? 0;
-        final b = double.tryParse(parts[1].trim()) ?? 0;
+      } else if (input.contains('-')) {
+        List<String> parts = input.split('-');
+        double a = double.parse(parts[0].trim());
+        double b = double.parse(parts[1].trim());
         return 'النتيجة: ${a - b}';
-      }
-      if (input.contains('*')) {
-        final parts = input.split('*');
-        final a = double.tryParse(parts[0].trim()) ?? 0;
-        final b = double.tryParse(parts[1].trim()) ?? 0;
+      } else if (input.contains('*')) {
+        List<String> parts = input.split('*');
+        double a = double.parse(parts[0].trim());
+        double b = double.parse(parts[1].trim());
         return 'النتيجة: ${a * b}';
-      }
-      if (input.contains('/')) {
-        final parts = input.split('/');
-        final a = double.tryParse(parts[0].trim()) ?? 0;
-        final b = double.tryParse(parts[1].trim()) ?? 1;
+      } else if (input.contains('/')) {
+        List<String> parts = input.split('/');
+        double a = double.parse(parts[0].trim());
+        double b = double.parse(parts[1].trim());
         if (b == 0) return 'لا يمكن القسمة على صفر';
         return 'النتيجة: ${a / b}';
       }
-    } catch (e) {
-      return 'خطأ في العملية الحسابية';
-    }
-    return 'الرجاء كتابة عملية صحيحة مثل: 5+3';
-  }
-  
-  String _getHelp() {
-    return '''
-📚 **الأوامر المتاحة:**
-• مرحبا - تحية
-• كيف حالك - السؤال عن الحال
-• اكتب كود - توليد كود
-• أنشئ موقعاً - إنشاء HTML
-• حلل النص: ... - تحليل نص
-• 5+3 - عمليات حسابية
-''';
-  }
-  
-  String _getGeneralResponse(String input) {
-    final responses = [
-      'سؤال جيد! كيف يمكنني مساعدتك بشكل أفضل؟',
-      'أفهم ما تقصده. هل تريد معرفة المزيد؟',
-      'هذا مثير للاهتمام! أخبرني أكثر.',
-      'شكراً على سؤالك. دعني أفكر في الأمر...',
-    ];
-    return responses[Random().nextInt(responses.length)];
-  }
-  
-  void dispose() {
-    _db?.close();
+    } catch (e) {}
+    return 'خطأ في العملية الحسابية';
   }
 }

@@ -1,11 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/model_service.dart';
-import '../core/theme.dart';
-import '../widgets/future_message_bubble.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -14,39 +11,20 @@ class ChatScreen extends StatefulWidget {
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
+class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _controller = TextEditingController();
   final List<Map<String, dynamic>> _messages = [];
   final ScrollController _scrollController = ScrollController();
   final ModelService _modelService = ModelService();
   
   bool _isLoading = false;
-  bool _isDarkMode = false;
-  double _fontSize = 14.0;
-  
   List<Map<String, dynamic>> _models = [];
   Map<String, dynamic> _activeModel = {};
-  
-  late AnimationController _glowController;
 
   @override
   void initState() {
     super.initState();
     _init();
-    _loadSettings();
-    
-    _glowController = AnimationController(
-      duration: const Duration(seconds: 2),
-      vsync: this,
-    )..repeat(reverse: true);
-  }
-  
-  Future<void> _loadSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _isDarkMode = prefs.getBool('dark_mode') ?? false;
-      _fontSize = prefs.getDouble('font_size') ?? 14.0;
-    });
   }
 
   Future<void> _init() async {
@@ -63,48 +41,40 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       _models = _modelService.getModels();
       _activeModel = _modelService.getActiveModel();
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('تم تحديث النماذج')),
-    );
+    _showSnackbar('تم تحديث النماذج');
   }
 
   Future<void> _addModel() async {
-    final added = await _modelService.addModelFromFile();
+    bool added = await _modelService.addModelFromFile();
     if (added) {
       await _refreshModels();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('✅ تم إضافة النموذج بنجاح')),
-      );
+      _showSnackbar('✅ تم إضافة النموذج بنجاح');
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('❌ لم يتم إضافة النموذج. تأكد من اختيار ملف .tflite')),
-      );
+      _showSnackbar('❌ فشل إضافة النموذج');
     }
   }
 
+  void _showSnackbar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
+    );
+  }
+
   Future<void> _sendMessage() async {
-    final text = _controller.text.trim();
+    String text = _controller.text.trim();
     if (text.isEmpty) return;
 
     setState(() {
-      _messages.add({
-        'isUser': true,
-        'content': text,
-        'time': DateTime.now(),
-      });
+      _messages.add({'isUser': true, 'content': text, 'time': DateTime.now()});
       _controller.clear();
       _isLoading = true;
     });
     _scrollToBottom();
 
-    final response = await _modelService.generateResponse(text);
+    String response = await _modelService.generateResponse(text);
 
     setState(() {
-      _messages.add({
-        'isUser': false,
-        'content': response,
-        'time': DateTime.now(),
-      });
+      _messages.add({'isUser': false, 'content': response, 'time': DateTime.now()});
       _isLoading = false;
     });
     _scrollToBottom();
@@ -113,8 +83,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   Future<void> _pickFile() async {
     FilePickerResult? result = await FilePicker.platform.pickFiles();
     if (result != null) {
-      final file = File(result.files.single.path!);
-      final content = await file.readAsString();
+      File file = File(result.files.single.path!);
+      String content = await file.readAsString();
       
       setState(() {
         _messages.add({
@@ -125,14 +95,10 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         _isLoading = true;
       });
       
-      final response = await _modelService.generateResponse('حلل هذا الملف: $content');
+      String response = await _modelService.generateResponse('حلل هذا الملف: $content');
       
       setState(() {
-        _messages.add({
-          'isUser': false,
-          'content': response,
-          'time': DateTime.now(),
-        });
+        _messages.add({'isUser': false, 'content': response, 'time': DateTime.now()});
         _isLoading = false;
       });
     }
@@ -140,26 +106,17 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
   Future<void> _pickImage() async {
     final ImagePicker picker = ImagePicker();
-    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
-    
+    XFile? image = await picker.pickImage(source: ImageSource.gallery);
     if (image != null) {
       setState(() {
-        _messages.add({
-          'isUser': true,
-          'content': '🖼️ ${image.name}',
-          'time': DateTime.now(),
-        });
+        _messages.add({'isUser': true, 'content': '🖼️ ${image.name}', 'time': DateTime.now()});
         _isLoading = true;
       });
       
-      final response = await _modelService.generateResponse('وصف هذه الصورة');
+      String response = await _modelService.generateResponse('وصف هذه الصورة');
       
       setState(() {
-        _messages.add({
-          'isUser': false,
-          'content': response,
-          'time': DateTime.now(),
-        });
+        _messages.add({'isUser': false, 'content': response, 'time': DateTime.now()});
         _isLoading = false;
       });
     }
@@ -169,16 +126,6 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     setState(() {
       _messages.clear();
     });
-  }
-
-  void _switchModel(String modelId) async {
-    await _modelService.switchModel(modelId);
-    setState(() {
-      _activeModel = _modelService.getActiveModel();
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('تم التبديل إلى: ${_activeModel['name']}')),
-    );
   }
 
   void _scrollToBottom() {
@@ -193,264 +140,172 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     });
   }
 
-  void _toggleTheme() {
-    setState(() {
-      _isDarkMode = !_isDarkMode;
-    });
-    SharedPreferences.getInstance().then((prefs) {
-      prefs.setBool('dark_mode', _isDarkMode);
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: Builder(
-          builder: (context) => IconButton(
-            icon: const Icon(Icons.menu),
-            onPressed: () => Scaffold.of(context).openDrawer(),
-          ),
-        ),
-        title: AnimatedBuilder(
-          animation: _glowController,
-          builder: (context, child) {
-            return ShaderMask(
-              shaderCallback: (bounds) => const LinearGradient(
-                colors: [AppTheme.primaryColor, AppTheme.secondaryColor],
-              ).createShader(bounds),
-              child: const Text(
-                'Giant Agent X',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-            );
-          },
-        ),
+        title: const Text('Giant Agent X'),
         centerTitle: true,
         actions: [
           IconButton(
-            icon: Icon(_isDarkMode ? Icons.light_mode : Icons.dark_mode),
-            onPressed: _toggleTheme,
+            icon: const Icon(Icons.refresh),
+            onPressed: _refreshModels,
+            tooltip: 'تحديث النماذج',
+          ),
+          IconButton(
+            icon: const Icon(Icons.add_box),
+            onPressed: _addModel,
+            tooltip: 'إضافة نموذج',
           ),
         ],
       ),
-      drawer: _buildDrawer(),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: _isDarkMode ? AppTheme.darkGradient : const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Colors.white, Color(0xFFF5F5F5)],
-          ),
-        ),
+      drawer: Drawer(
         child: Column(
           children: [
-            const SizedBox(height: 80),
-            // Active Model Indicator
             Container(
-              margin: const EdgeInsets.symmetric(horizontal: 20),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                gradient: AppTheme.primaryGradient,
-                borderRadius: BorderRadius.circular(30),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppTheme.primaryColor.withOpacity(0.3),
-                    blurRadius: 10,
-                  ),
-                ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.bolt, size: 16, color: Colors.white),
-                  const SizedBox(width: 8),
-                  Text(
-                    _activeModel['name'] ?? 'AI Model Active',
-                    style: const TextStyle(color: Colors.white, fontSize: 12),
-                  ),
-                ],
+              height: 150,
+              color: Colors.deepPurple,
+              child: const Center(
+                child: Text(
+                  'Giant Agent X',
+                  style: TextStyle(fontSize: 24, color: Colors.white),
+                ),
               ),
             ),
-            const SizedBox(height: 20),
-            // Messages
             Expanded(
               child: ListView.builder(
-                controller: _scrollController,
-                padding: const EdgeInsets.all(20),
-                itemCount: _messages.length,
+                itemCount: _models.length,
                 itemBuilder: (context, index) {
-                  final msg = _messages[index];
-                  return FutureMessageBubble(
-                    message: msg['content'],
-                    isUser: msg['isUser'],
-                    time: msg['time'],
-                    fontSize: _fontSize,
+                  Map<String, dynamic> model = _models[index];
+                  bool isActive = model['id'] == _activeModel['id'];
+                  return ListTile(
+                    leading: Icon(isActive ? Icons.check_circle : Icons.circle_outlined,
+                        color: isActive ? Colors.green : Colors.grey),
+                    title: Text(model['name']),
+                    subtitle: Text('${model['size']} MB • ${model['type']}'),
+                    trailing: isActive ? const Text('نشط', style: TextStyle(color: Colors.green)) : null,
+                    onTap: () async {
+                      await _modelService.switchModel(model['id']);
+                      setState(() {
+                        _activeModel = _modelService.getActiveModel();
+                      });
+                      Navigator.pop(context);
+                      _showSnackbar('تم التبديل إلى ${model['name']}');
+                    },
                   );
                 },
               ),
             ),
-            // Loading
-            if (_isLoading)
-              Padding(
-                padding: const EdgeInsets.all(8),
-                child: LinearProgressIndicator(
-                  backgroundColor: Colors.transparent,
-                  valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
-                ),
-              ),
-            // Input Area
-            Container(
-              margin: const EdgeInsets.all(16),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: _isDarkMode ? AppTheme.darkGlassColor : AppTheme.glassWhite,
-                borderRadius: BorderRadius.circular(30),
-                border: Border.all(
-                  color: AppTheme.primaryColor.withOpacity(0.3),
-                  width: 1,
-                ),
-              ),
-              child: Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.attach_file),
-                    onPressed: _pickFile,
-                    color: AppTheme.primaryColor,
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.image),
-                    onPressed: _pickImage,
-                    color: AppTheme.secondaryColor,
-                  ),
-                  Expanded(
-                    child: TextField(
-                      controller: _controller,
-                      style: TextStyle(fontSize: _fontSize),
-                      decoration: const InputDecoration(
-                        hintText: 'اكتب رسالتك...',
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.symmetric(horizontal: 8),
-                      ),
-                      onSubmitted: (_) => _sendMessage(),
-                    ),
-                  ),
-                  AnimatedBuilder(
-                    animation: _glowController,
-                    builder: (context, child) {
-                      return Container(
-                        decoration: BoxDecoration(
-                          gradient: AppTheme.primaryGradient,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppTheme.primaryColor.withOpacity(0.5),
-                              blurRadius: 10 * _glowController.value,
-                            ),
-                          ],
-                        ),
-                        child: IconButton(
-                          icon: const Icon(Icons.send, color: Colors.white),
-                          onPressed: _sendMessage,
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildDrawer() {
-    return Drawer(
-      backgroundColor: _isDarkMode ? const Color(0xFF1A1A2E) : Colors.white,
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: _isDarkMode ? AppTheme.darkGradient : null,
-        ),
-        child: Column(
-          children: [
-            Container(
-              height: 200,
-              decoration: BoxDecoration(
-                gradient: AppTheme.primaryGradient,
-                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(30)),
-              ),
-              child: const Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      'GX',
-                      style: TextStyle(
-                        fontSize: 48,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
+      body: Column(
+        children: [
+          // شريط النموذج النشط
+          Container(
+            padding: const EdgeInsets.all(8),
+            color: Colors.deepPurple.shade50,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.model_training, size: 16),
+                const SizedBox(width: 8),
+                Text('النموذج النشط: ${_activeModel['name'] ?? "Built-in"}'),
+              ],
+            ),
+          ),
+          // الرسائل
+          Expanded(
+            child: ListView.builder(
+              controller: _scrollController,
+              padding: const EdgeInsets.all(16),
+              itemCount: _messages.length,
+              itemBuilder: (context, index) {
+                Map<String, dynamic> msg = _messages[index];
+                bool isUser = msg['isUser'];
+                return Align(
+                  alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(12),
+                    constraints: BoxConstraints(
+                      maxWidth: MediaQuery.of(context).size.width * 0.75,
                     ),
-                    SizedBox(height: 10),
-                    Text(
-                      'Giant Agent X',
-                      style: TextStyle(color: Colors.white70),
+                    decoration: BoxDecoration(
+                      color: isUser ? Colors.deepPurple : Colors.grey.shade200,
+                      borderRadius: BorderRadius.circular(16),
                     ),
-                  ],
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SelectableText(
+                          msg['content'],
+                          style: TextStyle(color: isUser ? Colors.white : Colors.black87),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${(msg['time'] as DateTime).hour}:${(msg['time'] as DateTime).minute}',
+                          style: TextStyle(fontSize: 10, color: isUser ? Colors.white70 : Colors.grey),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          if (_isLoading) const LinearProgressIndicator(),
+          // منطقة الإدخال
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border(top: BorderSide(color: Colors.grey.shade200)),
+            ),
+            child: Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.attach_file),
+                  onPressed: _pickFile,
+                  tooltip: 'رفع ملف',
                 ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            _buildDrawerItem(Icons.chat_bubble_outline, 'الدردشة', () {
-              Navigator.pop(context);
-            }),
-            _buildDrawerItem(Icons.model_training_outlined, 'إضافة نموذج', _addModel),
-            _buildDrawerItem(Icons.refresh, 'تحديث النماذج', _refreshModels),
-            _buildDrawerItem(Icons.folder_outlined, 'رفع ملف', _pickFile),
-            _buildDrawerItem(Icons.image, 'رفع صورة', _pickImage),
-            _buildDrawerItem(Icons.delete_outline, 'مسح المحادثة', _newConversation),
-            const Spacer(),
-            Container(
-              margin: const EdgeInsets.all(16),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                gradient: AppTheme.secondaryGradient,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Column(
-                children: [
-                  const Text(
-                    'AI Model Active',
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                IconButton(
+                  icon: const Icon(Icons.image),
+                  onPressed: _pickImage,
+                  tooltip: 'رفع صورة',
+                ),
+                Expanded(
+                  child: TextField(
+                    controller: _controller,
+                    decoration: InputDecoration(
+                      hintText: 'اكتب رسالتك...',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(30),
+                        borderSide: BorderSide.none,
+                      ),
+                      filled: true,
+                      fillColor: Colors.grey.shade100,
+                    ),
+                    onSubmitted: (_) => _sendMessage(),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _activeModel['name'] ?? 'Built-in',
-                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: _sendMessage,
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: const BoxDecoration(
+                      color: Colors.deepPurple,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.send, color: Colors.white, size: 20),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
-    );
-  }
-
-  Widget _buildDrawerItem(IconData icon, String title, VoidCallback onTap) {
-    return ListTile(
-      leading: Icon(icon, color: AppTheme.primaryColor),
-      title: Text(title),
-      onTap: onTap,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     );
   }
 }
