@@ -21,8 +21,8 @@ class ModelRunner {
       
       print('📥 جاري تحميل النموذج: $modelPath');
       
-      // تحميل النموذج
-      _interpreter = await Interpreter.fromFile(modelPath);
+      // تحميل النموذج - تمرير File object
+      _interpreter = await Interpreter.fromFile(file);
       _currentModelPath = modelPath;
       _isLoaded = true;
       
@@ -43,11 +43,10 @@ class ModelRunner {
     try {
       print('🔄 جاري تشغيل النموذج...');
       
-      // تحويل النص إلى تنسيق المدخلات (Tensor)
-      // ملاحظة: هذا يعتمد على شكل النموذج، قد تحتاج لتعديل حسب نموذجك
+      // تحويل النص إلى تنسيق المدخلات
       final inputBytes = input.codeUnits.map((e) => e.toDouble()).toList();
       
-      // التأكد من أن حجم المدخلات مناسب (مثلاً 512)
+      // التأكد من أن حجم المدخلات مناسب
       final paddedInput = List.filled(512, 0.0);
       for (var i = 0; i < inputBytes.length && i < 512; i++) {
         paddedInput[i] = inputBytes[i];
@@ -55,8 +54,8 @@ class ModelRunner {
       
       final inputTensor = [paddedInput];
       
-      // تحديد حجم المخرجات (يعتمد على النموذج)
-      var outputTensor = List.filled(1 * 512 * 10000, 0.0).reshape([1, 512, 10000]);
+      // تحديد حجم المخرجات
+      var outputTensor = List.filled(1 * 512 * 1000, 0.0).reshape([1, 512, 1000]);
       
       // تشغيل النموذج
       _interpreter!.run(inputTensor, outputTensor);
@@ -64,7 +63,6 @@ class ModelRunner {
       // استخراج النص من المخرجات
       String output = '';
       for (var i = 0; i < outputTensor[0].length; i++) {
-        // أخذ أعلى احتمال لكل موضع
         final probs = outputTensor[0][i];
         double maxProb = 0;
         int maxIndex = 0;
