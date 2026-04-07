@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../core/theme.dart';
 
 class WordCounter extends StatelessWidget {
   final String text;
@@ -8,34 +7,26 @@ class WordCounter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final words = text.split(' ').length;
+    final words = text.trim().isEmpty ? 0 : text.trim().split(RegExp(r'\s+')).length;
     final chars = text.length;
-    final sentences = text.split(RegExp(r'[.!?]+')).length;
     
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: AppTheme.primary.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
+        color: Colors.grey.shade200,
+        borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          _buildStat('📝', '$words', 'كلمة'),
-          _buildStat('🔤', '$chars', 'حرف'),
-          _buildStat('📄', '$sentences', 'جملة'),
+          Icon(Icons.text_fields, size: 14, color: Colors.grey.shade600),
+          const SizedBox(width: 4),
+          Text(
+            '$words كلمة | $chars حرف',
+            style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+          ),
         ],
       ),
-    );
-  }
-  
-  Widget _buildStat(String icon, String value, String label) {
-    return Column(
-      children: [
-        Text(icon, style: const TextStyle(fontSize: 20)),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
-        Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
-      ],
     );
   }
 }

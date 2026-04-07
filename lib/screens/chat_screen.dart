@@ -1,3 +1,6 @@
+import '../services/offline_mode.dart';
+import '../widgets/word_counter.dart';
+import '../widgets/connection_status.dart';
 import '../screens/advanced_settings.dart';
 import '../services/image_analyzer.dart';
 import '../services/share_service.dart';
@@ -153,6 +156,19 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(30),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const ConnectionStatus(),
+                WordCounter(text: _controller.text),
+              ],
+            ),
+          ),
+        ),
         title: const Text('Giant Agent X'),
         centerTitle: true,
         actions: [
