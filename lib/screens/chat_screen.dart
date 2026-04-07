@@ -1,3 +1,4 @@
+import 'file_browser.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
@@ -411,4 +412,15 @@ class _ChatScreenState extends State<ChatScreen> {
       _isLoading = false;
     });
     _scrollToBottom();
+  }
+
+  // فتح متصفح الملفات
+  Future<void> _openFileBrowser() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const FileBrowser()),
+    );
+    if (result == true) {
+      await _refreshModels();
+    }
   }
