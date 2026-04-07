@@ -79,7 +79,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  Future<void> _addModel() async {
+  Future<void> _importModelManually() async {
     bool added = await _modelService.addModelFromFile();
     if (added && mounted) {
       await _refreshModels();
@@ -290,7 +290,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.add_box),
-            onPressed: _addModel,
+            onPressed: _importModelManually,
             tooltip: 'إضافة نموذج',
           ),
           IconButton(
