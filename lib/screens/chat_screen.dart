@@ -212,10 +212,12 @@ class _ChatScreenState extends State<ChatScreen> {
                   DropdownMenuItem(value: 'ar', child: Text('العربية')),
                   DropdownMenuItem(value: 'en', child: Text('English')),
                 ],
-                onChanged: (value) {
-                  setState(() => _currentLanguage = value!);
-                  SharedPreferences.getInstance().then((prefs) => prefs.setString('language', value));
-                  Navigator.pop(context);
+                onChanged: (String? value) {
+                  if (value != null) {
+                    setState(() => _currentLanguage = value);
+                    SharedPreferences.getInstance().then((prefs) => prefs.setString('language', value));
+                    Navigator.pop(context);
+                  }
                 },
               ),
             ),
@@ -428,7 +430,11 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
                 const SizedBox(height: 8),
                 ElevatedButton.icon(
-                  onPressed: () => Share.share(_messages.isNotEmpty ? _messages.last['content'] : ''),
+                  onPressed: () {
+                    if (_messages.isNotEmpty) {
+                      Share.share(_messages.last['content']);
+                    }
+                  },
                   icon: const Icon(Icons.share),
                   label: const Text('Share Last Message'),
                   style: ElevatedButton.styleFrom(
