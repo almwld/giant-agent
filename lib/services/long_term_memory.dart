@@ -23,16 +23,6 @@ class LongTermMemory {
             importance INTEGER
           )
         ''');
-        await db.execute('''
-          CREATE TABLE tasks (
-            id INTEGER PRIMARY KEY,
-            task TEXT,
-            status TEXT,
-            result TEXT,
-            created_at INTEGER,
-            completed_at INTEGER
-          )
-        ''');
       },
     );
   }
@@ -55,49 +45,10 @@ class LongTermMemory {
       limit: 1,
     );
     if (result != null && result.isNotEmpty) {
-      return result.first['value'];
+      final value = result.first['value'];
+      return value.toString();
     }
     return null;
-  }
-  
-  Future<List<Map<String, dynamic>>> searchMemories(String query) async {
-    return await _db?.query(
-      'memories',
-      where: 'key LIKE ? OR value LIKE ?',
-      whereArgs: ['%$query%', '%$query%'],
-      orderBy: 'timestamp DESC',
-      limit: 20,
-    ) ?? [];
-  }
-  
-  Future<int> createTask(String task) async {
-    return await _db?.insert('tasks', {
-      'task': task,
-      'status': 'pending',
-      'created_at': DateTime.now().millisecondsSinceEpoch,
-    }) ?? 0;
-  }
-  
-  Future<void> completeTask(int taskId, String result) async {
-    await _db?.update(
-      'tasks',
-      {
-        'status': 'completed',
-        'result': result,
-        'completed_at': DateTime.now().millisecondsSinceEpoch,
-      },
-      where: 'id = ?',
-      whereArgs: [taskId],
-    );
-  }
-  
-  Future<List<Map<String, dynamic>>> getPendingTasks() async {
-    return await _db?.query(
-      'tasks',
-      where: 'status = ?',
-      whereArgs: ['pending'],
-      orderBy: 'created_at ASC',
-    ) ?? [];
   }
   
   void dispose() {

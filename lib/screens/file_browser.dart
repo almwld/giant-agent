@@ -11,7 +11,6 @@ class FileBrowser extends StatefulWidget {
 }
 
 class _FileBrowserState extends State<FileBrowser> {
-  final ModelService _modelService = ModelService();
   List<FileSystemEntity> _files = [];
   String _currentPath = '/storage/emulated/0/';
   bool _isLoading = false;
@@ -35,36 +34,6 @@ class _FileBrowserState extends State<FileBrowser> {
       }
     } catch (e) {
       setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('خطأ في الوصول: $e')),
-      );
-    }
-  }
-
-  Future<void> _pickModelFile() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['tflite', 'onnx', 'gguf', 'bin'],
-    );
-    
-    if (result != null) {
-      final filePath = result.files.single.path!;
-      final fileName = result.files.single.name;
-      
-      // نسخ الملف إلى مجلد النماذج
-      final modelsDir = Directory('/storage/emulated/0/Download/models/');
-      if (!await modelsDir.exists()) {
-        await modelsDir.create(recursive: true);
-      }
-      
-      final destPath = '/storage/emulated/0/Download/models/$fileName';
-      await File(filePath).copy(destPath);
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('✅ تم نسخ النموذج: $fileName')),
-      );
-      
-      Navigator.pop(context, true);
     }
   }
 
@@ -74,7 +43,6 @@ class _FileBrowserState extends State<FileBrowser> {
         fileName.endsWith('.onnx') || 
         fileName.endsWith('.gguf')) {
       
-      // نسخ إلى مجلد النماذج
       final modelsDir = Directory('/storage/emulated/0/Download/models/');
       if (!await modelsDir.exists()) {
         await modelsDir.create(recursive: true);
@@ -90,7 +58,7 @@ class _FileBrowserState extends State<FileBrowser> {
       Navigator.pop(context, true);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('⚠️ هذا ليس ملف نموذج صالح')),
+        const SnackBar(content: Text('⚠️ هذا ليس ملف نموذج صالح')),
       );
     }
   }
@@ -99,126 +67,44 @@ class _FileBrowserState extends State<FileBrowser> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('متصفح الملفات - $_currentPath'),
+        title: Text('متصفح الملفات'),
         centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.search),
-            onPressed: _pickModelFile,
-            tooltip: 'اختيار ملف',
-          ),
-        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                // شريط التنقل السريع
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  child: Wrap(
-                    spacing: 8,
-                    children: [
-                      _buildQuickButton('المجلد الرئيسي', Icons.home, () {
-                        setState(() {
-                          _currentPath = '/storage/emulated/0/';
-                          _loadFiles();
-                        });
-                      }),
-                      _buildQuickButton('التحميلات', Icons.download, () {
-                        setState(() {
-                          _currentPath = '/storage/emulated/0/Download/';
-                          _loadFiles();
-                        });
-                      }),
-                      _buildQuickButton('النماذج', Icons.model_training, () {
-                        setState(() {
-                          _currentPath = '/storage/emulated/0/Download/models/';
-                          _loadFiles();
-                        });
-                      }),
-                      _buildQuickButton('SD Card', Icons.sd_storage, () {
-                        setState(() {
-                          _currentPath = '/sdcard/';
-                          _loadFiles();
-                        });
-                      }),
-                    ],
+          : ListView.builder(
+              itemCount: _files.length,
+              itemBuilder: (context, index) {
+                final file = _files[index];
+                final isDirectory = FileSystemEntity.isDirectorySync(file.path);
+                final fileName = file.path.split('/').last;
+                final isModel = fileName.endsWith('.tflite') || 
+                                fileName.endsWith('.onnx') || 
+                                fileName.endsWith('.gguf');
+                
+                return ListTile(
+                  leading: Icon(
+                    isDirectory ? Icons.folder : (isModel ? Icons.model_training : Icons.insert_drive_file),
+                    color: isDirectory ? Colors.blue : (isModel ? Colors.green : Colors.grey),
                   ),
-                ),
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: _files.length,
-                    itemBuilder: (context, index) {
-                      final file = _files[index];
-                      final isDirectory = FileSystemEntity.isDirectorySync(file.path);
-                      final fileName = file.path.split('/').last;
-                      final isModel = fileName.endsWith('.tflite') || 
-                                      fileName.endsWith('.onnx') || 
-                                      fileName.endsWith('.gguf');
-                      
-                      return ListTile(
-                        leading: Icon(
-                          isDirectory ? Icons.folder : (isModel ? Icons.model_training : Icons.insert_drive_file),
-                          color: isDirectory ? Colors.blue : (isModel ? Colors.green : Colors.grey),
-                        ),
-                        title: Text(
-                          fileName,
-                          style: TextStyle(
-                            fontWeight: isModel ? FontWeight.bold : FontWeight.normal,
-                          ),
-                        ),
-                        subtitle: isDirectory 
-                            ? null 
-                            : Text('${_formatSize(file.statSync().size)}'),
-                        trailing: isModel
-                            ? ElevatedButton(
-                                onPressed: () => _selectModel(file.path),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.green,
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                ),
-                                child: const Text('تشغيل', style: TextStyle(fontSize: 12)),
-                              )
-                            : null,
-                        onTap: () {
-                          if (isDirectory) {
-                            setState(() {
-                              _currentPath = file.path;
-                              _loadFiles();
-                            });
-                          }
-                        },
-                      );
-                    },
-                  ),
-                ),
-              ],
+                  title: Text(fileName),
+                  trailing: isModel
+                      ? ElevatedButton(
+                          onPressed: () => _selectModel(file.path),
+                          child: const Text('تشغيل'),
+                        )
+                      : null,
+                  onTap: () {
+                    if (isDirectory) {
+                      setState(() {
+                        _currentPath = file.path;
+                        _loadFiles();
+                      });
+                    }
+                  },
+                );
+              },
             ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _pickModelFile,
-        child: const Icon(Icons.add),
-        tooltip: 'اختيار نموذج من الملفات',
-      ),
     );
-  }
-
-  Widget _buildQuickButton(String label, IconData icon, VoidCallback onTap) {
-    return ElevatedButton.icon(
-      onPressed: onTap,
-      icon: Icon(icon, size: 16),
-      label: Text(label),
-      style: ElevatedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        minimumSize: Size.zero,
-      ),
-    );
-  }
-
-  String _formatSize(int bytes) {
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
   }
 }

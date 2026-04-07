@@ -1,9 +1,6 @@
 import 'dart:io';
-import 'dart:isolate';
-import 'dart:async';
 import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'performance_service.dart';
 
 class ModelService {
   static final ModelService _instance = ModelService._internal();
@@ -13,66 +10,6 @@ class ModelService {
   List<Map<String, dynamic>> _models = [];
   String _activeModelId = '';
   File? _currentModelFile;
-  final PerformanceService _performance = PerformanceService();
-  
-  // معالجة غير متزامنة باستخدام Isolate
-  Future<String> runModelAsync(String input) async {
-    final startTime = DateTime.now();
-    
-    // التحقق من التخزين المؤقت أولاً
-    final cached = _performance.getCachedResponse(input);
-    if (cached != null) {
-      _performance.recordResponseTime(DateTime.now().difference(startTime).inMilliseconds);
-      return cached;
-    }
-    
-    if (_currentModelFile == null) {
-      return '⚠️ يرجى تحميل نموذج أولاً';
-    }
-    
-    // تنفيذ النموذج في Isolate منفصل
-    final response = await _performance.queueTask(() async {
-      return await _executeInIsolate(input);
-    });
-    
-    // حفظ في التخزين المؤقت
-    _performance.cacheResponse(input, response);
-    
-    final endTime = DateTime.now();
-    _performance.recordResponseTime(endTime.difference(startTime).inMilliseconds);
-    
-    return response;
-  }
-  
-  Future<String> _executeInIsolate(String input) async {
-    // إنشاء ReceivePort للتواصل مع الـ Isolate
-    final receivePort = ReceivePort();
-    
-    // تشغيل الـ Isolate
-    await Isolate.spawn(_isolateEntry, [receivePort.sendPort, input]);
-    
-    // انتظار النتيجة
-    final result = await receivePort.first;
-    receivePort.close();
-    
-    return result as String;
-  }
-  
-  static void _isolateEntry(List<dynamic> args) {
-    final sendPort = args[0] as SendPort;
-    final input = args[1] as String;
-    
-    // محاكاة معالجة النموذج (سيتم استبدالها بتشغيل TFLite الفعلي)
-    final result = _processInIsolate(input);
-    
-    sendPort.send(result);
-  }
-  
-  static String _processInIsolate(String input) {
-    // هنا سيتم تشغيل النموذج الفعلي
-    // حالياً محاكاة بسيطة
-    return '[استجابة سريعة من النموذج]:\n\nتم معالجة: "$input"';
-  }
   
   Future<void> init() async {
     await _scanModels();
@@ -175,7 +112,6 @@ class ModelService {
     if (model.isNotEmpty && model['path'] != null) {
       _activeModelId = modelId;
       _currentModelFile = File(model['path']);
-      _performance.clearCache(); // مسح التخزين المؤقت عند تبديل النموذج
       return true;
     }
     return false;
@@ -185,97 +121,14 @@ class ModelService {
     return _currentModelFile != null;
   }
   
-  Map<String, dynamic> getPerformanceStats() {
-    return _performance.getPerformanceStats();
-  }
-  
   Future<String> runModel(String input) async {
-    return await runModelAsync(input);
-  }
-}
-
-import '../tools/tool_manager.dart';
-import 'long_term_memory.dart';
-import 'planner_service.dart';
-
-final ToolManager _toolManager = ToolManager();
-final LongTermMemory _memory = LongTermMemory();
-final PlannerService _planner = PlannerService();
-
-// تهيئة الأدوات
-void _initTools() {
-  _toolManager.registerTools();
-}
-
-// معالجة ذكية مع دعم الأدوات والتخطيط
-Future<String> processWithTools(String input) async {
-  _initTools();
-  await _memory.init();
-  
-  final lower = input.toLowerCase();
-  
-  // التحقق من وجود أمر أداة
-  if (lower.contains('احسب') || lower.contains('calculate')) {
-    final expression = input.replaceAll(RegExp(r'احسب|calculate'), '').trim();
-    return await _toolManager.executeTool('calculator', {'expression': expression});
-  }
-  
-  if (lower.contains('اكتب ملف') || lower.contains('save file')) {
-    final parts = input.split('محتوى');
-    final filename = parts[0].replaceAll('اكتب ملف', '').trim();
-    final content = parts.length > 1 ? parts[1].trim() : 'محتوى افتراضي';
-    return await _toolManager.executeTool('file_writer', {'filename': filename, 'content': content});
-  }
-  
-  if (lower.contains('اقرأ ملف') || lower.contains('read file')) {
-    final filename = input.replaceAll(RegExp(r'اقرأ ملف|read file'), '').trim();
-    return await _toolManager.executeTool('file_reader', {'filename': filename});
-  }
-  
-  if (lower.contains('تذكر') || lower.contains('remember')) {
-    final parts = input.replaceAll('تذكر', '').trim().split(':');
-    if (parts.length == 2) {
-      await _memory.saveMemory(parts[0].trim(), parts[1].trim());
-      return '✅ تم حفظ: ${parts[0]} = ${parts[1]}';
+    if (_currentModelFile == null) {
+      return '⚠️ يرجى تحميل نموذج أولاً';
     }
-    return 'استخدم: تذكر المفتاح: القيمة';
+    
+    // محاكاة تشغيل النموذج (سيتم استبدالها بـ TFLite الفعلي)
+    await Future.delayed(Duration(milliseconds: 500));
+    
+    return '[استجابة من النموذج ${_currentModelFile!.path.split('/').last}]:\n\nتم استلام مدخلاتك: "$input"\n\nالنموذج يعمل بشكل طبيعي.';
   }
-  
-  if (lower.contains('استرجع') || lower.contains('recall')) {
-    final key = input.replaceAll(RegExp(r'استرجع|recall'), '').trim();
-    final value = await _memory.recallMemory(key);
-    return value != null ? '📝 $key: $value' : 'لا توجد معلومات عن $key';
-  }
-  
-  if (lower.contains('خطة') || lower.contains('plan')) {
-    final goal = input.replaceAll(RegExp(r'خطة|plan'), '').trim();
-    final plan = await _planner.createPlan(goal);
-    String result = '📋 **الخطة الموضوعة:**\n\n';
-    for (var step in plan) {
-      result += '${step['step']}. ${step['action']}\n';
-    }
-    result += '\n${_planner.getProgress()}';
-    return result;
-  }
-  
-  if (lower.contains('نفذ') || lower.contains('execute')) {
-    final action = _planner.getNextAction();
-    if (action == 'completed') {
-      return '✅ تم إكمال جميع الخطوات!';
-    }
-    return '🔄 جاري تنفيذ: $action\n${_planner.getProgress()}';
-  }
-  
-  if (lower.contains('مهام معلقة') || lower.contains('pending tasks')) {
-    final tasks = await _memory.getPendingTasks();
-    if (tasks.isEmpty) return 'لا توجد مهام معلقة';
-    String result = '📋 **المهام المعلقة:**\n';
-    for (var task in tasks) {
-      result += '• ${task['task']}\n';
-    }
-    return result;
-  }
-  
-  // استدعاء النموذج الأساسي
-  return await runModel(input);
 }

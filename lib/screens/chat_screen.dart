@@ -1,9 +1,9 @@
-import 'file_browser.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/model_service.dart';
+import 'file_browser.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -58,6 +58,16 @@ class _ChatScreenState extends State<ChatScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('❌ فشل إضافة النموذج')),
       );
+    }
+  }
+
+  Future<void> _openFileBrowser() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const FileBrowser()),
+    );
+    if (result == true) {
+      await _refreshModels();
     }
   }
 
@@ -203,6 +213,11 @@ class _ChatScreenState extends State<ChatScreen> {
             icon: const Icon(Icons.add_box),
             onPressed: _addModel,
             tooltip: 'إضافة نموذج',
+          ),
+          IconButton(
+            icon: const Icon(Icons.folder_open),
+            onPressed: _openFileBrowser,
+            tooltip: 'متصفح الملفات',
           ),
           IconButton(
             icon: const Icon(Icons.delete_outline),
@@ -376,51 +391,3 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 }
-
-  // استخدام المعالجة المتقدمة بدلاً من المباشرة
-  Future<void> _sendMessageAdvanced() async {
-    final text = _controller.text.trim();
-    if (text.isEmpty) return;
-    
-    if (!_modelService.hasActiveModel()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('⚠️ يرجى تحميل نموذج أولاً')),
-      );
-      return;
-    }
-
-    setState(() {
-      _messages.add({
-        'isUser': true,
-        'content': text,
-        'time': DateTime.now(),
-      });
-      _controller.clear();
-      _isLoading = true;
-    });
-    _scrollToBottom();
-
-    // استخدام المعالجة المتقدمة مع الأدوات
-    final response = await _modelService.processWithTools(text);
-
-    setState(() {
-      _messages.add({
-        'isUser': false,
-        'content': response,
-        'time': DateTime.now(),
-      });
-      _isLoading = false;
-    });
-    _scrollToBottom();
-  }
-
-  // فتح متصفح الملفات
-  Future<void> _openFileBrowser() async {
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const FileBrowser()),
-    );
-    if (result == true) {
-      await _refreshModels();
-    }
-  }
