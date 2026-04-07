@@ -1,12 +1,3 @@
-import '../services/offline_mode.dart';
-import '../widgets/word_counter.dart';
-import '../widgets/connection_status.dart';
-import '../screens/advanced_settings.dart';
-import '../services/image_analyzer.dart';
-import '../services/share_service.dart';
-import '../services/voice_service.dart';
-import ../services/database_service.dart;
-import ../screens/settings_screen.dart;
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
@@ -81,15 +72,6 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _sendMessage() async {
-    if (text.startsWith('مشروع:')) {
-      await _createProject(text.substring(7));
-      return;
-    }
-    if (text == 'نفذ') {
-      await _executeNextStep();
-      return;
-    }
-    await DatabaseService.saveMessage(text, true);
     final text = _controller.text.trim();
     if (text.isEmpty) return;
     
@@ -122,6 +104,61 @@ class _ChatScreenState extends State<ChatScreen> {
       _isLoading = false;
     });
     _scrollToBottom();
+  }
+
+  Future<void> _pickFile() async {
+    FilePickerResult? result = await FilePicker.platform.pickFiles();
+    if (result != null) {
+      final file = File(result.files.single.path!);
+      final content = await file.readAsString();
+      
+      setState(() {
+        _messages.add({
+          'isUser': true,
+          'content': '📁 ${result.files.single.name}\n${content.length > 500 ? content.substring(0, 500) + '...' : content}',
+          'time': DateTime.now(),
+        });
+        _isLoading = true;
+      });
+      
+      final response = await _modelService.runModel('تحليل الملف: $content');
+      
+      setState(() {
+        _messages.add({
+          'isUser': false,
+          'content': response,
+          'time': DateTime.now(),
+        });
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _pickImage() async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+    
+    if (image != null) {
+      setState(() {
+        _messages.add({
+          'isUser': true,
+          'content': '🖼️ ${image.name}',
+          'time': DateTime.now(),
+        });
+        _isLoading = true;
+      });
+      
+      final response = await _modelService.runModel('تحليل الصورة: ${image.name}');
+      
+      setState(() {
+        _messages.add({
+          'isUser': false,
+          'content': response,
+          'time': DateTime.now(),
+        });
+        _isLoading = false;
+      });
+    }
   }
 
   void _newConversation() {
@@ -164,19 +201,6 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(30),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const ConnectionStatus(),
-                WordCounter(text: _controller.text),
-              ],
-            ),
-          ),
-        ),
         title: const Text('Giant Agent X'),
         centerTitle: true,
         actions: [
@@ -322,6 +346,16 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             child: Row(
               children: [
+                IconButton(
+                  icon: const Icon(Icons.attach_file),
+                  onPressed: _pickFile,
+                  tooltip: 'رفع ملف',
+                ),
+                IconButton(
+                  icon: const Icon(Icons.image),
+                  onPressed: _pickImage,
+                  tooltip: 'رفع صورة',
+                ),
                 Expanded(
                   child: TextField(
                     controller: _controller,
@@ -338,29 +372,11 @@ class _ChatScreenState extends State<ChatScreen> {
                       fillColor: Colors.grey.shade100,
                     ),
                     onSubmitted: (_) => _sendMessage(),
-    if (text.startsWith('مشروع:')) {
-      await _createProject(text.substring(7));
-      return;
-    }
-    if (text == 'نفذ') {
-      await _executeNextStep();
-      return;
-    }
-    await DatabaseService.saveMessage(text, true);
                   ),
                 ),
                 const SizedBox(width: 8),
                 GestureDetector(
                   onTap: _sendMessage,
-    if (text.startsWith('مشروع:')) {
-      await _createProject(text.substring(7));
-      return;
-    }
-    if (text == 'نفذ') {
-      await _executeNextStep();
-      return;
-    }
-    await DatabaseService.saveMessage(text, true);
                   child: Container(
                     padding: const EdgeInsets.all(12),
                     decoration: const BoxDecoration(
@@ -378,60 +394,3 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 }
-
-  // نظام المهام المتعددة
-  final TaskManager _taskManager = TaskManager();
-  bool _hasActiveTask = false;
-  
-  Future<void> _createProject(String description) async {
-    final task = await _taskManager.createTask(description);
-    _hasActiveTask = true;
-    
-    String plan = '📋 **خطة المشروع:**\n\n';
-    for (var step in task['steps']) {
-      plan += '${step['step']}. ${step['action']}\n';
-    }
-    plan += '\n${_taskManager.getProgress()}';
-    
-    setState(() {
-      _messages.add({
-        'isUser': false,
-        'content': plan,
-        'time': DateTime.now(),
-      });
-    });
-  }
-  
-  Future<void> _executeNextStep() async {
-    final result = await _taskManager.executeNextStep();
-    
-    if (result['status'] == 'completed') {
-      _hasActiveTask = false;
-      setState(() {
-        _messages.add({
-          'isUser': false,
-          'content': result['message'],
-          'time': DateTime.now(),
-        });
-      });
-      
-      // عرض رابط الملف الناتج
-      if (result['output_file'] != null) {
-        setState(() {
-          _messages.add({
-            'isUser': false,
-            'content': '📁 **الملف الناتج:**\n${result['output_file']}',
-            'time': DateTime.now(),
-          });
-        });
-      }
-    } else {
-      setState(() {
-        _messages.add({
-          'isUser': false,
-          'content': '🔄 **الخطوة ${result['step']}:** ${result['action']}\n${result['result']}\n\n${_taskManager.getProgress()}',
-          'time': DateTime.now(),
-        });
-      });
-    }
-  }
