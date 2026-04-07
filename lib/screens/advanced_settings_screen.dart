@@ -272,3 +272,33 @@ class _AdvancedSettingsScreenState extends State<AdvancedSettingsScreen> {
     );
   }
 }
+
+  // Logout button
+  ListTile(
+    leading: const Icon(Icons.logout, color: Colors.red),
+    title: const Text('Sign Out', style: TextStyle(color: Colors.red)),
+    onTap: () {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Sign Out'),
+          content: const Text('Are you sure you want to sign out?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () async {
+                await AuthService().logout();
+                if (mounted) {
+                  Navigator.pushReplacementNamed(context, '/login');
+                }
+              },
+              child: const Text('Sign Out', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        ),
+      );
+    },
+  ),

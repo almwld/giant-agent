@@ -7,33 +7,39 @@ class AuthService {
   
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
   
-  Future<bool> signUp(String email, String password) async {
-    await _storage.write(key: 'user_email', value: email);
-    await _storage.write(key: 'user_password', value: password);
+  // تسجيل الدخول بدون بيانات
+  Future<bool> guestLogin() async {
     await _storage.write(key: 'is_logged_in', value: 'true');
+    await _storage.write(key: 'user_type', value: 'guest');
+    await _storage.write(key: 'user_name', value: 'Guest User');
     return true;
   }
   
-  Future<bool> signIn(String email, String password) async {
-    final storedEmail = await _storage.read(key: 'user_email');
-    final storedPassword = await _storage.read(key: 'user_password');
-    
-    if (storedEmail == email && storedPassword == password) {
-      await _storage.write(key: 'is_logged_in', value: 'true');
-      return true;
-    }
-    return false;
+  // تسجيل الدخول السريع
+  Future<bool> quickLogin() async {
+    await _storage.write(key: 'is_logged_in', value: 'true');
+    await _storage.write(key: 'user_type', value: 'quick');
+    await _storage.write(key: 'user_name', value: 'User');
+    return true;
   }
   
-  Future<void> signOut() async {
+  // تسجيل الخروج
+  Future<void> logout() async {
     await _storage.write(key: 'is_logged_in', value: 'false');
   }
   
+  // التحقق من حالة الدخول
   Future<bool> isLoggedIn() async {
     return await _storage.read(key: 'is_logged_in') == 'true';
   }
   
-  Future<String?> getCurrentUser() async {
-    return await _storage.read(key: 'user_email');
+  // الحصول على اسم المستخدم
+  Future<String?> getUserName() async {
+    return await _storage.read(key: 'user_name');
+  }
+  
+  // الحصول على نوع المستخدم
+  Future<String?> getUserType() async {
+    return await _storage.read(key: 'user_type');
   }
 }
