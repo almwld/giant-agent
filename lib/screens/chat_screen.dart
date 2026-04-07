@@ -52,6 +52,17 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  Future<void> _refreshModels() async {
+    await _modelService.refreshModels();
+    setState(() {
+      _models = _modelService.getModels();
+      _activeModel = _modelService.getActiveModel();
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Models refreshed')),
+    );
+  }
+
   Future<void> _sendMessage() async {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
@@ -283,6 +294,11 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                       const Spacer(),
                       IconButton(
+                        icon: const Icon(Icons.refresh),
+                        onPressed: _refreshModels,
+                        tooltip: 'Refresh Models',
+                      ),
+                      IconButton(
                         icon: const Icon(Icons.attach_file),
                         onPressed: _pickFile,
                         tooltip: 'Upload File',
@@ -498,15 +514,3 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 }
-
-  // تحديث النماذج
-  Future<void> _refreshModels() async {
-    await _modelService.refreshModels();
-    setState(() {
-      _models = _modelService.getModels();
-      _activeModel = _modelService.getActiveModel();
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Models refreshed')),
-    );
-  }
