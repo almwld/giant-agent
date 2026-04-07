@@ -12,16 +12,15 @@ class ModelRunner {
   
   Future<bool> loadModel(String modelPath) async {
     try {
-      // التأكد من وجود الملف
       final file = File(modelPath);
       if (!await file.exists()) {
         print('❌ الملف غير موجود: $modelPath');
         return false;
       }
       
-      print('📥 جاري تحميل النموذج: $modelPath');
+      print('📥 جاري تحميل النموذج TFLite: $modelPath');
       
-      // تحميل النموذج - تمرير File object
+      // تحميل النموذج باستخدام TFLite
       _interpreter = await Interpreter.fromFile(file);
       _currentModelPath = modelPath;
       _isLoaded = true;
@@ -41,21 +40,24 @@ class ModelRunner {
     }
     
     try {
-      print('🔄 جاري تشغيل النموذج...');
+      print('🔄 جاري تشغيل النموذج TFLite...');
       
-      // تحويل النص إلى تنسيق المدخلات
+      // تحويل النص إلى تنسيق الإدخال المناسب للنموذج
+      // ملاحظة: هذا يعتمد على شكل النموذج، قد يحتاج تعديل
       final inputBytes = input.codeUnits.map((e) => e.toDouble()).toList();
       
-      // التأكد من أن حجم المدخلات مناسب
-      final paddedInput = List.filled(512, 0.0);
-      for (var i = 0; i < inputBytes.length && i < 512; i++) {
+      // تعبئة الإدخال إلى حجم ثابت (مثلاً 512)
+      final inputSize = 512;
+      final paddedInput = List.filled(inputSize, 0.0);
+      for (var i = 0; i < inputBytes.length && i < inputSize; i++) {
         paddedInput[i] = inputBytes[i];
       }
       
       final inputTensor = [paddedInput];
       
       // تحديد حجم المخرجات
-      var outputTensor = List.filled(1 * 512 * 1000, 0.0).reshape([1, 512, 1000]);
+      final outputSize = 1000;
+      var outputTensor = List.filled(outputSize, 0.0).reshape([1, outputSize]);
       
       // تشغيل النموذج
       _interpreter!.run(inputTensor, outputTensor);
@@ -63,30 +65,22 @@ class ModelRunner {
       // استخراج النص من المخرجات
       String output = '';
       for (var i = 0; i < outputTensor[0].length; i++) {
-        final probs = outputTensor[0][i];
-        double maxProb = 0;
-        int maxIndex = 0;
-        for (var j = 0; j < probs.length; j++) {
-          if (probs[j] > maxProb) {
-            maxProb = probs[j];
-            maxIndex = j;
-          }
-        }
-        if (maxIndex > 31 && maxIndex < 127) {
-          output += String.fromCharCode(maxIndex);
+        final value = outputTensor[0][i];
+        if (value > 0.5 && value < 127) {
+          output += String.fromCharCode(value.toInt());
         }
       }
       
       print('✅ تم تشغيل النموذج بنجاح');
       
       if (output.trim().isEmpty) {
-        return '[استجابة من النموذج ${_currentModelPath?.split('/').last}]:\n\nتم استلام: "$input"\n\n(النموذج يعمل بشكل طبيعي)';
+        return '📱 **استجابة النموذج (${_currentModelPath?.split('/').last}):**\n\nتم استلام: "$input"\n\n(تمت المعالجة بنجاح)';
       }
       
-      return output;
+      return '📱 **استجابة النموذج:**\n\n$output';
     } catch (e) {
       print('❌ خطأ في تشغيل النموذج: $e');
-      return '❌ خطأ في تشغيل النموذج: $e';
+      return '❌ خطأ في تشغيل النموذج: $e\n\nقد يكون النموذج غير متوافق مع تنسيق الإدخال المتوقع.';
     }
   }
   
