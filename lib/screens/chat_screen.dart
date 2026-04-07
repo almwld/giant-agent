@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import '../services/model_service.dart';
+import '../core/theme.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -13,7 +14,7 @@ class ChatScreen extends StatefulWidget {
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
+class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateMixin {
   final TextEditingController _controller = TextEditingController();
   final List<Map<String, dynamic>> _messages = [];
   final ScrollController _scrollController = ScrollController();
@@ -21,26 +22,37 @@ class _ChatScreenState extends State<ChatScreen> {
   
   bool _isLoading = false;
   bool _isSidebarOpen = false;
-  bool _doNotDisturb = false;
+  bool _isDarkMode = false;
   double _fontSize = 14.0;
-  String _currentLanguage = 'ar';
   
   List<Map<String, dynamic>> _models = [];
   Map<String, dynamic> _activeModel = {};
+  
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
 
   @override
   void initState() {
     super.initState();
     _init();
     _loadSettings();
+    
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 500),
+      vsync: this,
+    );
+    _fadeAnimation = CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeInOut,
+    );
+    _animationController.forward();
   }
   
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      _doNotDisturb = prefs.getBool('do_not_disturb') ?? false;
+      _isDarkMode = prefs.getBool('dark_mode') ?? false;
       _fontSize = prefs.getDouble('font_size') ?? 14.0;
-      _currentLanguage = prefs.getString('language') ?? 'ar';
     });
   }
 
@@ -114,7 +126,7 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         _messages.add({
           'isUser': true,
-          'content': '[ملف: ${result.files.single.name}]\n${content.length > 500 ? content.substring(0, 500) + '...' : content}',
+          'content': '📁 ${result.files.single.name}\n${content.length > 500 ? content.substring(0, 500) + '...' : content}',
           'time': DateTime.now(),
         });
         _isLoading = true;
@@ -141,7 +153,7 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         _messages.add({
           'isUser': true,
-          'content': '[صورة: ${image.name}]',
+          'content': '🖼️ ${image.name}',
           'time': DateTime.now(),
         });
         _isLoading = true;
@@ -176,6 +188,15 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  void _toggleTheme() {
+    setState(() {
+      _isDarkMode = !_isDarkMode;
+    });
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.setBool('dark_mode', _isDarkMode);
+    });
+  }
+
   void _scrollToBottom() {
     Future.delayed(const Duration(milliseconds: 100), () {
       if (_scrollController.hasClients) {
@@ -188,59 +209,174 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  void _showSettingsMenu() {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: _isDarkMode ? AppTheme.darkTheme : AppTheme.lightTheme,
+      home: Scaffold(
+        body: Row(
           children: [
-            SwitchListTile(
-              title: const Text('عدم الإزعاج'),
-              value: _doNotDisturb,
-              onChanged: (value) {
-                setState(() => _doNotDisturb = value);
-                SharedPreferences.getInstance().then((prefs) => prefs.setBool('do_not_disturb', value));
-              },
+            // Sidebar
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              width: _isSidebarOpen ? 280 : 0,
+              child: _isSidebarOpen ? _buildSidebar() : null,
             ),
-            ListTile(
-              title: const Text('حجم الخط'),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
+            // Main Chat Area
+            Expanded(
+              child: Column(
                 children: [
-                  IconButton(
-                    icon: const Icon(Icons.remove),
-                    onPressed: () {
-                      setState(() => _fontSize = (_fontSize - 1).clamp(10.0, 24.0));
-                      SharedPreferences.getInstance().then((prefs) => prefs.setDouble('font_size', _fontSize));
-                    },
+                  // Header
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).scaffoldBackgroundColor,
+                      border: Border(bottom: BorderSide(color: AppTheme.borderColor.withOpacity(0.3))),
+                    ),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          icon: Icon(_isSidebarOpen ? Icons.menu_open : Icons.menu),
+                          onPressed: () => setState(() => _isSidebarOpen = !_isSidebarOpen),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryColor.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 8,
+                                height: 8,
+                                decoration: const BoxDecoration(
+                                  color: AppTheme.primaryColor,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                _activeModel['name'] ?? 'Built-in AI',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                  color: AppTheme.primaryColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Spacer(),
+                        IconButton(
+                          icon: Icon(_isDarkMode ? Icons.light_mode : Icons.dark_mode),
+                          onPressed: _toggleTheme,
+                          tooltip: 'تبديل المظهر',
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.refresh),
+                          onPressed: _refreshModels,
+                          tooltip: 'تحديث النماذج',
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.add_box),
+                          onPressed: _addModel,
+                          tooltip: 'إضافة نموذج',
+                        ),
+                      ],
+                    ),
                   ),
-                  Text('${_fontSize.toStringAsFixed(0)}'),
-                  IconButton(
-                    icon: const Icon(Icons.add),
-                    onPressed: () {
-                      setState(() => _fontSize = (_fontSize + 1).clamp(10.0, 24.0));
-                      SharedPreferences.getInstance().then((prefs) => prefs.setDouble('font_size', _fontSize));
-                    },
+                  // Messages
+                  Expanded(
+                    child: FadeTransition(
+                      opacity: _fadeAnimation,
+                      child: ListView.builder(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.all(20),
+                        itemCount: _messages.length,
+                        itemBuilder: (context, index) {
+                          final msg = _messages[index];
+                          final isUser = msg['isUser'] as bool;
+                          return _buildMessageBubble(msg['content'], isUser, msg['time']);
+                        },
+                      ),
+                    ),
+                  ),
+                  // Loading
+                  if (_isLoading)
+                    const Padding(
+                      padding: EdgeInsets.all(8),
+                      child: LinearProgressIndicator(),
+                    ),
+                  // Input Area
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).scaffoldBackgroundColor,
+                      border: Border(top: BorderSide(color: AppTheme.borderColor.withOpacity(0.3))),
+                    ),
+                    child: Column(
+                      children: [
+                        // Action buttons
+                        Row(
+                          children: [
+                            _buildActionButton(Icons.attach_file, 'ملف', _pickFile),
+                            const SizedBox(width: 12),
+                            _buildActionButton(Icons.image, 'صورة', _pickImage),
+                            const SizedBox(width: 12),
+                            _buildActionButton(Icons.mic, 'صوت', () {}),
+                            const Spacer(),
+                            _buildActionButton(Icons.delete_outline, 'مسح', _newConversation),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        // Text input
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _controller,
+                                style: TextStyle(fontSize: _fontSize),
+                                decoration: InputDecoration(
+                                  hintText: 'اكتب رسالتك...',
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(30),
+                                    borderSide: BorderSide.none,
+                                  ),
+                                  filled: true,
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                                ),
+                                onSubmitted: (_) => _sendMessage(),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            GestureDetector(
+                              onTap: _sendMessage,
+                              child: Container(
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.primaryColor,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: AppTheme.primaryColor.withOpacity(0.3),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: const Icon(Icons.send, color: Colors.white, size: 20),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ],
-              ),
-            ),
-            ListTile(
-              title: const Text('اللغة'),
-              trailing: DropdownButton<String>(
-                value: _currentLanguage,
-                items: const [
-                  DropdownMenuItem(value: 'ar', child: Text('العربية')),
-                  DropdownMenuItem(value: 'en', child: Text('English')),
-                ],
-                onChanged: (String? value) {
-                  if (value != null) {
-                    setState(() => _currentLanguage = value);
-                    SharedPreferences.getInstance().then((prefs) => prefs.setString('language', value));
-                  }
-                },
               ),
             ),
           ],
@@ -249,257 +385,160 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Giant Agent X'),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _refreshModels,
-            tooltip: 'تحديث النماذج',
+  Widget _buildMessageBubble(String content, bool isUser, DateTime time) {
+    return Align(
+      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.75,
+        ),
+        decoration: BoxDecoration(
+          color: isUser ? AppTheme.primaryColor : AppTheme.surfaceColor,
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(20),
+            topRight: const Radius.circular(20),
+            bottomLeft: Radius.circular(isUser ? 20 : 4),
+            bottomRight: Radius.circular(isUser ? 4 : 20),
           ),
-          IconButton(
-            icon: const Icon(Icons.add_box),
-            onPressed: _addModel,
-            tooltip: 'إضافة نموذج',
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: _showSettingsMenu,
-            tooltip: 'الإعدادات',
-          ),
-        ],
-      ),
-      body: Row(
-        children: [
-          // Sidebar
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            width: _isSidebarOpen ? 280 : 0,
-            child: _isSidebarOpen ? _buildSidebar() : null,
-          ),
-          // Main Chat Area
-          Expanded(
-            child: Column(
-              children: [
-                // النموذج النشط
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  color: const Color(0xFF10A37F).withOpacity(0.1),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.model_training, size: 16),
-                      const SizedBox(width: 8),
-                      Text(
-                        'النموذج النشط: ${_activeModel['name'] ?? "Built-in"}',
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                      const SizedBox(width: 8),
-                      GestureDetector(
-                        onTap: () => setState(() => _isSidebarOpen = !_isSidebarOpen),
-                        child: const Icon(Icons.swap_horiz, size: 16),
-                      ),
-                    ],
-                  ),
-                ),
-                // Messages
-                Expanded(
-                  child: ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _messages.length,
-                    itemBuilder: (context, index) {
-                      final msg = _messages[index];
-                      final isUser = msg['isUser'] as bool;
-                      return Align(
-                        alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-                        child: Container(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          constraints: BoxConstraints(
-                            maxWidth: MediaQuery.of(context).size.width * 0.75,
-                          ),
-                          decoration: BoxDecoration(
-                            color: isUser ? const Color(0xFF10A37F) : Colors.grey.shade200,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              SelectableText(
-                                msg['content'],
-                                style: TextStyle(
-                                  color: isUser ? Colors.white : Colors.black87,
-                                  fontSize: _fontSize,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '${(msg['time'] as DateTime).hour}:${(msg['time'] as DateTime).minute.toString().padLeft(2, '0')}',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: isUser ? Colors.white70 : Colors.grey.shade600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                // Loading
-                if (_isLoading)
-                  const Padding(
-                    padding: EdgeInsets.all(8),
-                    child: LinearProgressIndicator(),
-                  ),
-                // Input Area with File Buttons
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).scaffoldBackgroundColor,
-                    border: Border(top: BorderSide(color: Colors.grey.shade200)),
-                  ),
-                  child: Column(
-                    children: [
-                      // File buttons row
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Row(
-                              children: [
-                                IconButton(
-                                  icon: const Icon(Icons.attach_file),
-                                  onPressed: _pickFile,
-                                  tooltip: 'رفع ملف',
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.image),
-                                  onPressed: _pickImage,
-                                  tooltip: 'رفع صورة',
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.mic),
-                                  onPressed: () {},
-                                  tooltip: 'إدخال صوتي',
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      // Text input row
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: _controller,
-                              decoration: InputDecoration(
-                                hintText: 'اكتب رسالتك...',
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(30),
-                                  borderSide: BorderSide.none,
-                                ),
-                                filled: true,
-                                fillColor: Colors.grey.shade100,
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                              ),
-                              onSubmitted: (_) => _sendMessage(),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          GestureDetector(
-                            onTap: _sendMessage,
-                            child: Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: const BoxDecoration(
-                                color: Color(0xFF10A37F),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(Icons.send, color: Colors.white, size: 20),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
             ),
-          ),
-        ],
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SelectableText(
+              content,
+              style: TextStyle(
+                color: isUser ? Colors.white : AppTheme.textColor,
+                fontSize: _fontSize,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}',
+              style: TextStyle(
+                fontSize: 10,
+                color: isUser ? Colors.white70 : AppTheme.textLightColor,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-Widget _buildSidebar() {
+  Widget _buildActionButton(IconData icon, String label, VoidCallback onTap) {
+    return Column(
+      children: [
+        IconButton(
+          icon: Icon(icon, size: 22),
+          onPressed: onTap,
+          style: IconButton.styleFrom(
+            backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
+            padding: const EdgeInsets.all(10),
+          ),
+        ),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 10,
+            color: AppTheme.textLightColor,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSidebar() {
     return Container(
       width: 280,
-      color: Colors.grey.shade50,
+      decoration: BoxDecoration(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        border: Border(right: BorderSide(color: AppTheme.borderColor.withOpacity(0.3))),
+      ),
       child: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
+          // Logo
+          Container(
+            padding: const EdgeInsets.all(24),
             child: Column(
               children: [
-                ElevatedButton.icon(
-                  onPressed: _newConversation,
-                  icon: const Icon(Icons.add),
-                  label: const Text('محادثة جديدة'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF10A37F),
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(double.infinity, 48),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                Container(
+                  width: 60,
+                  height: 60,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [AppTheme.primaryColor, AppTheme.accentColor],
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Center(
+                    child: Text(
+                      'GX',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 8),
-                ElevatedButton.icon(
-                  onPressed: _addModel,
-                  icon: const Icon(Icons.download),
-                  label: const Text('إضافة نموذج'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(double.infinity, 48),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Giant Agent X',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 8),
-                ElevatedButton.icon(
-                  onPressed: _refreshModels,
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('تحديث النماذج'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.orange,
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(double.infinity, 48),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                const SizedBox(height: 4),
+                Text(
+                  'الوكيل العملاق',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppTheme.textLightColor,
                   ),
                 ),
               ],
             ),
           ),
           const Divider(),
+          // Actions
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                _buildSidebarButton(Icons.add, 'محادثة جديدة', _newConversation),
+                const SizedBox(height: 8),
+                _buildSidebarButton(Icons.download, 'إضافة نموذج', _addModel),
+                const SizedBox(height: 8),
+                _buildSidebarButton(Icons.refresh, 'تحديث النماذج', _refreshModels),
+              ],
+            ),
+          ),
+          const Divider(),
+          // Models list
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
-              children: const [
-                Icon(Icons.model_training, size: 18, color: Colors.black54),
-                SizedBox(width: 8),
-                Text('النماذج المتاحة', style: TextStyle(fontWeight: FontWeight.w600)),
+              children: [
+                Icon(Icons.model_training, size: 18, color: AppTheme.textLightColor),
+                const SizedBox(width: 8),
+                Text(
+                  'النماذج',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textColor,
+                  ),
+                ),
               ],
             ),
           ),
@@ -512,24 +551,31 @@ Widget _buildSidebar() {
                 return ListTile(
                   leading: Icon(
                     isActive ? Icons.check_circle : Icons.circle_outlined,
-                    color: isActive ? const Color(0xFF10A37F) : Colors.grey,
+                    color: isActive ? AppTheme.primaryColor : AppTheme.textLightColor,
                     size: 20,
                   ),
                   title: Text(
                     model['name'],
                     style: TextStyle(
                       fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+                      color: isActive ? AppTheme.primaryColor : null,
                     ),
                   ),
-                  subtitle: Text('${model['size']} MB • ${model['type']}'),
+                  subtitle: Text(
+                    '${model['size']} MB • ${model['type']}',
+                    style: TextStyle(fontSize: 11, color: AppTheme.textLightColor),
+                  ),
                   trailing: isActive
                       ? Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF10A37F).withOpacity(0.1),
+                            color: AppTheme.primaryColor.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: const Text('نشط', style: TextStyle(fontSize: 10, color: Color(0xFF10A37F))),
+                          child: Text(
+                            'نشط',
+                            style: TextStyle(fontSize: 10, color: AppTheme.primaryColor),
+                          ),
                         )
                       : null,
                   onTap: () => _switchModel(model['id']),
@@ -538,6 +584,26 @@ Widget _buildSidebar() {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSidebarButton(IconData icon, String label, VoidCallback onTap) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: onTap,
+        icon: Icon(icon, size: 18),
+        label: Text(label),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
+          foregroundColor: AppTheme.primaryColor,
+          elevation: 0,
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
       ),
     );
   }
