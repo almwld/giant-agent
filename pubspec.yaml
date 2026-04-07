@@ -1,6 +1,6 @@
 name: giant_agent_x
-description: Professional AI Agent
-version: 5.0.0+1
+description: AI Agent Application
+version: 1.0.0+1
 
 environment:
   sdk: '>=3.0.0 <4.0.0'

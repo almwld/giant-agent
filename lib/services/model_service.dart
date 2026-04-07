@@ -1,8 +1,7 @@
 import 'dart:io';
-import 'package:flutter/material.dart';
+import 'dart:math';
 import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'python/python_executor.dart';
 
 class ModelService {
   static final ModelService _instance = ModelService._internal();
@@ -11,7 +10,6 @@ class ModelService {
   
   List<Map<String, dynamic>> _models = [];
   String _activeModelId = '';
-  final PythonExecutor _python = PythonExecutor();
   
   Future<void> init() async {
     await _scanModels();
@@ -32,15 +30,13 @@ class ModelService {
           List<FileSystemEntity> files = await dir.list().toList();
           for (var file in files) {
             String fileName = file.path.split('/').last;
-            if (fileName.endsWith('.tflite') || fileName.endsWith('.onnx') || fileName.endsWith('.gguf')) {
+            if (fileName.endsWith('.tflite')) {
               File modelFile = File(file.path);
               int size = await modelFile.length();
               _models.add({
                 'id': fileName,
                 'name': fileName,
-                'path': file.path,
                 'size': (size / 1024 / 1024).toStringAsFixed(2),
-                'type': fileName.split('.').last,
               });
             }
           }
@@ -51,9 +47,7 @@ class ModelService {
     _models.add({
       'id': 'builtin',
       'name': 'Built-in AI',
-      'path': null,
       'size': '0',
-      'type': 'builtin',
     });
     
     if (_activeModelId.isEmpty && _models.isNotEmpty) {
@@ -61,18 +55,22 @@ class ModelService {
     }
   }
   
-  Future<void> refreshModels() async {
-    await _scanModels();
+  List<Map<String, dynamic>> getModels() => _models;
+  
+  Map<String, dynamic> getActiveModel() {
+    if (_models.isEmpty) {
+      return {'id': 'builtin', 'name': 'Built-in AI', 'size': '0'};
+    }
+    return _models.firstWhere((m) => m['id'] == _activeModelId, orElse: () => _models.first);
   }
   
   Future<bool> addModelFromFile() async {
     try {
-      PermissionStatus status = await Permission.storage.request();
-      if (!status.isGranted) return false;
+      await Permission.storage.request();
       
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['tflite', 'onnx', 'gguf'],
+        allowedExtensions: ['tflite'],
       );
       
       if (result != null) {
@@ -95,68 +93,38 @@ class ModelService {
     }
   }
   
-  List<Map<String, dynamic>> getModels() => _models;
-  
-  Map<String, dynamic> getActiveModel() {
-    if (_models.isEmpty) {
-      return {'id': 'builtin', 'name': 'Built-in AI', 'size': '0', 'type': 'builtin'};
-    }
-    return _models.firstWhere((m) => m['id'] == _activeModelId, orElse: () => _models.first);
-  }
-  
-  Future<bool> switchModel(String modelId) async {
-    Map<String, dynamic>? model = _models.firstWhere((m) => m['id'] == modelId, orElse: () => {});
-    if (model.isNotEmpty) {
-      _activeModelId = modelId;
-      return true;
-    }
-    return false;
-  }
-  
   Future<String> generateResponse(String input) async {
     String lower = input.toLowerCase();
     
-    if (lower.contains('تحليل بيانات')) {
-      List<num> numbers = [10, 20, 30, 40, 50];
-      return await _python.createDataAnalyzer(numbers);
-    }
-    
-    if (lower.contains('تحليل نص')) {
-      String text = input.replaceAll('تحليل نص', '').trim();
-      if (text.isEmpty) text = 'الذكاء الاصطناعي هو مستقبل التكنولوجيا';
-      return await _python.analyzeTextWithNLP(text);
-    }
-    
-    if (lower.contains('تعلم آلة')) {
-      return await _python.createAndTrainModel();
-    }
-    
-    if (lower.contains('أتمتة')) {
-      List<String> tasks = ['تحليل بيانات', 'معالجة نصوص', 'توليد تقرير'];
-      return await _python.automateTasks(tasks);
-    }
-    
     if (lower.contains('مرحبا')) {
-      return 'مرحباً! 👋 أنا Giant Agent X\nأستطيع:\n• تحليل بيانات 📊\n• تحليل نصوص 📝\n• تعلم آلة 🧠\n• أتمتة المهام ⚡';
-    }
-    
-    if (lower.contains('كيف حالك')) {
+      return 'مرحباً! 👋 أنا Giant Agent X. كيف يمكنني مساعدتك؟';
+    } else if (lower.contains('كيف حالك')) {
       return 'أنا بخير، شكراً! 🧠 جاهز لمساعدتك.';
-    }
-    
-    if (lower.contains('شكرا')) {
+    } else if (lower.contains('شكرا')) {
       return 'العفو! 🤝 دائماً في خدمتك.';
-    }
-    
-    if (lower.contains('+')) {
-      final parts = input.split('+');
+    } else if (lower.contains('وداعا')) {
+      return 'وداعاً! 👋 سعدت بمساعدتك.';
+    } else if (lower.contains('كود')) {
+      return '```dart\nvoid main() {\n  print("Hello from Giant Agent X!");\n}\n```';
+    } else if (lower.contains('موقع')) {
+      return '<html><body><h1>Giant Agent X</h1></body></html>';
+    } else if (lower.contains('حلل')) {
+      String text = input.replaceAll('حلل', '').trim();
+      return '📊 تحليل النص:\nالطول: ${text.length} حرف\nالكلمات: ${text.split(' ').length} كلمة';
+    } else if (lower.contains('+')) {
       try {
+        final parts = input.split('+');
         double a = double.parse(parts[0].trim());
         double b = double.parse(parts[1].trim());
         return '🧮 النتيجة: ${a + b}';
       } catch (e) {}
     }
     
-    return 'سؤال جيد! كيف يمكنني مساعدتك؟';
+    List<String> responses = [
+      'سؤال جيد! كيف يمكنني مساعدتك؟',
+      'أفهم ما تقصد. هل تريد معرفة المزيد؟',
+      'هذا مثير للاهتمام! أخبرني أكثر.',
+    ];
+    return responses[DateTime.now().second % responses.length];
   }
 }
