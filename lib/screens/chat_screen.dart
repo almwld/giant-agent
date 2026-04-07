@@ -407,20 +407,3 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 }
-
-  @override
-  void initState() {
-    super.initState();
-    print('🚀 بدء تشغيل التطبيق...');
-    _init();
-  }
-
-  Future<void> _init() async {
-    print('📥 جاري تهيئة النماذج...');
-    await _modelService.init();
-    print('✅ تم التهيئة. عدد النماذج: ${_modelService.getModels().length}');
-    setState(() {
-      _models = _modelService.getModels();
-      _activeModel = _modelService.getActiveModel();
-    });
-  }
