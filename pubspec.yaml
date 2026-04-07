@@ -36,11 +36,12 @@ dependencies:
   translator: ^1.0.0
   easy_localization: ^3.0.0
   
-  # Utils
-  intl: ^0.18.0
-  connectivity_plus: ^5.0.0
-  device_info_plus: ^9.0.0
-  package_info_plus: ^4.0.0
+  # Voice & Speech
+  flutter_tts: ^3.8.0
+  speech_to_text: ^6.6.0
+  
+  # Security
+  flutter_secure_storage: ^9.0.0
 
 dev_dependencies:
   flutter_test:
@@ -52,5 +53,3 @@ flutter:
   assets:
     - assets/
     - assets/translations/
-  flutter_tts: ^3.8.0
-  speech_to_text: ^6.6.0
