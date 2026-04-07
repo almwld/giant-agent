@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class ModelService {
   static final ModelService _instance = ModelService._internal();
@@ -17,6 +18,9 @@ class ModelService {
   
   Future<void> init() async {
     if (_isInitialized) return;
+    
+    // طلب صلاحية التخزين
+    await Permission.storage.request();
     
     // تهيئة قاعدة البيانات
     final docsDir = await getApplicationDocumentsDirectory();
@@ -86,49 +90,61 @@ class ModelService {
       }
     }
     
-    // إضافة نموذج تجريبي إذا لم يتم العثور على نماذج
-    if (_models.isEmpty) {
-      _models.add({
-        'id': 'builtin',
-        'name': 'Built-in AI',
-        'path': null,
-        'size': '0',
-        'type': 'builtin',
-        'status': 'available',
-        'loaded': true,
-      });
-    }
+    // إضافة نموذج مدمج
+    _models.add({
+      'id': 'builtin',
+      'name': 'Built-in AI',
+      'path': null,
+      'size': '0',
+      'type': 'builtin',
+      'status': 'available',
+      'loaded': true,
+    });
     
-    _activeModelId = _models.first['id'];
+    if (_activeModelId.isEmpty && _models.isNotEmpty) {
+      _activeModelId = _models.first['id'];
+    }
   }
   
   // إضافة نموذج من ملف يختاره المستخدم
   Future<bool> addModelFromFile() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['tflite', 'onnx', 'gguf'],
-    );
-    
-    if (result != null) {
-      final file = File(result.files.single.path!);
-      final fileName = result.files.single.name;
-      
-      // إنشاء مجلد النماذج إذا لم يكن موجوداً
-      final modelsDir = Directory('/storage/emulated/0/Download/models/');
-      if (!await modelsDir.exists()) {
-        await modelsDir.create(recursive: true);
+    try {
+      // طلب صلاحية التخزين أولاً
+      final status = await Permission.storage.request();
+      if (!status.isGranted) {
+        return false;
       }
       
-      // نسخ الملف إلى مجلد النماذج
-      final newPath = '/storage/emulated/0/Download/models/$fileName';
-      await file.copy(newPath);
+      // اختيار ملف النموذج
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['tflite', 'onnx', 'gguf'],
+      );
       
-      // إعادة مسح النماذج
-      await scanModels();
-      
-      return true;
+      if (result != null) {
+        final file = File(result.files.single.path!);
+        final fileName = result.files.single.name;
+        
+        // إنشاء مجلد النماذج إذا لم يكن موجوداً
+        final modelsDir = Directory('/storage/emulated/0/Download/models/');
+        if (!await modelsDir.exists()) {
+          await modelsDir.create(recursive: true);
+        }
+        
+        // نسخ الملف إلى مجلد النماذج
+        final newPath = '/storage/emulated/0/Download/models/$fileName';
+        await file.copy(newPath);
+        
+        // إعادة مسح النماذج
+        await scanModels();
+        
+        return true;
+      }
+      return false;
+    } catch (e) {
+      print('Error adding model: $e');
+      return false;
     }
-    return false;
   }
   
   // تحديث النماذج
@@ -141,6 +157,14 @@ class ModelService {
   }
   
   Map<String, dynamic> getActiveModel() {
+    if (_models.isEmpty) {
+      return {
+        'id': 'builtin',
+        'name': 'Built-in AI',
+        'size': '0',
+        'type': 'builtin',
+      };
+    }
     return _models.firstWhere((m) => m['id'] == _activeModelId, orElse: () => _models.first);
   }
   
@@ -238,10 +262,33 @@ void main() {
     try {
       if (input.contains('+')) {
         final parts = input.split('+');
-        return 'النتيجة: ${double.parse(parts[0]) + double.parse(parts[1])}';
+        final a = double.tryParse(parts[0].trim()) ?? 0;
+        final b = double.tryParse(parts[1].trim()) ?? 0;
+        return 'النتيجة: ${a + b}';
       }
-    } catch (e) {}
-    return 'النتيجة: خطأ في العملية';
+      if (input.contains('-')) {
+        final parts = input.split('-');
+        final a = double.tryParse(parts[0].trim()) ?? 0;
+        final b = double.tryParse(parts[1].trim()) ?? 0;
+        return 'النتيجة: ${a - b}';
+      }
+      if (input.contains('*')) {
+        final parts = input.split('*');
+        final a = double.tryParse(parts[0].trim()) ?? 0;
+        final b = double.tryParse(parts[1].trim()) ?? 0;
+        return 'النتيجة: ${a * b}';
+      }
+      if (input.contains('/')) {
+        final parts = input.split('/');
+        final a = double.tryParse(parts[0].trim()) ?? 0;
+        final b = double.tryParse(parts[1].trim()) ?? 1;
+        if (b == 0) return 'لا يمكن القسمة على صفر';
+        return 'النتيجة: ${a / b}';
+      }
+    } catch (e) {
+      return 'خطأ في العملية الحسابية';
+    }
+    return 'الرجاء كتابة عملية صحيحة مثل: 5+3';
   }
   
   String _getHelp() {
@@ -261,6 +308,7 @@ void main() {
       'سؤال جيد! كيف يمكنني مساعدتك بشكل أفضل؟',
       'أفهم ما تقصده. هل تريد معرفة المزيد؟',
       'هذا مثير للاهتمام! أخبرني أكثر.',
+      'شكراً على سؤالك. دعني أفكر في الأمر...',
     ];
     return responses[Random().nextInt(responses.length)];
   }

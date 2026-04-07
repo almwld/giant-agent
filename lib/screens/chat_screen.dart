@@ -415,3 +415,18 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     );
   }
 }
+
+  // إضافة نموذج
+  Future<void> _addModel() async {
+    final added = await _modelService.addModelFromFile();
+    if (added) {
+      await _refreshModels();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('✅ تم إضافة النموذج بنجاح')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('❌ لم يتم إضافة النموذج. تأكد من اختيار ملف .tflite')),
+      );
+    }
+  }
