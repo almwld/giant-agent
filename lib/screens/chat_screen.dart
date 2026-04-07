@@ -59,8 +59,22 @@ class _ChatScreenState extends State<ChatScreen> {
       _activeModel = _modelService.getActiveModel();
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Models refreshed')),
+      const SnackBar(content: Text('تم تحديث النماذج')),
     );
+  }
+
+  Future<void> _addModel() async {
+    final added = await _modelService.addModelFromFile();
+    if (added) {
+      await _refreshModels();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تم إضافة النموذج بنجاح')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('لم يتم إضافة النموذج')),
+      );
+    }
   }
 
   Future<void> _sendMessage() async {
@@ -100,13 +114,13 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         _messages.add({
           'isUser': true,
-          'content': '[File: ${result.files.single.name}]\n${content.length > 500 ? content.substring(0, 500) + '...' : content}',
+          'content': '[ملف: ${result.files.single.name}]\n${content.length > 500 ? content.substring(0, 500) + '...' : content}',
           'time': DateTime.now(),
         });
         _isLoading = true;
       });
       
-      final response = await _modelService.generateResponse('Analyze this file: $content');
+      final response = await _modelService.generateResponse('حلل هذا الملف: $content');
       
       setState(() {
         _messages.add({
@@ -127,13 +141,13 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         _messages.add({
           'isUser': true,
-          'content': '[Image: ${image.name}]',
+          'content': '[صورة: ${image.name}]',
           'time': DateTime.now(),
         });
         _isLoading = true;
       });
       
-      final response = await _modelService.generateResponse('Describe this image');
+      final response = await _modelService.generateResponse('وصف هذه الصورة');
       
       setState(() {
         _messages.add({
@@ -156,10 +170,9 @@ class _ChatScreenState extends State<ChatScreen> {
     await _modelService.switchModel(modelId);
     setState(() {
       _activeModel = _modelService.getActiveModel();
-      _isSidebarOpen = false;
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Switched to: ${_activeModel['name']}')),
+      SnackBar(content: Text('تم التبديل إلى: ${_activeModel['name']}')),
     );
   }
 
@@ -184,16 +197,15 @@ class _ChatScreenState extends State<ChatScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             SwitchListTile(
-              title: const Text('Do Not Disturb'),
+              title: const Text('عدم الإزعاج'),
               value: _doNotDisturb,
               onChanged: (value) {
                 setState(() => _doNotDisturb = value);
                 SharedPreferences.getInstance().then((prefs) => prefs.setBool('do_not_disturb', value));
-                Navigator.pop(context);
               },
             ),
             ListTile(
-              title: const Text('Font Size'),
+              title: const Text('حجم الخط'),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -216,7 +228,7 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
             ListTile(
-              title: const Text('Language'),
+              title: const Text('اللغة'),
               trailing: DropdownButton<String>(
                 value: _currentLanguage,
                 items: const [
@@ -227,7 +239,6 @@ class _ChatScreenState extends State<ChatScreen> {
                   if (value != null) {
                     setState(() => _currentLanguage = value);
                     SharedPreferences.getInstance().then((prefs) => prefs.setString('language', value));
-                    Navigator.pop(context);
                   }
                 },
               ),
@@ -241,6 +252,27 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        title: const Text('Giant Agent X'),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _refreshModels,
+            tooltip: 'تحديث النماذج',
+          ),
+          IconButton(
+            icon: const Icon(Icons.add_box),
+            onPressed: _addModel,
+            tooltip: 'إضافة نموذج',
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: _showSettingsMenu,
+            tooltip: 'الإعدادات',
+          ),
+        ],
+      ),
       body: Row(
         children: [
           // Sidebar
@@ -253,70 +285,23 @@ class _ChatScreenState extends State<ChatScreen> {
           Expanded(
             child: Column(
               children: [
-                // Header
+                // النموذج النشط
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).scaffoldBackgroundColor,
-                    border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
-                  ),
+                  padding: const EdgeInsets.all(8),
+                  color: const Color(0xFF10A37F).withOpacity(0.1),
                   child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      IconButton(
-                        icon: Icon(_isSidebarOpen ? Icons.menu_open : Icons.menu),
-                        onPressed: () => setState(() => _isSidebarOpen = !_isSidebarOpen),
+                      const Icon(Icons.model_training, size: 16),
+                      const SizedBox(width: 8),
+                      Text(
+                        'النموذج النشط: ${_activeModel['name'] ?? "Built-in"}',
+                        style: const TextStyle(fontSize: 12),
                       ),
                       const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF10A37F).withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              width: 8,
-                              height: 8,
-                              decoration: const BoxDecoration(
-                                color: Color(0xFF10A37F),
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              _activeModel['name'] ?? 'No Model',
-                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const Spacer(),
-                      IconButton(
-                        icon: const Icon(Icons.refresh),
-                        onPressed: _refreshModels,
-                        tooltip: 'Refresh Models',
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.attach_file),
-                        onPressed: _pickFile,
-                        tooltip: 'Upload File',
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.image),
-                        onPressed: _pickImage,
-                        tooltip: 'Upload Image',
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.settings),
-                        onPressed: _showSettingsMenu,
-                        tooltip: 'Settings',
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.add),
-                        onPressed: _newConversation,
-                        tooltip: 'New Chat',
+                      GestureDetector(
+                        onTap: () => setState(() => _isSidebarOpen = !_isSidebarOpen),
+                        child: const Icon(Icons.swap_horiz, size: 16),
                       ),
                     ],
                   ),
@@ -373,42 +358,74 @@ class _ChatScreenState extends State<ChatScreen> {
                     padding: EdgeInsets.all(8),
                     child: LinearProgressIndicator(),
                   ),
-                // Input
+                // Input Area with File Buttons
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: Theme.of(context).scaffoldBackgroundColor,
                     border: Border(top: BorderSide(color: Colors.grey.shade200)),
                   ),
-                  child: Row(
+                  child: Column(
                     children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _controller,
-                          decoration: InputDecoration(
-                            hintText: 'Message...',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(30),
-                              borderSide: BorderSide.none,
+                      // File buttons row
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Row(
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.attach_file),
+                                  onPressed: _pickFile,
+                                  tooltip: 'رفع ملف',
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.image),
+                                  onPressed: _pickImage,
+                                  tooltip: 'رفع صورة',
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.mic),
+                                  onPressed: () {},
+                                  tooltip: 'إدخال صوتي',
+                                ),
+                              ],
                             ),
-                            filled: true,
-                            fillColor: Colors.grey.shade100,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                           ),
-                          onSubmitted: (_) => _sendMessage(),
-                        ),
+                        ],
                       ),
-                      const SizedBox(width: 8),
-                      GestureDetector(
-                        onTap: _sendMessage,
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: const BoxDecoration(
-                            color: Color(0xFF10A37F),
-                            shape: BoxShape.circle,
+                      const SizedBox(height: 8),
+                      // Text input row
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _controller,
+                              decoration: InputDecoration(
+                                hintText: 'اكتب رسالتك...',
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(30),
+                                  borderSide: BorderSide.none,
+                                ),
+                                filled: true,
+                                fillColor: Colors.grey.shade100,
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                              ),
+                              onSubmitted: (_) => _sendMessage(),
+                            ),
                           ),
-                          child: const Icon(Icons.send, color: Colors.white, size: 20),
-                        ),
+                          const SizedBox(width: 8),
+                          GestureDetector(
+                            onTap: _sendMessage,
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFF10A37F),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.send, color: Colors.white, size: 20),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -421,7 +438,7 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildSidebar() {
+Widget _buildSidebar() {
     return Container(
       width: 280,
       color: Colors.grey.shade50,
@@ -434,7 +451,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 ElevatedButton.icon(
                   onPressed: _newConversation,
                   icon: const Icon(Icons.add),
-                  label: const Text('New Chat'),
+                  label: const Text('محادثة جديدة'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF10A37F),
                     foregroundColor: Colors.white,
@@ -446,15 +463,25 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
                 const SizedBox(height: 8),
                 ElevatedButton.icon(
-                  onPressed: () {
-                    if (_messages.isNotEmpty) {
-                      Share.share(_messages.last['content']);
-                    }
-                  },
-                  icon: const Icon(Icons.share),
-                  label: const Text('Share Last Message'),
+                  onPressed: _addModel,
+                  icon: const Icon(Icons.download),
+                  label: const Text('إضافة نموذج'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(double.infinity, 48),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                ElevatedButton.icon(
+                  onPressed: _refreshModels,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('تحديث النماذج'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange,
                     foregroundColor: Colors.white,
                     minimumSize: const Size(double.infinity, 48),
                     shape: RoundedRectangleBorder(
@@ -465,13 +492,14 @@ class _ChatScreenState extends State<ChatScreen> {
               ],
             ),
           ),
+          const Divider(),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
               children: const [
                 Icon(Icons.model_training, size: 18, color: Colors.black54),
                 SizedBox(width: 8),
-                Text('Models', style: TextStyle(fontWeight: FontWeight.w600)),
+                Text('النماذج المتاحة', style: TextStyle(fontWeight: FontWeight.w600)),
               ],
             ),
           ),
@@ -501,7 +529,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             color: const Color(0xFF10A37F).withOpacity(0.1),
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: const Text('Active', style: TextStyle(fontSize: 10, color: Color(0xFF10A37F))),
+                          child: const Text('نشط', style: TextStyle(fontSize: 10, color: Color(0xFF10A37F))),
                         )
                       : null,
                   onTap: () => _switchModel(model['id']),
