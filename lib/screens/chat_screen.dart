@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/model_service.dart';
@@ -38,28 +39,70 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  Future<void> _checkSharedFile() async {
+    try {
+      const platform = MethodChannel('file_receiver');
+      final String? filePath = await platform.invokeMethod('getSharedFile');
+      if (filePath != null && filePath.isNotEmpty) {
+        final file = File(filePath);
+        if (await file.exists()) {
+          final fileName = file.path.split('/').last;
+          if (fileName.endsWith('.tflite')) {
+            final modelsDir = Directory('/storage/emulated/0/Download/models/');
+            if (!await modelsDir.exists()) {
+              await modelsDir.create(recursive: true);
+            }
+            final destPath = '/storage/emulated/0/Download/models/$fileName';
+            await file.copy(destPath);
+            
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('✅ تم استلام النموذج: $fileName')),
+              );
+              await _refreshModels();
+            }
+          } else {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('⚠️ هذا الملف ليس نموذج TFLite')),
+              );
+            }
+          }
+        }
+      }
+    } catch (e) {
+      print('خطأ في استقبال الملف: $e');
+    }
+  }
+
   Future<void> _refreshModels() async {
     await _modelService.refreshModels();
     setState(() {
       _models = _modelService.getModels();
       _activeModel = _modelService.getActiveModel();
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('تم تحديث النماذج')),
-    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تم تحديث النماذج')),
+      );
+    }
   }
 
   Future<void> _addModel() async {
     bool added = await _modelService.addModelFromFile();
     if (added) {
       await _refreshModels();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('✅ تم إضافة النموذج بنجاح')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('✅ تم إضافة النموذج بنجاح')),
+        );
+      }
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('❌ فشل إضافة النموذج')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('❌ فشل إضافة النموذج')),
+        );
+      }
     }
   }
 
@@ -406,41 +449,5 @@ class _ChatScreenState extends State<ChatScreen> {
         ],
       ),
     );
-  }
-}
-import 'dart:io';
-import 'package:flutter/services.dart';
-
-// استقبال الملفات من تطبيقات أخرى
-void _checkSharedFile() async {
-  try {
-    const platform = MethodChannel('file_receiver');
-    final String? filePath = await platform.invokeMethod('getSharedFile');
-    if (filePath != null && filePath.isNotEmpty) {
-      final file = File(filePath);
-      if (await file.exists()) {
-        final fileName = file.path.split('/').last;
-        if (fileName.endsWith('.tflite')) {
-          // نسخ النموذج إلى مجلد النماذج
-          final modelsDir = Directory('/storage/emulated/0/Download/models/');
-          if (!await modelsDir.exists()) {
-            await modelsDir.create(recursive: true);
-          }
-          final destPath = '/storage/emulated/0/Download/models/$fileName';
-          await file.copy(destPath);
-          
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('✅ تم استلام النموذج: $fileName')),
-          );
-          await _refreshModels();
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('⚠️ هذا الملف ليس نموذج TFLite')),
-          );
-        }
-      }
-    }
-  } catch (e) {
-    print('خطأ في استقبال الملف: $e');
   }
 }
