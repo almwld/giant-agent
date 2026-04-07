@@ -61,12 +61,6 @@ class _ChatScreenState extends State<ChatScreen> {
               );
               await _refreshModels();
             }
-          } else {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('⚠️ هذا الملف ليس نموذج TFLite')),
-              );
-            }
           }
         }
       }
@@ -77,30 +71,59 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _refreshModels() async {
     await _modelService.refreshModels();
-    setState(() {
-      _models = _modelService.getModels();
-      _activeModel = _modelService.getActiveModel();
-    });
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم تحديث النماذج')),
-      );
+      setState(() {
+        _models = _modelService.getModels();
+        _activeModel = _modelService.getActiveModel();
+      });
     }
   }
 
   Future<void> _addModel() async {
     bool added = await _modelService.addModelFromFile();
-    if (added) {
+    if (added && mounted) {
       await _refreshModels();
-      if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('✅ تم إضافة النموذج بنجاح')),
+      );
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('❌ فشل إضافة النموذج')),
+      );
+    }
+  }
+
+  Future<void> _importModelManually() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['tflite', 'onnx', 'gguf'],
+        allowMultiple: false,
+        dialogTitle: 'اختر ملف النموذج',
+      );
+      
+      if (result != null && mounted) {
+        final filePath = result.files.single.path!;
+        final fileName = result.files.single.name;
+        
+        final modelsDir = Directory('/storage/emulated/0/Download/models/');
+        if (!await modelsDir.exists()) {
+          await modelsDir.create(recursive: true);
+        }
+        
+        final destPath = '/storage/emulated/0/Download/models/$fileName';
+        await File(filePath).copy(destPath);
+        
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('✅ تم إضافة النموذج بنجاح')),
+          SnackBar(content: Text('✅ تم استيراد النموذج: $fileName')),
         );
+        
+        await _refreshModels();
       }
-    } else {
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('❌ فشل إضافة النموذج')),
+          SnackBar(content: Text('❌ خطأ: $e')),
         );
       }
     }
@@ -111,7 +134,7 @@ class _ChatScreenState extends State<ChatScreen> {
       context,
       MaterialPageRoute(builder: (context) => const FileBrowser()),
     );
-    if (result == true) {
+    if (result == true && mounted) {
       await _refreshModels();
     }
   }
@@ -129,7 +152,7 @@ class _ChatScreenState extends State<ChatScreen> {
     
     if (!_modelService.hasActiveModel()) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('⚠️ يرجى تحميل نموذج أولاً من القائمة الجانبية')),
+        const SnackBar(content: Text('⚠️ يرجى تحميل نموذج أولاً')),
       );
       return;
     }
@@ -147,20 +170,22 @@ class _ChatScreenState extends State<ChatScreen> {
 
     final response = await _modelService.runModel(text);
 
-    setState(() {
-      _messages.add({
-        'isUser': false,
-        'content': response,
-        'time': DateTime.now(),
+    if (mounted) {
+      setState(() {
+        _messages.add({
+          'isUser': false,
+          'content': response,
+          'time': DateTime.now(),
+        });
+        _isLoading = false;
       });
-      _isLoading = false;
-    });
-    _scrollToBottom();
+      _scrollToBottom();
+    }
   }
 
   Future<void> _pickFile() async {
     FilePickerResult? result = await FilePicker.platform.pickFiles();
-    if (result != null) {
+    if (result != null && mounted) {
       final file = File(result.files.single.path!);
       final content = await file.readAsString();
       
@@ -190,7 +215,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final ImagePicker picker = ImagePicker();
     final XFile? image = await picker.pickImage(source: ImageSource.gallery);
     
-    if (image != null) {
+    if (image != null && mounted) {
       setState(() {
         _messages.add({
           'isUser': true,
@@ -228,13 +253,15 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     
     await _modelService.switchModel(model['id']);
-    setState(() {
-      _activeModel = _modelService.getActiveModel();
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('تم التبديل إلى: ${model['name']}')),
-    );
-    Navigator.pop(context);
+    if (mounted) {
+      setState(() {
+        _activeModel = _modelService.getActiveModel();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تم التبديل إلى: ${model['name']}')),
+      );
+      Navigator.pop(context);
+    }
   }
 
   void _scrollToBottom() {
@@ -319,6 +346,16 @@ class _ChatScreenState extends State<ChatScreen> {
                 },
               ),
             ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.import_export, color: Colors.blue),
+              title: const Text('استيراد نموذج يدوياً'),
+              subtitle: const Text('اختر من أي مجلد في الهاتف'),
+              onTap: () {
+                Navigator.pop(context);
+                _importModelManually();
+              },
+            ),
           ],
         ),
       ),
@@ -340,7 +377,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   child: Text(
                     _modelService.hasActiveModel() 
                         ? 'النموذج النشط: ${_modelService.getActiveModelName()}' 
-                        : '⚠️ الرجاء تحميل نموذج TFLite من القائمة الجانبية',
+                        : '⚠️ الرجاء تحميل نموذج TFLite',
                     style: TextStyle(
                       color: _modelService.hasActiveModel() ? Colors.green : Colors.orange,
                     ),
@@ -451,90 +488,3 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 }
-
-  // استيراد نموذج يدوياً من أي مكان في الهاتف
-  Future<void> _importModelManually() async {
-    try {
-      // طلب صلاحية التخزين الكامل
-      if (!status.isGranted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('⚠️ يرجى منح صلاحية التخزين')),
-        );
-        return;
-      }
-      
-      // استخدام FilePicker لاختيار أي ملف من أي مكان
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['tflite', 'onnx', 'gguf'],
-        allowMultiple: false,
-        dialogTitle: 'اختر ملف النموذج',
-      );
-      
-      if (result != null) {
-        final filePath = result.files.single.path!;
-        final fileName = result.files.single.name;
-        
-        // إنشاء مجلد النماذج
-        final modelsDir = Directory('/storage/emulated/0/Download/models/');
-        if (!await modelsDir.exists()) {
-          await modelsDir.create(recursive: true);
-        }
-        
-        // نسخ الملف
-        final destPath = '/storage/emulated/0/Download/models/$fileName';
-        await File(filePath).copy(destPath);
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('✅ تم استيراد النموذج: $fileName')),
-        );
-        
-        await _refreshModels();
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('❌ خطأ: $e')),
-      );
-    }
-  }
-import 'package:permission_handler/permission_handler.dart';
-
-  // استيراد نموذج يدوياً من أي مكان في الهاتف
-  Future<void> _importModelManually() async {
-    try {
-      // استخدام FilePicker لاختيار أي ملف من أي مكان
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['tflite', 'onnx', 'gguf'],
-        allowMultiple: false,
-        dialogTitle: 'اختر ملف النموذج',
-      );
-      
-      if (result != null && mounted) {
-        final filePath = result.files.single.path!;
-        final fileName = result.files.single.name;
-        
-        // إنشاء مجلد النماذج
-        final modelsDir = Directory('/storage/emulated/0/Download/models/');
-        if (!await modelsDir.exists()) {
-          await modelsDir.create(recursive: true);
-        }
-        
-        // نسخ الملف
-        final destPath = '/storage/emulated/0/Download/models/$fileName';
-        await File(filePath).copy(destPath);
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('✅ تم استيراد النموذج: $fileName')),
-        );
-        
-        await _refreshModels();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ خطأ: $e')),
-        );
-      }
-    }
-  }
