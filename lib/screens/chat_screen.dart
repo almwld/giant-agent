@@ -20,10 +20,6 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isSidebarOpen = false;
   List<Map<String, dynamic>> _models = [];
   Map<String, dynamic> _activeModel = {};
-  
-  // قائمة المحادثات
-  final List<Map<String, dynamic>> _conversations = [];
-  String _currentConversationId = '';
 
   @override
   void initState() {
@@ -76,7 +72,7 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         _messages.add({
           'isUser': true,
-          'content': '[File Uploaded: ${result.files.single.name}]\n${content.length > 500 ? content.substring(0, 500) + '...' : content}',
+          'content': '[File: ${result.files.single.name}]\n${content.length > 500 ? content.substring(0, 500) + '...' : content}',
           'time': DateTime.now(),
         });
         _isLoading = true;
@@ -103,7 +99,7 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         _messages.add({
           'isUser': true,
-          'content': '[Image Selected: ${image.name}]',
+          'content': '[Image: ${image.name}]',
           'time': DateTime.now(),
         });
         _isLoading = true;
@@ -125,7 +121,6 @@ class _ChatScreenState extends State<ChatScreen> {
   void _newConversation() {
     setState(() {
       _messages.clear();
-      _currentConversationId = DateTime.now().millisecondsSinceEpoch.toString();
     });
   }
 
@@ -136,7 +131,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _isSidebarOpen = false;
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Switched to model: ${_activeModel['name']}')),
+      SnackBar(content: Text('Switched to: ${_activeModel['name']}')),
     );
   }
 
@@ -157,7 +152,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return Scaffold(
       body: Row(
         children: [
-          // Sidebar - مثل Pocket Pal
+          // Sidebar
           AnimatedContainer(
             duration: const Duration(milliseconds: 300),
             width: _isSidebarOpen ? 280 : 0,
@@ -171,7 +166,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: Theme.of(context).scaffoldBackgroundColor,
                     border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
                   ),
                   child: Row(
@@ -234,21 +229,54 @@ class _ChatScreenState extends State<ChatScreen> {
                     itemBuilder: (context, index) {
                       final msg = _messages[index];
                       final isUser = msg['isUser'] as bool;
-                      return _buildMessageBubble(msg['content'], isUser, msg['time']);
+                      return Align(
+                        alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          constraints: BoxConstraints(
+                            maxWidth: MediaQuery.of(context).size.width * 0.75,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isUser ? const Color(0xFF10A37F) : Colors.grey.shade200,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              SelectableText(
+                                msg['content'],
+                                style: TextStyle(
+                                  color: isUser ? Colors.white : Colors.black87,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${(msg['time'] as DateTime).hour}:${(msg['time'] as DateTime).minute.toString().padLeft(2, '0')}',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: isUser ? Colors.white70 : Colors.grey.shade600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
                     },
                   ),
                 ),
-                // Loading Indicator
+                // Loading
                 if (_isLoading)
                   const Padding(
                     padding: EdgeInsets.all(8),
                     child: LinearProgressIndicator(),
                   ),
-                // Input Area
+                // Input
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: Theme.of(context).scaffoldBackgroundColor,
                     border: Border(top: BorderSide(color: Colors.grey.shade200)),
                   ),
                   child: Row(
@@ -292,7 +320,7 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-    Widget _buildSidebar() {
+  Widget _buildSidebar() {
     return Container(
       width: 280,
       color: Colors.grey.shade50,
@@ -361,43 +389,6 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildMessageBubble(String content, bool isUser, DateTime time) {
-    return Align(
-      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.75,
-        ),
-        decoration: BoxDecoration(
-          color: isUser ? const Color(0xFF10A37F) : Colors.grey.shade200,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SelectableText(
-              content,
-              style: TextStyle(
-                color: isUser ? Colors.white : Colors.black87,
-                fontSize: 14,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}',
-              style: TextStyle(
-                fontSize: 10,
-                color: isUser ? Colors.white70 : Colors.grey.shade600,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

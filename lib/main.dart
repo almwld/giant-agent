@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'core/app_config.dart';
 import 'screens/chat_screen.dart';
-import 'services/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -13,7 +10,6 @@ void main() async {
     Permission.storage,
     Permission.photos,
     Permission.camera,
-    Permission.notification,
   ].request();
   
   runApp(const MyApp());
@@ -25,12 +21,65 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: AppConfig.appName,
+      title: 'Giant Agent X',
       debugShowCheckedModeBanner: false,
-      theme: AppConfig.lightTheme,
-      darkTheme: AppConfig.darkTheme,
+      theme: ThemeData(
+        brightness: Brightness.light,
+        primaryColor: const Color(0xFF10A37F),
+        scaffoldBackgroundColor: Colors.white,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          centerTitle: true,
+          iconTheme: IconThemeData(color: Colors.black87),
+          titleTextStyle: TextStyle(color: Colors.black87, fontSize: 18, fontWeight: FontWeight.w600),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: Colors.white,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(30),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(30),
+            borderSide: BorderSide(color: Colors.grey.shade200),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(30),
+            borderSide: const BorderSide(color: Color(0xFF10A37F), width: 2),
+          ),
+        ),
+      ),
+      darkTheme: ThemeData(
+        brightness: Brightness.dark,
+        primaryColor: const Color(0xFF10A37F),
+        scaffoldBackgroundColor: const Color(0xFF343541),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF444654),
+          elevation: 0,
+          centerTitle: true,
+          iconTheme: IconThemeData(color: Colors.white),
+          titleTextStyle: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: const Color(0xFF444654),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(30),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(30),
+            borderSide: BorderSide(color: Colors.grey.shade700),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(30),
+            borderSide: const BorderSide(color: Color(0xFF10A37F), width: 2),
+          ),
+        ),
+      ),
       themeMode: ThemeMode.system,
-      scaffoldMessengerKey: NotificationService().scaffoldMessengerKey,
       home: const ChatScreen(),
     );
   }
