@@ -1,6 +1,6 @@
 name: giant_agent_x
-description: AI Agent Application
-version: 1.0.0+1
+description: AI Agent with Real TFLite Models
+version: 2.0.0+1
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -8,12 +8,11 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  sqflite: ^2.3.0
-  path_provider: ^2.1.0
-  shared_preferences: ^2.2.0
-  permission_handler: ^11.0.0
+  tflite_flutter: ^0.10.0
   file_picker: ^6.0.0
   image_picker: ^1.0.0
+  permission_handler: ^11.0.0
+  path_provider: ^2.1.0
 
 dev_dependencies:
   flutter_test:

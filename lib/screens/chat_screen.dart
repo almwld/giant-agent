@@ -106,61 +106,6 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollToBottom();
   }
 
-  Future<void> _pickFile() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles();
-    if (result != null) {
-      final file = File(result.files.single.path!);
-      final content = await file.readAsString();
-      
-      setState(() {
-        _messages.add({
-          'isUser': true,
-          'content': '📁 ${result.files.single.name}\n${content.length > 500 ? content.substring(0, 500) + '...' : content}',
-          'time': DateTime.now(),
-        });
-        _isLoading = true;
-      });
-      
-      final response = await _modelService.runModel('تحليل الملف: $content');
-      
-      setState(() {
-        _messages.add({
-          'isUser': false,
-          'content': response,
-          'time': DateTime.now(),
-        });
-        _isLoading = false;
-      });
-    }
-  }
-
-  Future<void> _pickImage() async {
-    final ImagePicker picker = ImagePicker();
-    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
-    
-    if (image != null) {
-      setState(() {
-        _messages.add({
-          'isUser': true,
-          'content': '🖼️ ${image.name}',
-          'time': DateTime.now(),
-        });
-        _isLoading = true;
-      });
-      
-      final response = await _modelService.runModel('تحليل الصورة: ${image.name}');
-      
-      setState(() {
-        _messages.add({
-          'isUser': false,
-          'content': response,
-          'time': DateTime.now(),
-        });
-        _isLoading = false;
-      });
-    }
-  }
-
   void _newConversation() {
     setState(() {
       _messages.clear();
@@ -279,12 +224,15 @@ class _ChatScreenState extends State<ChatScreen> {
                   color: _modelService.hasActiveModel() ? Colors.green : Colors.orange,
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  _modelService.hasActiveModel() 
-                      ? 'النموذج النشط: ${_activeModel['name']}' 
-                      : '⚠️ الرجاء تحميل نموذج من القائمة الجانبية',
-                  style: TextStyle(
-                    color: _modelService.hasActiveModel() ? Colors.green : Colors.orange,
+                Expanded(
+                  child: Text(
+                    _modelService.hasActiveModel() 
+                        ? 'النموذج النشط: ${_modelService.getActiveModelName()}' 
+                        : '⚠️ الرجاء تحميل نموذج TFLite من القائمة الجانبية',
+                    style: TextStyle(
+                      color: _modelService.hasActiveModel() ? Colors.green : Colors.orange,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
                 ),
               ],
@@ -343,16 +291,6 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             child: Row(
               children: [
-                IconButton(
-                  icon: const Icon(Icons.attach_file),
-                  onPressed: _pickFile,
-                  tooltip: 'رفع ملف',
-                ),
-                IconButton(
-                  icon: const Icon(Icons.image),
-                  onPressed: _pickImage,
-                  tooltip: 'رفع صورة',
-                ),
                 Expanded(
                   child: TextField(
                     controller: _controller,
@@ -360,7 +298,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     decoration: InputDecoration(
                       hintText: _modelService.hasActiveModel() 
                           ? 'اكتب رسالتك...' 
-                          : 'قم بتحميل نموذج أولاً',
+                          : 'قم بتحميل نموذج TFLite أولاً',
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(30),
                         borderSide: BorderSide.none,

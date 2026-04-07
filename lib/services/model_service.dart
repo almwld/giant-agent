@@ -1,15 +1,16 @@
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'model_runner.dart';
 
 class ModelService {
   static final ModelService _instance = ModelService._internal();
   factory ModelService() => _instance;
   ModelService._internal();
   
+  final ModelRunner _runner = ModelRunner();
   List<Map<String, dynamic>> _models = [];
   String _activeModelId = '';
-  File? _currentModelFile;
   
   Future<void> init() async {
     await _scanModels();
@@ -30,10 +31,7 @@ class ModelService {
           List<FileSystemEntity> files = await dir.list().toList();
           for (var file in files) {
             String fileName = file.path.split('/').last;
-            if (fileName.endsWith('.tflite') || 
-                fileName.endsWith('.onnx') || 
-                fileName.endsWith('.gguf')) {
-              
+            if (fileName.endsWith('.tflite')) {
               File modelFile = File(file.path);
               int size = await modelFile.length();
               _models.add({
@@ -41,7 +39,7 @@ class ModelService {
                 'name': fileName,
                 'path': file.path,
                 'size': (size / 1024 / 1024).toStringAsFixed(2),
-                'type': fileName.split('.').last,
+                'type': 'tflite',
               });
             }
           }
@@ -61,7 +59,16 @@ class ModelService {
     
     if (_activeModelId.isEmpty && _models.isNotEmpty && _models.first['id'] != 'no_model') {
       _activeModelId = _models.first['id'];
-      _currentModelFile = File(_models.first['path']);
+      await _loadModel(_models.first['path']);
+    }
+  }
+  
+  Future<void> _loadModel(String? path) async {
+    if (path != null) {
+      final loaded = await _runner.loadModel(path);
+      if (!loaded) {
+        print('⚠️ فشل تحميل النموذج: $path');
+      }
     }
   }
   
@@ -75,7 +82,8 @@ class ModelService {
       
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['tflite', 'onnx', 'gguf'],
+        allowedExtensions: ['tflite'],
+        dialogTitle: 'اختر ملف نموذج TFLite',
       );
       
       if (result != null) {
@@ -94,6 +102,7 @@ class ModelService {
       }
       return false;
     } catch (e) {
+      print('خطأ في إضافة النموذج: $e');
       return false;
     }
   }
@@ -111,52 +120,25 @@ class ModelService {
     Map<String, dynamic>? model = _models.firstWhere((m) => m['id'] == modelId, orElse: () => {});
     if (model.isNotEmpty && model['path'] != null) {
       _activeModelId = modelId;
-      _currentModelFile = File(model['path']);
+      await _loadModel(model['path']);
       return true;
     }
     return false;
   }
   
   bool hasActiveModel() {
-    return _currentModelFile != null;
+    return _runner.isLoaded();
+  }
+  
+  String getActiveModelName() {
+    return _runner.getModelName();
   }
   
   Future<String> runModel(String input) async {
-    if (_currentModelFile == null) {
-      return '⚠️ يرجى تحميل نموذج أولاً';
-    }
-    
-    // محاكاة تشغيل النموذج (سيتم استبدالها بـ TFLite الفعلي)
-    await Future.delayed(Duration(milliseconds: 500));
-    
-    return '[استجابة من النموذج ${_currentModelFile!.path.split('/').last}]:\n\nتم استلام مدخلاتك: "$input"\n\nالنموذج يعمل بشكل طبيعي.';
+    return await _runner.run(input);
   }
-}
-
-// دالة لفحص وجود النماذج في مجلد معين
-Future<List<Map<String, dynamic>>> scanSpecificFolder(String folderPath) async {
-  final models = <Map<String, dynamic>>[];
-  final dir = Directory(folderPath);
   
-  if (await dir.exists()) {
-    try {
-      final files = await dir.list().toList();
-      for (var file in files) {
-        final fileName = file.path.split('/').last;
-        if (fileName.endsWith('.tflite') || 
-            fileName.endsWith('.onnx') || 
-            fileName.endsWith('.gguf')) {
-          final size = await File(file.path).length();
-          models.add({
-            'id': fileName,
-            'name': fileName,
-            'path': file.path,
-            'size': (size / 1024 / 1024).toStringAsFixed(2),
-            'type': fileName.split('.').last,
-          });
-        }
-      }
-    } catch (e) {}
+  void dispose() {
+    _runner.dispose();
   }
-  return models;
 }
