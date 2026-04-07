@@ -596,3 +596,17 @@ Widget _buildCommandChip(String label, String command) {
   //   icon: Icon(Icons.mic, color: _voiceAssistant.isListening ? Colors.red : null),
   //   onPressed: _voiceAssistant.isListening ? _voiceAssistant.stopListening : _startVoiceInput,
   // ),
+
+  // إضافة البطاقات الإبداعية في الواجهة الرئيسية
+  Widget _buildCreativeFeatures() {
+    return Column(
+      children: [
+        DailyQuote(),
+        const SizedBox(height: 12),
+        ProductivityIndicator(
+          messagesCount: _messages.length,
+          tasksCompleted: _messages.where((m) => m['content'].contains('تم')).length,
+        ),
+      ],
+    );
+  }
