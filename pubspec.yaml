@@ -1,5 +1,5 @@
 name: giant_agent_x
-description: Professional AI Agent with Advanced Features
+description: Professional AI Agent
 version: 5.0.0+1
 
 environment:
@@ -8,47 +8,12 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  
-  # Core
   sqflite: ^2.3.0
   path_provider: ^2.1.0
   shared_preferences: ^2.2.0
   permission_handler: ^11.0.0
-  
-  # File & Media
   file_picker: ^6.0.0
   image_picker: ^1.0.0
-  path: ^1.8.3
-  
-  # Network
-  http: ^1.1.0
-  
-  # UI
-  google_fonts: ^6.1.0
-  flutter_svg: ^2.0.7
-  shimmer: ^3.0.0
-  
-  # Notifications
-  flutter_local_notifications: ^17.0.0
-  timezone: ^0.9.0
-  
-  # Sharing & Export
-  share_plus: ^7.2.2
-  printing: ^5.11.0
-  pdf: ^3.10.0
-  
-  # Voice & Speech
-  flutter_tts: ^3.8.0
-  speech_to_text: ^6.6.0
-  
-  # Security
-  flutter_secure_storage: ^9.0.0
-  
-  # Utils
-  intl: ^0.18.0
-  connectivity_plus: ^5.0.0
-  device_info_plus: ^9.0.0
-  package_info_plus: ^4.0.0
 
 dev_dependencies:
   flutter_test:
@@ -57,7 +22,3 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  assets:
-    - assets/
-    - assets/icons/
-    - assets/backgrounds/
