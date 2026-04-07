@@ -8,6 +8,8 @@
     <application
         android:label="Giant Agent X"
         android:name="androidx.multidex.MultiDexApplication"
+        android:icon="@drawable/ic_launcher"
+        android:roundIcon="@drawable/ic_launcher"
         android:requestLegacyExternalStorage="true">
         
         <activity
