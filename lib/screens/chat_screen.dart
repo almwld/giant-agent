@@ -381,3 +381,11 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 }
+
+  // عرض إحصائيات الأداء
+  void _showPerformance() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const PerformanceScreen()),
+    );
+  }

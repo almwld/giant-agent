@@ -1,7 +1,9 @@
 import 'dart:io';
-import 'dart:convert';
+import 'dart:isolate';
+import 'dart:async';
 import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'performance_service.dart';
 
 class ModelService {
   static final ModelService _instance = ModelService._internal();
@@ -11,6 +13,66 @@ class ModelService {
   List<Map<String, dynamic>> _models = [];
   String _activeModelId = '';
   File? _currentModelFile;
+  final PerformanceService _performance = PerformanceService();
+  
+  // معالجة غير متزامنة باستخدام Isolate
+  Future<String> runModelAsync(String input) async {
+    final startTime = DateTime.now();
+    
+    // التحقق من التخزين المؤقت أولاً
+    final cached = _performance.getCachedResponse(input);
+    if (cached != null) {
+      _performance.recordResponseTime(DateTime.now().difference(startTime).inMilliseconds);
+      return cached;
+    }
+    
+    if (_currentModelFile == null) {
+      return '⚠️ يرجى تحميل نموذج أولاً';
+    }
+    
+    // تنفيذ النموذج في Isolate منفصل
+    final response = await _performance.queueTask(() async {
+      return await _executeInIsolate(input);
+    });
+    
+    // حفظ في التخزين المؤقت
+    _performance.cacheResponse(input, response);
+    
+    final endTime = DateTime.now();
+    _performance.recordResponseTime(endTime.difference(startTime).inMilliseconds);
+    
+    return response;
+  }
+  
+  Future<String> _executeInIsolate(String input) async {
+    // إنشاء ReceivePort للتواصل مع الـ Isolate
+    final receivePort = ReceivePort();
+    
+    // تشغيل الـ Isolate
+    await Isolate.spawn(_isolateEntry, [receivePort.sendPort, input]);
+    
+    // انتظار النتيجة
+    final result = await receivePort.first;
+    receivePort.close();
+    
+    return result as String;
+  }
+  
+  static void _isolateEntry(List<dynamic> args) {
+    final sendPort = args[0] as SendPort;
+    final input = args[1] as String;
+    
+    // محاكاة معالجة النموذج (سيتم استبدالها بتشغيل TFLite الفعلي)
+    final result = _processInIsolate(input);
+    
+    sendPort.send(result);
+  }
+  
+  static String _processInIsolate(String input) {
+    // هنا سيتم تشغيل النموذج الفعلي
+    // حالياً محاكاة بسيطة
+    return '[استجابة سريعة من النموذج]:\n\nتم معالجة: "$input"';
+  }
   
   Future<void> init() async {
     await _scanModels();
@@ -33,8 +95,7 @@ class ModelService {
             String fileName = file.path.split('/').last;
             if (fileName.endsWith('.tflite') || 
                 fileName.endsWith('.onnx') || 
-                fileName.endsWith('.gguf') ||
-                fileName.endsWith('.bin')) {
+                fileName.endsWith('.gguf')) {
               
               File modelFile = File(file.path);
               int size = await modelFile.length();
@@ -77,7 +138,7 @@ class ModelService {
       
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['tflite', 'onnx', 'gguf', 'bin'],
+        allowedExtensions: ['tflite', 'onnx', 'gguf'],
       );
       
       if (result != null) {
@@ -114,28 +175,21 @@ class ModelService {
     if (model.isNotEmpty && model['path'] != null) {
       _activeModelId = modelId;
       _currentModelFile = File(model['path']);
+      _performance.clearCache(); // مسح التخزين المؤقت عند تبديل النموذج
       return true;
     }
     return false;
   }
   
-  // تشغيل النموذج - هنا سيتم تمرير المدخلات إلى النموذج الفعلي
-  Future<String> runModel(String input) async {
-    if (_currentModelFile == null) {
-      return '⚠️ يرجى تحميل نموذج أولاً';
-    }
-    
-    // هنا يتم تمرير النص إلى النموذج الفعلي
-    // حاليًا نقوم بمحاكاة بسيطة، يمكن استبدالها بـ TFLite الفعلي
-    
-    // محاكاة استجابة النموذج
-    await Future.delayed(Duration(milliseconds: 500));
-    
-    // هذه مجرد محاكاة - يجب استبدالها بتشغيل النموذج الفعلي
-    return '[استجابة من النموذج ${_currentModelFile!.path.split('/').last}]:\n\nتم استلام مدخلاتك: "$input"\n\nالنموذج يعمل بشكل طبيعي.';
-  }
-  
   bool hasActiveModel() {
     return _currentModelFile != null;
+  }
+  
+  Map<String, dynamic> getPerformanceStats() {
+    return _performance.getPerformanceStats();
+  }
+  
+  Future<String> runModel(String input) async {
+    return await runModelAsync(input);
   }
 }
