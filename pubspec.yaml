@@ -54,3 +54,5 @@ flutter:
     - assets/
     - assets/translations/
   shared_preferences: ^2.2.0
+  flutter_local_notifications: ^17.0.0
+  timezone: ^0.9.0

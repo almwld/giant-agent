@@ -487,3 +487,79 @@ Widget _buildCommandChip(String label, String command) {
     labelStyle: TextStyle(color: AppTheme.primary),
   );
 }
+
+  // إضافة الأوامر السريعة
+  void _showQuickCommands() {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(20),
+        height: 400,
+        child: Column(
+          children: [
+            const Text(
+              'الأوامر السريعة',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 20),
+            Expanded(
+              child: CommandGrid(onCommandSelected: (command) {
+                Navigator.pop(context);
+                _controller.text = command;
+                _sendMessage();
+              }),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // تصدير المحادثة
+  Future<void> _exportConversation() async {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'تصدير المحادثة',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 20),
+            ListTile(
+              leading: const Icon(Icons.description),
+              title: const Text('Markdown'),
+              onTap: () async {
+                Navigator.pop(context);
+                await ExportService.exportConversationAsMarkdown(_messages);
+                _showSnackbar('تم التصدير بنجاح');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.code),
+              title: const Text('JSON'),
+              onTap: () async {
+                Navigator.pop(context);
+                await ExportService.exportAsJson(_messages);
+                _showSnackbar('تم التصدير بنجاح');
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // إضافة زر الأوامر السريعة والتصدير
+  // أضف في AppBar:
+  // IconButton(
+  //   icon: const Icon(Icons.grid_view),
+  //   onPressed: _showQuickCommands,
+  // ),
+  // IconButton(
+  //   icon: const Icon(Icons.download),
+  //   onPressed: _exportConversation,
+  // ),

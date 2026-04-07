@@ -153,3 +153,20 @@ class AppTheme {
     ),
   );
 }
+
+// ألوان إضافية
+static const Color gradientStart = Color(0xFF6C63FF);
+static const Color gradientMiddle = Color(0xFF3F3D9E);
+static const Color gradientEnd = Color(0xFF1A1A2E);
+
+static const LinearGradient premiumGradient = LinearGradient(
+  begin: Alignment.topLeft,
+  end: Alignment.bottomRight,
+  colors: [gradientStart, gradientMiddle, gradientEnd],
+);
+
+static const BoxShadow glowShadow = BoxShadow(
+  color: Color(0x336C63FF),
+  blurRadius: 20,
+  spreadRadius: 5,
+);
