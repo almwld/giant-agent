@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'core/app_config.dart';
 import 'screens/chat_screen.dart';
+import 'services/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -10,6 +13,7 @@ void main() async {
     Permission.storage,
     Permission.photos,
     Permission.camera,
+    Permission.notification,
   ].request();
   
   runApp(const MyApp());
@@ -21,15 +25,12 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Giant Agent X',
+      title: AppConfig.appName,
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        brightness: Brightness.light,*
-        primaryColor: const Color(0xFF10A37F),
-        scaffoldBackgroundColor: Colors.white,
-        fontFamily: 'System',
-        useMaterial3: true,
-      ),
+      theme: AppConfig.lightTheme,
+      darkTheme: AppConfig.darkTheme,
+      themeMode: ThemeMode.system,
+      scaffoldMessengerKey: NotificationService().scaffoldMessengerKey,
       home: const ChatScreen(),
     );
   }

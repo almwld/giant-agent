@@ -1,6 +1,6 @@
 name: giant_agent_x
-description: AI Agent like Pocket Pal, ChatGPT, Kiwi, MiniMax
-version: 2.0.0+1
+description: Professional AI Agent - Pocket Pal Style with Multiple AI Models
+version: 3.0.0+1
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -8,20 +8,46 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  
+  # Core
   sqflite: ^2.3.0
   path_provider: ^2.1.0
   shared_preferences: ^2.2.0
   permission_handler: ^11.0.0
+  
+  # File & Media
   file_picker: ^6.0.0
   image_picker: ^1.0.0
   path: ^1.8.3
+  
+  # Network
   http: ^1.1.0
+  
+  # UI
+  google_fonts: ^6.1.0
+  flutter_svg: ^2.0.7
+  lottie: ^2.7.0
+  animations: ^2.0.7
+  shimmer: ^3.0.0
+  
+  # Utils
+  intl: ^0.18.0
+  connectivity_plus: ^5.0.0
+  device_info_plus: ^9.0.0
+  package_info_plus: ^4.0.0
+  
+  # Security
+  flutter_secure_storage: ^9.0.0
+  local_auth: ^2.1.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  flutter_lints: ^3.0.0
 
 flutter:
   uses-material-design: true
   assets:
     - assets/
+    - assets/icons/
+    - assets/animations/
