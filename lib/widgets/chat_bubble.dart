@@ -1,106 +1,100 @@
-import 'packagefltter/material.dart'
+import 'package:flutter/material.dart';
+import '../core/theme.dart';
 
-class hatbble extends tatelessidget {
-  final bool isser
-  final tring message
-  final ateime time
-  final tring intent
-  final doble confidence
+class ChatBubble extends StatelessWidget {
+  final String message;
+  final bool isUser;
+  final DateTime time;
+  final String? modelName;
+  
+  const ChatBubble({
+    super.key,
+    required this.message,
+    required this.isUser,
+    required this.time,
+    this.modelName,
+  });
 
-  const hatbble({
-    sper.key,
-    reqired this.isser,
-    reqired this.message,
-    reqired this.time,
-    this.intent,
-    this.confidence,
-  })
-
-  override
-  idget bild(ildontext context) {
-    retrn lign(
-      alignment isser  lignment.centeright  lignment.centereft,
-      child ontainer(
-        margin const dgensets.only(bottom ),
-        constraints oxonstraints(
-          maxidth ediaery.of(context).size.width * .,
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    return Align(
+      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.8,
         ),
-        child olmn(
-          crossxislignment isser  rossxislignment.end  rossxislignment.start,
-          children 
-            aterial(
-              elevation ,
-              borderadis orderadis.only(
-                topeft const adis.circlar(),
-                topight const adis.circlar(),
-                bottomeft adis.circlar(isser    ),
-                bottomight adis.circlar(isser    ),
-              ),
-              color isser  olors.deeprple  olors.grey.shade,
-              child adding(
-                padding const dgensets.all(),
-                child olmn(
-                  crossxislignment rossxislignment.start,
-                  children 
-                    electableext(
-                      message,
-                      style const exttyle(color olors.white, fontize , height .),
+        child: Column(
+          crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          children: [
+            // اسم المستخدم/النموذج
+            Padding(
+              padding: const EdgeInsets.only(left: 12, right: 12, bottom: 4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    isUser ? Icons.person : Icons.bolt,
+                    size: 12,
+                    color: isUser ? AppTheme.textLight : AppTheme.primary,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    isUser ? 'أنت' : (modelName ?? 'Giant Agent'),
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: isUser ? AppTheme.textLight : AppTheme.primary,
+                      fontWeight: FontWeight.w500,
                     ),
-                    if (intent ! nll) ...
-                      const izedox(height ),
-                      ontainer(
-                        padding const dgensets.symmetric(horizontal , vertical ),
-                        decoration oxecoration(
-                          color olors.white,
-                          borderadis orderadis.circlar(),
-                        ),
-                        child ow(
-                          mainxisize ainxisize.min,
-                          children 
-                            con(cons.bolt, size , color olors.amber.shade),
-                            const izedox(width ),
-                            ext(
-                              intent!,
-                              style const exttyle(fontize , color olors.white),
-                            ),
-                            if (confidence ! nll) ...
-                              const izedox(width ),
-                              ontainer(
-                                width ,
-                                height ,
-                                decoration oxecoration(
-                                  color olors.white,
-                                  shape oxhape.circle,
-                                ),
-                              ),
-                              const izedox(width ),
-                              ext(
-                                '${(confidence! * ).tont()}%',
-                                style const exttyle(fontize , color olors.white),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
-            adding(
-              padding const dgensets.only(top , left , right ),
-              child ow(
-                mainxisize ainxisize.min,
-                children 
-                  con(
-                    isser  cons.person  cons.bolt,
-                    size ,
-                    color olors.grey.shade,
+            // فقاعة الرسالة
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                gradient: isUser
+                    ? AppTheme.primaryGradient
+                    : LinearGradient(
+                        colors: isDark
+                            ? [AppTheme.darkSurface, AppTheme.darkSurface]
+                            : [Colors.white, Colors.grey.shade50],
+                      ),
+                borderRadius: BorderRadius.only(
+                  topLeft: const Radius.circular(20),
+                  topRight: const Radius.circular(20),
+                  bottomLeft: Radius.circular(isUser ? 20 : 8),
+                  bottomRight: Radius.circular(isUser ? 8 : 20),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 5,
+                    offset: const Offset(0, 2),
                   ),
-                  const izedox(width ),
-                  ext(
-                    '${time.hor.totring().padeft(, '')}${time.minte.totring().padeft(, '')}',
-                    style exttyle(fontize , color olors.grey.shade),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SelectableText(
+                    message,
+                    style: TextStyle(
+                      color: isUser ? Colors.white : (isDark ? AppTheme.darkText : AppTheme.text),
+                      fontSize: 14,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: isUser ? Colors.white70 : AppTheme.textLight,
+                    ),
                   ),
                 ],
               ),
@@ -108,6 +102,6 @@ class hatbble extends tatelessidget {
           ],
         ),
       ),
-    )
+    );
   }
 }

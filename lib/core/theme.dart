@@ -1,67 +1,75 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  // ألوان 2027 - المستقبلية
-  static const Color primaryColor = Color(0xFF7B2FF7);
-  static const Color secondaryColor = Color(0xFF00D2FF);
-  static const Color accentColor = Color(0xFFFF2E6E);
-  static const Color cosmicPurple = Color(0xFF9D4EDD);
-  static const Color cyberBlue = Color(0xFF00F0FF);
-  static const Color neonPink = Color(0xFFFF006E);
-  static const Color textLightColor = Color(0xFF7F8C8D);
-  static const Color glassWhite = Color(0xE6FFFFFF);
-  static const Color darkGlassColor = Color(0x1AFFFFFF);
+  // الألوان الرئيسية
+  static const Color primary = Color(0xFF6366F1);
+  static const Color primaryLight = Color(0xFF818CF8);
+  static const Color primaryDark = Color(0xFF4F46E5);
+  static const Color secondary = Color(0xFF10B981);
+  static const Color accent = Color(0xFFF59E0B);
+  static const Color background = Color(0xFFF8FAFC);
+  static const Color surface = Colors.white;
+  static const Color error = Color(0xFFEF4444);
+  static const Color success = Color(0xFF22C55E);
+  static const Color text = Color(0xFF1E293B);
+  static const Color textLight = Color(0xFF64748B);
   
-  // تدرجات مستقبلية
+  // الألوان للوضع المظلم
+  static const Color darkBackground = Color(0xFF0F172A);
+  static const Color darkSurface = Color(0xFF1E293B);
+  static const Color darkText = Color(0xFFF1F5F9);
+  static const Color darkTextLight = Color(0xFF94A3B8);
+  
+  // تدرجات
   static const LinearGradient primaryGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [Color(0xFF7B2FF7), Color(0xFF00D2FF), Color(0xFFFF2E6E)],
+    colors: [primary, primaryLight],
   );
   
   static const LinearGradient secondaryGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [Color(0xFF9D4EDD), Color(0xFFFF006E)],
+    colors: [secondary, Color(0xFF34D399)],
   );
   
   static const LinearGradient darkGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [Color(0xFF0A0A0A), Color(0xFF1A1A2E), Color(0xFF16213E)],
+    colors: [Color(0xFF0F172A), Color(0xFF1E1B4B)],
   );
   
   static ThemeData lightTheme = ThemeData(
     brightness: Brightness.light,
-    primaryColor: primaryColor,
-    scaffoldBackgroundColor: Colors.white,
+    primaryColor: primary,
+    scaffoldBackgroundColor: background,
     colorScheme: const ColorScheme.light(
-      primary: primaryColor,
-      secondary: secondaryColor,
-      surface: Colors.white,
-      error: neonPink,
+      primary: primary,
+      secondary: secondary,
+      surface: surface,
+      error: error,
     ),
     appBarTheme: const AppBarTheme(
-      backgroundColor: Colors.transparent,
+      backgroundColor: surface,
       elevation: 0,
       centerTitle: true,
-      iconTheme: IconThemeData(color: primaryColor),
+      iconTheme: IconThemeData(color: text),
       titleTextStyle: TextStyle(
-        color: primaryColor,
+        color: text,
         fontSize: 20,
-        fontWeight: FontWeight.bold,
+        fontWeight: FontWeight.w600,
       ),
     ),
     cardTheme: CardTheme(
-      color: Colors.white,
+      color: surface,
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(20),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: Colors.grey.shade50,
+      fillColor: Colors.grey.shade100,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(30),
         borderSide: BorderSide.none,
@@ -72,42 +80,53 @@ class AppTheme {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(30),
-        borderSide: const BorderSide(color: primaryColor, width: 2),
+        borderSide: const BorderSide(color: primary, width: 2),
+      ),
+      hintStyle: const TextStyle(color: textLight),
+    ),
+    chipTheme: ChipThemeData(
+      backgroundColor: Colors.grey.shade100,
+      selectedColor: primary,
+      labelStyle: const TextStyle(color: text),
+      secondaryLabelStyle: const TextStyle(color: Colors.white),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
       ),
     ),
   );
   
   static ThemeData darkTheme = ThemeData(
     brightness: Brightness.dark,
-    primaryColor: primaryColor,
-    scaffoldBackgroundColor: const Color(0xFF0A0A0A),
+    primaryColor: primary,
+    scaffoldBackgroundColor: darkBackground,
     colorScheme: const ColorScheme.dark(
-      primary: primaryColor,
-      secondary: secondaryColor,
-      surface: Color(0xFF1A1A2E),
-      error: neonPink,
+      primary: primary,
+      secondary: secondary,
+      surface: darkSurface,
+      error: error,
     ),
-    appBarTheme: const AppBarTheme(
-      backgroundColor: Colors.transparent,
+    appBarTheme: AppBarTheme(
+      backgroundColor: darkSurface,
       elevation: 0,
       centerTitle: true,
-      iconTheme: IconThemeData(color: primaryColor),
-      titleTextStyle: TextStyle(
-        color: primaryColor,
+      iconTheme: const IconThemeData(color: darkText),
+      titleTextStyle: const TextStyle(
+        color: darkText,
         fontSize: 20,
-        fontWeight: FontWeight.bold,
+        fontWeight: FontWeight.w600,
       ),
     ),
     cardTheme: CardTheme(
-      color: const Color(0xFF1A1A2E),
+      color: darkSurface,
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(20),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: const Color(0xFF1A1A2E),
+      fillColor: darkSurface,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(30),
         borderSide: BorderSide.none,
@@ -118,7 +137,18 @@ class AppTheme {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(30),
-        borderSide: const BorderSide(color: primaryColor, width: 2),
+        borderSide: const BorderSide(color: primary, width: 2),
+      ),
+      hintStyle: const TextStyle(color: darkTextLight),
+    ),
+    chipTheme: ChipThemeData(
+      backgroundColor: darkSurface,
+      selectedColor: primary,
+      labelStyle: const TextStyle(color: darkText),
+      secondaryLabelStyle: const TextStyle(color: Colors.white),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
       ),
     ),
   );
