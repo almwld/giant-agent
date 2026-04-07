@@ -531,3 +531,63 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
     );
   }
 }
+
+  // Voice Input
+  Future<void> _startVoiceInput() async {
+    final voiceService = VoiceService();
+    await voiceService.init();
+    
+    await voiceService.startListening((text) {
+      setState(() {
+        _controller.text = text;
+      });
+    });
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Listening... Speak now')),
+    );
+  }
+
+  // Text-to-Speech
+  Future<void> _speakLastMessage() async {
+    if (_messages.isEmpty) return;
+    final tts = TTSService();
+    await tts.init();
+    await tts.speak(_messages.last['content']);
+  }
+
+  // Analyze Image
+  Future<void> _analyzeImage() async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+    
+    if (image != null) {
+      setState(() {
+        _messages.add({
+          'isUser': true,
+          'content': '[Analyzing Image: ${image.name}]',
+          'time': DateTime.now(),
+        });
+        _isLoading = true;
+      });
+      
+      final analysis = await ImageRecognitionService.analyzeImage(File(image.path));
+      
+      setState(() {
+        _messages.add({
+          'isUser': false,
+          'content': analysis,
+          'time': DateTime.now(),
+        });
+        _isLoading = false;
+      });
+    }
+  }
+
+  // Open Reminders
+  void _openReminders() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const RemindersScreen()),
+    );
+  }

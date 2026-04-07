@@ -1,0 +1,23 @@
+{
+  "app_name": "Giant Agent X",
+  "new_chat": "محادثة جديدة",
+  "settings": "الإعدادات",
+  "models": "النماذج",
+  "export_pdf": "تصدير PDF",
+  "share": "مشاركة",
+  "search": "بحث",
+  "translate": "ترجمة",
+  "do_not_disturb": "عدم الإزعاج",
+  "font_size": "حجم الخط",
+  "language": "اللغة",
+  "message_hint": "اكتب رسالتك...",
+  "active": "نشط",
+  "switched_to": "تم التبديل إلى",
+  "new_message": "رسالة جديدة",
+  "you_have_response": "لديك رد جديد",
+  "translation": "الترجمة",
+  "search_results": "نتائج البحث",
+  "enter_search_term": "أدخل كلمة البحث",
+  "export_success": "تم التصدير بنجاح",
+  "backup_success": "تم النسخ الاحتياطي بنجاح"
+}

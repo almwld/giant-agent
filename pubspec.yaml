@@ -52,3 +52,5 @@ flutter:
   assets:
     - assets/
     - assets/translations/
+  flutter_tts: ^3.8.0
+  speech_to_text: ^6.6.0

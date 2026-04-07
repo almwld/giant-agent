@@ -1,0 +1,23 @@
+{
+  "app_name": "Giant Agent X",
+  "new_chat": "New Chat",
+  "settings": "Settings",
+  "models": "Models",
+  "export_pdf": "Export PDF",
+  "share": "Share",
+  "search": "Search",
+  "translate": "Translate",
+  "do_not_disturb": "Do Not Disturb",
+  "font_size": "Font Size",
+  "language": "Language",
+  "message_hint": "Type your message...",
+  "active": "Active",
+  "switched_to": "Switched to",
+  "new_message": "New Message",
+  "you_have_response": "You have a new response",
+  "translation": "Translation",
+  "search_results": "Search Results",
+  "enter_search_term": "Enter search term",
+  "export_success": "Export successful",
+  "backup_success": "Backup successful"
+}
