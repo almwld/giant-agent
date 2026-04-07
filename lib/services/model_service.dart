@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'dart:math';
+import 'dart:convert';
 import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -10,6 +10,7 @@ class ModelService {
   
   List<Map<String, dynamic>> _models = [];
   String _activeModelId = '';
+  File? _currentModelFile;
   
   Future<void> init() async {
     await _scanModels();
@@ -30,13 +31,19 @@ class ModelService {
           List<FileSystemEntity> files = await dir.list().toList();
           for (var file in files) {
             String fileName = file.path.split('/').last;
-            if (fileName.endsWith('.tflite')) {
+            if (fileName.endsWith('.tflite') || 
+                fileName.endsWith('.onnx') || 
+                fileName.endsWith('.gguf') ||
+                fileName.endsWith('.bin')) {
+              
               File modelFile = File(file.path);
               int size = await modelFile.length();
               _models.add({
                 'id': fileName,
                 'name': fileName,
+                'path': file.path,
                 'size': (size / 1024 / 1024).toStringAsFixed(2),
+                'type': fileName.split('.').last,
               });
             }
           }
@@ -44,24 +51,24 @@ class ModelService {
       }
     }
     
-    _models.add({
-      'id': 'builtin',
-      'name': 'Built-in AI',
-      'size': '0',
-    });
+    if (_models.isEmpty) {
+      _models.add({
+        'id': 'no_model',
+        'name': 'لا يوجد نموذج',
+        'path': null,
+        'size': '0',
+        'type': 'none',
+      });
+    }
     
-    if (_activeModelId.isEmpty && _models.isNotEmpty) {
+    if (_activeModelId.isEmpty && _models.isNotEmpty && _models.first['id'] != 'no_model') {
       _activeModelId = _models.first['id'];
+      _currentModelFile = File(_models.first['path']);
     }
   }
   
-  List<Map<String, dynamic>> getModels() => _models;
-  
-  Map<String, dynamic> getActiveModel() {
-    if (_models.isEmpty) {
-      return {'id': 'builtin', 'name': 'Built-in AI', 'size': '0'};
-    }
-    return _models.firstWhere((m) => m['id'] == _activeModelId, orElse: () => _models.first);
+  Future<void> refreshModels() async {
+    await _scanModels();
   }
   
   Future<bool> addModelFromFile() async {
@@ -70,7 +77,7 @@ class ModelService {
       
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['tflite'],
+        allowedExtensions: ['tflite', 'onnx', 'gguf', 'bin'],
       );
       
       if (result != null) {
@@ -93,38 +100,42 @@ class ModelService {
     }
   }
   
-  Future<String> generateResponse(String input) async {
-    String lower = input.toLowerCase();
-    
-    if (lower.contains('مرحبا')) {
-      return 'مرحباً! 👋 أنا Giant Agent X. كيف يمكنني مساعدتك؟';
-    } else if (lower.contains('كيف حالك')) {
-      return 'أنا بخير، شكراً! 🧠 جاهز لمساعدتك.';
-    } else if (lower.contains('شكرا')) {
-      return 'العفو! 🤝 دائماً في خدمتك.';
-    } else if (lower.contains('وداعا')) {
-      return 'وداعاً! 👋 سعدت بمساعدتك.';
-    } else if (lower.contains('كود')) {
-      return '```dart\nvoid main() {\n  print("Hello from Giant Agent X!");\n}\n```';
-    } else if (lower.contains('موقع')) {
-      return '<html><body><h1>Giant Agent X</h1></body></html>';
-    } else if (lower.contains('حلل')) {
-      String text = input.replaceAll('حلل', '').trim();
-      return '📊 تحليل النص:\nالطول: ${text.length} حرف\nالكلمات: ${text.split(' ').length} كلمة';
-    } else if (lower.contains('+')) {
-      try {
-        final parts = input.split('+');
-        double a = double.parse(parts[0].trim());
-        double b = double.parse(parts[1].trim());
-        return '🧮 النتيجة: ${a + b}';
-      } catch (e) {}
+  List<Map<String, dynamic>> getModels() => _models;
+  
+  Map<String, dynamic> getActiveModel() {
+    if (_models.isEmpty) {
+      return {'id': 'no_model', 'name': 'لا يوجد نموذج', 'size': '0', 'type': 'none'};
+    }
+    return _models.firstWhere((m) => m['id'] == _activeModelId, orElse: () => _models.first);
+  }
+  
+  Future<bool> switchModel(String modelId) async {
+    Map<String, dynamic>? model = _models.firstWhere((m) => m['id'] == modelId, orElse: () => {});
+    if (model.isNotEmpty && model['path'] != null) {
+      _activeModelId = modelId;
+      _currentModelFile = File(model['path']);
+      return true;
+    }
+    return false;
+  }
+  
+  // تشغيل النموذج - هنا سيتم تمرير المدخلات إلى النموذج الفعلي
+  Future<String> runModel(String input) async {
+    if (_currentModelFile == null) {
+      return '⚠️ يرجى تحميل نموذج أولاً';
     }
     
-    List<String> responses = [
-      'سؤال جيد! كيف يمكنني مساعدتك؟',
-      'أفهم ما تقصد. هل تريد معرفة المزيد؟',
-      'هذا مثير للاهتمام! أخبرني أكثر.',
-    ];
-    return responses[DateTime.now().second % responses.length];
+    // هنا يتم تمرير النص إلى النموذج الفعلي
+    // حاليًا نقوم بمحاكاة بسيطة، يمكن استبدالها بـ TFLite الفعلي
+    
+    // محاكاة استجابة النموذج
+    await Future.delayed(Duration(milliseconds: 500));
+    
+    // هذه مجرد محاكاة - يجب استبدالها بتشغيل النموذج الفعلي
+    return '[استجابة من النموذج ${_currentModelFile!.path.split('/').last}]:\n\nتم استلام مدخلاتك: "$input"\n\nالنموذج يعمل بشكل طبيعي.';
+  }
+  
+  bool hasActiveModel() {
+    return _currentModelFile != null;
   }
 }

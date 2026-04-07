@@ -35,9 +35,41 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  Future<void> _refreshModels() async {
+    await _modelService.refreshModels();
+    setState(() {
+      _models = _modelService.getModels();
+      _activeModel = _modelService.getActiveModel();
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('تم تحديث النماذج')),
+    );
+  }
+
+  Future<void> _addModel() async {
+    bool added = await _modelService.addModelFromFile();
+    if (added) {
+      await _refreshModels();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('✅ تم إضافة النموذج بنجاح')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('❌ فشل إضافة النموذج')),
+      );
+    }
+  }
+
   Future<void> _sendMessage() async {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
+    
+    if (!_modelService.hasActiveModel()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('⚠️ يرجى تحميل نموذج أولاً من القائمة الجانبية')),
+      );
+      return;
+    }
 
     setState(() {
       _messages.add({
@@ -50,7 +82,8 @@ class _ChatScreenState extends State<ChatScreen> {
     });
     _scrollToBottom();
 
-    final response = await _modelService.generateResponse(text);
+    // تمرير النص إلى النموذج
+    final response = await _modelService.runModel(text);
 
     setState(() {
       _messages.add({
@@ -78,7 +111,8 @@ class _ChatScreenState extends State<ChatScreen> {
         _isLoading = true;
       });
       
-      final response = await _modelService.generateResponse('حلل هذا الملف: $content');
+      // تمرير محتوى الملف إلى النموذج
+      final response = await _modelService.runModel('تحليل الملف: $content');
       
       setState(() {
         _messages.add({
@@ -105,7 +139,8 @@ class _ChatScreenState extends State<ChatScreen> {
         _isLoading = true;
       });
       
-      final response = await _modelService.generateResponse('وصف هذه الصورة');
+      // تمرير معلومات الصورة إلى النموذج
+      final response = await _modelService.runModel('تحليل الصورة: ${image.name}');
       
       setState(() {
         _messages.add({
@@ -122,6 +157,24 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {
       _messages.clear();
     });
+  }
+
+  void _switchModel(Map<String, dynamic> model) async {
+    if (model['id'] == 'no_model') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('⚠️ لا يوجد نموذج محدد')),
+      );
+      return;
+    }
+    
+    await _modelService.switchModel(model['id']);
+    setState(() {
+      _activeModel = _modelService.getActiveModel();
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('تم التبديل إلى: ${model['name']}')),
+    );
+    Navigator.pop(context);
   }
 
   void _scrollToBottom() {
@@ -144,24 +197,84 @@ class _ChatScreenState extends State<ChatScreen> {
         centerTitle: true,
         actions: [
           IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _refreshModels,
+            tooltip: 'تحديث النماذج',
+          ),
+          IconButton(
+            icon: const Icon(Icons.add_box),
+            onPressed: _addModel,
+            tooltip: 'إضافة نموذج',
+          ),
+          IconButton(
             icon: const Icon(Icons.delete_outline),
             onPressed: _newConversation,
             tooltip: 'محادثة جديدة',
           ),
         ],
       ),
+      drawer: Drawer(
+        child: Column(
+          children: [
+            Container(
+              height: 150,
+              decoration: BoxDecoration(
+                color: Colors.deepPurple,
+              ),
+              child: const Center(
+                child: Text(
+                  'Giant Agent X',
+                  style: TextStyle(fontSize: 24, color: Colors.white),
+                ),
+              ),
+            ),
+            Expanded(
+              child: ListView.builder(
+                itemCount: _models.length,
+                itemBuilder: (context, index) {
+                  final model = _models[index];
+                  final isActive = model['id'] == _activeModel['id'];
+                  return ListTile(
+                    leading: Icon(
+                      isActive ? Icons.check_circle : Icons.circle_outlined,
+                      color: isActive ? Colors.green : Colors.grey,
+                    ),
+                    title: Text(model['name']),
+                    subtitle: Text('${model['size']} MB • ${model['type']}'),
+                    trailing: isActive
+                        ? const Text('نشط', style: TextStyle(color: Colors.green))
+                        : null,
+                    onTap: () => _switchModel(model),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
       body: Column(
         children: [
           // شريط النموذج النشط
           Container(
-            padding: const EdgeInsets.all(8),
-            color: Colors.deepPurple.shade50,
+            padding: const EdgeInsets.all(12),
+            color: _modelService.hasActiveModel() ? Colors.green.shade50 : Colors.red.shade50,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.model_training, size: 16),
+                Icon(
+                  _modelService.hasActiveModel() ? Icons.check_circle : Icons.warning,
+                  size: 16,
+                  color: _modelService.hasActiveModel() ? Colors.green : Colors.orange,
+                ),
                 const SizedBox(width: 8),
-                Text('النموذج: ${_activeModel['name'] ?? "Built-in"}'),
+                Text(
+                  _modelService.hasActiveModel() 
+                      ? 'النموذج النشط: ${_activeModel['name']}' 
+                      : '⚠️ الرجاء تحميل نموذج من القائمة الجانبية',
+                  style: TextStyle(
+                    color: _modelService.hasActiveModel() ? Colors.green : Colors.orange,
+                  ),
+                ),
               ],
             ),
           ),
@@ -180,7 +293,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     margin: const EdgeInsets.only(bottom: 12),
                     padding: const EdgeInsets.all(12),
                     constraints: BoxConstraints(
-                      maxWidth: MediaQuery.of(context).size.width * 0.75,
+                      maxWidth: MediaQuery.of(context).size.width * 0.8,
                     ),
                     decoration: BoxDecoration(
                       color: isUser ? Colors.deepPurple : Colors.grey.shade200,
@@ -233,8 +346,11 @@ class _ChatScreenState extends State<ChatScreen> {
                 Expanded(
                   child: TextField(
                     controller: _controller,
+                    enabled: _modelService.hasActiveModel(),
                     decoration: InputDecoration(
-                      hintText: 'اكتب رسالتك...',
+                      hintText: _modelService.hasActiveModel() 
+                          ? 'اكتب رسالتك...' 
+                          : 'قم بتحميل نموذج أولاً',
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(30),
                         borderSide: BorderSide.none,
