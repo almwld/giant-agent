@@ -82,7 +82,6 @@ class _ChatScreenState extends State<ChatScreen> {
     });
     _scrollToBottom();
 
-    // تمرير النص إلى النموذج
     final response = await _modelService.runModel(text);
 
     setState(() {
@@ -111,7 +110,6 @@ class _ChatScreenState extends State<ChatScreen> {
         _isLoading = true;
       });
       
-      // تمرير محتوى الملف إلى النموذج
       final response = await _modelService.runModel('تحليل الملف: $content');
       
       setState(() {
@@ -139,7 +137,6 @@ class _ChatScreenState extends State<ChatScreen> {
         _isLoading = true;
       });
       
-      // تمرير معلومات الصورة إلى النموذج
       final response = await _modelService.runModel('تحليل الصورة: ${image.name}');
       
       setState(() {
@@ -254,7 +251,6 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       body: Column(
         children: [
-          // شريط النموذج النشط
           Container(
             padding: const EdgeInsets.all(12),
             color: _modelService.hasActiveModel() ? Colors.green.shade50 : Colors.red.shade50,
@@ -278,7 +274,6 @@ class _ChatScreenState extends State<ChatScreen> {
               ],
             ),
           ),
-          // الرسائل
           Expanded(
             child: ListView.builder(
               controller: _scrollController,
@@ -324,7 +319,6 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
           if (_isLoading) const LinearProgressIndicator(),
-          // منطقة الإدخال
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
@@ -381,11 +375,3 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 }
-
-  // عرض إحصائيات الأداء
-  void _showPerformance() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const PerformanceScreen()),
-    );
-  }
