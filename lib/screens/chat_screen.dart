@@ -375,3 +375,40 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 }
+
+  // استخدام المعالجة المتقدمة بدلاً من المباشرة
+  Future<void> _sendMessageAdvanced() async {
+    final text = _controller.text.trim();
+    if (text.isEmpty) return;
+    
+    if (!_modelService.hasActiveModel()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('⚠️ يرجى تحميل نموذج أولاً')),
+      );
+      return;
+    }
+
+    setState(() {
+      _messages.add({
+        'isUser': true,
+        'content': text,
+        'time': DateTime.now(),
+      });
+      _controller.clear();
+      _isLoading = true;
+    });
+    _scrollToBottom();
+
+    // استخدام المعالجة المتقدمة مع الأدوات
+    final response = await _modelService.processWithTools(text);
+
+    setState(() {
+      _messages.add({
+        'isUser': false,
+        'content': response,
+        'time': DateTime.now(),
+      });
+      _isLoading = false;
+    });
+    _scrollToBottom();
+  }

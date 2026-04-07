@@ -193,3 +193,89 @@ class ModelService {
     return await runModelAsync(input);
   }
 }
+
+import '../tools/tool_manager.dart';
+import 'long_term_memory.dart';
+import 'planner_service.dart';
+
+final ToolManager _toolManager = ToolManager();
+final LongTermMemory _memory = LongTermMemory();
+final PlannerService _planner = PlannerService();
+
+// تهيئة الأدوات
+void _initTools() {
+  _toolManager.registerTools();
+}
+
+// معالجة ذكية مع دعم الأدوات والتخطيط
+Future<String> processWithTools(String input) async {
+  _initTools();
+  await _memory.init();
+  
+  final lower = input.toLowerCase();
+  
+  // التحقق من وجود أمر أداة
+  if (lower.contains('احسب') || lower.contains('calculate')) {
+    final expression = input.replaceAll(RegExp(r'احسب|calculate'), '').trim();
+    return await _toolManager.executeTool('calculator', {'expression': expression});
+  }
+  
+  if (lower.contains('اكتب ملف') || lower.contains('save file')) {
+    final parts = input.split('محتوى');
+    final filename = parts[0].replaceAll('اكتب ملف', '').trim();
+    final content = parts.length > 1 ? parts[1].trim() : 'محتوى افتراضي';
+    return await _toolManager.executeTool('file_writer', {'filename': filename, 'content': content});
+  }
+  
+  if (lower.contains('اقرأ ملف') || lower.contains('read file')) {
+    final filename = input.replaceAll(RegExp(r'اقرأ ملف|read file'), '').trim();
+    return await _toolManager.executeTool('file_reader', {'filename': filename});
+  }
+  
+  if (lower.contains('تذكر') || lower.contains('remember')) {
+    final parts = input.replaceAll('تذكر', '').trim().split(':');
+    if (parts.length == 2) {
+      await _memory.saveMemory(parts[0].trim(), parts[1].trim());
+      return '✅ تم حفظ: ${parts[0]} = ${parts[1]}';
+    }
+    return 'استخدم: تذكر المفتاح: القيمة';
+  }
+  
+  if (lower.contains('استرجع') || lower.contains('recall')) {
+    final key = input.replaceAll(RegExp(r'استرجع|recall'), '').trim();
+    final value = await _memory.recallMemory(key);
+    return value != null ? '📝 $key: $value' : 'لا توجد معلومات عن $key';
+  }
+  
+  if (lower.contains('خطة') || lower.contains('plan')) {
+    final goal = input.replaceAll(RegExp(r'خطة|plan'), '').trim();
+    final plan = await _planner.createPlan(goal);
+    String result = '📋 **الخطة الموضوعة:**\n\n';
+    for (var step in plan) {
+      result += '${step['step']}. ${step['action']}\n';
+    }
+    result += '\n${_planner.getProgress()}';
+    return result;
+  }
+  
+  if (lower.contains('نفذ') || lower.contains('execute')) {
+    final action = _planner.getNextAction();
+    if (action == 'completed') {
+      return '✅ تم إكمال جميع الخطوات!';
+    }
+    return '🔄 جاري تنفيذ: $action\n${_planner.getProgress()}';
+  }
+  
+  if (lower.contains('مهام معلقة') || lower.contains('pending tasks')) {
+    final tasks = await _memory.getPendingTasks();
+    if (tasks.isEmpty) return 'لا توجد مهام معلقة';
+    String result = '📋 **المهام المعلقة:**\n';
+    for (var task in tasks) {
+      result += '• ${task['task']}\n';
+    }
+    return result;
+  }
+  
+  // استدعاء النموذج الأساسي
+  return await runModel(input);
+}
