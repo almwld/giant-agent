@@ -267,3 +267,34 @@ $code
     return responses[DateTime.now().second % responses.length];
   }
 }
+
+// إضافة التخزين المؤقت
+import 'cache_service.dart';
+import 'performance_monitor.dart';
+
+final CacheService _cache = CacheService();
+final PerformanceMonitor _monitor = PerformanceMonitor();
+
+Future<String> generateResponseOptimized(String input) async {
+  final stopwatch = Stopwatch()..start();
+  
+  // التحقق من التخزين المؤقت
+  if (_cache.has(input)) {
+    final cached = _cache.get(input);
+    stopwatch.stop();
+    _monitor.record('cached_response', stopwatch.elapsed);
+    return '$cached\n\n⚡ (من التخزين المؤقت)';
+  }
+  
+  final response = await generateResponse(input);
+  _cache.set(input, response);
+  
+  stopwatch.stop();
+  _monitor.record('fresh_response', stopwatch.elapsed);
+  
+  return response;
+}
+
+String getPerformanceStats() {
+  return _monitor.getPerformanceReport();
+}

@@ -563,3 +563,18 @@ Widget _buildCommandChip(String label, String command) {
   //   icon: const Icon(Icons.download),
   //   onPressed: _exportConversation,
   // ),
+
+  // عرض لوحة الأداء
+  void _showPerformanceDashboard() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const PerformanceDashboard()),
+    );
+  }
+  
+  // إضافة زر الأداء في AppBar
+  // IconButton(
+  //   icon: const Icon(Icons.speed),
+  //   onPressed: _showPerformanceDashboard,
+  //   tooltip: 'لوحة الأداء',
+  // ),
