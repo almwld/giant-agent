@@ -60,3 +60,5 @@ flutter:
   assets:
     - assets/
     - assets/icons/
+  flutter_tts: ^3.8.0
+  speech_to_text: ^6.6.0

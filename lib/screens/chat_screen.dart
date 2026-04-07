@@ -578,3 +578,21 @@ Widget _buildCommandChip(String label, String command) {
   //   onPressed: _showPerformanceDashboard,
   //   tooltip: 'لوحة الأداء',
   // ),
+
+  // إضافة المساعد الصوتي
+  final VoiceAssistant _voiceAssistant = VoiceAssistant();
+  
+  Future<void> _startVoiceInput() async {
+    await _voiceAssistant.init();
+    await _voiceAssistant.startListening((text) {
+      setState(() {
+        _controller.text = text;
+      });
+    });
+  }
+  
+  // إضافة زر الصوت في شريط الإدخال
+  // IconButton(
+  //   icon: Icon(Icons.mic, color: _voiceAssistant.isListening ? Colors.red : null),
+  //   onPressed: _voiceAssistant.isListening ? _voiceAssistant.stopListening : _startVoiceInput,
+  // ),
