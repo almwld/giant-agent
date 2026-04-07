@@ -1,34 +1,30 @@
 import 'dart:io';
 import 'dart:convert';
-import 'package:sqflite/sqflite.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'database_service.dart';
 
 class BackupService {
-  static Future<void> backupConversations(Database db) async {
-    final conversations = await db.query('messages');
+  static Future<void> backup() async {
+    final messages = await DatabaseService.getMessages();
     final backup = {
-      'timestamp': DateTime.now().toIso8601String(),
-      'version': '1.0',
-      'conversations': conversations,
+      'date': DateTime.now().toIso8601String(),
+      'version': '4.0.0',
+      'messages': messages,
     };
-    
-    final output = await getTemporaryDirectory();
-    final file = File('${output.path}/backup_${DateTime.now().millisecondsSinceEpoch}.json');
+    final dir = await getExternalStorageDirectory();
+    final file = File('${dir?.path}/backup_${DateTime.now().millisecondsSinceEpoch}.json');
     await file.writeAsString(json.encode(backup));
-    
-    await Share.shareXFiles([XFile(file.path)], text: 'Conversations Backup');
+    await Share.shareXFiles([XFile(file.path)], text: 'نسخة احتياطية للمحادثات');
   }
   
-  static Future<void> restoreBackup(String filePath, Database db) async {
+  static Future<void> restore(String filePath) async {
     final file = File(filePath);
     final content = await file.readAsString();
     final backup = json.decode(content);
-    
-    await db.delete('messages');
-    
-    for (var msg in backup['conversations']) {
-      await db.insert('messages', msg);
+    await DatabaseService.clearMessages();
+    for (var msg in backup['messages']) {
+      await DatabaseService.saveMessage(msg['text'], msg['isUser'] == 1);
     }
   }
 }

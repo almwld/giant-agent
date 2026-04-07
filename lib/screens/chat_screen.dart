@@ -1,3 +1,7 @@
+import '../screens/advanced_settings.dart';
+import '../services/image_analyzer.dart';
+import '../services/share_service.dart';
+import '../services/voice_service.dart';
 import ../services/database_service.dart;
 import ../screens/settings_screen.dart;
 import 'dart:io';

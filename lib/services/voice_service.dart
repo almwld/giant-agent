@@ -1,40 +1,31 @@
 import 'package:speech_to_text/speech_to_text.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 
 class VoiceService {
-  static final VoiceService _instance = VoiceService._internal();
-  factory VoiceService() => _instance;
-  VoiceService._internal();
+  static final SpeechToText _speech = SpeechToText();
+  static final FlutterTts _tts = FlutterTts();
+  static bool _isListening = false;
   
-  final SpeechToText _speech = SpeechToText();
-  bool _isListening = false;
-  String _recognizedText = '';
-  
-  Future<bool> init() async {
-    return await _speech.initialize();
+  static Future<void> init() async {
+    await _speech.initialize();
+    await _tts.setLanguage('ar');
   }
   
-  Future<void> startListening(Function(String) onResult) async {
+  static Future<void> startListening(Function(String) onResult) async {
     if (_isListening) return;
-    
-    _isListening = true;
-    await _speech.listen(
-      onResult: (result) {
-        _recognizedText = result.recognizedWords;
-        onResult(_recognizedText);
-      },
-      listenOptions: SpeechListenOptions(
-        listenMode: ListenMode.dictation,
-      ),
-    );
+    _isListening = await _speech.listen(onResult: (result) {
+      if (result.finalResult) onResult(result.recognizedWords);
+    });
   }
   
-  Future<void> stopListening() async {
-    if (!_isListening) return;
-    
-    await _speech.stop();
+  static Future<void> stopListening() async {
+    if (_isListening) await _speech.stop();
     _isListening = false;
   }
   
-  bool get isListening => _isListening;
-  String get recognizedText => _recognizedText;
+  static Future<void> speak(String text) async {
+    await _tts.speak(text);
+  }
+  
+  static bool get isListening => _isListening;
 }
