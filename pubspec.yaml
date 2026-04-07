@@ -1,6 +1,6 @@
 name: giant_agent_x
-description: Professional AI Agent - Pocket Pal Style with Multiple AI Models
-version: 3.0.0+1
+description: Professional AI Agent with Advanced Features
+version: 4.0.0+1
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -26,19 +26,21 @@ dependencies:
   # UI
   google_fonts: ^6.1.0
   flutter_svg: ^2.0.7
-  lottie: ^2.7.0
-  animations: ^2.0.7
   shimmer: ^3.0.0
+  
+  # Advanced Features
+  flutter_local_notifications: ^17.0.0
+  share_plus: ^7.2.2
+  printing: ^5.11.0
+  pdf: ^3.10.0
+  translator: ^1.0.0
+  easy_localization: ^3.0.0
   
   # Utils
   intl: ^0.18.0
   connectivity_plus: ^5.0.0
   device_info_plus: ^9.0.0
   package_info_plus: ^4.0.0
-  
-  # Security
-  flutter_secure_storage: ^9.0.0
-  local_auth: ^2.1.0
 
 dev_dependencies:
   flutter_test:
@@ -49,5 +51,4 @@ flutter:
   uses-material-design: true
   assets:
     - assets/
-    - assets/icons/
-    - assets/animations/
+    - assets/translations/
