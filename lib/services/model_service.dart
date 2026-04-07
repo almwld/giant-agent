@@ -132,3 +132,31 @@ class ModelService {
     return '[استجابة من النموذج ${_currentModelFile!.path.split('/').last}]:\n\nتم استلام مدخلاتك: "$input"\n\nالنموذج يعمل بشكل طبيعي.';
   }
 }
+
+// دالة لفحص وجود النماذج في مجلد معين
+Future<List<Map<String, dynamic>>> scanSpecificFolder(String folderPath) async {
+  final models = <Map<String, dynamic>>[];
+  final dir = Directory(folderPath);
+  
+  if (await dir.exists()) {
+    try {
+      final files = await dir.list().toList();
+      for (var file in files) {
+        final fileName = file.path.split('/').last;
+        if (fileName.endsWith('.tflite') || 
+            fileName.endsWith('.onnx') || 
+            fileName.endsWith('.gguf')) {
+          final size = await File(file.path).length();
+          models.add({
+            'id': fileName,
+            'name': fileName,
+            'path': file.path,
+            'size': (size / 1024 / 1024).toStringAsFixed(2),
+            'type': fileName.split('.').last,
+          });
+        }
+      }
+    } catch (e) {}
+  }
+  return models;
+}
