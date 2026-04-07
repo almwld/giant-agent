@@ -5,6 +5,7 @@ import 'screens/welcome_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
+  // طلب الصلاحيات
   await [
     Permission.storage,
     Permission.photos,
@@ -26,15 +27,8 @@ class MyApp extends StatelessWidget {
         primaryColor: const Color(0xFF6C63FF),
         scaffoldBackgroundColor: Colors.white,
         useMaterial3: true,
-        fontFamily: 'Cairo',
       ),
       home: const WelcomeScreen(),
     );
   }
 }
-  await [
-    Permission.storage,
-    Permission.photos,
-    Permission.camera,
-    Permission.manageExternalStorage,
-  ].request();
