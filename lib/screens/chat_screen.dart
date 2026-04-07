@@ -23,7 +23,6 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   bool _isLoading = false;
   bool _isDarkMode = false;
   double _fontSize = 14.0;
-  int _selectedNavIndex = 0;
   
   List<Map<String, dynamic>> _models = [];
   Map<String, dynamic> _activeModel = {};
@@ -56,6 +55,31 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       _models = _modelService.getModels();
       _activeModel = _modelService.getActiveModel();
     });
+  }
+
+  Future<void> _refreshModels() async {
+    await _modelService.refreshModels();
+    setState(() {
+      _models = _modelService.getModels();
+      _activeModel = _modelService.getActiveModel();
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('تم تحديث النماذج')),
+    );
+  }
+
+  Future<void> _addModel() async {
+    final added = await _modelService.addModelFromFile();
+    if (added) {
+      await _refreshModels();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('✅ تم إضافة النموذج بنجاح')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('❌ لم يتم إضافة النموذج. تأكد من اختيار ملف .tflite')),
+      );
+    }
   }
 
   Future<void> _sendMessage() async {
@@ -141,6 +165,22 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     }
   }
 
+  void _newConversation() {
+    setState(() {
+      _messages.clear();
+    });
+  }
+
+  void _switchModel(String modelId) async {
+    await _modelService.switchModel(modelId);
+    setState(() {
+      _activeModel = _modelService.getActiveModel();
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('تم التبديل إلى: ${_activeModel['name']}')),
+    );
+  }
+
   void _scrollToBottom() {
     Future.delayed(const Duration(milliseconds: 100), () {
       if (_scrollController.hasClients) {
@@ -169,15 +209,17 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.menu),
-          onPressed: () => Scaffold.of(context).openDrawer(),
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(Icons.menu),
+            onPressed: () => Scaffold.of(context).openDrawer(),
+          ),
         ),
         title: AnimatedBuilder(
           animation: _glowController,
           builder: (context, child) {
             return ShaderMask(
-              shaderCallback: (bounds) => LinearGradient(
+              shaderCallback: (bounds) => const LinearGradient(
                 colors: [AppTheme.primaryColor, AppTheme.secondaryColor],
               ).createShader(bounds),
               child: const Text(
@@ -199,7 +241,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
           ),
         ],
       ),
-      drawer: _buildNeonDrawer(),
+      drawer: _buildDrawer(),
       body: Container(
         decoration: BoxDecoration(
           gradient: _isDarkMode ? AppTheme.darkGradient : const LinearGradient(
@@ -330,7 +372,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildNeonDrawer() {
+  Widget _buildDrawer() {
     return Drawer(
       backgroundColor: _isDarkMode ? const Color(0xFF1A1A2E) : Colors.white,
       child: Container(
@@ -369,15 +411,12 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
             const SizedBox(height: 20),
             _buildDrawerItem(Icons.chat_bubble_outline, 'الدردشة', () {
               Navigator.pop(context);
-              setState(() => _selectedNavIndex = 0);
             }),
-            _buildDrawerItem(Icons.model_training_outlined, 'النماذج', () {
-              Navigator.pop(context);
-              setState(() => _selectedNavIndex = 1);
-            }),
-            _buildDrawerItem(Icons.folder_outlined, 'الملفات', _pickFile),
-            _buildDrawerItem(Icons.person_outline, 'الملف الشخصي', () {}),
-            _buildDrawerItem(Icons.settings_outlined, 'الإعدادات', () {}),
+            _buildDrawerItem(Icons.model_training_outlined, 'إضافة نموذج', _addModel),
+            _buildDrawerItem(Icons.refresh, 'تحديث النماذج', _refreshModels),
+            _buildDrawerItem(Icons.folder_outlined, 'رفع ملف', _pickFile),
+            _buildDrawerItem(Icons.image, 'رفع صورة', _pickImage),
+            _buildDrawerItem(Icons.delete_outline, 'مسح المحادثة', _newConversation),
             const Spacer(),
             Container(
               margin: const EdgeInsets.all(16),
@@ -415,18 +454,3 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     );
   }
 }
-
-  // إضافة نموذج
-  Future<void> _addModel() async {
-    final added = await _modelService.addModelFromFile();
-    if (added) {
-      await _refreshModels();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('✅ تم إضافة النموذج بنجاح')),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('❌ لم يتم إضافة النموذج. تأكد من اختيار ملف .tflite')),
-      );
-    }
-  }
