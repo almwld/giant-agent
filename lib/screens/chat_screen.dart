@@ -1,11 +1,10 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/model_service.dart';
-import 'file_browser.dart';
 import 'settings_screen.dart';
+import 'advanced_settings.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -28,7 +27,6 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     _init();
-    _checkSharedFile();
   }
 
   Future<void> _init() async {
@@ -39,36 +37,6 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  Future<void> _checkSharedFile() async {
-    try {
-      const platform = MethodChannel('file_receiver');
-      final String? filePath = await platform.invokeMethod('getSharedFile');
-      if (filePath != null && filePath.isNotEmpty) {
-        final file = File(filePath);
-        if (await file.exists()) {
-          final fileName = file.path.split('/').last;
-          if (fileName.endsWith('.tflite')) {
-            final modelsDir = Directory('/storage/emulated/0/Download/models/');
-            if (!await modelsDir.exists()) {
-              await modelsDir.create(recursive: true);
-            }
-            final destPath = '/storage/emulated/0/Download/models/$fileName';
-            await file.copy(destPath);
-            
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('✅ تم استلام النموذج: $fileName')),
-              );
-              await _refreshModels();
-            }
-          }
-        }
-      }
-    } catch (e) {
-      print('خطأ في استقبال الملف: $e');
-    }
-  }
-
   Future<void> _refreshModels() async {
     await _modelService.refreshModels();
     if (mounted) {
@@ -76,26 +44,44 @@ class _ChatScreenState extends State<ChatScreen> {
         _models = _modelService.getModels();
         _activeModel = _modelService.getActiveModel();
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تم تحديث النماذج')),
+      );
     }
   }
 
-
-
-  Future<void> _openFileBrowser() async {
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const FileBrowser()),
-    );
-    if (result == true && mounted) {
-      await _refreshModels();
+  Future<void> _importModel() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['tflite', 'onnx', 'gguf', 'bin'],
+      );
+      
+      if (result != null && mounted) {
+        final filePath = result.files.single.path!;
+        final fileName = result.files.single.name;
+        
+        final modelsDir = Directory('/storage/emulated/0/Download/models/');
+        if (!await modelsDir.exists()) {
+          await modelsDir.create(recursive: true);
+        }
+        
+        final destPath = '/storage/emulated/0/Download/models/$fileName';
+        await File(filePath).copy(destPath);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('✅ تم استيراد: $fileName')),
+        );
+        
+        await _refreshModels();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('❌ خطأ: $e')),
+        );
+      }
     }
-  }
-
-  void _openSettings() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const SettingsScreen()),
-    );
   }
 
   Future<void> _sendMessage() async {
@@ -228,6 +214,13 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  void _openSettings() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const AdvancedSettings()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -238,27 +231,17 @@ class _ChatScreenState extends State<ChatScreen> {
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _refreshModels,
-            tooltip: 'تحديث النماذج',
-          ),
-          IconButton(
-            icon: const Icon(Icons.add_box),
-            onPressed: _importModelManually,
-            tooltip: 'إضافة نموذج',
-          ),
-          IconButton(
-            icon: const Icon(Icons.folder_open),
-            onPressed: _openFileBrowser,
-            tooltip: 'متصفح الملفات',
+            tooltip: 'تحديث',
           ),
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: _openSettings,
-            tooltip: 'الإعدادات',
+            tooltip: 'إعدادات',
           ),
           IconButton(
             icon: const Icon(Icons.delete_outline),
             onPressed: _newConversation,
-            tooltip: 'محادثة جديدة',
+            tooltip: 'جديد',
           ),
         ],
       ),
@@ -300,7 +283,29 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             const Divider(),
             ListTile(
-              leading: const Icon(Icons.import_export, color: Colors.blue),
+              leading: const Icon(Icons.upload_file, color: Colors.blue),
+              title: const Text('استيراد نموذج'),
+              subtitle: const Text('اختر ملف TFLite من الهاتف'),
+              onTap: () {
+                Navigator.pop(context);
+                _importModel();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.attach_file, color: Colors.green),
+              title: const Text('رفع ملف'),
+              onTap: () {
+                Navigator.pop(context);
+                _pickFile();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.image, color: Colors.orange),
+              title: const Text('رفع صورة'),
+              onTap: () {
+                Navigator.pop(context);
+                _pickImage();
+              },
             ),
           ],
         ),
@@ -322,8 +327,8 @@ class _ChatScreenState extends State<ChatScreen> {
                 Expanded(
                   child: Text(
                     _modelService.hasActiveModel() 
-                        ? 'النموذج النشط: ${_modelService.getActiveModelName()}' 
-                        : '⚠️ الرجاء تحميل نموذج TFLite',
+                        ? 'النموذج: ${_modelService.getActiveModelName()}' 
+                        : '⚠️ الرجاء استيراد نموذج TFLite',
                     style: TextStyle(
                       color: _modelService.hasActiveModel() ? Colors.green : Colors.orange,
                     ),
@@ -353,25 +358,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       color: isUser ? Colors.deepPurple : Colors.grey.shade200,
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        SelectableText(
-                          msg['content'],
-                          style: TextStyle(
-                            color: isUser ? Colors.white : Colors.black87,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${(msg['time'] as DateTime).hour}:${(msg['time'] as DateTime).minute}',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: isUser ? Colors.white70 : Colors.grey,
-                          ),
-                        ),
-                      ],
-                    ),
+                    child: Text(msg['content']),
                   ),
                 );
               },
@@ -386,16 +373,6 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             child: Row(
               children: [
-                IconButton(
-                  icon: const Icon(Icons.attach_file),
-                  onPressed: _pickFile,
-                  tooltip: 'رفع ملف',
-                ),
-                IconButton(
-                  icon: const Icon(Icons.image),
-                  onPressed: _pickImage,
-                  tooltip: 'رفع صورة',
-                ),
                 Expanded(
                   child: TextField(
                     controller: _controller,
@@ -403,7 +380,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     decoration: InputDecoration(
                       hintText: _modelService.hasActiveModel() 
                           ? 'اكتب رسالتك...' 
-                          : 'قم بتحميل نموذج TFLite أولاً',
+                          : 'استورد نموذجاً أولاً',
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(30),
                         borderSide: BorderSide.none,
@@ -434,40 +411,3 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 }
-
-      );
-      
-      if (result != null && mounted) {
-        final filePath = result.files.single.path!;
-        final fileName = result.files.single.name;
-        
-        // التحقق من امتداد الملف
-        final extension = fileName.split('.').last.toLowerCase();
-        if (extension == 'tflite' || extension == 'onnx' || extension == 'gguf') {
-          final modelsDir = Directory('/storage/emulated/0/Download/models/');
-          if (!await modelsDir.exists()) {
-            await modelsDir.create(recursive: true);
-          }
-          
-          final destPath = '/storage/emulated/0/Download/models/$fileName';
-          await File(filePath).copy(destPath);
-          
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('✅ تم استيراد النموذج: $fileName')),
-          );
-          
-          await _refreshModels();
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('⚠️ هذا الملف ليس نموذجاً صالحاً (يجب أن يكون .tflite)')),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ خطأ: $e')),
-        );
-      }
-    }
-  }
