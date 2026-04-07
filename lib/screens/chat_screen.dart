@@ -456,3 +456,34 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     );
   }
 }
+
+// إضافة أوامر Python
+Widget _buildPythonCommands() {
+  return Container(
+    padding: const EdgeInsets.all(8),
+    child: Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        _buildCommandChip('📊 تحليل بيانات', 'تحليل بيانات 10,20,30,40,50'),
+        _buildCommandChip('🌐 تطبيق Flask', 'إنشاء تطبيق فلاسك myapp'),
+        _buildCommandChip('📝 تحليل نص', 'تحليل نص الذكاء الاصطناعي'),
+        _buildCommandChip('🧠 تعلم آلة', 'تعلم آلة'),
+        _buildCommandChip('🚀 FastAPI', 'إنشاء api myapi'),
+        _buildCommandChip('⚡ أتمتة', 'أتمتة المهام'),
+      ],
+    ),
+  );
+}
+
+Widget _buildCommandChip(String label, String command) {
+  return ActionChip(
+    label: Text(label, style: const TextStyle(fontSize: 12)),
+    onPressed: () {
+      _controller.text = command;
+      _sendMessage();
+    },
+    backgroundColor: AppTheme.primary.withOpacity(0.1),
+    labelStyle: TextStyle(color: AppTheme.primary),
+  );
+}
