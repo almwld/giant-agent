@@ -451,3 +451,50 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 }
+
+  // استيراد نموذج يدوياً من أي مكان في الهاتف
+  Future<void> _importModelManually() async {
+    try {
+      // طلب صلاحية التخزين الكامل
+      final status = await Permission.manageExternalStorage.request();
+      if (!status.isGranted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('⚠️ يرجى منح صلاحية التخزين')),
+        );
+        return;
+      }
+      
+      // استخدام FilePicker لاختيار أي ملف من أي مكان
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['tflite', 'onnx', 'gguf'],
+        allowMultiple: false,
+        dialogTitle: 'اختر ملف النموذج',
+      );
+      
+      if (result != null) {
+        final filePath = result.files.single.path!;
+        final fileName = result.files.single.name;
+        
+        // إنشاء مجلد النماذج
+        final modelsDir = Directory('/storage/emulated/0/Download/models/');
+        if (!await modelsDir.exists()) {
+          await modelsDir.create(recursive: true);
+        }
+        
+        // نسخ الملف
+        final destPath = '/storage/emulated/0/Download/models/$fileName';
+        await File(filePath).copy(destPath);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('✅ تم استيراد النموذج: $fileName')),
+        );
+        
+        await _refreshModels();
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('❌ خطأ: $e')),
+      );
+    }
+  }

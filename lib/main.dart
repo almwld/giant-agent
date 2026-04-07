@@ -32,3 +32,9 @@ class MyApp extends StatelessWidget {
     );
   }
 }
+  await [
+    Permission.storage,
+    Permission.photos,
+    Permission.camera,
+    Permission.manageExternalStorage,
+  ].request();
