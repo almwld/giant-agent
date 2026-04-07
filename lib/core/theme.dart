@@ -8,8 +8,9 @@ class AppTheme {
   static const Color cosmicPurple = Color(0xFF9D4EDD);
   static const Color cyberBlue = Color(0xFF00F0FF);
   static const Color neonPink = Color(0xFFFF006E);
+  static const Color textLightColor = Color(0xFF7F8C8D);
   static const Color glassWhite = Color(0xE6FFFFFF);
-  static const Color glassDark = Color(0x1AFFFFFF);
+  static const Color darkGlassColor = Color(0x1AFFFFFF);
   
   // تدرجات مستقبلية
   static const LinearGradient primaryGradient = LinearGradient(

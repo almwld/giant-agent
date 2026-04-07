@@ -17,6 +17,8 @@ class FutureMessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -29,7 +31,7 @@ class FutureMessageBubble extends StatelessWidget {
           gradient: isUser
               ? AppTheme.secondaryGradient
               : LinearGradient(
-                  colors: Theme.of(context).brightness == Brightness.dark
+                  colors: isDark
                       ? [AppTheme.cosmicPurple.withOpacity(0.2), AppTheme.cyberBlue.withOpacity(0.1)]
                       : [Colors.grey.shade100, Colors.grey.shade50],
                 ),
@@ -59,7 +61,7 @@ class FutureMessageBubble extends StatelessWidget {
             SelectableText(
               message,
               style: TextStyle(
-                color: isUser ? Colors.white : (Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black87),
+                color: isUser ? Colors.white : (isDark ? Colors.white : Colors.black87),
                 fontSize: fontSize,
                 height: 1.4,
               ),
