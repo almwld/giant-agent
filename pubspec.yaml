@@ -1,6 +1,6 @@
 name: giant_agent_x
-description: Nuclear Giant Agent with Real AI Model
-version: 10.0.0+1
+description: AI Agent like Pocket Pal, ChatGPT, Kiwi, MiniMax
+version: 2.0.0+1
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -13,7 +13,9 @@ dependencies:
   shared_preferences: ^2.2.0
   permission_handler: ^11.0.0
   file_picker: ^6.0.0
+  image_picker: ^1.0.0
   path: ^1.8.3
+  http: ^1.1.0
 
 dev_dependencies:
   flutter_test:
@@ -21,3 +23,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/

@@ -1,128 +1,206 @@
-import 'dartio'
-import 'dartasync'
-import 'packagepath_provider/path_provider.dart'
+import 'dart:io';
+import 'dart:convert';
+import 'dart:math';
+import 'package:path_provider/path_provider.dart';
 
-class odelervice {
-  static istaptring, dynamic _models  ]
-  static tring _activeodeld  'defalt'
-  static final aptring, tring _modelache  {}
+class ModelService {
+  static final ModelService _instance = ModelService._internal();
+  factory ModelService() => _instance;
+  ModelService._internal();
   
-  //     
-  static treistaptring, dynamic getvailableodels() async {
-    if (_models.isotmpty) {
-      retrn _models
+  List<Map<String, dynamic>> _models = [];
+  String _activeModelId = '';
+  bool _isInitialized = false;
+  
+  Future<void> init() async {
+    if (_isInitialized) return;
+    
+    final dir = await getExternalStorageDirectory();
+    final modelsDir = Directory('${dir?.path}/models');
+    
+    // إنشاء مجلد النماذج إذا لم يكن موجوداً
+    if (!await modelsDir.exists()) {
+      await modelsDir.create(recursive: true);
     }
     
-    final dir  await getxternaltorageirectory()
-    final modelsir  irectory('${dir.path}/models')
+    // البحث عن النماذج
+    final files = await modelsDir.list().toList();
     
-    istaptring, dynamic models  ]
-    
-    //    
-    models.add({
-      'id' 'defalt',
-      'name' 'iant gent  ltra',
-      'version' '.',
-      'type' 'bilt-in',
-      'size' '. ',
-      'stats' 'active',
-      'speed' 'ltra',
-      'description' '   '
-    })
-    
-    //    ite
-    if (await modelsir.exists()) {
-      final files  await modelsir.list().toist()
-      for (var file in files) {
-        if (file.path.endsith('.tflite')) {
-          final size  await ile(file.path).length()
-          models.add({
-            'id' file.path.split('/').last.replacell('.tflite', ''),
-            'name' file.path.split('/').last,
-            'version' '.',
-            'type' 'tflite',
-            'size' '${(size /  / ).totringsixed()} ',
-            'stats' 'available',
-            'speed' 'fast',
-            'description' ' ensorlow ite',
-            'path' file.path,
-          })
-        }
+    // إضافة النماذج الموجودة
+    for (var file in files) {
+      if (file.path.endsWith('.tflite') || file.path.endsWith('.onnx') || file.path.endsWith('.gguf')) {
+        final size = await File(file.path).length();
+        _models.add({
+          'id': file.path.split('/').last.replaceAll('.tflite', '').replaceAll('.onnx', '').replaceAll('.gguf', ''),
+          'name': file.path.split('/').last,
+          'path': file.path,
+          'size': (size / 1024 / 1024).toStringAsFixed(2),
+          'type': file.path.split('.').last,
+          'status': 'available',
+          'loaded': false,
+        });
       }
     }
     
-    _models  models
-    retrn models
-  }
-  
-  //   
-  static trebool switchodel(tring modeld) async {
-    final model  _models.firsthere((m)  m'id']  modeld, orlse ()  {})
-    if (model.isotmpty) {
-      _activeodeld  modeld
-      _modelache.clear() //      
-      retrn tre
+    // نموذج تجريبي إذا لم يوجد نماذج
+    if (_models.isEmpty) {
+      _models.add({
+        'id': 'demo',
+        'name': 'Demo Model',
+        'path': null,
+        'size': '0',
+        'type': 'demo',
+        'status': 'available',
+        'loaded': false,
+      });
     }
-    retrn false
+    
+    // تفعيل أول نموذج
+    _activeModelId = _models.first['id'];
+    _isInitialized = true;
   }
   
-  //     
-  static aptring, dynamic getctiveodel() {
-    final model  _models.firsthere((m)  m'id']  _activeodeld, orlse ()  {})
-    if (model.ismpty && _models.isotmpty) {
-      retrn _models.first
+  List<Map<String, dynamic>> getModels() {
+    return _models;
+  }
+  
+  Map<String, dynamic> getActiveModel() {
+    return _models.firstWhere((m) => m['id'] == _activeModelId, orElse: () => _models.first);
+  }
+  
+  Future<bool> switchModel(String modelId) async {
+    final model = _models.firstWhere((m) => m['id'] == modelId, orElse: () => {});
+    if (model.isNotEmpty) {
+      _activeModelId = modelId;
+      return true;
     }
-    retrn model.ismpty  {
-      'id' 'defalt',
-      'name' 'iant gent ',
-      'version' '.',
-      'type' 'bilt-in',
-      'size' '. ',
-      'stats' 'active',
-      'speed' 'ltra',
-    }  model
+    return false;
   }
   
-  //   
-  static trebool downloadodel(tring rl, tring name) async {
+  Future<bool> loadModel(String modelId) async {
+    final index = _models.indexWhere((m) => m['id'] == modelId);
+    if (index != -1) {
+      _models[index]['loaded'] = true;
+      _models[index]['status'] = 'active';
+      return true;
+    }
+    return false;
+  }
+  
+  Future<String> generateResponse(String input) async {
+    final activeModel = getActiveModel();
+    
+    // محاكاة استجابة النموذج الحقيقي
+    await Future.delayed(Duration(milliseconds: 800 + Random().nextInt(700)));
+    
+    // تحليل النية
+    final lower = input.toLowerCase();
+    
+    if (lower.contains('كود') || lower.contains('code')) {
+      return _generateCode(input);
+    } else if (lower.contains('موقع') || lower.contains('site') || lower.contains('html')) {
+      return _generateWebsite(input);
+    } else if (lower.contains('حلل') || lower.contains('analyze')) {
+      return _analyzeText(input);
+    } else if (lower.contains('+') || lower.contains('-') || lower.contains('*') || lower.contains('/')) {
+      return _calculate(input);
+    } else {
+      return _chatResponse(input);
+    }
+  }
+  
+  String _generateCode(String input) {
+    final task = input.replaceAll(RegExp(r'كود|code'), '').trim();
+    return '''
+```dart
+// Generated by ${getActiveModel()['name']}
+// Task: ${task.isEmpty ? 'Calculate average' : task}
+
+void main() {
+  List<int> numbers = [1, 2, 3, 4, 5];
+  double average = numbers.reduce((a, b) => a + b) / numbers.length;
+  print('Average: \$average');
+}
+```
+''';
+  }
+  
+  String _generateWebsite(String input) {
+    return '''
+```html
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>Giant Agent</title>
+<style>
+body{font-family:system-ui;background:linear-gradient(135deg,#667eea,#764ba2);min-height:100vh;display:flex;justify-content:center;align-items:center}
+.card{background:white;border-radius:24px;padding:48px;max-width:500px;text-align:center}
+h1{color:#667eea}button{background:#667eea;color:white;border:none;padding:12px 32px;border-radius:40px;cursor:pointer}
+</style>
+</head>
+<body>
+<div class="card">
+<h1>Giant Agent X</h1>
+<p>Created by AI</p>
+<button onclick="alert('Hello!')">Click Me</button>
+</div>
+</body>
+</html>
+```
+''';
+  }
+  
+  String _analyzeText(String input) {
+    final text = input.replaceAll(RegExp(r'حلل|analyze'), '').trim();
+    if (text.isEmpty) return 'Please provide text to analyze';
+    
+    final words = text.split(' ');
+    return '''
+**Analysis Results**
+
+Text: ${text.length > 100 ? text.substring(0, 100) + '...' : text}
+Words: ${words.length}
+Characters: ${text.length}
+Sentences: ${text.split(RegExp(r'[.!?]+')).length}
+
+Quality: ${text.length > 200 ? 'Excellent' : text.length > 100 ? 'Good' : 'Short'}
+''';
+  }
+  
+  String _calculate(String input) {
     try {
-      final dir  await getxternaltorageirectory()
-      final modelsir  irectory('${dir.path}/models')
-      if (!await modelsir.exists()) {
-        await modelsir.create(recrsive tre)
+      if (input.contains('+')) {
+        final parts = input.split('+');
+        final a = double.parse(parts[0].trim());
+        final b = double.parse(parts[1].trim());
+        return 'Result: ${a + b}';
+      } else if (input.contains('-')) {
+        final parts = input.split('-');
+        final a = double.parse(parts[0].trim());
+        final b = double.parse(parts[1].trim());
+        return 'Result: ${a - b}';
+      } else if (input.contains('*')) {
+        final parts = input.split('*');
+        final a = double.parse(parts[0].trim());
+        final b = double.parse(parts[1].trim());
+        return 'Result: ${a * b}';
+      } else if (input.contains('/')) {
+        final parts = input.split('/');
+        final a = double.parse(parts[0].trim());
+        final b = double.parse(parts[1].trim());
+        if (b == 0) return 'Error: Division by zero';
+        return 'Result: ${a / b}';
       }
-      
-      final file  ile('${modelsir.path}/$name.tflite')
-      await file.writestring('ock model content')
-      
-      await getvailableodels() //  
-      retrn tre
     } catch (e) {
-      retrn false
+      return 'Error in calculation';
     }
+    return 'Please write a valid calculation like: 5+3';
   }
   
-  //    
-  static trebool addstomodel(tring path) async {
-    final file  ile(path)
-    if (await file.exists() && path.endsith('.tflite')) {
-      final dir  await getxternaltorageirectory()
-      final modelsir  irectory('${dir.path}/models')
-      if (!await modelsir.exists()) {
-        await modelsir.create(recrsive tre)
-      }
-      
-      final newath  '${modelsir.path}/${file.path.split('/').last}'
-      await file.copy(newath)
-      await getvailableodels() //  
-      retrn tre
-    }
-    retrn false
-  }
-  
-  //    
-  static tring getodelpeed() {
-    final active  getctiveodel()
-    retrn active'speed']  'ltra'
+  String _chatResponse(String input) {
+    return '''
+Based on my analysis of "$input", I understand your query.
+
+${getActiveModel()['name']} is processing your request. How can I assist you further?
+''';
   }
 }

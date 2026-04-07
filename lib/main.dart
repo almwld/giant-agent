@@ -1,32 +1,36 @@
-import 'packagefltter/material.dart'
-import 'packagepermission_handler/permission_handler.dart'
-import 'screens/nclear_screen.dart'
+import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'screens/chat_screen.dart';
 
 void main() async {
-  idgetsltterinding.ensrenitialized()
-  await ermission.storage].reqest()
-  rnpp(const ypp())
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Request permissions
+  await [
+    Permission.storage,
+    Permission.photos,
+    Permission.camera,
+  ].request();
+  
+  runApp(const MyApp());
 }
 
-class ypp extends tatelessidget {
-  const ypp({sper.key})
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
-  override
-  idget bild(ildontext context) {
-    retrn aterialpp(
-      title 'iant gent ',
-      debghowheckedodeanner false,
-      theme hemeata(
-        brightness rightness.dark,
-        primaryolor olors.deeprple,
-        scaffoldackgrondolor olors.black,
-        apparheme const pparheme(
-          backgrondolor olors.deeprple,
-          elevation ,
-          centeritle tre,
-        ),
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Giant Agent X',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        brightness: Brightness.light,*
+        primaryColor: const Color(0xFF10A37F),
+        scaffoldBackgroundColor: Colors.white,
+        fontFamily: 'System',
+        useMaterial3: true,
       ),
-      home const clearcreen(),
-    )
+      home: const ChatScreen(),
+    );
   }
 }
