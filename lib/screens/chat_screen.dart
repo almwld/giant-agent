@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:sqflite/sqflite.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import '../services/model_service.dart';
 
@@ -56,10 +55,11 @@ class _ChatScreenState extends State<ChatScreen> {
     if (messages != null && mounted) {
       setState(() {
         for (var msg in messages) {
+          final int timestamp = msg['timestamp'] as int;
           _messages.add({
             'isUser': msg['isUser'] == 1,
-            'content': msg['content'],
-            'time': DateTime.fromMillisecondsSinceEpoch(msg['timestamp']),
+            'content': msg['content'] as String,
+            'time': DateTime.fromMillisecondsSinceEpoch(timestamp),
           });
         }
       });
