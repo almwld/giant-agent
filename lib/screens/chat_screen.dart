@@ -315,3 +315,53 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 }
+
+import '../services/tts_service.dart';
+import '../services/voice_service.dart';
+import '../services/conversation_service.dart';
+
+final TTSService _tts = TTSService();
+final VoiceService _voice = VoiceService();
+
+@override
+void initState() {
+  super.initState();
+  _init();
+  _initTTS();
+}
+
+Future<void> _initTTS() async {
+  await _tts.init();
+}
+
+Future<void> _startVoiceInput() async {
+  final initialized = await _voice.init();
+  if (initialized) {
+    await _voice.startListening((text) {
+      if (mounted) {
+        setState(() {
+          _controller.text = text;
+        });
+      }
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('🎤 جاري الاستماع...')),
+    );
+  }
+}
+
+void _speakLastResponse() async {
+  if (_messages.isNotEmpty && !_messages.last['isUser']) {
+    await _tts.speak(_messages.last['content']);
+  }
+}
+
+void _exportConversation() async {
+  if (_messages.isNotEmpty) {
+    await ConversationService.exportAsText(_messages);
+  } else {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('لا توجد محادثات لتصديرها')),
+    );
+  }
+}

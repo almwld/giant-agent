@@ -28,15 +28,5 @@ class TTSService {
     _isSpeaking = false;
   }
   
-  Future<void> setLanguage(String language) async {
-    await _tts.setLanguage(language);
-  }
-  
-  Future<void> setRate(double rate) async {
-    await _tts.setSpeechRate(rate);
-  }
-  
-  Future<void> setPitch(double pitch) async {
-    await _tts.setPitch(pitch);
-  }
+  bool get isSpeaking => _isSpeaking;
 }
