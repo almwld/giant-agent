@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'screens/welcome_screen.dart';
+import 'screens/chat_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // طلب الصلاحيات
   await [
     Permission.storage,
     Permission.photos,
@@ -23,12 +22,11 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Giant Agent X',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        primaryColor: const Color(0xFF6C63FF),
-        scaffoldBackgroundColor: Colors.white,
-        useMaterial3: true,
+      theme: ThemeData.dark().copyWith(
+        primaryColor: const Color(0xFF10A37F),
+        scaffoldBackgroundColor: const Color(0xFF343541),
       ),
-      home: const WelcomeScreen(),
+      home: const ChatScreen(),
     );
   }
 }

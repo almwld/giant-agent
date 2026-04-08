@@ -1,6 +1,6 @@
 name: giant_agent_x
-description: AI Agent with TFLite Models
-version: 5.0.0+1
+description: Professional AI Agent with Real TFLite Models
+version: 7.0.0+1
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -14,6 +14,9 @@ dependencies:
   permission_handler: ^11.0.0
   path_provider: ^2.1.0
   share_plus: ^7.2.2
+  sqflite: ^2.3.0
+  google_fonts: ^6.1.0
+  provider: ^6.0.5
 
 dev_dependencies:
   flutter_test:

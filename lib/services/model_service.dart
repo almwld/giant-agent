@@ -1,23 +1,15 @@
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'file_picker_service.dart';
+import 'real_model_runner.dart';
 
 class ModelService {
+  final RealModelRunner _runner = RealModelRunner();
   List<Map<String, dynamic>> _models = [];
   String _activeModelId = '';
-  File? _currentModelFile;
   
   Future<void> init() async {
-    await _requestPermissions();
     await _scanModels();
-  }
-  
-  Future<void> _requestPermissions() async {
-    await [
-      Permission.storage,
-      Permission.manageExternalStorage,
-    ].request();
   }
   
   Future<void> _scanModels() async {
@@ -28,8 +20,6 @@ class ModelService {
       '/storage/emulated/0/Download/',
       '/sdcard/Download/models/',
       '/sdcard/Download/',
-      '/storage/emulated/0/Models/',
-      '/storage/emulated/0/Android/data/com.example.giant_agent/files/models/',
     ];
     
     for (String path in searchPaths) {
@@ -39,20 +29,14 @@ class ModelService {
           final files = await dir.list().toList();
           for (var file in files) {
             String fileName = file.path.split('/').last;
-            String extension = fileName.split('.').last.toLowerCase();
-            
-            if (extension == 'tflite' || 
-                extension == 'onnx' || 
-                extension == 'gguf' ||
-                extension == 'bin') {
-              
+            if (fileName.endsWith('.tflite')) {
               final size = await File(file.path).length();
               _models.add({
                 'id': fileName,
                 'name': fileName,
                 'path': file.path,
                 'size': (size / 1024 / 1024).toStringAsFixed(2),
-                'type': extension,
+                'type': 'tflite',
               });
             }
           }
@@ -60,19 +44,9 @@ class ModelService {
       }
     }
     
-    if (_models.isEmpty) {
-      _models.add({
-        'id': 'no_model',
-        'name': '⚠️ لا يوجد نموذج',
-        'path': null,
-        'size': '0',
-        'type': 'none',
-      });
-    }
-    
-    if (_activeModelId.isEmpty && _models.isNotEmpty && _models.first['id'] != 'no_model') {
+    if (_activeModelId.isEmpty && _models.isNotEmpty) {
       _activeModelId = _models.first['id'];
-      _currentModelFile = File(_models.first['path']);
+      await _runner.loadModel(_models.first['path']);
     }
   }
   
@@ -82,9 +56,14 @@ class ModelService {
   
   Future<bool> addModelFromFile() async {
     try {
-      final file = await FilePickerService.pickModelFile();
-      if (file != null) {
-        final fileName = file.path.split('/').last;
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['tflite'],
+      );
+      
+      if (result != null) {
+        final filePath = result.files.single.path!;
+        final fileName = result.files.single.name;
         
         final modelsDir = Directory('/storage/emulated/0/Download/models/');
         if (!await modelsDir.exists()) {
@@ -92,7 +71,7 @@ class ModelService {
         }
         
         final destPath = '/storage/emulated/0/Download/models/$fileName';
-        await file.copy(destPath);
+        await File(filePath).copy(destPath);
         await _scanModels();
         return true;
       }
@@ -112,31 +91,24 @@ class ModelService {
   }
   
   Future<bool> switchModel(String modelId) async {
-    Map<String, dynamic>? model = _models.firstWhere((m) => m['id'] == modelId, orElse: () => {});
-    if (model.isNotEmpty && model['path'] != null) {
+    final model = _models.firstWhere((m) => m['id'] == modelId, orElse: () => null);
+    if (model != null && model['path'] != null) {
       _activeModelId = modelId;
-      _currentModelFile = File(model['path']);
-      return true;
+      return await _runner.loadModel(model['path']);
     }
     return false;
   }
   
-  bool hasActiveModel() {
-    return _currentModelFile != null;
-  }
+  bool hasActiveModel() => _runner.isLoaded();
+  bool isLoading() => _runner.isLoading();
   
-  String getActiveModelName() {
-    if (_currentModelFile == null) return 'لا يوجد';
-    return _currentModelFile!.path.split('/').last;
-  }
+  String getActiveModelName() => _runner.getModelName();
   
   Future<String> runModel(String input) async {
-    if (_currentModelFile == null) {
-      return '⚠️ لا يوجد نموذج نشط. الرجاء اختيار نموذج أولاً.';
-    }
-    
-    await Future.delayed(const Duration(milliseconds: 300));
-    
-    return '📱 **الرد من النموذج (${getActiveModelName()}):**\n\nتم استلام: "$input"\n\n✅ تمت المعالجة بنجاح.';
+    return await _runner.run(input);
+  }
+  
+  void dispose() {
+    _runner.dispose();
   }
 }
