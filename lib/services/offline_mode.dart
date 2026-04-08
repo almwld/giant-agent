@@ -1,19 +1,21 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 class OfflineMode {
-  static const String _offlineKey = 'offline_mode';
+  static final OfflineMode _instance = OfflineMode._internal();
+  factory OfflineMode() => _instance;
+  OfflineMode._internal();
   
-  static Future<bool> isEnabled() async {
+  Future<bool> isEnabled() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_offlineKey) ?? true;
+    return prefs.getBool('offline_mode') ?? true;
   }
   
-  static Future<void> setEnabled(bool enabled) async {
+  Future<void> setEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_offlineKey, enabled);
+    await prefs.setBool('offline_mode', enabled);
   }
   
-  static String getOfflineMessage() {
-    return '🌐 أنت في وضع عدم الاتصال\nجميع البيانات محفوظة محلياً';
+  String getOfflineMessage() {
+    return '🌐 **وضع عدم الاتصال**\n\nالتطبيق يعمل محلياً بالكامل.\nجميع البيانات مخزنة على جهازك.';
   }
 }
