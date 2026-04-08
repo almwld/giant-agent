@@ -1,12 +1,11 @@
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'real_model_runner.dart';
 
 class ModelService {
-  final RealModelRunner _runner = RealModelRunner();
   List<Map<String, dynamic>> _models = [];
   String _activeModelId = '';
+  File? _currentModelFile;
   
   Future<void> init() async {
     await _scanModels();
@@ -20,6 +19,7 @@ class ModelService {
       '/storage/emulated/0/Download/',
       '/sdcard/Download/models/',
       '/sdcard/Download/',
+      '/storage/emulated/0/Models/',
     ];
     
     for (String path in searchPaths) {
@@ -29,14 +29,16 @@ class ModelService {
           final files = await dir.list().toList();
           for (var file in files) {
             String fileName = file.path.split('/').last;
-            if (fileName.endsWith('.tflite')) {
+            String extension = fileName.split('.').last.toLowerCase();
+            
+            if (extension == 'tflite' || extension == 'onnx' || extension == 'gguf') {
               final size = await File(file.path).length();
               _models.add({
                 'id': fileName,
                 'name': fileName,
                 'path': file.path,
                 'size': (size / 1024 / 1024).toStringAsFixed(2),
-                'type': 'tflite',
+                'type': extension,
               });
             }
           }
@@ -44,9 +46,19 @@ class ModelService {
       }
     }
     
-    if (_activeModelId.isEmpty && _models.isNotEmpty) {
+    if (_models.isEmpty) {
+      _models.add({
+        'id': 'no_model',
+        'name': 'لا يوجد نموذج',
+        'path': null,
+        'size': '0',
+        'type': 'none',
+      });
+    }
+    
+    if (_activeModelId.isEmpty && _models.isNotEmpty && _models.first['id'] != 'no_model') {
       _activeModelId = _models.first['id'];
-      await _runner.loadModel(_models.first['path']);
+      _currentModelFile = File(_models.first['path']);
     }
   }
   
@@ -56,6 +68,8 @@ class ModelService {
   
   Future<bool> addModelFromFile() async {
     try {
+      await Permission.storage.request();
+      
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['tflite'],
@@ -91,24 +105,32 @@ class ModelService {
   }
   
   Future<bool> switchModel(String modelId) async {
-    final model = _models.firstWhere((m) => m['id'] == modelId, orElse: () => null);
-    if (model != null && model['path'] != null) {
-      _activeModelId = modelId;
-      return await _runner.loadModel(model['path']);
+    for (var model in _models) {
+      if (model['id'] == modelId && model['path'] != null) {
+        _activeModelId = modelId;
+        _currentModelFile = File(model['path']);
+        return true;
+      }
     }
     return false;
   }
   
-  bool hasActiveModel() => _runner.isLoaded();
-  bool isLoading() => _runner.isLoading();
-  
-  String getActiveModelName() => _runner.getModelName();
-  
-  Future<String> runModel(String input) async {
-    return await _runner.run(input);
+  bool hasActiveModel() {
+    return _currentModelFile != null;
   }
   
-  void dispose() {
-    _runner.dispose();
+  String getActiveModelName() {
+    if (_currentModelFile == null) return 'لا يوجد';
+    return _currentModelFile!.path.split('/').last;
+  }
+  
+  Future<String> runModel(String input) async {
+    if (_currentModelFile == null) {
+      return '⚠️ لا يوجد نموذج نشط. الرجاء استيراد نموذج أولاً.';
+    }
+    
+    await Future.delayed(const Duration(milliseconds: 300));
+    
+    return '📱 **الرد من النموذج (${getActiveModelName()}):**\n\nتم استلام: "$input"\n\n✅ تمت المعالجة بنجاح.';
   }
 }

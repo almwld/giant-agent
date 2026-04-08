@@ -11,26 +11,14 @@ class AdvancedSettings extends StatefulWidget {
 
 class _AdvancedSettingsState extends State<AdvancedSettings> {
   final ModelService _modelService = ModelService();
-  bool _autoSave = true;
   bool _darkMode = false;
   double _fontSize = 14.0;
-  String _responseStyle = 'smart';
-  
-  @override
-  void initState() {
-    super.initState();
-    _loadSettings();
-  }
-  
-  Future<void> _loadSettings() async {
-    // تحميل الإعدادات
-  }
   
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('الإعدادات المتقدمة'),
+        title: const Text('الإعدادات'),
         centerTitle: true,
       ),
       body: ListView(
@@ -44,35 +32,6 @@ class _AdvancedSettingsState extends State<AdvancedSettings> {
                 await _modelService.refreshModels();
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('تم تحديث النماذج')),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.folder_open),
-              title: const Text('مسارات البحث'),
-              subtitle: const Text('عرض مسارات البحث عن النماذج'),
-              onTap: () {
-                showDialog(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: const Text('مسارات البحث'),
-                    content: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: const [
-                        Text('• /storage/emulated/0/Download/models/'),
-                        Text('• /storage/emulated/0/Download/'),
-                        Text('• /sdcard/Download/models/'),
-                        Text('• /sdcard/Download/'),
-                        Text('• /storage/emulated/0/Models/'),
-                      ],
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(ctx),
-                        child: const Text('إغلاق'),
-                      ),
-                    ],
-                  ),
                 );
               },
             ),
@@ -101,20 +60,6 @@ class _AdvancedSettingsState extends State<AdvancedSettings> {
               ),
             ),
           ]),
-          _buildSection('الاستجابة', [
-            ListTile(
-              title: const Text('نمط الاستجابة'),
-              trailing: DropdownButton<String>(
-                value: _responseStyle,
-                items: const [
-                  DropdownMenuItem(value: 'smart', child: Text('ذكي')),
-                  DropdownMenuItem(value: 'detailed', child: Text('مفصل')),
-                  DropdownMenuItem(value: 'concise', child: Text('مختصر')),
-                ],
-                onChanged: (value) => setState(() => _responseStyle = value!),
-              ),
-            ),
-          ]),
           _buildSection('معلومات', [
             ListTile(
               leading: const Icon(Icons.info),
@@ -132,7 +77,6 @@ class _AdvancedSettingsState extends State<AdvancedSettings> {
                     Text('• دعم نماذج TFLite'),
                     Text('• رفع ملفات وصور'),
                     Text('• محادثة ذكية'),
-                    Text('• إعدادات متقدمة'),
                   ],
                 );
               },
