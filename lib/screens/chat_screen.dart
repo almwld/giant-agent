@@ -2,6 +2,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:path_provider/path_provider.dart';
 import '../services/model_service.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -20,11 +23,80 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isLoading = false;
   List<Map<String, dynamic>> _models = [];
   Map<String, dynamic> _activeModel = {};
+  Database? _db;
 
   @override
   void initState() {
     super.initState();
     _init();
+    _initDatabase();
+  }
+
+  Future<void> _initDatabase() async {
+    final dir = await getApplicationDocumentsDirectory();
+    _db = await openDatabase(
+      '${dir.path}/conversations.db',
+      version: 1,
+      onCreate: (db, version) async {
+        await db.execute('''
+          CREATE TABLE messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            content TEXT,
+            isUser INTEGER,
+            timestamp INTEGER
+          )
+        ''');
+      },
+    );
+    await _loadHistory();
+  }
+
+  Future<void> _loadHistory() async {
+    final messages = await _db?.query('messages', orderBy: 'timestamp ASC');
+    if (messages != null && mounted) {
+      setState(() {
+        for (var msg in messages) {
+          _messages.add({
+            'isUser': msg['isUser'] == 1,
+            'content': msg['content'],
+            'time': DateTime.fromMillisecondsSinceEpoch(msg['timestamp']),
+          });
+        }
+      });
+      _scrollToBottom();
+    }
+  }
+
+  Future<void> _saveMessage(String content, bool isUser) async {
+    await _db?.insert('messages', {
+      'content': content,
+      'isUser': isUser ? 1 : 0,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    });
+  }
+
+  Future<void> _clearHistory() async {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('مسح المحادثات'),
+        content: const Text('هل أنت متأكد؟'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
+          TextButton(
+            onPressed: () async {
+              await _db?.delete('messages');
+              setState(() => _messages.clear());
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('تم مسح المحادثات')),
+              );
+            },
+            child: const Text('مسح', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _init() async {
@@ -33,32 +105,6 @@ class _ChatScreenState extends State<ChatScreen> {
       _models = _modelService.getModels();
       _activeModel = _modelService.getActiveModel();
     });
-    
-    // رسالة ترحيبية
-    _addMessage(false, '''
-🌟 **مرحباً بك في Giant Agent X!**
-
-أنا وكيل ذكاء اصطناعي متطور. للبدء:
-
-1. 📁 **استيراد نموذج** من القائمة الجانبية ☰
-2. 🗣️ **ابدأ المحادثة** مع النموذج
-
-**الميزات:**
-• دعم نماذج TFLite
-• رفع ملفات وصور
-• محادثة ذكية
-''');
-  }
-
-  void _addMessage(bool isUser, String content) {
-    setState(() {
-      _messages.add({
-        'isUser': isUser,
-        'content': content,
-        'time': DateTime.now(),
-      });
-    });
-    _scrollToBottom();
   }
 
   Future<void> _refreshModels() async {
@@ -67,16 +113,22 @@ class _ChatScreenState extends State<ChatScreen> {
       _models = _modelService.getModels();
       _activeModel = _modelService.getActiveModel();
     });
-    _showSnackbar('تم تحديث النماذج', Colors.green);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('تم تحديث النماذج')),
+    );
   }
 
   Future<void> _importModel() async {
     final success = await _modelService.importModelFromFile();
     if (success && mounted) {
       await _refreshModels();
-      _showSnackbar('✅ تم استيراد النموذج بنجاح', Colors.green);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('✅ تم استيراد النموذج بنجاح')),
+      );
     } else if (mounted) {
-      _showSnackbar('❌ فشل استيراد النموذج', Colors.red);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('❌ فشل استيراد النموذج')),
+      );
     }
   }
 
@@ -84,13 +136,30 @@ class _ChatScreenState extends State<ChatScreen> {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
     
-    _addMessage(true, text);
-    _controller.clear();
-    setState(() => _isLoading = true);
+    setState(() {
+      _messages.add({
+        'isUser': true,
+        'content': text,
+        'time': DateTime.now(),
+      });
+      _controller.clear();
+      _isLoading = true;
+    });
+    await _saveMessage(text, true);
+    _scrollToBottom();
 
     final response = await _modelService.processInput(text);
-    _addMessage(false, response);
-    setState(() => _isLoading = false);
+
+    setState(() {
+      _messages.add({
+        'isUser': false,
+        'content': response,
+        'time': DateTime.now(),
+      });
+      _isLoading = false;
+    });
+    await _saveMessage(response, false);
+    _scrollToBottom();
   }
 
   Future<void> _pickFile() async {
@@ -98,12 +167,26 @@ class _ChatScreenState extends State<ChatScreen> {
     if (result != null && mounted) {
       final file = File(result.files.single.path!);
       final content = await file.readAsString();
-      _addMessage(true, '📁 ${result.files.single.name}\n${content.length > 500 ? content.substring(0, 500) + '...' : content}');
       
-      setState(() => _isLoading = true);
+      setState(() {
+        _messages.add({
+          'isUser': true,
+          'content': '📁 ${result.files.single.name}\n${content.length > 500 ? content.substring(0, 500) + '...' : content}',
+          'time': DateTime.now(),
+        });
+        _isLoading = true;
+      });
+      
       final response = await _modelService.processInput('تحليل الملف: $content');
-      _addMessage(false, response);
-      setState(() => _isLoading = false);
+      
+      setState(() {
+        _messages.add({
+          'isUser': false,
+          'content': response,
+          'time': DateTime.now(),
+        });
+        _isLoading = false;
+      });
     }
   }
 
@@ -112,11 +195,25 @@ class _ChatScreenState extends State<ChatScreen> {
     final XFile? image = await picker.pickImage(source: ImageSource.gallery);
     
     if (image != null && mounted) {
-      _addMessage(true, '🖼️ ${image.name}');
-      setState(() => _isLoading = true);
+      setState(() {
+        _messages.add({
+          'isUser': true,
+          'content': '🖼️ ${image.name}',
+          'time': DateTime.now(),
+        });
+        _isLoading = true;
+      });
+      
       final response = await _modelService.processInput('تحليل الصورة: ${image.name}');
-      _addMessage(false, response);
-      setState(() => _isLoading = false);
+      
+      setState(() {
+        _messages.add({
+          'isUser': false,
+          'content': response,
+          'time': DateTime.now(),
+        });
+        _isLoading = false;
+      });
     }
   }
 
@@ -124,12 +221,13 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {
       _messages.clear();
     });
-    _init();
   }
 
   void _switchModel(Map<String, dynamic> model) async {
     if (model['id'] == 'no_model') {
-      _showSnackbar('⚠️ لا يوجد نموذج محدد', Colors.orange);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('⚠️ لا يوجد نموذج محدد')),
+      );
       return;
     }
     
@@ -138,16 +236,10 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         _activeModel = _modelService.getActiveModel();
       });
-      _showSnackbar('✅ تم التبديل إلى: ${model['name']}', Colors.green);
-      Navigator.pop(context);
-    }
-  }
-
-  void _showSnackbar(String message, Color color) {
-    if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message), backgroundColor: color),
+        SnackBar(content: Text('تم التبديل إلى: ${model['name']}')),
       );
+      Navigator.pop(context);
     }
   }
 
@@ -179,6 +271,11 @@ class _ChatScreenState extends State<ChatScreen> {
             icon: const Icon(Icons.delete_outline),
             onPressed: _newConversation,
             tooltip: 'جديد',
+          ),
+          IconButton(
+            icon: const Icon(Icons.history),
+            onPressed: _clearHistory,
+            tooltip: 'مسح المحادثات',
           ),
         ],
       ),
@@ -281,7 +378,6 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       body: Column(
         children: [
-          // شريط النموذج النشط
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             color: _modelService.hasActiveModel() ? Colors.green.shade50 : Colors.orange.shade50,
@@ -307,7 +403,6 @@ class _ChatScreenState extends State<ChatScreen> {
               ],
             ),
           ),
-          // رسائل المحادثة
           Expanded(
             child: ListView.builder(
               controller: _scrollController,
@@ -359,7 +454,6 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
           if (_isLoading) const LinearProgressIndicator(),
-          // شريط الإدخال
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
@@ -415,121 +509,3 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 }
-
-import '../services/conversation_memory.dart';
-import '../services/stats_service.dart';
-import '../widgets/loading_indicator.dart';
-
-final ConversationMemory _memory = ConversationMemory();
-final StatsService _stats = StatsService();
-
-@override
-void initState() {
-  super.initState();
-  _init();
-  _initMemory();
-  _loadHistory();
-}
-
-Future<void> _initMemory() async {
-  await _memory.init();
-}
-
-Future<void> _loadHistory() async {
-  final messages = await _memory.getMessages();
-  if (messages.isNotEmpty && mounted) {
-    setState(() {
-      for (var msg in messages.reversed) {
-        _messages.add({
-          'isUser': msg['isUser'] == 1,
-          'content': msg['content'],
-          'time': DateTime.fromMillisecondsSinceEpoch(msg['timestamp']),
-        });
-      }
-    });
-    _scrollToBottom();
-  }
-}
-
-Future<void> _saveToMemory(String content, bool isUser) async {
-  await _memory.saveMessage(content, isUser, _modelService.getActiveModelName());
-  await _stats.incrementMessageCount();
-}
-
-// تعديل _sendMessage لحفظ الرسائل
-Future<void> _sendMessage() async {
-  final text = _controller.text.trim();
-  if (text.isEmpty) return;
-  
-  _addMessage(true, text);
-  await _saveToMemory(text, true);
-  _controller.clear();
-  setState(() => _isLoading = true);
-
-  final response = await _modelService.processInput(text);
-  _addMessage(false, response);
-  await _saveToMemory(response, false);
-  setState(() => _isLoading = false);
-}
-
-void _clearHistory() async {
-  showDialog(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      title: const Text('مسح المحادثات'),
-      content: const Text('هل أنت متأكد من مسح جميع المحادثات؟'),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(ctx),
-          child: const Text('إلغاء'),
-        ),
-        TextButton(
-          onPressed: () async {
-            await _memory.clearHistory();
-            setState(() {
-              _messages.clear();
-            });
-            Navigator.pop(ctx);
-            _showSnackbar('تم مسح المحادثات', Colors.green);
-          },
-          child: const Text('مسح', style: TextStyle(color: Colors.red)),
-        ),
-      ],
-    ),
-  );
-}
-
-void _showStats() async {
-  final stats = await _stats.getAllStats();
-  showDialog(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      title: const Text('إحصائيات التطبيق'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('📊 إجمالي الرسائل: ${stats['total_messages']}'),
-          const SizedBox(height: 8),
-          Text('🔄 تبديل النماذج: ${stats['model_switches']}'),
-          const SizedBox(height: 8),
-          Text('📅 أول استخدام: ${stats['first_launch'].toString().substring(0, 10)}'),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(ctx),
-          child: const Text('إغلاق'),
-        ),
-      ],
-    ),
-  );
-}
-
-
-final OfflineMode _offlineMode = OfflineMode();
-
-    _showSnackbar('تم إنشاء النسخة الاحتياطية', Colors.green);
-  }
-}
-
