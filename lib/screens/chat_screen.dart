@@ -526,32 +526,10 @@ void _showStats() async {
   );
 }
 
-import '../services/offline_mode.dart';
-import '../services/backup_service.dart';
-import 'help_screen.dart';
 
 final OfflineMode _offlineMode = OfflineMode();
 
-void _showHelp() {
-  Navigator.push(
-    context,
-    MaterialPageRoute(builder: (context) => const HelpScreen()),
-  );
-}
-
-void _backupData() async {
-  final db = await _memory._db;
-  if (db != null) {
-    await BackupService.backupDatabase(db);
     _showSnackbar('تم إنشاء النسخة الاحتياطية', Colors.green);
   }
 }
 
-void _toggleOfflineMode() async {
-  final isEnabled = await _offlineMode.isEnabled();
-  await _offlineMode.setEnabled(!isEnabled);
-  _showSnackbar(
-    !isEnabled ? '✅ تم تفعيل وضع عدم الاتصال' : '🌐 تم إلغاء وضع عدم الاتصال',
-    Colors.blue,
-  );
-}
