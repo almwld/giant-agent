@@ -415,3 +415,113 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 }
+
+import '../services/conversation_memory.dart';
+import '../services/stats_service.dart';
+import '../widgets/loading_indicator.dart';
+
+final ConversationMemory _memory = ConversationMemory();
+final StatsService _stats = StatsService();
+
+@override
+void initState() {
+  super.initState();
+  _init();
+  _initMemory();
+  _loadHistory();
+}
+
+Future<void> _initMemory() async {
+  await _memory.init();
+}
+
+Future<void> _loadHistory() async {
+  final messages = await _memory.getMessages();
+  if (messages.isNotEmpty && mounted) {
+    setState(() {
+      for (var msg in messages.reversed) {
+        _messages.add({
+          'isUser': msg['isUser'] == 1,
+          'content': msg['content'],
+          'time': DateTime.fromMillisecondsSinceEpoch(msg['timestamp']),
+        });
+      }
+    });
+    _scrollToBottom();
+  }
+}
+
+Future<void> _saveToMemory(String content, bool isUser) async {
+  await _memory.saveMessage(content, isUser, _modelService.getActiveModelName());
+  await _stats.incrementMessageCount();
+}
+
+// تعديل _sendMessage لحفظ الرسائل
+Future<void> _sendMessage() async {
+  final text = _controller.text.trim();
+  if (text.isEmpty) return;
+  
+  _addMessage(true, text);
+  await _saveToMemory(text, true);
+  _controller.clear();
+  setState(() => _isLoading = true);
+
+  final response = await _modelService.processInput(text);
+  _addMessage(false, response);
+  await _saveToMemory(response, false);
+  setState(() => _isLoading = false);
+}
+
+void _clearHistory() async {
+  showDialog(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('مسح المحادثات'),
+      content: const Text('هل أنت متأكد من مسح جميع المحادثات؟'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('إلغاء'),
+        ),
+        TextButton(
+          onPressed: () async {
+            await _memory.clearHistory();
+            setState(() {
+              _messages.clear();
+            });
+            Navigator.pop(ctx);
+            _showSnackbar('تم مسح المحادثات', Colors.green);
+          },
+          child: const Text('مسح', style: TextStyle(color: Colors.red)),
+        ),
+      ],
+    ),
+  );
+}
+
+void _showStats() async {
+  final stats = await _stats.getAllStats();
+  showDialog(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('إحصائيات التطبيق'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('📊 إجمالي الرسائل: ${stats['total_messages']}'),
+          const SizedBox(height: 8),
+          Text('🔄 تبديل النماذج: ${stats['model_switches']}'),
+          const SizedBox(height: 8),
+          Text('📅 أول استخدام: ${stats['first_launch'].toString().substring(0, 10)}'),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('إغلاق'),
+        ),
+      ],
+    ),
+  );
+}
