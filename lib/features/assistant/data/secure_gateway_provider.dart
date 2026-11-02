@@ -82,8 +82,9 @@ class SecureGatewayProvider implements AiProvider {
       );
     }
 
-    final lines = response.transform(utf8.decoder).transform(const LineSplitter());
-    await for (final line in lines) {
+    final lines = response.transform(utf8.decoder).transform(const LineSplitter()).timeout(timeout);
+    try {
+      await for (final line in lines) {
       if (!line.startsWith('data:')) continue;
       final data = line.substring(5).trim();
       if (data.isEmpty || data == '[DONE]') continue;
@@ -103,6 +104,9 @@ class SecureGatewayProvider implements AiProvider {
       } else if (type == 'response.output_text.delta' && event['delta'] is String) {
         yield event['delta'] as String;
       }
+      }
+    } on TimeoutException {
+      throw const GatewayException('انقطع تدفق الاستجابة بسبب عدم وصول بيانات من الخادم في الوقت المحدد.');
     }
   }
 
