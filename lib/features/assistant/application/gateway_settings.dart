@@ -10,7 +10,7 @@ class GatewaySettings {
   Future<String> get provider async => (await _storage.read(key:_providerKey)) ?? 'openrouter';
   Future<String?> get providerApiKey async => _storage.read(key:_apiKeyKey);
   Future<bool> get isConfigured async {
-    final url=await baseUrl, token=await accessToken, key=await providerApiKey;
+    final url=await baseUrl, token=await accessToken;
     return url.isNotEmpty && token!=null && token.isNotEmpty;
   }
   Future<void> save({required String url, required String token, required String provider,
