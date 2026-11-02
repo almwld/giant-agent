@@ -32,15 +32,17 @@ class _AssistantConnectionScreenState extends State<AssistantConnectionScreen> {
       throw const FormatException('تحقق من عنوان الخادم؛ يجب أن يستخدم HTTPS.');
     }
     if(_gatewayToken.text.trim().length<16)throw const FormatException('أدخل رمز الوصول للبوابة أولاً.');
-    if(_apiKey.text.trim().length<8)throw const FormatException('أدخل مفتاح API الخاص بالمزود.');
+    if(_apiKey.text.trim().isNotEmpty && _apiKey.text.trim().length<8)throw const FormatException('مفتاح API للمزود غير صالح أو قصير جداً.');
     final client=HttpClient();
     try {
       final request=await client.getUrl(uri.resolve('/v1/models')).timeout(const Duration(seconds:25));
       request.headers
         ..set(HttpHeaders.authorizationHeader,'Bearer \${_gatewayToken.text.trim()}')
         ..set('x-ai-provider',_provider)
-        ..set('x-provider-api-key',_apiKey.text.trim())
         ..set(HttpHeaders.acceptHeader,'application/json');
+      if(_apiKey.text.trim().isNotEmpty) {
+        request.headers.set('x-provider-api-key',_apiKey.text.trim());
+      }
       final response=await request.close().timeout(const Duration(seconds:25));
       final body=await utf8.decoder.bind(response).join();
       if(response.statusCode<200 || response.statusCode>=300) {
@@ -88,7 +90,7 @@ class _AssistantConnectionScreenState extends State<AssistantConnectionScreen> {
         Card(child:Padding(padding:const EdgeInsets.all(16),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
           const Icon(Icons.security,size:30),const SizedBox(height:8),
           Text('اتصال آمن بمزودك',style:theme.textTheme.titleLarge),const SizedBox(height:6),
-          const Text('تُحفظ مفاتيح المزود في التخزين الآمن على جهازك، وتُرسل إلى بوابتك عبر HTTPS عند الطلب فقط. لا تُضمّن في APK ولا تُحفظ في ملفات الخادم.')
+          const Text('يمكنك استخدام مفتاح مزود محفوظ على الخادم، أو إدخال مفتاحك الخاص اختيارياً. مفاتيح BYOK تُحفظ في التخزين الآمن على جهازك وتُرسل عبر HTTPS عند الطلب فقط.')
         ]))),
         const SizedBox(height:18),
         DropdownButtonFormField<String>(value:_provider,decoration:const InputDecoration(labelText:'مزود الذكاء الاصطناعي',border:OutlineInputBorder()),
@@ -102,7 +104,7 @@ class _AssistantConnectionScreenState extends State<AssistantConnectionScreen> {
         const SizedBox(height:14),
         TextField(controller:_gatewayToken,obscureText:true,decoration:const InputDecoration(labelText:'رمز الوصول للبوابة',helperText:'يُنشأ في إعدادات استضافة الخادم.',border:OutlineInputBorder())),
         const SizedBox(height:14),
-        TextField(controller:_apiKey,obscureText:_obscure,decoration:InputDecoration(labelText:'مفتاح API للمزود',helperText:'مفتاح OpenRouter أو Gemini أو OpenAI.',border:const OutlineInputBorder(),
+        TextField(controller:_apiKey,obscureText:_obscure,decoration:InputDecoration(labelText:'مفتاح API للمزود',helperText:'اختياري: اتركه فارغاً لاستخدام مفتاح المزود المضبوط على الخادم.',border:const OutlineInputBorder(),
           suffixIcon:IconButton(onPressed:()=>setState(()=>_obscure=!_obscure),icon:Icon(_obscure?Icons.visibility:Icons.visibility_off)))),
         const SizedBox(height:14),
         TextField(controller:_model,decoration:const InputDecoration(labelText:'معرّف النموذج',hintText:'openrouter/free',border:OutlineInputBorder())),
