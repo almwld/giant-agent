@@ -155,7 +155,11 @@ function toResponsesInput(messages) {
 async function streamChat(req, res) {
   const provider = String(req.headers['x-ai-provider'] || PROVIDER).toLowerCase();
   if (!['openrouter', 'gemini', 'openai'].includes(provider)) return json(res, 400, { error: 'Unsupported AI provider' });
-  const apiKey = String(req.headers['x-provider-api-key'] || API_KEY);
+  const requestKey = String(req.headers['x-provider-api-key'] || '').trim();
+  if (!requestKey && provider !== PROVIDER) {
+    return json(res, 400, { error: 'A provider-specific key is required when selecting a provider different from the server default' });
+  }
+  const apiKey = requestKey || API_KEY;
   if (!apiKey) return json(res, 503, { error: 'AI provider API key is missing' });
   const { messages, model, attachments } = validateInput(await readJson(req));
   const upstreamMessages = attachContent(messages, attachments);
@@ -231,7 +235,11 @@ async function streamChat(req, res) {
 async function listModels(req, res) {
   const provider = String(req.headers['x-ai-provider'] || PROVIDER).toLowerCase();
   if (!['openrouter', 'gemini', 'openai'].includes(provider)) return json(res, 400, { error: 'Unsupported AI provider' });
-  const apiKey = String(req.headers['x-provider-api-key'] || API_KEY);
+  const requestKey = String(req.headers['x-provider-api-key'] || '').trim();
+  if (!requestKey && provider !== PROVIDER) {
+    return json(res, 400, { error: 'A provider-specific key is required when selecting a provider different from the server default' });
+  }
+  const apiKey = requestKey || API_KEY;
   if (!apiKey) return json(res, 503, { error: 'AI provider API key is missing' });
   try {
     const headers = { authorization: `Bearer ${apiKey}` };
