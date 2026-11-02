@@ -74,12 +74,14 @@ class SecureGatewayProvider implements AiProvider {
     final response = await httpRequest.close().timeout(timeout);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       final body = await utf8.decoder.bind(response).join();
-      throw GatewayException(
-        response.statusCode == 401
-            ? 'انتهت صلاحية جلسة الذكاء الاصطناعي أو أن رمز الوصول غير صالح. حدّث رمز الوصول ثم أعد المحاولة.'
-            : (body.isEmpty ? 'AI gateway request failed.' : body),
-        statusCode: response.statusCode,
-      );
+      final message = switch (response.statusCode) {
+        401 => 'انتهت صلاحية جلسة الذكاء الاصطناعي أو أن رمز الوصول غير صالح. حدّث رمز الوصول ثم أعد المحاولة.',
+        413 => 'حجم الرسالة أو المرفقات يتجاوز الحد المسموح. قلّل حجم الملفات ثم أعد المحاولة.',
+        429 => 'وصلت إلى حد الطلبات المؤقت. انتظر قليلاً ثم أعد المحاولة.',
+        503 => 'خدمة الذكاء الاصطناعي غير مهيأة حالياً. تحقق من إعداد مفتاح المزود على الخادم.',
+        _ => body.isEmpty ? 'تعذر تنفيذ طلب الذكاء الاصطناعي.' : body,
+      };
+      throw GatewayException(message, statusCode: response.statusCode);
     }
 
     final lines = response.transform(utf8.decoder).transform(const LineSplitter()).timeout(timeout);
