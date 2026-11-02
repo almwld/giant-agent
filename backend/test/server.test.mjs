@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 process.env.GATEWAY_JWT_SECRET = 'test-only-secret-with-at-least-32-characters';
 process.env.GATEWAY_JWT_ISSUER = 'giant-agent-tests';
 process.env.GATEWAY_JWT_AUDIENCE = 'giant-agent-mobile';
+process.env.APP_GATEWAY_TOKEN = 'development-test-token-only';
 
 const { validateInput, rateAllowed, toResponsesInput, authenticate } =
   await import('../src/server.mjs');
@@ -79,4 +80,16 @@ test('rejects tokens without a subject or trusted issuer/audience', () => {
   for (const token of [noSubject, wrongIssuer, wrongAudience]) {
     assert.equal(authenticate({ headers: { authorization: 'Bearer ' + token } }), null);
   }
+});
+
+test('allows the static shared token only outside production', () => {
+  const request = { headers: { authorization: 'Bearer development-test-token-only' } };
+  process.env.NODE_ENV = 'development';
+  assert.deepEqual(authenticate(request), {
+    subject: 'development-single-user',
+    method: 'development-token',
+  });
+  process.env.NODE_ENV = 'production';
+  assert.equal(authenticate(request), null);
+  delete process.env.NODE_ENV;
 });
