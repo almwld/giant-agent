@@ -9,7 +9,7 @@ class GatewaySettings {
   Future<String?> get accessToken async => _storage.read(key:_tokenKey);
   Future<bool> get isAccessTokenExpired async {
     final token = await accessToken;
-    if (token == null || token.isEmpty) return true;
+    if (token == null || token.isEmpty) return false;
     final expiry = tokenExpiry(token);
     return expiry != null && !expiry.isAfter(DateTime.now().toUtc());
   }
