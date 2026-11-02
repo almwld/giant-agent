@@ -41,6 +41,7 @@ class ChatController extends ChangeNotifier {
   }
 
   Future<void> createConversation() async {
+    await cancelGeneration();
     final now = DateTime.now();
     final conversation = Conversation(
       id: _newId(),
@@ -207,7 +208,7 @@ class ChatController extends ChangeNotifier {
     if (userIndex < 0) return;
     final prompt = messages[userIndex].content;
     final conversationId = messages[userIndex].conversationId;
-    final restored = messages.take(userIndex).toList();
+    final restored = messages.take(userIndex + 1).toList();
     await _repository.deleteMessages(conversationId);
     for (final message in restored) {
       await _repository.saveMessage(message);
