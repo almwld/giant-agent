@@ -35,10 +35,7 @@ class _ConfiguredGatewayProvider implements AiProvider {
     final selectedModel = request.model ?? await settings.model;
     final selectedProvider = await settings.provider;
     final providerApiKey = await settings.providerApiKey;
-    if (url.isEmpty ||
-        token == null ||
-        token.isEmpty ||
-        false) {
+    if (url.isEmpty || token == null || token.isEmpty) {
       throw StateError('لم يتم إعداد اتصال خادم الذكاء الاصطناعي.');
     }
     final provider = SecureGatewayProvider(
