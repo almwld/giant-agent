@@ -26,6 +26,8 @@ void main() {
       expect(await registry.execute('calculator', {}), contains('"code":"missing_arguments"'));
       expect(await registry.execute('calculator', {'expression': '1+1', 'shell': 'bad'}),
           contains('"code":"unexpected_arguments"'));
+      expect(await registry.execute('calculator', {'expression': 42}),
+          contains('"code":"invalid_argument_type"'));
     });
     test('tool schema exposes required JSON properties', () {
       final schema = createDefaultAgentTools().tools.first.toPromptMap()['parameters'] as Map;
