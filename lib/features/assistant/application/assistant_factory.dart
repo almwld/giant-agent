@@ -9,11 +9,14 @@ import 'react_agent_provider.dart';
 class AssistantFactory {
   AssistantFactory._();
 
-  static ChatController create({required GatewaySettings settings}) {
+  static ChatController create({
+    required GatewaySettings settings,
+    AccessTokenProvider? accessTokenProvider,
+  }) {
     return ChatController(
       repository: SqliteConversationRepository(),
       provider: ReActAgentProvider(
-        delegate: _ConfiguredGatewayProvider(settings),
+        delegate: _ConfiguredGatewayProvider(settings, accessTokenProvider: accessTokenProvider),
         tools: createDefaultAgentTools(),
         maxSteps: 8,
       ),
@@ -22,8 +25,9 @@ class AssistantFactory {
 }
 
 class _ConfiguredGatewayProvider implements AiProvider {
-  _ConfiguredGatewayProvider(this.settings);
+  _ConfiguredGatewayProvider(this.settings, {this.accessTokenProvider});
   final GatewaySettings settings;
+  final AccessTokenProvider? accessTokenProvider;
 
   @override
   String get id => 'secure_gateway';
@@ -31,9 +35,10 @@ class _ConfiguredGatewayProvider implements AiProvider {
   @override
   Stream<String> generate(AiGenerationRequest request) async* {
     final url = await settings.baseUrl;
-    final token = await settings.accessToken;
+    final token = await (accessTokenProvider ?? () => settings.accessToken)();
     final selectedModel = request.model ?? await settings.model;
-    final tokenExpired = await settings.isAccessTokenExpired;
+    final expiry = token == null ? null : GatewaySettings.tokenExpiry(token);
+    final tokenExpired = expiry != null && !expiry.isAfter(DateTime.now().toUtc());
     final selectedProvider = await settings.provider;
     final providerApiKey = await settings.providerApiKey;
     if (url.isEmpty || token == null || token.isEmpty) {
@@ -44,7 +49,7 @@ class _ConfiguredGatewayProvider implements AiProvider {
     }
     final provider = SecureGatewayProvider(
       baseUrl: url,
-      accessTokenProvider: () async => token,
+      accessTokenProvider: accessTokenProvider ?? () async => token,
       provider: selectedProvider,
       providerApiKey: providerApiKey,
     );
