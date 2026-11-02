@@ -102,7 +102,7 @@ class _AssistantConnectionScreenState extends State<AssistantConnectionScreen> {
         const SizedBox(height:14),
         TextField(controller:_url,keyboardType:TextInputType.url,decoration:const InputDecoration(labelText:'رابط خادم Giant Agent',hintText:'https://your-gateway.run.app',border:OutlineInputBorder())),
         const SizedBox(height:14),
-        TextField(controller:_gatewayToken,obscureText:true,decoration:const InputDecoration(labelText:'رمز الوصول للبوابة',helperText:'يُنشأ في إعدادات استضافة الخادم.',border:OutlineInputBorder())),
+        TextField(controller:_gatewayToken,obscureText:true,decoration:const InputDecoration(labelText:'رمز وصول حسابك',helperText:'رمز JWT قصير العمر يصدره خادم المصادقة الخاص بالتطبيق.',border:OutlineInputBorder())),
         const SizedBox(height:14),
         TextField(controller:_apiKey,obscureText:_obscure,decoration:InputDecoration(labelText:'مفتاح API للمزود',helperText:'اختياري: اتركه فارغاً لاستخدام مفتاح المزود المضبوط على الخادم.',border:const OutlineInputBorder(),
           suffixIcon:IconButton(onPressed:()=>setState(()=>_obscure=!_obscure),icon:Icon(_obscure?Icons.visibility:Icons.visibility_off)))),
