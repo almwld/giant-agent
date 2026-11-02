@@ -93,3 +93,13 @@ test('allows the static shared token only outside production', () => {
   assert.equal(authenticate(request), null);
   delete process.env.NODE_ENV;
 });
+
+
+test('rate limiter rejects requests after the configured window limit and resets after expiry', () => {
+  const key = 'rate-window-regression';
+  for (let index = 0; index < 30; index += 1) {
+    assert.equal(rateAllowed(key, 1_000), true);
+  }
+  assert.equal(rateAllowed(key, 1_000), false);
+  assert.equal(rateAllowed(key, 61_001), true);
+});
