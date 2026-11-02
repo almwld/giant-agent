@@ -43,7 +43,7 @@ The following status reflects code present on `feat/chatgpt-experience-foundatio
 ### Delivered in the current branch
 - Conversation entities and a separate versioned SQLite store with per-conversation message history and search.
 - A `ChatController` for streaming, cancellation, retry, and persisted assistant/user messages.
-- The existing `ChatScreen` now uses the assistant controller while retaining the legacy message database for backwards compatibility; assistant messages support copy/share and retry after failure.
+- The existing `ChatScreen` now uses the assistant controller while retaining the legacy message database for backwards compatibility; assistant messages support copy/share and retry after failure. Gateway streaming now detects stalled responses, and common authorization, payload-size, rate-limit and provider-configuration errors have actionable Arabic messages.
 - Node gateway routes for streaming and model discovery, OpenAI Responses API support (`store: false`), OpenRouter/Gemini-compatible streaming, and bounded image/text attachments.
 - Optional server-managed provider credentials or user BYOK credentials; the mobile UI no longer requires a provider key when the server has one configured.
 - Signed HS256 JWT verification with subject, issuer, audience, expiry and not-before checks; mobile settings can detect expired JWTs before a request, and 401 responses explain session expiry. Chat and model discovery share per-subject in-memory request limits, with expired-window cleanup and a bounded active-subject map. Static shared-token auth is development-only and rejected in production.
