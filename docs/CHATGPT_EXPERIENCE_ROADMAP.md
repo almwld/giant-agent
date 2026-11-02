@@ -51,7 +51,7 @@ The following status reflects code present on `feat/chatgpt-experience-foundatio
 - CI workflow for Flutter analysis/tests/debug APK and gateway syntax/unit tests. The last fully completed run before the newest commits passed analysis, tests, gateway checks and debug APK build.
 
 ### In progress / not yet production-ready
-- **Identity integration:** JWT verification and client-side expiry detection exist, and the assistant factory now accepts an injected access-token provider so a future identity SDK can supply refreshed tokens without changing the gateway transport. No trusted issuer or app sign-in/refresh implementation is wired yet; the default path still reads a manually supplied token, and sign-out/session lifecycle remain.
+- **Identity integration:** JWT verification and client-side expiry detection exist, and the assistant factory now accepts an injected access-token provider so a future identity SDK can supply refreshed tokens without changing the gateway transport. No trusted issuer or app sign-in/refresh implementation is wired yet; the default path still reads a manually supplied token, and a local sign-out action now clears only the stored gateway access token while retaining endpoint/model configuration. This is device-local credential removal, not provider-side token revocation or a complete identity session lifecycle.
 - **Gateway operations:** request limiting now covers both chat and model discovery and bounds active in-memory limiter entries, but counters still reset on restart; no persistent per-account usage ledger, billing enforcement, abuse monitoring, key rotation workflow, or deployment has been verified.
 - **Chat UX:** basic conversation drawer, composer, cancel, image/text attachment and history are present. Markdown/code rendering, regenerate controls, richer retry states, attachment previews, and full accessibility/localization remain.
 - **Multimodal:** image and text attachment transport is implemented; binary document parsing, upload lifecycle/retention controls, voice input/output and realtime voice are not implemented.
@@ -61,7 +61,7 @@ The following status reflects code present on `feat/chatgpt-experience-foundatio
 
 ### Next execution order
 1. Complete CI on the latest branch head and fix any regressions.
-2. Close the authentication loop: connect a real app identity provider, obtain/refresh user JWTs, and remove the manual long-lived token workflow.
+2. Close the authentication loop: connect a real app identity provider, obtain/refresh user JWTs, add issuer-side revocation/rotation, and remove the manual token-entry workflow. The current sign-out only clears the device copy.
 3. Add persistent per-user quotas, usage accounting, request cancellation propagation, and security/audit events.
 4. Finish chat interaction quality (Markdown/code, message actions, retry state, attachment previews, and conversation lifecycle tests).
 5. Add consent-based memory and permission-gated tools with visible approvals and durable audit records.
