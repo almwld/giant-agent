@@ -28,4 +28,4 @@ Build this directory as a container using its Dockerfile. Deploy to Cloud Run or
 - `GET /health`
 - `POST /v1/chat/stream` with a short-lived Bearer user JWT (production) or the development-only token. Body: `input`, optional `model`, optional base64 attachments. SSE output uses `data: {"type":"delta","delta":"..."}` and `data: [DONE]`.
 
-Limits: 80 messages, 8 attachments, 14 MB encoded attachments, 30 requests/minute per authenticated subject (in-memory; resets on restart). Images JPEG/PNG/WebP/GIF and text/JSON are accepted; unsupported binary formats fail explicitly. Before a public multi-user launch, add per-user identity, persistent quotas, abuse monitoring, and stronger billing controls.
+Limits: 80 messages, 8 attachments, 14 MB encoded attachments, 30 requests/minute per authenticated subject across chat and model discovery (in-memory; resets on restart; bounded to 10,000 active subject windows by default). Images JPEG/PNG/WebP/GIF and text/JSON are accepted; unsupported binary formats fail explicitly. Before a public multi-user launch, add per-user identity, persistent quotas, abuse monitoring, and stronger billing controls.
