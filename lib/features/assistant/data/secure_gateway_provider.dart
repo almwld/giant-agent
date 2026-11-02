@@ -75,7 +75,9 @@ class SecureGatewayProvider implements AiProvider {
     if (response.statusCode < 200 || response.statusCode >= 300) {
       final body = await utf8.decoder.bind(response).join();
       throw GatewayException(
-        body.isEmpty ? 'AI gateway request failed.' : body,
+        response.statusCode == 401
+            ? 'انتهت صلاحية جلسة الذكاء الاصطناعي أو أن رمز الوصول غير صالح. حدّث رمز الوصول ثم أعد المحاولة.'
+            : (body.isEmpty ? 'AI gateway request failed.' : body),
         statusCode: response.statusCode,
       );
     }
