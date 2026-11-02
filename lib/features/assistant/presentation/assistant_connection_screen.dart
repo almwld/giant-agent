@@ -99,7 +99,7 @@ class _AssistantConnectionScreenState extends State<AssistantConnectionScreen> {
         Card(child:Padding(padding:const EdgeInsets.all(16),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
           const Icon(Icons.security,size:30),const SizedBox(height:8),
           Text('اتصال آمن بمزودك',style:theme.textTheme.titleLarge),const SizedBox(height:6),
-          const Text('يمكنك استخدام مفتاح مزود محفوظ على الخادم، أو إدخال مفتاحك الخاص اختيارياً. مفاتيح BYOK تُحفظ في التخزين الآمن على جهازك وتُرسل عبر HTTPS عند الطلب فقط.')
+          const Text('يمكنك استخدام مفتاح مزود محفوظ على الخادم، أو إدخال مفتاحك الخاص اختيارياً. مفاتيح BYOK تُحفظ في التخزين الآمن على جهازك وتُرسل عبر HTTPS عند الطلب فقط. رمز الوصول يُدخل يدوياً حالياً؛ تسجيل الدخول والتجديد التلقائي غير متاحين بعد.')
         ]))),
         const SizedBox(height:18),
         DropdownButtonFormField<String>(value:_provider,decoration:const InputDecoration(labelText:'مزود الذكاء الاصطناعي',border:OutlineInputBorder()),
@@ -111,7 +111,7 @@ class _AssistantConnectionScreenState extends State<AssistantConnectionScreen> {
         const SizedBox(height:14),
         TextField(controller:_url,keyboardType:TextInputType.url,decoration:const InputDecoration(labelText:'رابط خادم Giant Agent',hintText:'https://your-gateway.run.app',border:OutlineInputBorder())),
         const SizedBox(height:14),
-        TextField(controller:_gatewayToken,obscureText:true,decoration:const InputDecoration(labelText:'رمز وصول حسابك',helperText:'رمز JWT قصير العمر يصدره خادم المصادقة الخاص بالتطبيق.',border:OutlineInputBorder())),
+        TextField(controller:_gatewayToken,obscureText:true,decoration:const InputDecoration(labelText:'رمز وصول حسابك',helperText:'أدخل رمز JWT الصادر من خادم الهوية. تسجيل الدخول والتجديد التلقائي داخل التطبيق غير موصولين بعد.',border:OutlineInputBorder())),
         const SizedBox(height:14),
         TextField(controller:_apiKey,obscureText:_obscure,decoration:InputDecoration(labelText:'مفتاح API للمزود',helperText:'اختياري: اتركه فارغاً لاستخدام مفتاح المزود المضبوط على الخادم.',border:const OutlineInputBorder(),
           suffixIcon:IconButton(onPressed:()=>setState(()=>_obscure=!_obscure),icon:Icon(_obscure?Icons.visibility:Icons.visibility_off)))),
