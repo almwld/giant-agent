@@ -33,10 +33,14 @@ class _ConfiguredGatewayProvider implements AiProvider {
     final url = await settings.baseUrl;
     final token = await settings.accessToken;
     final selectedModel = request.model ?? await settings.model;
+    final tokenExpired = await settings.isAccessTokenExpired;
     final selectedProvider = await settings.provider;
     final providerApiKey = await settings.providerApiKey;
     if (url.isEmpty || token == null || token.isEmpty) {
       throw StateError('لم يتم إعداد اتصال خادم الذكاء الاصطناعي.');
+    }
+    if (tokenExpired) {
+      throw StateError('انتهت صلاحية جلسة الذكاء الاصطناعي. أعد تسجيل الدخول أو حدّث رمز الوصول.');
     }
     final provider = SecureGatewayProvider(
       baseUrl: url,
