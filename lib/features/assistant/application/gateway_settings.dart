@@ -56,6 +56,9 @@ class GatewaySettings {
     }
     await _storage.write(key:_modelKey,value:model.trim().isEmpty?'openrouter/free':model.trim());
   }
+  /// Ends the local gateway session without removing endpoint or model settings.
+  Future<void> clearAccessToken() => _storage.delete(key: _tokenKey);
+
   Future<void> clear() async {
     for(final key in [_urlKey,_tokenKey,_modelKey,_providerKey,_apiKeyKey]) { await _storage.delete(key:key); }
   }
