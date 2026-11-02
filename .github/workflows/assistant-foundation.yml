@@ -6,7 +6,7 @@ on:
       - feat/chatgpt-experience-foundation
   pull_request:
     branches:
-      - feat/chatgpt-experience-foundation
+      - main
 
 permissions:
   contents: read
