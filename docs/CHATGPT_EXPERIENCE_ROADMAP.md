@@ -43,7 +43,7 @@ The following status reflects code present on `feat/chatgpt-experience-foundatio
 ### Delivered in the current branch
 - Conversation entities and a separate versioned SQLite store with per-conversation message history and search.
 - A `ChatController` for streaming, cancellation, retry, and persisted assistant/user messages.
-- The existing `ChatScreen` now uses the assistant controller while retaining the legacy message database for backwards compatibility.
+- The existing `ChatScreen` now uses the assistant controller while retaining the legacy message database for backwards compatibility; assistant messages support copy/share and retry after failure.
 - Node gateway routes for streaming and model discovery, OpenAI Responses API support (`store: false`), OpenRouter/Gemini-compatible streaming, and bounded image/text attachments.
 - Optional server-managed provider credentials or user BYOK credentials; the mobile UI no longer requires a provider key when the server has one configured.
 - Signed HS256 JWT verification with subject, issuer, audience, expiry and not-before checks; per-subject in-memory request limiting. Static shared-token auth is development-only and rejected in production.
@@ -53,7 +53,7 @@ The following status reflects code present on `feat/chatgpt-experience-foundatio
 ### In progress / not yet production-ready
 - **Identity integration:** JWT verification exists, but no trusted issuer or app sign-in/token-refresh integration is wired. The app currently stores the supplied access token; expired-token refresh and sign-out/session lifecycle remain.
 - **Gateway operations:** quotas are in-memory and reset on restart; no persistent per-account usage ledger, billing enforcement, abuse monitoring, key rotation workflow, or deployment has been verified.
-- **Chat UX:** basic conversation drawer, composer, cancel, image/text attachment and history are present. Markdown/code rendering, copy/share/regenerate controls, robust retry UI, attachment previews, and full accessibility/localization remain.
+- **Chat UX:** basic conversation drawer, composer, cancel, image/text attachment and history are present. Markdown/code rendering, regenerate controls, richer retry states, attachment previews, and full accessibility/localization remain.
 - **Multimodal:** image and text attachment transport is implemented; binary document parsing, upload lifecycle/retention controls, voice input/output and realtime voice are not implemented.
 - **Memory/tools:** no opt-in cross-conversation memory, approval UI, fine-grained tool permissions, or durable action audit log yet. Current built-in tools are calculator and device date/time only.
 - **Local inference:** only the provider/engine abstraction exists. No GGUF, ONNX or TFLite generation runtime is registered or verified; importing a model file is not evidence of inference support.
