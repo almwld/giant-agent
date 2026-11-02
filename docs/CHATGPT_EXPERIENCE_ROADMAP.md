@@ -36,6 +36,38 @@ Evolve Giant Agent in place into a standalone AI assistant with its existing ide
 - **Phase 5 — Memory and tools:** opt-in memory, tool permissions, usage limits and auditability.
 - **Phase 6 — Stabilization:** analyzer, unit/widget tests, Android build, artifact verification and release checks.
 
+## Implementation status — 2026-11-03
+
+The following status reflects code present on `feat/chatgpt-experience-foundation`; it is not a claim that a production service is deployed.
+
+### Delivered in the current branch
+- Conversation entities and a separate versioned SQLite store with per-conversation message history and search.
+- A `ChatController` for streaming, cancellation, retry, and persisted assistant/user messages.
+- The existing `ChatScreen` now uses the assistant controller while retaining the legacy message database for backwards compatibility.
+- Node gateway routes for streaming and model discovery, OpenAI Responses API support (`store: false`), OpenRouter/Gemini-compatible streaming, and bounded image/text attachments.
+- Optional server-managed provider credentials or user BYOK credentials; the mobile UI no longer requires a provider key when the server has one configured.
+- Signed HS256 JWT verification with subject, issuer, audience, expiry and not-before checks; per-subject in-memory request limiting. Static shared-token auth is development-only and rejected in production.
+- Strict ReAct JSON decisions, tool schema validation (including argument types), bounded execution, duplicate-action blocking, and regression coverage for protocol and tool failures.
+- CI workflow for Flutter analysis/tests/debug APK and gateway syntax/unit tests. The last fully completed run before the newest commits passed analysis, tests, gateway checks and debug APK build.
+
+### In progress / not yet production-ready
+- **Identity integration:** JWT verification exists, but no trusted issuer or app sign-in/token-refresh integration is wired. The app currently stores the supplied access token; expired-token refresh and sign-out/session lifecycle remain.
+- **Gateway operations:** quotas are in-memory and reset on restart; no persistent per-account usage ledger, billing enforcement, abuse monitoring, key rotation workflow, or deployment has been verified.
+- **Chat UX:** basic conversation drawer, composer, cancel, image/text attachment and history are present. Markdown/code rendering, copy/share/regenerate controls, robust retry UI, attachment previews, and full accessibility/localization remain.
+- **Multimodal:** image and text attachment transport is implemented; binary document parsing, upload lifecycle/retention controls, voice input/output and realtime voice are not implemented.
+- **Memory/tools:** no opt-in cross-conversation memory, approval UI, fine-grained tool permissions, or durable action audit log yet. Current built-in tools are calculator and device date/time only.
+- **Local inference:** only the provider/engine abstraction exists. No GGUF, ONNX or TFLite generation runtime is registered or verified; importing a model file is not evidence of inference support.
+- **Release validation:** latest commits are awaiting CI. No release APK/AAB, signed artifact, real-device inference test, or production gateway deployment is claimed.
+
+### Next execution order
+1. Complete CI on the latest branch head and fix any regressions.
+2. Close the authentication loop: connect a real app identity provider, obtain/refresh user JWTs, and remove the manual long-lived token workflow.
+3. Add persistent per-user quotas, usage accounting, request cancellation propagation, and security/audit events.
+4. Finish chat interaction quality (Markdown/code, message actions, retry state, attachment previews, and conversation lifecycle tests).
+5. Add consent-based memory and permission-gated tools with visible approvals and durable audit records.
+6. Implement one concrete local runtime only after selecting a compatible model, tokenizer, decoding contract and Android integration; verify it on a physical device before exposing it as available.
+7. Complete voice and broader multimodal support, then run release/artifact and device validation before production publication.
+
 ## Non-negotiable engineering rules
 
 - Do not expose provider API keys in the mobile app.
