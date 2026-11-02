@@ -83,7 +83,10 @@ void main() {
       expect(output, contains('دون إعلان اكتمال المهمة'));
     });
     test('rejects empty final answers', () async {
-      _ScriptedProvider.responses = ['{"type":"final","answer":"  "}'];
+      _ScriptedProvider.responses = [
+        '{"type":"final","answer":"  "}',
+        '{"type":"type","answer":"  "}',
+      ];
       final output = await _collect(ReActAgentProvider(
         delegate: _ScriptedProvider(), tools: createDefaultAgentTools(),
       ));
