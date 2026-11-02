@@ -35,6 +35,31 @@ void main() {
       expect(schema['required'], ['expression']);
       expect(schema['additionalProperties'], false);
     });
+    test('tool execution timeout returns a structured failure', () async {
+      final registry = AgentToolRegistry([
+        AgentTool(
+          name: 'slow',
+          description: 'A deliberately slow test tool.',
+          handler: (_) async {
+            await Future<void>.delayed(const Duration(milliseconds: 30));
+            return 'late';
+          },
+        ),
+      ]);
+      final result = await registry.execute(
+        'slow', const {}, timeout: const Duration(milliseconds: 1),
+      );
+      expect(result, contains('"code":"tool_timeout"'));
+    });
+    test('duplicate tool names are rejected at registry creation', () {
+      final tool = AgentTool(
+        name: 'same', description: 'test', handler: (_) => 'ok',
+      );
+      expect(
+        () => AgentToolRegistry([tool, tool]),
+        throwsArgumentError,
+      );
+    });
   });
 
   group('ReAct reliability', () {
