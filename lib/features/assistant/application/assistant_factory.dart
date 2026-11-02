@@ -38,8 +38,7 @@ class _ConfiguredGatewayProvider implements AiProvider {
     if (url.isEmpty ||
         token == null ||
         token.isEmpty ||
-        providerApiKey == null ||
-        providerApiKey.isEmpty) {
+        false) {
       throw StateError('لم يتم إعداد اتصال خادم الذكاء الاصطناعي.');
     }
     final provider = SecureGatewayProvider(
