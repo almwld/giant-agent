@@ -2,7 +2,9 @@ import '../data/secure_gateway_provider.dart';
 import '../data/sqlite_conversation_repository.dart';
 import '../domain/ai_provider.dart';
 import 'chat_controller.dart';
+import 'default_agent_tools.dart';
 import 'gateway_settings.dart';
+import 'react_agent_provider.dart';
 
 class AssistantFactory {
   AssistantFactory._();
@@ -10,7 +12,11 @@ class AssistantFactory {
   static ChatController create({required GatewaySettings settings}) {
     return ChatController(
       repository: SqliteConversationRepository(),
-      provider: _ConfiguredGatewayProvider(settings),
+      provider: ReActAgentProvider(
+        delegate: _ConfiguredGatewayProvider(settings),
+        tools: createDefaultAgentTools(),
+        maxSteps: 8,
+      ),
     );
   }
 }
@@ -29,7 +35,11 @@ class _ConfiguredGatewayProvider implements AiProvider {
     final selectedModel = request.model ?? await settings.model;
     final selectedProvider = await settings.provider;
     final providerApiKey = await settings.providerApiKey;
-    if (url.isEmpty || token == null || token.isEmpty || providerApiKey == null || providerApiKey.isEmpty) {
+    if (url.isEmpty ||
+        token == null ||
+        token.isEmpty ||
+        providerApiKey == null ||
+        providerApiKey.isEmpty) {
       throw StateError('لم يتم إعداد اتصال خادم الذكاء الاصطناعي.');
     }
     final provider = SecureGatewayProvider(
