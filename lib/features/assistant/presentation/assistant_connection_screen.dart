@@ -78,6 +78,12 @@ class _AssistantConnectionScreenState extends State<AssistantConnectionScreen> {
       if(mounted)Navigator.of(context).pop(true);
     } catch(e) {if(mounted)setState(()=>_status='لم يتم الحفظ: $e');}
   }
+  Future<void> _signOut() async {
+    await widget.settings.clearAccessToken();
+    if (!mounted) return;
+    _gatewayToken.clear();
+    setState(() => _status = 'تم إنهاء جلسة البوابة على هذا الجهاز. بقيت إعدادات الخادم والنموذج محفوظة.');
+  }
   Future<void> _clear() async {
     await widget.settings.clear();
     if(!mounted)return;
@@ -126,7 +132,8 @@ class _AssistantConnectionScreenState extends State<AssistantConnectionScreen> {
           child:Text(_status!,style:TextStyle(color:_status!.startsWith('نجح')?Colors.green:theme.colorScheme.error))),
         const SizedBox(height:8),
         FilledButton.icon(onPressed:_testing?null:_save,icon:const Icon(Icons.save_outlined),label:const Text('اختبار الاتصال وحفظ الإعدادات')),
-        TextButton.icon(onPressed:_clear,icon:const Icon(Icons.delete_outline),label:const Text('حذف بيانات الاتصال من الجهاز')),
+        TextButton.icon(onPressed:_signOut,icon:const Icon(Icons.logout),label:const Text('تسجيل الخروج من البوابة')),
+        TextButton.icon(onPressed:_clear,icon:const Icon(Icons.delete_outline),label:const Text('حذف جميع بيانات الاتصال من الجهاز')),
       ]));
   }
 }
