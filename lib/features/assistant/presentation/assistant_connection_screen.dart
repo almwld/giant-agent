@@ -20,6 +20,9 @@ class _AssistantConnectionScreenState extends State<AssistantConnectionScreen> {
   Future<void> _load() async {
     _url.text=await widget.settings.baseUrl;
     _gatewayToken.text=await widget.settings.accessToken ?? '';
+    if(await widget.settings.isAccessTokenExpired) {
+      _status='انتهت صلاحية رمز الوصول. حدّث الرمز قبل استخدام الاتصال السحابي.';
+    }
     _apiKey.text=await widget.settings.providerApiKey ?? '';
     _model.text=await widget.settings.model ?? 'openrouter/free';
     _provider=await widget.settings.provider;
