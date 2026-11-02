@@ -79,8 +79,8 @@ class _TwoStepProvider implements AiProvider {
       observationWasReturnedToModel = true;
       yield 'Final Answer: نصف 42 يساوي 21.';
     } else {
-      yield 'Thought: I need to calculate this.\\n'
-          'Action: calculator\\n'
+      yield 'Thought: I need to calculate this.\n'
+          'Action: calculator\n'
           'Action Input: {"expression":"42 / 2"}';
     }
   }
