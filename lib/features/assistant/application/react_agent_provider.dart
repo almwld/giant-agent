@@ -83,6 +83,17 @@ class AgentToolRegistry {
         });
       }
     }
+    final invalidTypes = arguments.entries
+        .where((entry) => tool.parameters.containsKey(entry.key) && entry.value is! String)
+        .map((entry) => entry.key)
+        .toList();
+    if (invalidTypes.isNotEmpty) {
+      return jsonEncode({
+        'ok': false, 'code': 'invalid_argument_type',
+        'error': 'Tool arguments must match the published JSON schema.',
+        'expected_type': 'string', 'invalid': invalidTypes,
+      });
+    }
     try {
       final result = await Future<Object?>.sync(() => tool.handler(arguments)).timeout(timeout);
       final encoded = jsonEncode({'ok': true, 'tool': name, 'result': result});
