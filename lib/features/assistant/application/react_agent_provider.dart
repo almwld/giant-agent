@@ -257,7 +257,7 @@ Final Answer: الإجابة النهائية للمستخدم
       if (inString) {
         if (escaped) {
           escaped = false;
-        } else if (char == '\\\\') {
+        } else if (char == '\\') {
           escaped = true;
         } else if (char == '"') {
           inString = false;
