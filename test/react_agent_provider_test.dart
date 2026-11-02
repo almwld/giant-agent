@@ -52,7 +52,7 @@ void main() {
     test('refuses malformed free-form decisions without running tools', () async {
       _ScriptedProvider.responses = [
         'I think the answer is 21.',
-        '{"type":"tool_call","name":"calculator","arguments":{"expression":"1+1"}}',
+        'Still not JSON: try again.',
       ];
       final output = await _collect(ReActAgentProvider(
         delegate: _ScriptedProvider(), tools: createDefaultAgentTools(),
@@ -87,7 +87,7 @@ void main() {
       final output = await _collect(ReActAgentProvider(
         delegate: _ScriptedProvider(), tools: createDefaultAgentTools(),
       ));
-      expect(output, contains('Final decision requires a non-empty answer'));
+      expect(output, contains('تعذّر الحصول على قرار'));
     });
   });
 }
