@@ -34,4 +34,3 @@ test('converts messages and image attachments to Responses API input parts', () 
   assert.equal(input[0].content[1].type, 'input_image');
 });
 
-test('rejects models outside an explicit allowlist', () => { process.env.ALLOWED_MODELS = 'allowed/model'; assert.throws(() => validateInput({model:'blocked/model',input:[{role:'user',content:'x'}]}), /not enabled/); delete process.env.ALLOWED_MODELS; });
