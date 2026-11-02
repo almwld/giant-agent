@@ -8,7 +8,7 @@ const PROVIDER = (process.env.AI_PROVIDER || 'openrouter').toLowerCase();
 const API_KEY = process.env.AI_API_KEY || '';
 const BASE_URL = (process.env.AI_BASE_URL || defaultBaseUrl(PROVIDER)).replace(/\/+$/, '');
 const DEFAULT_MODEL = process.env.AI_MODEL || (PROVIDER === 'openrouter' ? 'openrouter/free' : PROVIDER === 'gemini' ? 'gemini-3.8-flash' : 'gpt-4.1-mini');
-const ALLOWED_MODELS = (process.env.ALLOWED_MODELS || DEFAULT_MODEL).split(',').map(v => v.trim()).filter(Boolean);
+const ALLOWED_MODELS = (process.env.ALLOWED_MODELS || '*').split(',').map(v => v.trim()).filter(Boolean);
 const MAX_BODY = Number(process.env.MAX_BODY_BYTES || 18 * 1024 * 1024);
 const RATE_LIMIT = Number(process.env.RATE_LIMIT_PER_MINUTE || 30);
 const windows = new Map();
@@ -17,6 +17,10 @@ function defaultBaseUrl(provider) {
   if (provider === 'openrouter') return 'https://openrouter.ai/api/v1';
   if (provider === 'gemini') return 'https://generativelanguage.googleapis.com/v1beta/openai';
   return 'https://api.openai.com/v1';
+}
+function providerBaseUrl(provider) {
+  if (provider === PROVIDER && process.env.AI_BASE_URL) return BASE_URL;
+  return defaultBaseUrl(provider);
 }
 function json(res, status, body) {
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
@@ -114,22 +118,25 @@ function toResponsesInput(messages) {
 }
 
 async function streamChat(req, res) {
-  if (!API_KEY) return json(res, 503, { error: 'AI provider is not configured on the server' });
+  const provider = String(req.headers['x-ai-provider'] || PROVIDER).toLowerCase();
+  if (!['openrouter', 'gemini', 'openai'].includes(provider)) return json(res, 400, { error: 'Unsupported AI provider' });
+  const apiKey = String(req.headers['x-provider-api-key'] || API_KEY);
+  if (!apiKey) return json(res, 503, { error: 'AI provider API key is missing' });
   const { messages, model, attachments } = validateInput(await readJson(req));
   const upstreamMessages = attachContent(messages, attachments);
-  const headers = { 'content-type': 'application/json', authorization: `Bearer ${API_KEY}` };
-  if (PROVIDER === 'openrouter') {
+  const headers = { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` };
+  if (provider === 'openrouter') {
     headers['HTTP-Referer'] = process.env.APP_PUBLIC_URL || 'https://github.com/almwld/giant-agent';
     headers['X-Title'] = 'Giant Agent';
   }
   const abort = new AbortController();
   req.on('aborted', () => abort.abort());
-  const useResponsesApi = PROVIDER === 'openai';
+  const useResponsesApi = provider === 'openai';
   const endpoint = useResponsesApi ? '/responses' : '/chat/completions';
   const requestBody = useResponsesApi
     ? { model, input: toResponsesInput(upstreamMessages), stream: true, store: false, max_output_tokens: 4096 }
     : { model, messages: upstreamMessages, stream: true, temperature: 0.7, max_tokens: 4096 };
-  const upstream = await fetch(`${BASE_URL}${endpoint}`, {
+  const upstream = await fetch(`${providerBaseUrl(provider)}${endpoint}`, {
     method: 'POST', headers,
     body: JSON.stringify(requestBody),
     signal: AbortSignal.any([AbortSignal.timeout(180_000), abort.signal]),
@@ -186,10 +193,33 @@ async function streamChat(req, res) {
     if (!res.destroyed) res.end();
   }
 }
+async function listModels(req, res) {
+  const provider = String(req.headers['x-ai-provider'] || PROVIDER).toLowerCase();
+  if (!['openrouter', 'gemini', 'openai'].includes(provider)) return json(res, 400, { error: 'Unsupported AI provider' });
+  const apiKey = String(req.headers['x-provider-api-key'] || API_KEY);
+  if (!apiKey) return json(res, 503, { error: 'AI provider API key is missing' });
+  try {
+    const headers = { authorization: `Bearer ${apiKey}` };
+    if (provider === 'openrouter') {
+      headers['HTTP-Referer'] = process.env.APP_PUBLIC_URL || 'https://github.com/almwld/giant-agent';
+      headers['X-Title'] = 'Giant Agent';
+    }
+    const response = await fetch(`${providerBaseUrl(provider)}/models`, { headers, signal: AbortSignal.timeout(25000) });
+    const body = await response.text();
+    if (!response.ok) return json(res, response.status >= 500 ? 502 : response.status, { error: 'Provider model discovery failed', detail: body.slice(0, 1200) });
+    const parsed = JSON.parse(body);
+    return json(res, 200, { data: Array.isArray(parsed.data) ? parsed.data.map(m => ({ id: m.id })) : [] });
+  } catch (error) { return json(res, 502, { error: 'Could not reach AI provider', detail: error.message }); }
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
   if (req.method === 'GET' && url.pathname === '/health')
-    return json(res, 200, { ok: true, provider: PROVIDER, model: DEFAULT_MODEL, configured: Boolean(APP_TOKEN && API_KEY) });
+    return json(res, 200, { ok: true, provider: PROVIDER, model: DEFAULT_MODEL, configured: Boolean(APP_TOKEN) });
+  if (req.method === 'GET' && url.pathname === '/v1/models') {
+    if (!authorized(req)) return json(res, 401, { error: 'Unauthorized gateway token' });
+    return listModels(req, res);
+  }
   if (req.method !== 'POST' || url.pathname !== '/v1/chat/stream')
     return json(res, 404, { error: 'Not found' });
   const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';

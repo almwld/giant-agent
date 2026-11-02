@@ -8,6 +8,7 @@ import '../services/model_service.dart';
 import '../features/assistant/application/assistant_factory.dart';
 import '../features/assistant/application/chat_controller.dart';
 import '../features/assistant/application/gateway_settings.dart';
+import '../features/assistant/presentation/assistant_connection_screen.dart';
 import '../features/assistant/domain/chat_attachment.dart';
 import '../features/assistant/domain/chat_message.dart';
 
@@ -126,84 +127,17 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _configureGateway() async {
-    final urlController = TextEditingController(text: await _settings.baseUrl);
-    final tokenController = TextEditingController();
-    final modelController = TextEditingController(
-      text: await _settings.model ?? 'openrouter/free',
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => AssistantConnectionScreen(settings: _settings)),
     );
-    if (!mounted) return;
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('اتصال الذكاء الاصطناعي'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'أدخل عنوان خادم Giant Agent ورمز الوصول الذي أعددته على الخادم. '
-                'لا تضع مفتاح OpenAI أو OpenRouter هنا.',
-                style: TextStyle(fontSize: 13),
-              ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: urlController,
-                keyboardType: TextInputType.url,
-                decoration: const InputDecoration(
-                  labelText: 'Gateway URL',
-                  hintText: 'https://your-service.run.app',
-                ),
-              ),
-              TextField(
-                controller: tokenController,
-                obscureText: true,
-                decoration: const InputDecoration(labelText: 'Gateway access token'),
-              ),
-              TextField(
-                controller: modelController,
-                decoration: const InputDecoration(
-                  labelText: 'Model ID',
-                  hintText: 'openrouter/free',
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('إلغاء'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              try {
-                await _settings.save(
-                  url: urlController.text,
-                  token: tokenController.text,
-                  model: modelController.text,
-                );
-                if (dialogContext.mounted) Navigator.pop(dialogContext, true);
-              } catch (error) {
-                if (dialogContext.mounted) {
-                  ScaffoldMessenger.of(dialogContext).showSnackBar(
-                    SnackBar(content: Text(error.toString())),
-                  );
-                }
-              }
-            },
-            child: const Text('حفظ الاتصال'),
-          ),
-        ],
-      ),
-    );
-    urlController.dispose();
-    tokenController.dispose();
-    modelController.dispose();
     if (saved == true && mounted) {
       setState(() => _gatewayConfigured = true);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم حفظ إعدادات الاتصال بأمان على الجهاز.')),
+        const SnackBar(content: Text('تم اختبار الاتصال وحفظ إعدادات مزود الذكاء الاصطناعي بأمان.')),
       );
+    } else {
+      _gatewayConfigured = await _settings.isConfigured;
+      if (mounted) setState(() {});
     }
   }
 

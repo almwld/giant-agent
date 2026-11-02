@@ -19,12 +19,16 @@ class SecureGatewayProvider implements AiProvider {
   SecureGatewayProvider({
     required this.baseUrl,
     required this.accessTokenProvider,
+    required this.provider,
+    required this.providerApiKey,
     HttpClient? httpClient,
     this.timeout = const Duration(minutes: 3),
   }) : _client = httpClient ?? HttpClient();
 
   final String baseUrl;
   final AccessTokenProvider accessTokenProvider;
+  final String provider;
+  final String providerApiKey;
   final HttpClient _client;
   final Duration timeout;
 
@@ -59,7 +63,9 @@ class SecureGatewayProvider implements AiProvider {
     httpRequest.headers
       ..set(HttpHeaders.authorizationHeader, 'Bearer $token')
       ..contentType = ContentType.json
-      ..set(HttpHeaders.acceptHeader, 'text/event-stream');
+      ..set(HttpHeaders.acceptHeader, 'text/event-stream')
+      ..set('x-ai-provider', provider)
+      ..set('x-provider-api-key', providerApiKey);
     httpRequest.add(utf8.encode(jsonEncode(payload)));
 
     final response = await httpRequest.close().timeout(timeout);
