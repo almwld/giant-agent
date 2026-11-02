@@ -4,6 +4,9 @@ import { pathToFileURL } from 'node:url';
 
 const PORT = Number(process.env.PORT || 8080);
 const APP_TOKEN = process.env.APP_GATEWAY_TOKEN || '';
+const JWT_SECRET = process.env.GATEWAY_JWT_SECRET || '';
+const JWT_ISSUER = process.env.GATEWAY_JWT_ISSUER || '';
+const JWT_AUDIENCE = process.env.GATEWAY_JWT_AUDIENCE || '';
 const PROVIDER = (process.env.AI_PROVIDER || 'openrouter').toLowerCase();
 const API_KEY = process.env.AI_API_KEY || '';
 const BASE_URL = (process.env.AI_BASE_URL || defaultBaseUrl(PROVIDER)).replace(/\/+$/, '');
@@ -30,9 +33,41 @@ function secureEqual(a, b) {
   const left = Buffer.from(a), right = Buffer.from(b);
   return left.length === right.length && crypto.timingSafeEqual(left, right);
 }
-function authorized(req) {
+function decodeBase64Url(value) {
+  return Buffer.from(value.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+}
+function authenticate(req) {
   const header = req.headers.authorization || '';
-  return Boolean(APP_TOKEN && header.startsWith('Bearer ') && secureEqual(header.slice(7), APP_TOKEN));
+  if (!header.startsWith('Bearer ')) return null;
+  const token = header.slice(7).trim();
+  const parts = token.split('.');
+  if (parts.length === 3 && JWT_SECRET.length >= 32) {
+    try {
+      const [encodedHeader, encodedPayload, encodedSignature] = parts;
+      const jwtHeader = JSON.parse(decodeBase64Url(encodedHeader).toString('utf8'));
+      const claims = JSON.parse(decodeBase64Url(encodedPayload).toString('utf8'));
+      if (jwtHeader.alg !== 'HS256' || jwtHeader.typ !== 'JWT') return null;
+      const expected = crypto.createHmac('sha256', JWT_SECRET)
+        .update(encodedHeader + '.' + encodedPayload).digest();
+      const actual = decodeBase64Url(encodedSignature);
+      if (actual.length !== expected.length || !crypto.timingSafeEqual(actual, expected)) return null;
+      const now = Math.floor(Date.now() / 1000);
+      if (typeof claims.sub !== 'string' || !claims.sub.trim() ||
+          typeof claims.exp !== 'number' || claims.exp <= now ||
+          (typeof claims.nbf === 'number' && claims.nbf > now) ||
+          !JWT_ISSUER || claims.iss !== JWT_ISSUER ||
+          !JWT_AUDIENCE || !(claims.aud === JWT_AUDIENCE ||
+            (Array.isArray(claims.aud) && claims.aud.includes(JWT_AUDIENCE)))) return null;
+      return { subject: claims.sub, method: 'jwt' };
+    } catch {
+      return null;
+    }
+  }
+  // Static shared tokens are development-only; never accept them in production.
+  if (process.env.NODE_ENV !== 'production' && APP_TOKEN && secureEqual(token, APP_TOKEN)) {
+    return { subject: 'development-single-user', method: 'development-token' };
+  }
+  return null;
 }
 function rateAllowed(key) {
   const now = Date.now(), entry = windows.get(key);
@@ -215,16 +250,20 @@ async function listModels(req, res) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
   if (req.method === 'GET' && url.pathname === '/health')
-    return json(res, 200, { ok: true, provider: PROVIDER, model: DEFAULT_MODEL, configured: Boolean(APP_TOKEN) });
+    return json(res, 200, { ok: true, provider: PROVIDER, model: DEFAULT_MODEL, configured: Boolean(JWT_SECRET.length >= 32 || (process.env.NODE_ENV !== 'production' && APP_TOKEN)) });
   if (req.method === 'GET' && url.pathname === '/v1/models') {
-    if (!authorized(req)) return json(res, 401, { error: 'Unauthorized gateway token' });
+    const principal = authenticate(req);
+    if (!principal) return json(res, 401, { error: 'Unauthorized access token' });
+    req.principal = principal;
     return listModels(req, res);
   }
   if (req.method !== 'POST' || url.pathname !== '/v1/chat/stream')
     return json(res, 404, { error: 'Not found' });
-  const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
-  if (!rateAllowed(ip)) return json(res, 429, { error: 'Rate limit exceeded. Try again shortly.' });
-  if (!authorized(req)) return json(res, 401, { error: 'Unauthorized gateway token' });
+  const principal = authenticate(req);
+  if (!principal) return json(res, 401, { error: 'Unauthorized access token' });
+  req.principal = principal;
+  if (!rateAllowed('user:' + principal.subject))
+    return json(res, 429, { error: 'Rate limit exceeded for this account. Try again shortly.' });
   try {
     await streamChat(req, res);
   } catch (error) {
@@ -239,4 +278,4 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   server.listen(PORT, '0.0.0.0', () =>
     console.log(`Giant Agent AI gateway listening on :${PORT}; provider=${PROVIDER}; model=${DEFAULT_MODEL}`));
 }
-export { server, validateInput, rateAllowed, toResponsesInput };
+export { server, validateInput, rateAllowed, toResponsesInput, authenticate };
