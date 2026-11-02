@@ -162,12 +162,12 @@ async function streamChat(req, res) {
         let event; try { event = JSON.parse(data); } catch { continue; }
         if (useResponsesApi && event.type === 'response.output_text.delta' &&
             typeof event.delta === 'string' && event.delta.length) {
-          res.write(`data: ${JSON.stringify({ type: 'delta', delta: event.delta })}\\n\\n`);
+          res.write(`data: ${JSON.stringify({ type: 'delta', delta: event.delta })}\n\n`);
           continue;
         }
         if (useResponsesApi && (event.type === 'error' || event.type === 'response.failed')) {
           const message = event.message || event.error?.message || 'OpenAI response failed';
-          res.write(`data: ${JSON.stringify({ type: 'error', message })}\\n\\n`);
+          res.write(`data: ${JSON.stringify({ type: 'error', message })}\n\n`);
           continue;
         }
         const delta = event.choices?.[0]?.delta?.content;
