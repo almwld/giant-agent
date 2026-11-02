@@ -14,6 +14,7 @@ const DEFAULT_MODEL = process.env.AI_MODEL || (PROVIDER === 'openrouter' ? 'open
 const ALLOWED_MODELS = (process.env.ALLOWED_MODELS || '*').split(',').map(v => v.trim()).filter(Boolean);
 const MAX_BODY = Number(process.env.MAX_BODY_BYTES || 18 * 1024 * 1024);
 const RATE_LIMIT = Number(process.env.RATE_LIMIT_PER_MINUTE || 30);
+const MAX_RATE_LIMIT_ENTRIES = Number(process.env.MAX_RATE_LIMIT_ENTRIES || 10_000);
 const windows = new Map();
 
 function defaultBaseUrl(provider) {
@@ -69,9 +70,15 @@ function authenticate(req) {
   }
   return null;
 }
-function rateAllowed(key) {
-  const now = Date.now(), entry = windows.get(key);
+function rateAllowed(key, now = Date.now()) {
+  const entry = windows.get(key);
   if (!entry || now - entry.start >= 60_000) {
+    if (!entry && windows.size >= MAX_RATE_LIMIT_ENTRIES) {
+      for (const [candidate, window] of windows) {
+        if (now - window.start >= 60_000) windows.delete(candidate);
+      }
+      if (windows.size >= MAX_RATE_LIMIT_ENTRIES) return false;
+    }
     windows.set(key, { start: now, count: 1 });
     return true;
   }
@@ -263,6 +270,8 @@ const server = http.createServer(async (req, res) => {
     const principal = authenticate(req);
     if (!principal) return json(res, 401, { error: 'Unauthorized access token' });
     req.principal = principal;
+    if (!rateAllowed('user:' + principal.subject))
+      return json(res, 429, { error: 'Rate limit exceeded for this account. Try again shortly.' });
     return listModels(req, res);
   }
   if (req.method !== 'POST' || url.pathname !== '/v1/chat/stream')
