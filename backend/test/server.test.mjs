@@ -6,6 +6,7 @@ process.env.GATEWAY_JWT_SECRET = 'test-only-secret-with-at-least-32-characters';
 process.env.GATEWAY_JWT_ISSUER = 'giant-agent-tests';
 process.env.GATEWAY_JWT_AUDIENCE = 'giant-agent-mobile';
 process.env.APP_GATEWAY_TOKEN = 'development-test-token-only';
+process.env.MAX_RATE_LIMIT_ENTRIES = '3';
 
 const { validateInput, rateAllowed, toResponsesInput, authenticate } =
   await import('../src/server.mjs');
@@ -102,4 +103,11 @@ test('rate limiter rejects requests after the configured window limit and resets
   }
   assert.equal(rateAllowed(key, 1_000), false);
   assert.equal(rateAllowed(key, 61_001), true);
+});
+
+
+test('rate limiter evicts expired subjects when its bounded map reaches capacity', () => {
+  assert.equal(rateAllowed('capacity-a', 2_000), true);
+  assert.equal(rateAllowed('capacity-b', 2_000), false);
+  assert.equal(rateAllowed('capacity-after-expiry', Date.now() + 61_000), true);
 });
