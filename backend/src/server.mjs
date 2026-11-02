@@ -73,12 +73,12 @@ function authenticate(req) {
 function rateAllowed(key, now = Date.now()) {
   const entry = windows.get(key);
   if (!entry || now - entry.start >= 60_000) {
-    if (!entry && windows.size >= MAX_RATE_LIMIT_ENTRIES) {
+    if (windows.size >= MAX_RATE_LIMIT_ENTRIES) {
       for (const [candidate, window] of windows) {
         if (now - window.start >= 60_000) windows.delete(candidate);
       }
-      if (windows.size >= MAX_RATE_LIMIT_ENTRIES) return false;
     }
+    if (!entry && windows.size >= MAX_RATE_LIMIT_ENTRIES) return false;
     windows.set(key, { start: now, count: 1 });
     return true;
   }
