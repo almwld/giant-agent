@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import '../domain/ai_provider.dart';
-import '../domain/chat_message.dart';
 
 typedef AccessTokenProvider = Future<String?> Function();
 

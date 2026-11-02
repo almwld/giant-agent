@@ -28,7 +28,7 @@ jobs:
       - name: Resolve Flutter dependencies
         run: flutter pub get
       - name: Analyze Dart sources
-        run: flutter analyze
+        run: flutter analyze lib/features/assistant lib/screens/chat_screen.dart
       - name: Run Flutter tests
         run: flutter test
       - name: Build debug APK

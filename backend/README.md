@@ -7,7 +7,7 @@ Node.js 20.3+ gateway. Provider credentials stay on the server; the Flutter app 
 - **Google Gemini API:** `AI_PROVIDER=gemini`, set `AI_API_KEY` to a Google AI Studio key, and choose a model enabled for that project. Google lists a no-cost tier for selected models, with usage limits and data-use terms that differ from paid service.
 - **OpenAI API:** `AI_PROVIDER=openai`, set `AI_API_KEY` and a model enabled for the API project. API billing is separate from ChatGPT subscriptions.
 
-The gateway uses the OpenAI-compatible Chat Completions streaming contract so one mobile client can switch providers without embedding provider SDK keys. Provider credentials exist only in server environment variables.
+OpenRouter and Gemini use their OpenAI-compatible Chat Completions streaming endpoints. OpenAI requests use the Responses API with semantic text-delta events and `store: false`. The gateway normalizes both streams to one mobile SSE contract. Provider credentials exist only in server environment variables.
 
 ## Local run
 ```sh

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateInput, rateAllowed } from '../src/server.mjs';
+import { validateInput, rateAllowed, toResponsesInput } from '../src/server.mjs';
 
 test('accepts a valid conversation request', () => {
   const result = validateInput({
@@ -21,4 +21,15 @@ test('rejects empty input', () => {
 
 test('rate limiter permits first request in a fresh window', () => {
   assert.equal(rateAllowed(`test-${Date.now()}-${Math.random()}`), true);
+});
+
+test('converts messages and image attachments to Responses API input parts', () => {
+  const input = toResponsesInput([
+    { role: 'user', content: [
+      { type: 'text', text: 'Describe this' },
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,AA==' } },
+    ] },
+  ]);
+  assert.equal(input[0].content[0].type, 'input_text');
+  assert.equal(input[0].content[1].type, 'input_image');
 });

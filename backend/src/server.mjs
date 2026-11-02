@@ -96,6 +96,23 @@ function attachContent(messages, attachments) {
   ] };
   return messages;
 }
+function toResponsesInput(messages) {
+  return messages.map(message => ({
+    role: message.role,
+    content: (Array.isArray(message.content) ? message.content : [
+      { type: 'text', text: message.content },
+    ]).map(part => {
+      if (part.type === 'image_url') {
+        return { type: 'input_image', image_url: part.image_url.url };
+      }
+      return {
+        type: message.role === 'assistant' ? 'output_text' : 'input_text',
+        text: part.text || '',
+      };
+    }),
+  }));
+}
+
 async function streamChat(req, res) {
   if (!API_KEY) return json(res, 503, { error: 'AI provider is not configured on the server' });
   const { messages, model, attachments } = validateInput(await readJson(req));
@@ -107,9 +124,14 @@ async function streamChat(req, res) {
   }
   const abort = new AbortController();
   req.on('aborted', () => abort.abort());
-  const upstream = await fetch(`${BASE_URL}/chat/completions`, {
+  const useResponsesApi = PROVIDER === 'openai';
+  const endpoint = useResponsesApi ? '/responses' : '/chat/completions';
+  const requestBody = useResponsesApi
+    ? { model, input: toResponsesInput(upstreamMessages), stream: true, store: false, max_output_tokens: 4096 }
+    : { model, messages: upstreamMessages, stream: true, temperature: 0.7, max_tokens: 4096 };
+  const upstream = await fetch(`${BASE_URL}${endpoint}`, {
     method: 'POST', headers,
-    body: JSON.stringify({ model, messages: upstreamMessages, stream: true, temperature: 0.7, max_tokens: 4096 }),
+    body: JSON.stringify(requestBody),
     signal: AbortSignal.any([AbortSignal.timeout(180_000), abort.signal]),
   });
   if (!upstream.ok) {
@@ -138,6 +160,16 @@ async function streamChat(req, res) {
         const data = line.slice(5).trim();
         if (!data || data === '[DONE]') continue;
         let event; try { event = JSON.parse(data); } catch { continue; }
+        if (useResponsesApi && event.type === 'response.output_text.delta' &&
+            typeof event.delta === 'string' && event.delta.length) {
+          res.write(`data: ${JSON.stringify({ type: 'delta', delta: event.delta })}\\n\\n`);
+          continue;
+        }
+        if (useResponsesApi && (event.type === 'error' || event.type === 'response.failed')) {
+          const message = event.message || event.error?.message || 'OpenAI response failed';
+          res.write(`data: ${JSON.stringify({ type: 'error', message })}\\n\\n`);
+          continue;
+        }
         const delta = event.choices?.[0]?.delta?.content;
         if (typeof delta === 'string' && delta.length)
           res.write(`data: ${JSON.stringify({ type: 'delta', delta })}\n\n`);
@@ -177,4 +209,4 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   server.listen(PORT, '0.0.0.0', () =>
     console.log(`Giant Agent AI gateway listening on :${PORT}; provider=${PROVIDER}; model=${DEFAULT_MODEL}`));
 }
-export { server, validateInput, rateAllowed };
+export { server, validateInput, rateAllowed, toResponsesInput };
