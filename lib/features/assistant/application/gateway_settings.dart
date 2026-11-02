@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 class GatewaySettings {
   GatewaySettings({FlutterSecureStorage? storage}) : _storage = storage ?? const FlutterSecureStorage();
@@ -6,6 +7,28 @@ class GatewaySettings {
       _modelKey='assistant_model_id', _providerKey='assistant_provider', _apiKeyKey='assistant_provider_api_key';
   Future<String> get baseUrl async => (await _storage.read(key:_urlKey))?.trim() ?? '';
   Future<String?> get accessToken async => _storage.read(key:_tokenKey);
+  Future<bool> get isAccessTokenExpired async {
+    final token = await accessToken;
+    if (token == null || token.isEmpty) return true;
+    final expiry = tokenExpiry(token);
+    return expiry != null && !expiry.isAfter(DateTime.now().toUtc());
+  }
+
+  /// Returns null for non-JWT development credentials or tokens without exp.
+  static DateTime? tokenExpiry(String token) {
+    final parts = token.split('.');
+    if (parts.length != 3) return null;
+    try {
+      final normalized = base64Url.normalize(parts[1]);
+      final payload = jsonDecode(utf8.decode(base64Url.decode(normalized)));
+      if (payload is! Map<String, dynamic>) return null;
+      final exp = payload['exp'];
+      if (exp is! num || !exp.isFinite) return null;
+      return DateTime.fromMillisecondsSinceEpoch((exp * 1000).round(), isUtc: true);
+    } catch (_) {
+      return null;
+    }
+  }
   Future<String?> get model async => _storage.read(key:_modelKey);
   Future<String> get provider async => (await _storage.read(key:_providerKey)) ?? 'openrouter';
   Future<String?> get providerApiKey async => _storage.read(key:_apiKeyKey);
