@@ -11,22 +11,26 @@ class GatewaySettings {
   Future<String?> get providerApiKey async => _storage.read(key:_apiKeyKey);
   Future<bool> get isConfigured async {
     final url=await baseUrl, token=await accessToken, key=await providerApiKey;
-    return url.isNotEmpty && token!=null && token.isNotEmpty && key!=null && key.isNotEmpty;
+    return url.isNotEmpty && token!=null && token.isNotEmpty;
   }
   Future<void> save({required String url, required String token, required String provider,
-      required String apiKey, required String model}) async {
+      String apiKey = '', required String model}) async {
     final normalized=url.trim().replaceFirst(RegExp(r'/+$'),'');
     final uri=Uri.tryParse(normalized);
     if(uri==null || uri.host.isEmpty || (uri.scheme!='https' && uri.host!='localhost' && uri.host!='10.0.2.2')) {
       throw const FormatException('أدخل عنوان HTTPS صالحاً للخادم.');
     }
     if(token.trim().length<16) throw const FormatException('رمز الوصول للبوابة غير صالح أو قصير جداً.');
-    if(apiKey.trim().length<8) throw const FormatException('أدخل مفتاح API صالحاً للمزود المحدد.');
+    if(apiKey.trim().isNotEmpty && apiKey.trim().length<8) throw const FormatException('مفتاح API للمزود غير صالح أو قصير جداً.');
     if(!const ['openrouter','gemini','openai'].contains(provider)) throw const FormatException('مزود غير مدعوم.');
     await _storage.write(key:_urlKey,value:normalized);
     await _storage.write(key:_tokenKey,value:token.trim());
     await _storage.write(key:_providerKey,value:provider);
-    await _storage.write(key:_apiKeyKey,value:apiKey.trim());
+    if(apiKey.trim().isEmpty) {
+      await _storage.delete(key:_apiKeyKey);
+    } else {
+      await _storage.write(key:_apiKeyKey,value:apiKey.trim());
+    }
     await _storage.write(key:_modelKey,value:model.trim().isEmpty?'openrouter/free':model.trim());
   }
   Future<void> clear() async {
