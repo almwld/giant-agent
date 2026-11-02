@@ -258,7 +258,7 @@ async function listModels(req, res) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
   if (req.method === 'GET' && url.pathname === '/health')
-    return json(res, 200, { ok: true, provider: PROVIDER, model: DEFAULT_MODEL, configured: Boolean(JWT_SECRET.length >= 32 || (process.env.NODE_ENV !== 'production' && APP_TOKEN)) });
+    return json(res, 200, { ok: true, provider: PROVIDER, model: DEFAULT_MODEL, configured: Boolean((JWT_SECRET.length >= 32 && JWT_ISSUER && JWT_AUDIENCE) || (process.env.NODE_ENV !== 'production' && APP_TOKEN)) });
   if (req.method === 'GET' && url.pathname === '/v1/models') {
     const principal = authenticate(req);
     if (!principal) return json(res, 401, { error: 'Unauthorized access token' });
