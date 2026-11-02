@@ -1,5 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:sqflite/sqflite.dart';
@@ -90,6 +92,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Map<String, dynamic> _toUiMessage(ChatMessage message) => {
+    'id': message.id,
     'isUser': message.role == MessageRole.user,
     'content': message.content.isEmpty && message.status == MessageStatus.streaming
         ? 'يكتب الآن…'
@@ -224,6 +227,15 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     await _chat!.send(prompt, attachments: [attachment]);
     if (mounted && _chat!.lastError != null) _showMessage(_chat!.lastError!);
+  }
+
+  Future<void> _copyMessage(String content) async {
+    await Clipboard.setData(ClipboardData(text: content));
+    _showMessage('تم نسخ الرسالة.');
+  }
+
+  Future<void> _shareMessage(String content) async {
+    await Share.share(content);
   }
 
   Future<void> _newConversation() async {
@@ -474,6 +486,31 @@ class _ChatScreenState extends State<ChatScreen> {
                                     '${(msg['time'] as DateTime).hour.toString().padLeft(2, '0')}:${(msg['time'] as DateTime).minute.toString().padLeft(2, '0')}',
                                     style: TextStyle(fontSize: 10, color: isUser ? Colors.white70 : Colors.grey.shade600),
                                   ),
+                                  if (!isUser && (msg['content']?.toString().isNotEmpty ?? false))
+                                    Wrap(
+                                      spacing: 2,
+                                      children: [
+                                        IconButton(
+                                          visualDensity: VisualDensity.compact,
+                                          tooltip: 'نسخ الرد',
+                                          icon: const Icon(Icons.copy_outlined, size: 17),
+                                          onPressed: () => _copyMessage(msg['content'].toString()),
+                                        ),
+                                        IconButton(
+                                          visualDensity: VisualDensity.compact,
+                                          tooltip: 'مشاركة الرد',
+                                          icon: const Icon(Icons.share_outlined, size: 17),
+                                          onPressed: () => _shareMessage(msg['content'].toString()),
+                                        ),
+                                        if (status == MessageStatus.failed)
+                                          IconButton(
+                                            visualDensity: VisualDensity.compact,
+                                            tooltip: 'إعادة المحاولة',
+                                            icon: const Icon(Icons.refresh, size: 18),
+                                            onPressed: _isLoading ? null : () => _chat?.retryLast(),
+                                          ),
+                                      ],
+                                    ),
                                 ],
                               ),
                             ),
