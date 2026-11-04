@@ -28,6 +28,7 @@ class MainActivity: FlutterActivity() {
     
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        NotificationBridge.register(this, flutterEngine)
 
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, AGENT_EVENTS_CHANNEL)
             .setStreamHandler(object : EventChannel.StreamHandler {
