@@ -152,9 +152,6 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerateStreaming(JNIEnv * env, jobject, j
         return env->NewStringUTF("ERROR: Model not loaded");
     }
     GenerationStateGuard generationState;
-    jobject callbackRef = callback ? env->NewGlobalRef(callback) : nullptr;
-    jclass callbackClass = callbackRef ? env->GetObjectClass(callbackRef) : nullptr;
-    jmethodID onToken = callbackClass ? env->GetMethodID(callbackClass, "onToken", "(Ljava/lang/String;)V") : nullptr;
 
     llama_memory_clear(llama_get_memory(g_ctx), true);
     llama_sampler_reset(g_sampler);
@@ -212,7 +209,12 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerateStreaming(JNIEnv * env, jobject, j
         offset += count;
     }
 
+    jobject callbackRef = callback ? env->NewGlobalRef(callback) : nullptr;
+    jclass callbackClass = callbackRef ? env->GetObjectClass(callbackRef) : nullptr;
+    jmethodID onToken = callbackClass ? env->GetMethodID(callbackClass, "onToken", "(Ljava/lang/String;)V") : nullptr;
+
     std::string output;
+    std::string pendingUtf8;
     // Bound generation to both the remaining context and a phone-safe limit.
     const int remaining = static_cast<int>(nCtx - tokens.size() - 1);
     const int limit = std::min(std::clamp(static_cast<int>(maxTokens), 1, 2048), remaining);
@@ -230,11 +232,12 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerateStreaming(JNIEnv * env, jobject, j
         const int32_t n = llama_token_to_piece(vocab, next, piece, sizeof(piece), 0, true);
         if (n > 0) {
             output.append(piece, n);
-            const size_t ready = completeUtf8Prefix(output);
+            pendingUtf8.append(piece, n);
+            const size_t ready = completeUtf8Prefix(pendingUtf8);
             if (ready > 0 && callbackRef && onToken) {
-                const std::string chunk = output.substr(0, ready);
+                const std::string chunk = pendingUtf8.substr(0, ready);
                 emitToken(env, callbackRef, onToken, chunk);
-                output.erase(0, ready);
+                pendingUtf8.erase(0, ready);
             }
         }
 
@@ -245,7 +248,7 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerateStreaming(JNIEnv * env, jobject, j
             break;
         }
     }
-    if (!output.empty() && callbackRef && onToken) emitToken(env, callbackRef, onToken, output);
+    if (!pendingUtf8.empty() && callbackRef && onToken) emitToken(env, callbackRef, onToken, pendingUtf8);
     if (callbackClass) env->DeleteLocalRef(callbackClass);
     if (callbackRef) env->DeleteGlobalRef(callbackRef);
     LOGE("Inference finished; generated %zu UTF-8 bytes", output.size());
