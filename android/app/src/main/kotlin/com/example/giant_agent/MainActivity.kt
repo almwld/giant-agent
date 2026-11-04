@@ -67,9 +67,17 @@ class MainActivity: FlutterActivity() {
                     val tokens = (call.argument<Int>("maxTokens") ?: 256).coerceIn(1, 2048)
                     val temp = (call.argument<Double>("temperature") ?: 0.25).toFloat().coerceIn(0.05f, 1.5f)
                     if (prompt.isBlank()) result.success("") else aiExecutor.execute {
-                        val answer = try { llamaBridge.nativeGenerate(prompt, tokens, temp) }
-                        catch (t: Throwable) { "ERROR: ${t.message ?: "native inference failed"}" }
-                        runOnUiThread { result.success(answer) }
+                        emitAgentEvent("request", "تم استلام الطلب وتجهيز النموذج المحلي", "completed")
+                        emitAgentEvent("inference", "استدلال النموذج المحلي جارٍ", "running")
+                        try {
+                            val answer = llamaBridge.nativeGenerate(prompt, tokens, temp)
+                            emitAgentEvent("inference", "اكتمل توليد الإجابة", "completed")
+                            runOnUiThread { result.success(answer) }
+                        } catch (t: Throwable) {
+                            val message = t.message ?: "native inference failed"
+                            emitAgentEvent("inference", "تعذر إكمال الاستدلال المحلي", "failed", message)
+                            runOnUiThread { result.error("INFERENCE_FAILED", message, null) }
+                        }
                     }
                 }
                 "cancelGeneration" -> result.success(try { llamaBridge.nativeCancelGeneration() } catch (_: Throwable) { false })
