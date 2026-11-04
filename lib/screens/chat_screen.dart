@@ -7,6 +7,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path_provider/path_provider.dart';
 import '../services/model_service.dart';
 import 'agent_workspace_screen.dart';
+import 'agent_workflow_screen.dart';
 import 'package:flutter/services.dart';
 import 'package:xterm/xterm.dart';
 import 'package:share_plus/share_plus.dart';
@@ -128,6 +129,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (index >= 0) { _agentSteps[index] = step; } else { _agentSteps.add(step); }
       _thinkingStage = step['title']?.toString() ?? '';
     });
+    AgentWorkflowScreen.publish(_agentSteps);
     _scrollToBottom();
   }
 
@@ -259,6 +261,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ..clear()
         ..addAll((events ?? []).map((row) => Map<String, dynamic>.from(jsonDecode(row['event_json'] as String) as Map)));
     });
+    AgentWorkflowScreen.publish(_agentSteps);
     _scrollToBottom();
   }
 
@@ -308,6 +311,7 @@ class _ChatScreenState extends State<ChatScreen> {
     await _pruneOldSessions();
     if (!mounted) return;
     setState(() { _messages.clear(); _agentSteps.clear(); _streamingResponse = ''; });
+    AgentWorkflowScreen.publish(_agentSteps);
     await _loadSessions();
     _scrollToBottom();
   }
@@ -389,6 +393,7 @@ class _ChatScreenState extends State<ChatScreen> {
               await _db?.delete('messages', where: 'session_id = ?', whereArgs: [_currentSessionId]);
               await _db?.delete('agent_events', where: 'session_id = ?', whereArgs: [_currentSessionId]);
               setState(() { _messages.clear(); _agentSteps.clear(); });
+              AgentWorkflowScreen.publish(_agentSteps);
               Navigator.pop(ctx);
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('تم مسح المحادثات')),
@@ -1078,6 +1083,16 @@ class _ChatScreenState extends State<ChatScreen> {
                 case 'history':
                   _clearHistory();
                   break;
+                case 'workflow':
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const AgentWorkflowScreen()),
+                  );
+                  break;
+                case 'desktop':
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => AgentWorkspaceScreen(steps: List<Map<String, dynamic>>.from(_agentSteps))),
+                  );
+                  break;
                 case 'settings':
                   Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const SettingsScreen()),
@@ -1087,6 +1102,8 @@ class _ChatScreenState extends State<ChatScreen> {
             },
             itemBuilder: (context) => [
               _menuItem('new', Icons.add_comment_outlined, 'محادثة جديدة'),
+              _menuItem('workflow', Icons.account_tree_outlined, 'تنفيذ الوكيل'),
+              _menuItem('desktop', Icons.desktop_windows_outlined, 'سطح المكتب'),
               _menuItem('export', Icons.archive_outlined, 'تصدير مساحة العمل'),
               const PopupMenuDivider(height: 8),
               _menuItem('refresh', Icons.refresh, 'تحديث النماذج'),
