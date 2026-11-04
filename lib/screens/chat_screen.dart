@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path_provider/path_provider.dart';
 import '../services/model_service.dart';
+import 'agent_workspace_screen.dart';
 import 'package:flutter/services.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -378,6 +379,13 @@ class _ChatScreenState extends State<ChatScreen> {
         leading: const Icon(Icons.account_tree_outlined, color: Colors.tealAccent),
         title: const Text('سجل تنفيذ الوكيل', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
         subtitle: Text('${_agentSteps.length} أحداث من المحرك', style: const TextStyle(color: Colors.white60, fontSize: 11)),
+        trailing: IconButton(
+          tooltip: 'فتح مساحة عمل الوكيل',
+          icon: const Icon(Icons.computer_outlined, color: Colors.tealAccent),
+          onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => AgentWorkspaceScreen(steps: List<Map<String, dynamic>>.from(_agentSteps)),
+          )),
+        ),
         children: _agentSteps.map((step) {
           final failed = step['status'] == 'failed';
           final running = step['status'] == 'running';
