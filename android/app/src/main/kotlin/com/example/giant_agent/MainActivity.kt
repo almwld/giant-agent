@@ -70,7 +70,10 @@ class MainActivity: FlutterActivity() {
                         emitAgentEvent("request", "تم استلام الطلب وتجهيز النموذج المحلي", "completed")
                         emitAgentEvent("inference", "استدلال النموذج المحلي جارٍ", "running")
                         try {
-                            val answer = llamaBridge.nativeGenerate(prompt, tokens, temp)
+                            val tokenCallback = object {
+                                fun onToken(token: String) { emitAgentToken(token) }
+                            }
+                            val answer = llamaBridge.nativeGenerateStreaming(prompt, tokens, temp, tokenCallback)
                             emitAgentEvent("inference", "اكتمل توليد الإجابة", "completed")
                             runOnUiThread { result.success(answer) }
                         } catch (t: Throwable) {
@@ -113,6 +116,12 @@ class MainActivity: FlutterActivity() {
                 "status" to status,
                 "details" to details
             ))
+        }
+    }
+
+    private fun emitAgentToken(token: String) {
+        runOnUiThread {
+            agentEventSink?.success(mapOf("id" to "token", "type" to "stream_token", "text" to token))
         }
     }
 
