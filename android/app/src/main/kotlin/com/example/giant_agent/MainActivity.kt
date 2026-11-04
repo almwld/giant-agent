@@ -182,7 +182,7 @@ class MainActivity: FlutterActivity() {
     private fun emitPythonEvent(type: String, code: String, output: String?, status: String) {
         runOnUiThread {
             agentEventSink?.success(mapOf(
-                "id" to "python_${System.currentTimeMillis()}",
+                "id" to "python_${System.nanoTime()}",
                 "type" to type,
                 "tool_name" to "execute_python",
                 "title" to if (type == "tool_start") "تشغيل Python" else if (type == "tool_output") "مخرجات Python" else "خطأ Python",
