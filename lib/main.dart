@@ -4,10 +4,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'screens/welcome_screen.dart';
 import 'screens/chat_screen.dart';
 import 'services/app_preferences.dart';
+import 'services/notification_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await AppPreferences.instance.load();
+  await NotificationService.init();
   final prefs = await SharedPreferences.getInstance();
   final showSplash = !(prefs.getBool('giant_has_launched') ?? false);
   if (showSplash) await prefs.setBool('giant_has_launched', true);
