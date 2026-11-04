@@ -121,8 +121,9 @@ class ModelService {
           final result = await _executeTool(payload);
           final toolName = payload['name'];
           final resultJson = jsonEncode(result);
-          final contextResult = toolName == 'execute_python' && resultJson.length > 500
-              ? '${resultJson.substring(resultJson.length - 500)} [Python result truncated to last 500 characters for model context]'
+          final pythonTail = (result['output']?.toString() ?? result['error']?.toString() ?? '');
+          final contextResult = toolName == 'execute_python'
+              ? 'ok=${result['ok']}\\n${pythonTail.length > 500 ? pythonTail.substring(pythonTail.length - 500) + '\\n[Python output truncated to last 500 characters]' : pythonTail}'
               : resultJson;
           history
             ..write('\n\nSystem Note: $toolName execution result: ')
