@@ -216,6 +216,18 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _pruneOldSessions() async {
+    final old = await _db?.query('sessions', columns: ['id'], orderBy: 'updated_at DESC', limit: 1000, offset: 50);
+    if (old == null || old.isEmpty) return;
+    for (final row in old) {
+      final id = row['id'] as String;
+      if (id == _currentSessionId) continue;
+      await _db?.delete('messages', where: 'session_id = ?', whereArgs: [id]);
+      await _db?.delete('agent_events', where: 'session_id = ?', whereArgs: [id]);
+      await _db?.delete('sessions', where: 'id = ?', whereArgs: [id]);
+    }
+  }
+
   Future<void> _createNewSession() async {
     if (_isLoading) return;
     final now = DateTime.now();
@@ -227,6 +239,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _currentSessionId = id;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('giant_active_session_id', id);
+    await _pruneOldSessions();
     if (!mounted) return;
     setState(() { _messages.clear(); _agentSteps.clear(); _streamingResponse = ''; });
     await _loadSessions();
@@ -530,11 +543,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  void _newConversation() {
-    setState(() {
-      _messages.clear();
-    });
-  }
+  void _newConversation() => _createNewSession();
 
   void _switchModel(Map<String, dynamic> model) async {
     if (model['id'] == 'no_model') {
