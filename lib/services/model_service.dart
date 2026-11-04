@@ -121,6 +121,8 @@ class ModelService {
         return createFile(path: args['path']?.toString() ?? '', content: args['content']?.toString() ?? '');
       case 'read_file':
         return readFile(path: args['path']?.toString() ?? '');
+      case 'write_file':
+        return writeFile(path: args['path']?.toString() ?? '', content: args['content']?.toString() ?? '');
       case 'execute_python':
         return executePython(code: args['code']?.toString() ?? '');
       default:
@@ -135,12 +137,15 @@ class ModelService {
 أدواتك:
 1) create_file: arguments path و content. تنشئ ملفاً جديداً فقط ولا تستبدل الموجود.
 2) read_file: arguments path. تقرأ ملفاً موجوداً داخل مساحة العمل.
-3) execute_python: arguments code. يشغّل سكربت Python محلياً ضمن مفسر مقيّد؛ يدعم الحسابات والطباعة والحلقات المحدودة. لا يدعم الاستيراد أو الوصول إلى النظام أو السمات أو فتح الملفات. تعامل مع الملفات عبر أداتي create_file و read_file فقط؛ لا يملك Python صلاحية فتح الملفات.
+3) write_file: arguments path و content. تحدّث ملفاً موجوداً داخل مساحة العمل مع الحفاظ على حدود المسارات والحجم.
+4) execute_python: arguments code. يشغّل سكربت Python محلياً ضمن مفسر مقيّد؛ يدعم الحسابات والطباعة والحلقات المحدودة. لا يدعم الاستيراد أو الوصول إلى النظام أو السمات أو فتح الملفات. تعامل مع الملفات عبر أداتي create_file و read_file فقط؛ لا يملك Python صلاحية فتح الملفات.
 عندما يطلب المستخدم إنشاء واجهة ويب أو نموذج تفاعلي أو تطبيق بسيط، أنشئ ملفاً واحداً باسم index.html باستخدام create_file، واجعل HTML وCSS وJavaScript مكتملة ومضمّنة داخل الملف نفسه حتى تعمل مباشرة في معاينة WebView المحلية دون اتصال. لا تعتمد على CDN أو ملفات خارجية أو خدمات شبكة. صمّم واجهة متجاوبة مع الهاتف، وأضف تفاعلات JavaScript المطلوبة. إذا طلب المستخدم مشروع Flutter أصلياً، أنشئ ملفات Dart المناسبة ولا تدّع أن WebView تستطيع تشغيلها؛ فهي تعرض الكود فقط.
 عند الحاجة لاستخدام أداة أخرج استدعاءً واحداً فقط:
 <tool_call>{"name":"create_file","arguments":{"path":"src/main.dart","content":"..."}}</tool_call>
 أو:
-<tool_call>{"name":"read_file","arguments":{"path":"src/main.dart"}}</tool_call>
+<tool_call>{"name":"read_file","arguments":{"path":"index.html"}}</tool_call>
+أو:
+<tool_call>{"name":"write_file","arguments":{"path":"index.html","content":"<!doctype html>..."}}</tool_call>
 أو:
 <tool_call>{"name":"execute_python","arguments":{"code":"for i in range(1, 11):\n    print(i)"}}</tool_call>
 لا تدّع نجاح أي عملية قبل استلام نتيجتها. لا تطلب أدوات إذا لم تكن لازمة.
