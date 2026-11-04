@@ -1062,7 +1062,7 @@ class _ChatScreenState extends State<ChatScreen> {
               width: double.infinity,
               margin: const EdgeInsets.fromLTRB(16, 6, 16, 10),
               padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(14)),
+              decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceVariant, borderRadius: BorderRadius.circular(14)),
               child: SelectableText(_streamingResponse, style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14)),
             ),
           if (_isLoading)
@@ -1121,7 +1121,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         borderSide: BorderSide.none,
                       ),
                       filled: true,
-                      fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      fillColor: Theme.of(context).colorScheme.surfaceVariant,
                       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                     ),
                     onSubmitted: (_) => _sendMessage(),
