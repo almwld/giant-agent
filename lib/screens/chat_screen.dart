@@ -249,7 +249,20 @@ class _ChatScreenState extends State<ChatScreen> {
       while (_isLoading && mounted) {
         await Future<void>.delayed(const Duration(milliseconds: 200));
       }
-      if (mounted) await _processFile(File(path));
+      final file = File(path);
+      try {
+        if (mounted) await _processFile(file);
+      } finally {
+        // Native content:// shares are copied into this private cache folder.
+        // Remove the temporary copy after analysis, including on failures.
+        if (file.parent.path.endsWith('${Platform.pathSeparator}shared_files')) {
+          try {
+            if (await file.exists()) await file.delete();
+          } catch (error) {
+            debugPrint('Unable to remove temporary shared file: $error');
+          }
+        }
+      }
     });
     return _sharedFileQueue;
   }
