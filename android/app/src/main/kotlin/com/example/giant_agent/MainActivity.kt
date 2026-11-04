@@ -110,6 +110,31 @@ class MainActivity: FlutterActivity() {
                         result.error("READ_FILE_FAILED", t.message ?: "File read failed", null)
                     }
                 }
+                "extractDocument" -> {
+                    val documentPath = call.argument<String>("path").orEmpty()
+                    aiExecutor.execute {
+                        try {
+                            require(documentPath.isNotBlank() && File(documentPath).isFile) {
+                                "Document path is invalid."
+                            }
+                            if (!Python.isStarted()) Python.start(AndroidPlatform(this))
+                            val parsed = Python.getInstance().getModule("document_parser")
+                                .callAttr("extract_document", documentPath)
+                            val payload = mapOf(
+                                "ok" to true,
+                                "text" to (parsed.get("text")?.toString() ?: ""),
+                                "characters_extracted" to (parsed.get("characters_extracted")?.toInt() ?: 0),
+                                "truncated" to (parsed.get("truncated")?.toBoolean() ?: false),
+                                "file_size" to (parsed.get("file_size")?.toInt() ?: 0),
+                                "format" to (parsed.get("format")?.toString() ?: "")
+                            )
+                            runOnUiThread { result.success(payload) }
+                        } catch (t: Throwable) {
+                            val message = t.message ?: "Document extraction failed."
+                            runOnUiThread { result.success(mapOf("ok" to false, "error" to message)) }
+                        }
+                    }
+                }
                 "executePython" -> {
                     val code = call.argument<String>("code").orEmpty()
                     val eventId = "python_${System.nanoTime()}"
