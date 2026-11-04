@@ -758,7 +758,25 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  bool _opensTerminalFromStep(Map<String, dynamic> step) {
+    final type = step['type']?.toString().toLowerCase() ?? '';
+    final title = step['title']?.toString().toLowerCase() ?? '';
+    final toolName = step['tool_name']?.toString().toLowerCase() ?? '';
+    return type == 'thought' ||
+        type == 'code' ||
+        type.contains('tool') ||
+        type.contains('terminal') ||
+        toolName == 'execute_python' ||
+        title.contains('svg') ||
+        title.contains('طرفية') ||
+        title.contains('terminal');
+  }
+
   void _showAgentStep(Map<String, dynamic> step) {
+    if (_opensTerminalFromStep(step)) {
+      _showTerminal();
+      return;
+    }
     final title = step['title']?.toString() ?? 'تفاصيل التنفيذ';
     final fileName = step['file_name']?.toString();
     final content = step['content']?.toString();
@@ -838,6 +856,12 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                   ),
                   IconButton(
+                    tooltip: 'فتح الطرفية',
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.terminal, color: Color(0xFF0D8274), size: 20),
+                    onPressed: _showTerminal,
+                  ),
+                  IconButton(
                     tooltip: 'فتح مساحة عمل الوكيل',
                     visualDensity: VisualDensity.compact,
                     icon: const Icon(Icons.computer_outlined, color: Color(0xFF0D8274), size: 19),
@@ -868,7 +892,9 @@ class _ChatScreenState extends State<ChatScreen> {
                           : (running ? const Color(0xFF0D8274) : mutedColor);
                       final title = step['title']?.toString() ?? 'حدث من الوكيل';
                       final subtitle = step['subtitle']?.toString();
-                      final hasPreview = step['content'] != null ||
+                      final opensTerminal = _opensTerminalFromStep(step);
+                      final hasPreview = opensTerminal ||
+                          step['content'] != null ||
                           step['output'] != null ||
                           step['command'] != null ||
                           step['details'] != null ||
@@ -985,9 +1011,6 @@ class _ChatScreenState extends State<ChatScreen> {
                 case 'new':
                   _newConversation();
                   break;
-                case 'terminal':
-                  _showTerminal();
-                  break;
                 case 'export':
                   _exportWorkspace();
                   break;
@@ -1006,7 +1029,6 @@ class _ChatScreenState extends State<ChatScreen> {
             },
             itemBuilder: (context) => [
               _menuItem('new', Icons.add_comment_outlined, 'محادثة جديدة'),
-              _menuItem('terminal', Icons.terminal, 'طرفية Python'),
               _menuItem('export', Icons.archive_outlined, 'تصدير مساحة العمل'),
               const PopupMenuDivider(height: 8),
               _menuItem('refresh', Icons.refresh, 'تحديث النماذج'),
