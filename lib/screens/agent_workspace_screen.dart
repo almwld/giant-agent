@@ -16,7 +16,7 @@ class _AgentWorkspaceScreenState extends State<AgentWorkspaceScreen> {
 
   List<Map<String, dynamic>> get _files => widget.steps.where((step) {
     final type = step['type']?.toString();
-    return (type == 'file_created' || type == 'file' || type == 'code') &&
+    return (type == 'file_created' || type == 'file_read' || type == 'file' || type == 'code') &&
         (step['content'] != null || step['file_name'] != null);
   }).toList(growable: false);
 
