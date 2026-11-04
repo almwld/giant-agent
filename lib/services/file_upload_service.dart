@@ -15,7 +15,8 @@ class FileUploadService {
 
   static const int maxFileBytes = 8 * 1024 * 1024;
   static const int maxStoredContentChars = 100000;
-  Database? _database;\n  Future<void>? _opening;
+  Database? _database;
+  Future<void>? _opening;
 
   Future<void> init() async {
     if (_database != null) return;
