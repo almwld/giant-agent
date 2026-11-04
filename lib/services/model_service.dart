@@ -11,6 +11,7 @@ class ModelService {
   List<Map<String, dynamic>> _models = [];
   String _activeModelId = '';
   bool _isLoading = false;
+  bool _cancelRequested = false;
 
   Future<void> init() => scanModels();
   Future<void> scanModels() async {
@@ -68,6 +69,22 @@ class ModelService {
     return result;
   }
 
+  Future<bool> cancelGeneration() async {
+    _cancelRequested = true;
+    return _llama.cancel();
+  }
+
+  Future<Map<String, dynamic>> exportWorkspace() async {
+    final result = await _agentTools.invokeMapMethod<String, dynamic>('exportWorkspace');
+    if (result == null || result['ok'] != true || result['path'] == null) {
+      throw PlatformException(
+        code: 'WORKSPACE_EXPORT_FAILED',
+        message: result?['error']?.toString() ?? 'Workspace export failed.',
+      );
+    }
+    return result;
+  }
+
   Future<Map<String, dynamic>> executePython({required String code}) async {
     final result = await _agentTools.invokeMapMethod<String, dynamic>('executePython', {'code': code});
     if (result == null) {
@@ -93,6 +110,7 @@ class ModelService {
   }
 
   Future<String> processInput(String input) async {
+    _cancelRequested = false;
     if (!hasActiveModel()) return '⚠️ استورد نموذج GGUF واختره أولاً.';
     final history = StringBuffer('''أنت Giant Agent، مساعد محلي يعمل دون اتصال. أجب بلغة المستخدم.
 أدواتك:
@@ -114,11 +132,13 @@ class ModelService {
     try {
       for (var step = 0; step < 4; step++) {
         final generated = await _llama.generate(history.toString(), maxTokens: 768, temperature: .25);
+        if (_cancelRequested) return generated.trim().isEmpty ? 'تم إيقاف التوليد.' : '${generated.trim()}\n\n[تم إيقاف التوليد]';
         final match = RegExp(r'<tool_call>\s*(\{.*?\})\s*</tool_call>', dotAll: true).firstMatch(generated);
         if (match == null) return generated.trim();
         try {
           final payload = jsonDecode(match.group(1)!) as Map<String, dynamic>;
           final result = await _executeTool(payload);
+          if (_cancelRequested) return 'تم إيقاف الوكيل بعد اكتمال الأداة الحالية.';
           final toolName = payload['name'];
           final resultJson = jsonEncode(result);
           final pythonTail = (result['output']?.toString() ?? result['error']?.toString() ?? '');
