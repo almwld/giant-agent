@@ -124,14 +124,31 @@ class MainActivity: FlutterActivity() {
                         }
                         val input = InputImage.fromFilePath(this, Uri.fromFile(imageFile))
                         val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-                        recognizer.process(input)
-                            .addOnSuccessListener { visionText ->
-                                recognizer.close()
-                                val labeler = ImageLabeling.getClient(ImageLabelerOptions.DEFAULT_OPTIONS)
-                                labeler.process(input)
-                                    .addOnSuccessListener { labels ->
-                                        labeler.close()
-                                        val lineData = visionText.textBlocks.flatMap { block ->
+                        val labeler = ImageLabeling.getClient(ImageLabelerOptions.DEFAULT_OPTIONS)
+                        val ocrTask = recognizer.process(input)
+                        val labelTask = labeler.process(input)
+
+                        // Run OCR and visual labeling independently. A failure in one engine
+                        // must not discard useful output from the other engine.
+                        com.google.android.gms.tasks.Tasks.whenAllComplete(ocrTask, labelTask)
+                            .addOnCompleteListener {
+                                try {
+                                    val payload = mutableMapOf<String, Any>(
+                                        "ok" to true,
+                                        "text" to "",
+                                        "blocks" to 0,
+                                        "lines" to emptyList<Map<String, Any>>(),
+                                        "labels" to emptyList<Map<String, Any>>(),
+                                        "engines" to listOf(
+                                            "Google ML Kit Text Recognition (Latin script)",
+                                            "Google ML Kit Image Labeling (bundled offline model)"
+                                        )
+                                    )
+                                    if (ocrTask.isSuccessful) {
+                                        val visionText = ocrTask.result
+                                        payload["text"] = visionText.text
+                                        payload["blocks"] = visionText.textBlocks.size
+                                        payload["lines"] = visionText.textBlocks.flatMap { block ->
                                             block.lines.map { line ->
                                                 val box = line.boundingBox
                                                 mapOf(
@@ -144,34 +161,26 @@ class MainActivity: FlutterActivity() {
                                                 )
                                             }
                                         }
-                                        result.success(mapOf(
-                                            "ok" to true,
-                                            "text" to visionText.text,
-                                            "blocks" to visionText.textBlocks.size,
-                                            "lines" to lineData,
-                                            "labels" to labels.map { label ->
-                                                mapOf("text" to label.text, "confidence" to label.confidence, "index" to label.index)
-                                            },
-                                            "engines" to listOf(
-                                                "Google ML Kit Text Recognition (Latin script)",
-                                                "Google ML Kit Image Labeling (bundled offline model)"
+                                    } else {
+                                        payload["ocr_warning"] = ocrTask.exception?.message ?: "OCR failed"
+                                    }
+                                    if (labelTask.isSuccessful) {
+                                        payload["labels"] = labelTask.result.map { label ->
+                                            mapOf(
+                                                "text" to label.text,
+                                                "confidence" to label.confidence,
+                                                "index" to label.index
                                             )
-                                        ))
+                                        }
+                                    } else {
+                                        payload["labeling_warning"] = labelTask.exception?.message
+                                            ?: "Image labeling unavailable"
                                     }
-                                    .addOnFailureListener { error ->
-                                        labeler.close()
-                                        result.success(mapOf(
-                                            "ok" to true,
-                                            "text" to visionText.text,
-                                            "blocks" to visionText.textBlocks.size,
-                                            "labels" to emptyList<Map<String, Any>>(),
-                                            "warning" to (error.message ?: "Image labeling unavailable")
-                                        ))
-                                    }
-                            }
-                            .addOnFailureListener { error ->
-                                recognizer.close()
-                                result.success(mapOf("ok" to false, "error" to (error.message ?: "OCR failed")))
+                                    runOnUiThread { result.success(payload) }
+                                } finally {
+                                    recognizer.close()
+                                    labeler.close()
+                                }
                             }
                     } catch (t: Throwable) {
                         result.success(mapOf("ok" to false, "error" to (t.message ?: "Unable to read image")))
