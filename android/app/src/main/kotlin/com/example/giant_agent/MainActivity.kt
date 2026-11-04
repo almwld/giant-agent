@@ -67,6 +67,23 @@ class MainActivity: FlutterActivity() {
                         result.error("CREATE_FILE_FAILED", t.message ?: "File creation failed", null)
                     }
                 }
+                "writeFile" -> {
+                    val relativePath = call.argument<String>("path").orEmpty()
+                    val content = call.argument<String>("content").orEmpty()
+                    try {
+                        require(content.toByteArray(Charsets.UTF_8).size <= 1024 * 1024) {
+                            "File content exceeds the 1 MB limit."
+                        }
+                        val file = resolveAgentFile(relativePath)
+                        require(file.isFile) { "Only existing workspace files can be edited." }
+                        file.writeText(content, Charsets.UTF_8)
+                        emitAgentFileUpdated(relativePath, content)
+                        result.success(mapOf("ok" to true, "path" to relativePath))
+                    } catch (t: Throwable) {
+                        emitAgentToolError("write_file", t.message ?: "File update failed")
+                        result.error("WRITE_FILE_FAILED", t.message ?: "File update failed", null)
+                    }
+                }
                 "readFile" -> {
                     val relativePath = call.argument<String>("path").orEmpty()
                     try {
@@ -259,6 +276,19 @@ class MainActivity: FlutterActivity() {
         require(canonical.path.startsWith(root.path + File.separator)) { "File path escapes the agent workspace." }
         require(canonical.canonicalPath == candidate.absolutePath) { "Symbolic links are not allowed." }
         return canonical
+    }
+
+    private fun emitAgentFileUpdated(relativePath: String, content: String) {
+        runOnUiThread {
+            agentEventSink?.success(mapOf(
+                "id" to "file_updated_${System.currentTimeMillis()}",
+                "type" to "file_updated",
+                "title" to "File updated",
+                "file_name" to relativePath,
+                "content" to content,
+                "status" to "completed"
+            ))
+        }
     }
 
     private fun emitAgentFileRead(relativePath: String, content: String) {
