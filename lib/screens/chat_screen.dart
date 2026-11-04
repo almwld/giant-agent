@@ -161,6 +161,7 @@ class _ChatScreenState extends State<ChatScreen> {
   String _currentSessionId = '';
   List<ChatSession> _sessions = [];
   bool _sessionReady = false;
+  Future<void> _sharedFileQueue = Future<void>.value();
 
   @override
   void initState() {
@@ -241,8 +242,15 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  Future<void> _processSharedFilePath(String path) async {
-    await _processFile(File(path));
+  Future<void> _processSharedFilePath(String path) {
+    _sharedFileQueue = _sharedFileQueue.then((_) async {
+      // Do not drop an incoming Android share while a response is generating.
+      while (_isLoading && mounted) {
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+      }
+      if (mounted) await _processFile(File(path));
+    });
+    return _sharedFileQueue;
   }
 
   String _newSessionId() => DateTime.now().microsecondsSinceEpoch.toString();
