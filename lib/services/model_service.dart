@@ -122,13 +122,16 @@ class ModelService {
           final toolName = payload['name'];
           final resultJson = jsonEncode(result);
           final pythonTail = (result['output']?.toString() ?? result['error']?.toString() ?? '');
+          final boundedPythonTail = pythonTail.length > 500
+              ? '${pythonTail.substring(pythonTail.length - 500)}\\n[Python output truncated to last 500 characters]'
+              : pythonTail;
           final contextResult = toolName == 'execute_python'
-              ? 'ok=${result['ok']}\n${pythonTail.length > 500 ? pythonTail.substring(pythonTail.length - 500) + '\n[Python output truncated to last 500 characters]' : pythonTail}'
+              ? 'ok=${result['ok'] == true}\\n$boundedPythonTail'
               : resultJson;
           history
             ..write('\n\nSystem Note: $toolName execution result: ')
             ..write(contextResult)
-            ..write('\nDo not claim success if the tool result contains ok=false. Continue the user's task. Use another tool if required; otherwise provide the final answer.\n\nAssistant:');
+            ..write('\nDo not claim success if the tool result contains ok=false. Continue the request; use another tool if required, otherwise provide the final answer.\n\nAssistant:');
         } on PlatformException catch (e) {
           history
             ..write('\n\nSystem Note: Tool failed: ${e.code}: ${e.message}. Do not claim success. You may correct the arguments and retry once.\n\nAssistant:');
