@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import '../services/llama_service.dart';
+import 'agent_memory_service.dart';
 
 class ModelService {
   static final ModelService _instance = ModelService._internal();
@@ -131,6 +132,13 @@ class ModelService {
   }
 
   Future<String> processInput(String input) async {
+    final context = await AgentMemoryService.instance.buildContext(input);
+    final response = await _processInput(context.isEmpty ? input : '$context\n\nطلب المستخدم: $input');
+    await AgentMemoryService.instance.saveTurn(input, response);
+    return response;
+  }
+
+  Future<String> _processInput(String input) async {
     _cancelRequested = false;
     if (!hasActiveModel()) return '⚠️ استورد نموذج GGUF واختره أولاً.';
     final history = StringBuffer('''أنت Giant Agent، مساعد محلي يعمل دون اتصال. أجب بلغة المستخدم.
