@@ -60,37 +60,67 @@ class ModelService {
     return result;
   }
 
+  Future<Map<String, dynamic>> readFile({required String path}) async {
+    final result = await _agentTools.invokeMapMethod<String, dynamic>('readFile', {'path': path});
+    if (result == null || result['ok'] != true) {
+      throw PlatformException(code: 'READ_FILE_FAILED', message: 'Native file tool returned no read result.');
+    }
+    return result;
+  }
+
+  Future<Map<String, dynamic>> _executeTool(Map<String, dynamic> payload) async {
+    final name = payload['name'];
+    final args = payload['arguments'];
+    if (args is! Map<String, dynamic>) throw const FormatException('Tool arguments must be an object.');
+    switch (name) {
+      case 'create_file':
+        return createFile(path: args['path']?.toString() ?? '', content: args['content']?.toString() ?? '');
+      case 'read_file':
+        return readFile(path: args['path']?.toString() ?? '');
+      default:
+        throw FormatException('Unsupported tool: $name');
+    }
+  }
+
   Future<String> processInput(String input) async {
     if (!hasActiveModel()) return '⚠️ استورد نموذج GGUF واختره أولاً.';
-    try {
-      final prompt = '''أنت Giant Agent، مساعد محلي يعمل دون اتصال. أجب بلغة المستخدم بوضوح.
-يمكنك إنشاء ملف داخل مساحة العمل فقط عند طلب المستخدم ذلك صراحةً.
-عند الحاجة لإنشاء ملف، أخرج استدعاء أداة واحداً فقط بهذا التنسيق الحرفي:
-<tool_call>{"name":"create_file","arguments":{"path":"notes/example.md","content":"محتوى الملف"}}</tool_call>
-استخدم مساراً نسبياً وامتداداً مسموحاً، ولا تدّع إنشاء الملف قبل ظهور نتيجة التنفيذ.
-إذا لم يطلب المستخدم إنشاء ملف، أجب بصورة طبيعية.
-لا تعرض التفكير الداخلي التفصيلي ولا تختلق نتائج.
+    final history = StringBuffer('''أنت Giant Agent، مساعد محلي يعمل دون اتصال. أجب بلغة المستخدم.
+أدواتك:
+1) create_file: arguments path و content. تنشئ ملفاً جديداً فقط ولا تستبدل الموجود.
+2) read_file: arguments path. تقرأ ملفاً موجوداً داخل مساحة العمل.
+عند الحاجة لاستخدام أداة أخرج استدعاءً واحداً فقط:
+<tool_call>{"name":"create_file","arguments":{"path":"src/main.dart","content":"..."}}</tool_call>
+أو:
+<tool_call>{"name":"read_file","arguments":{"path":"src/main.dart"}}</tool_call>
+لا تدّع نجاح أي عملية قبل استلام نتيجتها. لا تطلب أدوات إذا لم تكن لازمة.
+لا تعرض التفكير الداخلي التفصيلي.
 
 المستخدم: $input
 
-المساعد:''';
-      final generated = await _llama.generate(prompt, maxTokens: 512, temperature: .25);
-      final match = RegExp(r'<tool_call>\s*(\{.*?\})\s*</tool_call>', dotAll: true).firstMatch(generated);
-      if (match == null) return generated;
-      try {
-        final payload = jsonDecode(match.group(1)!) as Map<String, dynamic>;
-        if (payload['name'] != 'create_file') return 'تعذر تنفيذ الأداة: اسم الأداة غير مدعوم.';
-        final args = payload['arguments'] as Map<String, dynamic>;
-        final result = await createFile(
-          path: args['path']?.toString() ?? '',
-          content: args['content']?.toString() ?? '',
-        );
-        return 'تم إنشاء الملف فعلياً داخل مساحة عمل التطبيق: ${result['path']}';
-      } on PlatformException catch (e) {
-        return 'فشل إنشاء الملف: ${e.message ?? e.code}';
-      } catch (e) {
-        return 'تعذر تحليل استدعاء الأداة أو تنفيذه: $e';
+المساعد:''');
+    try {
+      for (var step = 0; step < 4; step++) {
+        final generated = await _llama.generate(history.toString(), maxTokens: 768, temperature: .25);
+        final match = RegExp(r'<tool_call>\s*(\{.*?\})\s*</tool_call>', dotAll: true).firstMatch(generated);
+        if (match == null) return generated.trim();
+        try {
+          final payload = jsonDecode(match.group(1)!) as Map<String, dynamic>;
+          final result = await _executeTool(payload);
+          final toolName = payload['name'];
+          history
+            ..write('\n\nSystem Note: $toolName completed successfully. Result: ')
+            ..write(jsonEncode(result))
+            ..write('\nContinue the user's task. Use another tool if required; otherwise provide the final answer.\n\nAssistant:');
+        } on PlatformException catch (e) {
+          history
+            ..write('\n\nSystem Note: Tool failed: ${e.code}: ${e.message}. Do not claim success. You may correct the arguments and retry once.\n\nAssistant:');
+        } catch (e) {
+          return 'تعذر تحليل استدعاء الأداة أو تنفيذه: $e';
+        }
       }
-    } catch (e) { return 'تعذر تشغيل النموذج المحلي: $e'; }
+      return 'توقفت دورة الأدوات بعد بلوغ الحد الآمن (4 خطوات). أعد الطلب لتكملة العمل.';
+    } catch (e) {
+      return 'تعذر تشغيل النموذج المحلي: $e';
+    }
   }
 }
