@@ -51,6 +51,20 @@ class MainActivity: FlutterActivity() {
                         result.error("CREATE_FILE_FAILED", t.message ?: "File creation failed", null)
                     }
                 }
+                "readFile" -> {
+                    val relativePath = call.argument<String>("path").orEmpty()
+                    try {
+                        val file = resolveAgentFile(relativePath)
+                        require(file.isFile && file.canRead()) { "File does not exist or cannot be read." }
+                        require(file.length() <= 1024 * 1024) { "File exceeds the 1 MB read limit." }
+                        val content = file.readText(Charsets.UTF_8)
+                        emitAgentFileRead(relativePath, content)
+                        result.success(mapOf("ok" to true, "path" to relativePath, "content" to content))
+                    } catch (t: Throwable) {
+                        emitAgentToolError("read_file", t.message ?: "File read failed")
+                        result.error("READ_FILE_FAILED", t.message ?: "File read failed", null)
+                    }
+                }
                 else -> result.notImplemented()
             }
         }
@@ -138,6 +152,37 @@ class MainActivity: FlutterActivity() {
         }
     }
 
+    private fun resolveAgentFile(relativePath: String): File {
+        require(relativePath.isNotBlank()) { "File path is required." }
+        require(!relativePath.startsWith("/") && !relativePath.startsWith("\\\\")) { "Absolute paths are not allowed." }
+        require(!relativePath.contains("\\\\") && relativePath.split("/").none { it.isBlank() || it == "." || it == ".." }) {
+            "Invalid relative path."
+        }
+        val allowed = setOf("dart", "md", "txt", "json", "yaml", "yml", "html", "css", "js", "kt", "java", "cpp", "h")
+        val name = relativePath.substringAfterLast("/")
+        require(name.substringAfterLast(".", "").lowercase() in allowed) { "File extension is not allowed." }
+        val root = File(filesDir, "agent_workspace").apply { mkdirs() }.canonicalFile
+        val candidate = File(root, relativePath)
+        val canonical = candidate.canonicalFile
+        require(canonical.path.startsWith(root.path + File.separator)) { "File path escapes the agent workspace." }
+        require(canonical.canonicalPath == candidate.absolutePath) { "Symbolic links are not allowed." }
+        return canonical
+    }
+
+    private fun emitAgentFileRead(relativePath: String, content: String) {
+        runOnUiThread {
+            agentEventSink?.success(mapOf(
+                "id" to "file_read_${System.currentTimeMillis()}",
+                "type" to "file_read",
+                "title" to "File read",
+                "subtitle" to "تمت قراءة الملف من مساحة العمل",
+                "file_name" to relativePath,
+                "content" to content,
+                "status" to "completed"
+            ))
+        }
+    }
+
     private fun emitAgentFileCreated(relativePath: String, content: String) {
         runOnUiThread {
             agentEventSink?.success(mapOf(
@@ -165,29 +210,13 @@ class MainActivity: FlutterActivity() {
     }
 
     private fun createAgentFile(relativePath: String, content: String): Pair<String, String> {
-        require(relativePath.isNotBlank()) { "File path is required." }
-        require(!relativePath.startsWith("/") && !relativePath.startsWith("\\")) { "Absolute paths are not allowed." }
-        require(!relativePath.contains("\\") && relativePath.split("/").none { it.isBlank() || it == "." || it == ".." }) {
-            "Invalid relative path."
-        }
         require(content.toByteArray(Charsets.UTF_8).size <= 1024 * 1024) { "File content exceeds the 1 MB limit." }
-        val allowed = setOf("dart", "md", "txt", "json", "yaml", "yml", "html", "css", "js", "kt", "java", "cpp", "h")
-        val name = relativePath.substringAfterLast("/")
-        require(name.substringAfterLast(".", "").lowercase() in allowed) { "File extension is not allowed." }
-
-        val root = File(filesDir, "agent_workspace").apply { mkdirs() }.canonicalFile
-        val target = File(root, relativePath)
-        val parent = target.parentFile ?: throw IllegalArgumentException("Invalid parent directory.")
-        parent.mkdirs()
-        val canonicalParent = parent.canonicalFile
-        require(canonicalParent.path == root.path || canonicalParent.path.startsWith(root.path + File.separator)) {
-            "File path escapes the agent workspace."
-        }
-        val canonicalTarget = File(canonicalParent, target.name)
-        require(!canonicalTarget.exists()) { "A file with this path already exists." }
-        require(canonicalTarget.canonicalPath == canonicalTarget.absolutePath) { "Symbolic links are not allowed." }
-        canonicalTarget.writeText(content, Charsets.UTF_8)
-        return Pair(canonicalTarget.path.removePrefix(root.path + File.separator), name)
+        val target = resolveAgentFile(relativePath)
+        target.parentFile?.mkdirs()
+        val canonical = resolveAgentFile(relativePath)
+        require(!canonical.exists()) { "A file with this path already exists." }
+        canonical.writeText(content, Charsets.UTF_8)
+        return Pair(relativePath, canonical.name)
     }
 
     private fun emitAgentToken(token: String) {
