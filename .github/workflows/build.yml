@@ -2,57 +2,76 @@ name: Build Giant Agent APK
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: giant-agent-apk-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
+    name: Build Android APKs
     runs-on: ubuntu-latest
-    
+    timeout-minutes: 45
+
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Setup Java
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'temurin'
-        java-version: '17'
-    
-    - name: Setup Flutter
-      uses: subosito/flutter-action@v2
-      with:
-        flutter-version: '3.16.0'
-        channel: 'stable'
-    
-    - name: Get dependencies
-      run: flutter pub get
-    
-    - name: Build APK
-      run: flutter build apk --release
-    
-    - name: Build Split APKs (per ABI)
-      run: flutter build apk --release --split-per-abi
-    
-    - name: Upload Universal APK
-      uses: actions/upload-artifact@v4
-      with:
-        name: giant-agent-universal-apk
-        path: build/app/outputs/flutter-apk/app-release.apk
-    
-    - name: Upload ARM64 APK
-      uses: actions/upload-artifact@v4
-      with:
-        name: giant-agent-arm64-apk
-        path: build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
-    
-    - name: Upload ARM32 APK
-      uses: actions/upload-artifact@v4
-      with:
-        name: giant-agent-arm32-apk
-        path: build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
-    
-    - name: Upload x86_64 APK
-      uses: actions/upload-artifact@v4
-      with:
-        name: giant-agent-x64-apk
-        path: build/app/outputs/flutter-apk/app-x86_64-release.apk
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.16.0'
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build universal release APK
+        run: |
+          flutter build apk --release
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk dist/giant-agent-universal.apk
+
+      - name: Build release APKs per ABI
+        run: |
+          flutter build apk --release --split-per-abi
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk dist/
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk dist/
+          cp build/app/outputs/flutter-apk/app-x86_64-release.apk dist/
+
+      - name: Verify APK outputs
+        run: |
+          set -e
+          test -s dist/giant-agent-universal.apk
+          test -s dist/app-armeabi-v7a-release.apk
+          test -s dist/app-arm64-v8a-release.apk
+          test -s dist/app-x86_64-release.apk
+          echo "APK files produced:"
+          ls -lh dist/*.apk
+          sha256sum dist/*.apk | tee dist/SHA256SUMS.txt
+
+      - name: Upload APK artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: giant-agent-apks-${{ github.run_number }}
+          path: |
+            dist/*.apk
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
