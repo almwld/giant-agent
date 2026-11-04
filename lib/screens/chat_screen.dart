@@ -60,6 +60,13 @@ class _ChatScreenState extends State<ChatScreen> {
       _scrollToBottom();
       return;
     }
+    final eventType = step['type']?.toString();
+    if (eventType == 'file_created' || eventType == 'file_updated') {
+      final path = step['file_name']?.toString();
+      if (path != null && path.isNotEmpty) {
+        AgentWorkspaceScreen.fileChanges.value = path;
+      }
+    }
     final id = step['id']?.toString() ?? '';
     if (id.isEmpty) return;
     _saveAgentEvent(step);
