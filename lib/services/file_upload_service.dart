@@ -66,7 +66,7 @@ class FileUploadService {
       type: FileType.custom,
       allowedExtensions: supportedExtensions.toList()..sort(),
       allowMultiple: false,
-      withData: true,
+      withData: false,
     );
     if (result == null || result.files.isEmpty) return null;
     final selected = result.files.single;
@@ -78,22 +78,14 @@ class FileUploadService {
     }
 
     final path = selected.path;
-    if (path != null) return File(path);
-
-    final bytes = selected.bytes;
-    if (bytes == null) {
+    if (path == null || path.isEmpty) {
       throw FileSystemException(
-        'The selected provider did not supply readable file bytes.',
+        'The selected provider did not expose a local file path. '
+        'Choose a file from a provider that supports local document access.',
         selected.name,
       );
     }
-    final directory = await getTemporaryDirectory();
-    final safeName = selected.name.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
-    final cached = File(
-      '${directory.path}/giant_upload_${DateTime.now().microsecondsSinceEpoch}_$safeName',
-    );
-    await cached.writeAsBytes(bytes, flush: true);
-    return cached;
+    return File(path);
   }
 
   Future<Map<String, dynamic>> processFile(File file) async {
