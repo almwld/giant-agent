@@ -983,7 +983,7 @@ class _ChatScreenState extends State<ChatScreen> {
         children: [
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            color: _modelService.hasActiveModel() ? Colors.green.shade50 : Colors.orange.shade50,
+            color: _modelService.hasActiveModel() ? (Theme.of(context).brightness == Brightness.dark ? const Color(0xFF15352B) : Colors.green.shade50) : (Theme.of(context).brightness == Brightness.dark ? const Color(0xFF382B18) : Colors.orange.shade50),
             child: Row(
               children: [
                 Icon(
@@ -999,7 +999,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         : '⚠️ لا يوجد نموذج - اضغط ☰ ← استيراد نموذج',
                     style: TextStyle(
                       fontSize: 13,
-                      color: _modelService.hasActiveModel() ? Colors.green.shade700 : Colors.orange.shade700,
+                      color: _modelService.hasActiveModel() ? (Theme.of(context).brightness == Brightness.dark ? Colors.green.shade200 : Colors.green.shade700) : (Theme.of(context).brightness == Brightness.dark ? Colors.orange.shade200 : Colors.orange.shade700),
                     ),
                   ),
                 ),
@@ -1015,9 +1015,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 final msg = _messages[index];
                 final isUser = msg['isUser'] as bool;
                 return Align(
-                  alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+                  alignment: isUser ? AlignmentDirectional.centerEnd : AlignmentDirectional.centerStart,
                   child: Container(
-                    margin: const EdgeInsets.only(bottom: 12),
+                    margin: const EdgeInsetsDirectional.only(bottom: 12),
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     constraints: BoxConstraints(
                       maxWidth: MediaQuery.of(context).size.width * 0.8,
@@ -1062,8 +1062,8 @@ class _ChatScreenState extends State<ChatScreen> {
               width: double.infinity,
               margin: const EdgeInsets.fromLTRB(16, 6, 16, 10),
               padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(14)),
-              child: SelectableText(_streamingResponse, style: const TextStyle(color: Colors.black87, fontSize: 14)),
+              decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(14)),
+              child: SelectableText(_streamingResponse, style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14)),
             ),
           if (_isLoading)
             Column(
@@ -1095,8 +1095,8 @@ class _ChatScreenState extends State<ChatScreen> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.white,
-              border: Border(top: BorderSide(color: Colors.grey.shade200)),
+              color: Theme.of(context).colorScheme.surface,
+              border: Border(top: BorderSide(color: Theme.of(context).colorScheme.outlineVariant)),
             ),
             child: Row(
               children: [
@@ -1121,7 +1121,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         borderSide: BorderSide.none,
                       ),
                       filled: true,
-                      fillColor: Theme.of(context).colorScheme.surfaceVariant,
+                      fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
                       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                     ),
                     onSubmitted: (_) => _sendMessage(),
