@@ -13,6 +13,8 @@ import 'package:share_plus/share_plus.dart';
 import 'package:cross_file/cross_file.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'settings_screen.dart';
+import '../models/chat_session.dart';
+import 'dart:convert';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -79,6 +81,9 @@ class _ChatScreenState extends State<ChatScreen> {
   List<Map<String, dynamic>> _models = [];
   Map<String, dynamic> _activeModel = {};
   Database? _db;
+  String _currentSessionId = '';
+  List<ChatSession> _sessions = [];
+  bool _sessionReady = false;
 
   @override
   void initState() {
@@ -97,38 +102,143 @@ class _ChatScreenState extends State<ChatScreen> {
     final dir = await getApplicationDocumentsDirectory();
     _db = await openDatabase(
       '${dir.path}/conversations.db',
-      version: 1,
+      version: 2,
       onCreate: (db, version) async {
-        await db.execute('''
-          CREATE TABLE messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            content TEXT,
-            isUser INTEGER,
-            timestamp INTEGER
-          )
-        ''');
+        await db.execute('''CREATE TABLE sessions (
+          id TEXT PRIMARY KEY, title TEXT NOT NULL,
+          created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+        )''');
+        await db.execute('''CREATE TABLE messages (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL,
+          content TEXT, isUser INTEGER, timestamp INTEGER
+        )''');
+        await db.execute('''CREATE TABLE agent_events (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL,
+          event_json TEXT NOT NULL, timestamp INTEGER NOT NULL
+        )''');
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await db.execute('''CREATE TABLE sessions (
+            id TEXT PRIMARY KEY, title TEXT NOT NULL,
+            created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+          )''');
+          await db.execute('ALTER TABLE messages ADD COLUMN session_id TEXT');
+          final now = DateTime.now().millisecondsSinceEpoch;
+          await db.insert('sessions', {'id':'legacy-session','title':'المحادثة السابقة','created_at':now,'updated_at':now});
+          await db.update('messages', {'session_id':'legacy-session'});
+          await db.execute('''CREATE TABLE agent_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL,
+            event_json TEXT NOT NULL, timestamp INTEGER NOT NULL
+          )''');
+        }
       },
     );
+    await _ensureCurrentSession();
+    await _loadSessions();
     await _loadHistory();
     await _init();
     await _resumePendingTask();
   }
 
-  Future<void> _loadHistory() async {
-    final messages = await _db?.query('messages', orderBy: 'timestamp ASC');
-    if (messages != null && mounted) {
-      setState(() {
-        for (var msg in messages) {
-          final int timestamp = msg['timestamp'] as int;
-          _messages.add({
-            'isUser': msg['isUser'] == 1,
-            'content': msg['content'] as String,
-            'time': DateTime.fromMillisecondsSinceEpoch(timestamp),
-          });
-        }
+  String _newSessionId() => DateTime.now().microsecondsSinceEpoch.toString();
+
+  Future<void> _ensureCurrentSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString('giant_active_session_id');
+    final rows = await _db!.query('sessions', where: 'id = ?', whereArgs: [saved]);
+    if (rows.isNotEmpty) {
+      _currentSessionId = saved!;
+    } else {
+      final now = DateTime.now();
+      _currentSessionId = _newSessionId();
+      await _db!.insert('sessions', {
+        'id': _currentSessionId, 'title': 'جلسة جديدة',
+        'created_at': now.millisecondsSinceEpoch, 'updated_at': now.millisecondsSinceEpoch,
       });
-      _scrollToBottom();
+      await prefs.setString('giant_active_session_id', _currentSessionId);
     }
+    _sessionReady = true;
+  }
+
+  Future<void> _loadSessions() async {
+    final rows = await _db?.query('sessions', orderBy: 'updated_at DESC');
+    if (!mounted || rows == null) return;
+    setState(() => _sessions = rows.map((row) => ChatSession.fromMap(row)).toList());
+  }
+
+  Future<void> _loadHistory() async {
+    final messages = await _db?.query('messages', where: 'session_id = ?', whereArgs: [_currentSessionId], orderBy: 'timestamp ASC');
+    final events = await _db?.query('agent_events', where: 'session_id = ?', whereArgs: [_currentSessionId], orderBy: 'timestamp ASC');
+    if (!mounted) return;
+    setState(() {
+      _messages
+        ..clear()
+        ..addAll((messages ?? []).map((msg) => {
+          'isUser': msg['isUser'] == 1,
+          'content': msg['content'] as String,
+          'time': DateTime.fromMillisecondsSinceEpoch(msg['timestamp'] as int),
+        }));
+      _agentSteps
+        ..clear()
+        ..addAll((events ?? []).map((row) => Map<String, dynamic>.from(jsonDecode(row['event_json'] as String) as Map)));
+    });
+    _scrollToBottom();
+  }
+
+  Future<void> _saveAgentEvent(Map<String, dynamic> event) async {
+    if (!_sessionReady || _db == null || event['type'] == 'stream_token') return;
+    await _db!.insert('agent_events', {
+      'session_id': _currentSessionId,
+      'event_json': jsonEncode(event),
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    });
+  }
+
+  Future<void> _createNewSession() async {
+    if (_isLoading) return;
+    final now = DateTime.now();
+    final id = _newSessionId();
+    await _db?.insert('sessions', {
+      'id': id, 'title': 'جلسة جديدة',
+      'created_at': now.millisecondsSinceEpoch, 'updated_at': now.millisecondsSinceEpoch,
+    });
+    _currentSessionId = id;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('giant_active_session_id', id);
+    if (!mounted) return;
+    setState(() { _messages.clear(); _agentSteps.clear(); _streamingResponse = ''; });
+    await _loadSessions();
+    _scrollToBottom();
+  }
+
+  Future<void> _switchSession(ChatSession session) async {
+    if (_isLoading || session.id == _currentSessionId) return;
+    _currentSessionId = session.id;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('giant_active_session_id', session.id);
+    if (mounted) Navigator.pop(context);
+    await _loadHistory();
+  }
+
+  Future<void> _deleteSession(ChatSession session) async {
+    if (_isLoading) return;
+    await _db?.delete('messages', where: 'session_id = ?', whereArgs: [session.id]);
+    await _db?.delete('agent_events', where: 'session_id = ?', whereArgs: [session.id]);
+    await _db?.delete('sessions', where: 'id = ?', whereArgs: [session.id]);
+    if (session.id == _currentSessionId) {
+      final remaining = await _db?.query('sessions', orderBy: 'updated_at DESC', limit: 1);
+      if (remaining == null || remaining.isEmpty) {
+        await _createNewSession();
+      } else {
+        final next = ChatSession.fromMap(remaining.first);
+        _currentSessionId = next.id;
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('giant_active_session_id', next.id);
+        await _loadHistory();
+      }
+    }
+    await _loadSessions();
   }
 
   Future<void> _saveMessage(String content, bool isUser) async {
@@ -268,7 +378,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (pending == null || pending.trim().isEmpty || !mounted) return;
     setState(() => _isLoading = true);
     final response = await _generateWithStages(pending);
-    await prefs.remove('giant_pending_task');
+    await prefs.remove('giant_pending_task');\n    await prefs.remove('giant_pending_session_id');
     if (!mounted) return;
     setState(() {
       _streamingResponse = '';
@@ -293,8 +403,14 @@ class _ChatScreenState extends State<ChatScreen> {
       _isLoading = true;
     });
     await _saveMessage(text, true);
+    final current = await _db?.query('sessions', columns: ['title'], where: 'id = ?', whereArgs: [_currentSessionId], limit: 1);
+    if (current != null && current.isNotEmpty && current.first['title'] == 'جلسة جديدة') {
+      final title = text.length > 36 ? '${text.substring(0, 36)}…' : text;
+      await _db?.update('sessions', {'title': title, 'updated_at': DateTime.now().millisecondsSinceEpoch}, where: 'id = ?', whereArgs: [_currentSessionId]);
+      await _loadSessions();
+    }
     final taskPrefs = await SharedPreferences.getInstance();
-    await taskPrefs.setString('giant_pending_task', text);
+    await taskPrefs.setString('giant_pending_task', text);\n    await taskPrefs.setString('giant_pending_session_id', _currentSessionId);
     _scrollToBottom();
 
     final response = await _generateWithStages(text);
@@ -635,6 +751,37 @@ class _ChatScreenState extends State<ChatScreen> {
                 Navigator.pop(context);
                 _pickImage();
               },
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.add_comment_outlined),
+              title: const Text('جلسة جديدة'),
+              onTap: () { Navigator.pop(context); _createNewSession(); },
+            ),
+            Padding(
+              padding: const EdgeInsetsDirectional.fromSTEB(16, 12, 16, 6),
+              child: Text('سجل المحادثات', style: Theme.of(context).textTheme.titleSmall),
+            ),
+            SizedBox(
+              height: 220,
+              child: ListView.builder(
+                itemCount: _sessions.length,
+                itemBuilder: (context, index) {
+                  final session = _sessions[index];
+                  return ListTile(
+                    dense: true,
+                    selected: session.id == _currentSessionId,
+                    leading: const Icon(Icons.chat_bubble_outline, size: 18),
+                    title: Text(session.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    subtitle: Text(session.updatedAt.toLocal().toString().substring(0, 16)),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete_outline, size: 18),
+                      onPressed: () => _deleteSession(session),
+                    ),
+                    onTap: () => _switchSession(session),
+                  );
+                },
+              ),
             ),
             const Divider(),
             Padding(
