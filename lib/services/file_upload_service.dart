@@ -7,14 +7,22 @@ import 'package:sqflite/sqflite.dart';
 
 /// Local document intake and analysis history.
 ///
-/// Supported text formats are TXT, MD, JSON and CSV. Binary formats are not
-/// decoded as text; callers receive an explicit unsupported-format error.
+/// This service intentionally handles text/code formats only. Binary office
+/// documents and images must go through dedicated parsers rather than being
+/// decoded as UTF-8 and misrepresented as successfully analyzed.
 class FileUploadService {
   FileUploadService._();
   static final FileUploadService instance = FileUploadService._();
 
   static const int maxFileBytes = 8 * 1024 * 1024;
   static const int maxStoredContentChars = 100000;
+  static const Set<String> supportedExtensions = {
+    'txt', 'md', 'json', 'csv', 'log', 'xml', 'yaml', 'yml',
+    'html', 'htm', 'css', 'js', 'ts', 'dart', 'py', 'java',
+    'kt', 'kts', 'c', 'h', 'cpp', 'hpp', 'sql', 'sh',
+    'gradle', 'properties', 'toml', 'ini', 'env',
+  };
+
   Database? _database;
   Future<void>? _opening;
 
@@ -56,31 +64,43 @@ class FileUploadService {
   Future<File?> pickFile() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: const ['txt', 'md', 'json', 'csv'],
+      allowedExtensions: supportedExtensions.toList()..sort(),
       allowMultiple: false,
       withData: true,
     );
     if (result == null || result.files.isEmpty) return null;
     final selected = result.files.single;
     if (selected.size > maxFileBytes) {
-      throw FileSystemException('File exceeds the 8 MB processing limit.', selected.name);
+      throw FileSystemException(
+        'File exceeds the 8 MB processing limit.',
+        selected.name,
+      );
     }
+
     final path = selected.path;
     if (path != null) return File(path);
+
     final bytes = selected.bytes;
     if (bytes == null) {
-      throw FileSystemException('The selected provider did not supply readable file bytes.', selected.name);
+      throw FileSystemException(
+        'The selected provider did not supply readable file bytes.',
+        selected.name,
+      );
     }
     final directory = await getTemporaryDirectory();
     final safeName = selected.name.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
-    final cached = File('${directory.path}/giant_upload_${DateTime.now().microsecondsSinceEpoch}_$safeName');
+    final cached = File(
+      '${directory.path}/giant_upload_${DateTime.now().microsecondsSinceEpoch}_$safeName',
+    );
     await cached.writeAsBytes(bytes, flush: true);
     return cached;
   }
 
   Future<Map<String, dynamic>> processFile(File file) async {
     await init();
-    if (!await file.exists()) throw FileSystemException('File does not exist.', file.path);
+    if (!await file.exists()) {
+      throw FileSystemException('File does not exist.', file.path);
+    }
     final size = await file.length();
     if (size > maxFileBytes) {
       throw FileSystemException('File exceeds the 8 MB processing limit.', file.path);
@@ -92,11 +112,17 @@ class FileUploadService {
     final extension = filename.contains('.')
         ? filename.split('.').last.toLowerCase()
         : '';
-    if (!const {'txt', 'md', 'json', 'csv'}.contains(extension)) {
-      throw FormatException('Unsupported file type: .$extension');
+    if (!supportedExtensions.contains(extension)) {
+      throw FormatException(
+        'Unsupported file type: .${extension.isEmpty ? '(none)' : extension}. '
+        'Supported text/code formats: ${supportedExtensions.toList()..sort()}.',
+      );
     }
 
-    final content = await file.readAsString(encoding: utf8);
+    var content = await file.readAsString(encoding: utf8);
+    if (content.startsWith('\uFEFF')) content = content.substring(1);
+
+    final lines = content.isEmpty ? const <String>[] : const LineSplitter().convert(content);
     final analysis = <String, dynamic>{
       'filename': filename,
       'extension': extension,
@@ -105,8 +131,9 @@ class FileUploadService {
       'words': content.trim().isEmpty
           ? 0
           : content.trim().split(RegExp(r'\s+')).length,
-      'lines': content.isEmpty ? 0 : '\n'.allMatches(content).length + 1,
+      'lines': lines.length,
       'processed_at': DateTime.now().toUtc().toIso8601String(),
+      'content_truncated': content.length > maxStoredContentChars,
     };
 
     if (extension == 'json') {
@@ -119,10 +146,16 @@ class FileUploadService {
       analysis['top_level_items'] =
           decoded is Map ? decoded.length : decoded is List ? decoded.length : 1;
     } else if (extension == 'csv') {
-      final rows = const LineSplitter().convert(content);
-      analysis['rows'] = rows.length;
-      analysis['columns'] = rows.isEmpty ? 0 : _countCsvColumns(rows.first);
-      analysis['has_header'] = rows.isNotEmpty;
+      analysis.addAll(_analyzeCsv(lines));
+    } else if ({
+      'dart', 'py', 'java', 'kt', 'kts', 'c', 'h', 'cpp', 'hpp',
+      'js', 'ts', 'html', 'htm', 'css', 'sql', 'sh',
+    }.contains(extension)) {
+      analysis['file_category'] = 'source_code';
+      analysis['non_empty_lines'] =
+          lines.where((line) => line.trim().isNotEmpty).length;
+    } else {
+      analysis['file_category'] = 'text_document';
     }
 
     final stored = content.length > maxStoredContentChars
@@ -137,33 +170,88 @@ class FileUploadService {
       'analysis_json': jsonEncode(analysis),
       'created_at': now,
     });
-    return {...analysis, 'id': id, 'content_truncated': stored.length != content.length};
+    return {
+      ...analysis,
+      'id': id,
+      'stored_characters': stored.length,
+    };
   }
 
-  int _countCsvColumns(String row) {
-    var columns = 1;
+  Map<String, dynamic> _analyzeCsv(List<String> rows) {
+    if (rows.isEmpty) {
+      return {'file_category': 'tabular_data', 'rows': 0, 'columns': 0};
+    }
+    final columns = _countCsvColumns(rows.first);
+    return {
+      'file_category': 'tabular_data',
+      'rows': rows.length,
+      'columns': columns,
+      'has_header': true,
+      'header': _parseCsvRow(rows.first),
+    };
+  }
+
+  List<String> _parseCsvRow(String row) {
+    final values = <String>[];
+    final field = StringBuffer();
     var quoted = false;
     for (var i = 0; i < row.length; i++) {
       final char = row[i];
       if (char == '"') {
         if (quoted && i + 1 < row.length && row[i + 1] == '"') {
+          field.write('"');
           i++;
         } else {
           quoted = !quoted;
         }
       } else if (char == ',' && !quoted) {
-        columns++;
+        values.add(field.toString());
+        field.clear();
+      } else {
+        field.write(char);
       }
     }
-    return columns;
+    values.add(field.toString());
+    return values;
   }
+
+  int _countCsvColumns(String row) => _parseCsvRow(row).length;
 
   Future<List<Map<String, dynamic>>> getHistory({int limit = 100}) async {
     await init();
     return _database!.query(
       'processed_files',
+      columns: const [
+        'id', 'filename', 'extension', 'size_bytes',
+        'analysis_json', 'created_at',
+      ],
       orderBy: 'created_at DESC',
       limit: limit.clamp(1, 500).toInt(),
+    );
+  }
+
+  Future<Map<String, dynamic>?> getProcessedFile(int id) async {
+    await init();
+    final rows = await _database!.query(
+      'processed_files',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    final row = rows.first;
+    return {
+      ...row,
+      'analysis': jsonDecode(row['analysis_json'] as String),
+    };
+  }
+
+  Future<int> deleteProcessedFile(int id) async {
+    await init();
+    return _database!.delete(
+      'processed_files',
+      where: 'id = ?',
+      whereArgs: [id],
     );
   }
 
