@@ -727,7 +727,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (!mounted || _isLoading) return;
     try {
       final analysis = await FileUploadService.instance.processFile(file);
-      final document = await file.readAsString();
+      final document = analysis['extracted_text']?.toString() ?? await file.readAsString();
       final boundedDocument = document.length > 40000
           ? '${document.substring(0, 40000)}\\n[تم اقتطاع بقية الملف لحماية نافذة السياق]'
           : document;
