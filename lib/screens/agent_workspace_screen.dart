@@ -23,7 +23,7 @@ class _AgentWorkspaceScreenState extends State<AgentWorkspaceScreen> {
   @override
   Widget build(BuildContext context) {
     final files = _files;
-    final selected = files.isEmpty ? null : files[_selected.clamp(0, files.length - 1)];
+    final selected = files.isEmpty ? null : files[_selected.clamp(0, files.length - 1).toInt()];
     return Scaffold(
       backgroundColor: const Color(0xFF0F1720),
       appBar: AppBar(
