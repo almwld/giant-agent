@@ -83,7 +83,6 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
-    _init();
     _initDatabase();
     _agentEventSubscription = _agentEvents.receiveBroadcastStream().listen(
       _handleAgentEvent,
@@ -111,6 +110,7 @@ class _ChatScreenState extends State<ChatScreen> {
       },
     );
     await _loadHistory();
+    await _init();
     await _resumePendingTask();
   }
 
