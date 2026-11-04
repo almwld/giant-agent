@@ -14,7 +14,7 @@ permissions:
 
 concurrency:
   group: giant-agent-apk-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
