@@ -1154,9 +1154,13 @@ class _ChatScreenState extends State<ChatScreen> {
             child: ListView.builder(
               controller: _scrollController,
               padding: const EdgeInsets.all(16),
-              itemCount: _messages.length,
+              itemCount: _messages.length + (_agentSteps.isNotEmpty ? 1 : 0),
               itemBuilder: (context, index) {
-                final msg = _messages[index];
+                if (_agentSteps.isNotEmpty && index == 0) {
+                  return _buildAgentTimeline();
+                }
+                final messageIndex = index - (_agentSteps.isNotEmpty ? 1 : 0);
+                final msg = _messages[messageIndex];
                 final isUser = msg['isUser'] as bool;
                 return Align(
                   alignment: isUser ? AlignmentDirectional.centerEnd : AlignmentDirectional.centerStart,
@@ -1200,7 +1204,6 @@ class _ChatScreenState extends State<ChatScreen> {
               },
             ),
           ),
-          if (_agentSteps.isNotEmpty) _buildAgentTimeline(),
           if (_isLoading && _streamingResponse.isNotEmpty)
             Container(
               width: double.infinity,
