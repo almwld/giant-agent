@@ -100,7 +100,8 @@ class MainActivity: FlutterActivity() {
                 }
                 "executePython" -> {
                     val code = call.argument<String>("code").orEmpty()
-                    emitPythonEvent("tool_start", code, null, "running")
+                    val eventId = "python_${System.nanoTime()}"
+                    emitPythonEvent("tool_start", code, null, "running", eventId)
                     aiExecutor.execute {
                         try {
                             if (!Python.isStarted()) Python.start(AndroidPlatform(this))
@@ -112,13 +113,13 @@ class MainActivity: FlutterActivity() {
                             val error = pyResult.get("error")?.toString() ?: ""
                             val ok = status == "success"
                             emitPythonEvent(if (ok) "tool_output" else "tool_error", code,
-                                if (ok) output else error, if (ok) "completed" else "failed")
+                                if (ok) output else error, if (ok) "completed" else "failed", eventId)
                             runOnUiThread {
                                 result.success(mapOf("ok" to ok, "output" to output, "error" to error))
                             }
                         } catch (t: Throwable) {
                             val message = t.message ?: "Python runtime failed"
-                            emitPythonEvent("tool_error", code, message, "failed")
+                            emitPythonEvent("tool_error", code, message, "failed", eventId)
                             runOnUiThread { result.success(mapOf("ok" to false, "output" to "", "error" to message)) }
                         }
                     }
@@ -247,10 +248,10 @@ class MainActivity: FlutterActivity() {
         }
     }
 
-    private fun emitPythonEvent(type: String, code: String, output: String?, status: String) {
+    private fun emitPythonEvent(type: String, code: String, output: String?, status: String, eventId: String) {
         runOnUiThread {
             agentEventSink?.success(mapOf(
-                "id" to "python_${System.nanoTime()}",
+                "id" to eventId,
                 "type" to type,
                 "tool_name" to "execute_python",
                 "title" to if (type == "tool_start") "تشغيل Python" else if (type == "tool_output") "مخرجات Python" else "خطأ Python",
