@@ -1,5 +1,4 @@
 import os
-import sys
 from reportlab.pdfgen import canvas
 import tempfile
 import unittest
@@ -71,6 +70,21 @@ class DocumentParserTests(unittest.TestCase):
         with open(path, "wb") as file:
             file.write(b"not a supported document")
         with self.assertRaises(ValueError):
+            extract_document(path)
+
+    def test_rejects_unsafe_zip_paths(self):
+        path = self.path("unsafe.docx")
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("../outside.txt", "must not be extracted")
+            archive.writestr("word/document.xml", "<document/>")
+        with self.assertRaisesRegex(ValueError, "Unsafe archive entry"):
+            extract_document(path)
+
+    def test_rejects_corrupt_office_archive(self):
+        path = self.path("corrupt.docx")
+        with open(path, "wb") as file:
+            file.write(b"PK\\x03\\x04broken")
+        with self.assertRaises(zipfile.BadZipFile):
             extract_document(path)
 
     def test_rejects_oversized_input(self):
