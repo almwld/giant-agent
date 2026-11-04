@@ -420,7 +420,9 @@ class MainActivity: FlutterActivity() {
             val safeName = displayName.substringAfterLast('/').substringAfterLast('\\')
                 .replace(Regex("[^A-Za-z0-9._-]"), "_").take(100).ifBlank { "shared_file" }
             val destinationDir = File(cacheDir, "shared_files").apply { mkdirs() }.canonicalFile
-            val destination = File(destinationDir, "${System.currentTimeMillis()}_$safeName")
+            val now = System.currentTimeMillis()
+            destinationDir.listFiles()?.filter { it.isFile && now - it.lastModified() > 24L * 60 * 60 * 1000 }?.forEach { it.delete() }
+            val destination = File(destinationDir, "${System.nanoTime()}_$safeName")
             val input = contentResolver.openInputStream(source) ?: return null
             input.use { stream ->
                 FileOutputStream(destination).use { output ->
@@ -430,7 +432,7 @@ class MainActivity: FlutterActivity() {
                         val count = stream.read(buffer)
                         if (count < 0) break
                         total += count
-                        require(total <= 50L * 1024 * 1024) { "Shared file exceeds the 50 MB limit." }
+                        require(total <= 8L * 1024 * 1024) { "Shared file exceeds the 8 MB text-analysis limit." }
                         output.write(buffer, 0, count)
                     }
                     output.fd.sync()
