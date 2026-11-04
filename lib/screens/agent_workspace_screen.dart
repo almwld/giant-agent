@@ -35,7 +35,7 @@ class _AgentWorkspaceScreenState extends State<AgentWorkspaceScreen> {
       ..setBackgroundColor(const Color(0xFF0F1720))
       ..setNavigationDelegate(NavigationDelegate(
         onWebResourceError: (error) {
-          if (!mounted || !error.isForMainFrame!) return;
+          if (!mounted || error.isForMainFrame != true) return;
           setState(() => _error = error.description);
         },
       ));
