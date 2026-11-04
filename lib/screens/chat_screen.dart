@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path_provider/path_provider.dart';
 import '../services/model_service.dart';
+import 'package:flutter/services.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -22,25 +23,28 @@ class _ChatScreenState extends State<ChatScreen> {
   
   bool _isLoading = false;
   String _thinkingStage = '';
+  static const EventChannel _agentEvents = EventChannel('giant_agent_stream');
+  StreamSubscription<dynamic>? _agentEventSubscription;
+  final List<Map<String, dynamic>> _agentSteps = [];
+
+  void _handleAgentEvent(dynamic event) {
+    if (!mounted || event is! Map) return;
+    final step = Map<String, dynamic>.from(event);
+    final id = step['id']?.toString() ?? '';
+    if (id.isEmpty) return;
+    setState(() {
+      final index = _agentSteps.indexWhere((item) => item['id'] == id);
+      if (index >= 0) { _agentSteps[index] = step; } else { _agentSteps.add(step); }
+      _thinkingStage = step['title']?.toString() ?? '';
+    });
+    _scrollToBottom();
+  }
 
   Future<String> _generateWithStages(String prompt) async {
-    const stages = <String>[
-      'تحليل الطلب وفهم السياق',
-      'تجهيز السياق للنموذج المحلي',
-      'استدلال النموذج وتوليد الإجابة',
-      'تنسيق المخرجات النهائية',
-    ];
-    var stageIndex = 0;
-    if (mounted) setState(() => _thinkingStage = stages.first);
-    final timer = Timer.periodic(const Duration(milliseconds: 1800), (_) {
-      if (!mounted) return;
-      stageIndex = (stageIndex + 1) % stages.length;
-      setState(() => _thinkingStage = stages[stageIndex]);
-    });
+    if (mounted) setState(() { _agentSteps.clear(); _thinkingStage = 'بانتظار أحداث المحرك المحلي...'; });
     try {
       return await _modelService.processInput(prompt);
     } finally {
-      timer.cancel();
       if (mounted) setState(() => _thinkingStage = '');
     }
   }
@@ -53,6 +57,13 @@ class _ChatScreenState extends State<ChatScreen> {
     super.initState();
     _init();
     _initDatabase();
+    _agentEventSubscription = _agentEvents.receiveBroadcastStream().listen(
+      _handleAgentEvent,
+      onError: (Object error) {
+        if (!mounted) return;
+        setState(() { _agentSteps.add({'id': 'stream_error_${DateTime.now().millisecondsSinceEpoch}', 'title': 'تعذر استقبال أحداث الوكيل', 'status': 'failed', 'details': error.toString()}); });
+      },
+    );
   }
 
   Future<void> _initDatabase() async {
@@ -284,6 +295,39 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   @override
+  void dispose() {
+    _agentEventSubscription?.cancel();
+    _controller.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  Widget _buildAgentTimeline() {
+    if (_agentSteps.isEmpty) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+      decoration: BoxDecoration(color: Colors.grey.shade900, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white12)),
+      child: ExpansionTile(
+        initiallyExpanded: true,
+        leading: const Icon(Icons.account_tree_outlined, color: Colors.tealAccent),
+        title: const Text('سجل تنفيذ الوكيل', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+        subtitle: Text('${_agentSteps.length} أحداث من المحرك', style: const TextStyle(color: Colors.white60, fontSize: 11)),
+        children: _agentSteps.map((step) {
+          final failed = step['status'] == 'failed';
+          final running = step['status'] == 'running';
+          final color = failed ? Colors.redAccent : (running ? Colors.orangeAccent : Colors.tealAccent);
+          return ListTile(
+            dense: true,
+            leading: running ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: color)) : Icon(failed ? Icons.error_outline : Icons.check_circle_outline, color: color, size: 18),
+            title: Text(step['title']?.toString() ?? 'حدث', style: TextStyle(color: failed ? Colors.red.shade200 : Colors.white70, fontSize: 13)),
+            subtitle: step['details'] == null ? null : Text(step['details'].toString(), style: const TextStyle(color: Colors.white54, fontSize: 11)),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
@@ -481,6 +525,7 @@ class _ChatScreenState extends State<ChatScreen> {
               },
             ),
           ),
+          if (_agentSteps.isNotEmpty) _buildAgentTimeline(),
           if (_isLoading)
             Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
