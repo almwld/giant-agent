@@ -35,7 +35,58 @@ class _ChatScreenState extends State<ChatScreen> {
   StreamSubscription<dynamic>? _agentEventSubscription;
   final List<Map<String, dynamic>> _agentSteps = [];
   String _streamingResponse = '';
+  String _toolStreamBuffer = '';
+  bool _insideToolCall = false;
+  static const String _toolCallOpen = '<tool_call>';
+  static const String _toolCallClose = '</tool_call>';
   final Terminal _terminal = Terminal(maxLines: 5000);
+
+  // Keep tool-call JSON out of the user-facing answer stream. The actual
+  // invocation and result are represented by structured native tool events.
+  String _visibleAnswerDelta(String chunk) {
+    _toolStreamBuffer += chunk;
+    final visible = StringBuffer();
+    while (_toolStreamBuffer.isNotEmpty) {
+      if (_insideToolCall) {
+        final end = _toolStreamBuffer.indexOf(_toolCallClose);
+        if (end >= 0) {
+          _toolStreamBuffer = _toolStreamBuffer.substring(end + _toolCallClose.length);
+          _insideToolCall = false;
+          continue;
+        }
+        final keep = _toolCallClose.length - 1;
+        if (_toolStreamBuffer.length > keep) {
+          _toolStreamBuffer = _toolStreamBuffer.substring(_toolStreamBuffer.length - keep);
+        }
+        break;
+      }
+      final start = _toolStreamBuffer.indexOf(_toolCallOpen);
+      if (start >= 0) {
+        visible.write(_toolStreamBuffer.substring(0, start));
+        _toolStreamBuffer = _toolStreamBuffer.substring(start + _toolCallOpen.length);
+        _insideToolCall = true;
+        continue;
+      }
+      final keep = _toolCallOpen.length - 1;
+      final safeLength = _toolStreamBuffer.length - keep;
+      if (safeLength > 0) {
+        visible.write(_toolStreamBuffer.substring(0, safeLength));
+        _toolStreamBuffer = _toolStreamBuffer.substring(safeLength);
+      }
+      break;
+    }
+    return visible.toString();
+  }
+
+  String _flushVisibleAnswerBuffer() {
+    if (_insideToolCall) {
+      _toolStreamBuffer = '';
+      return '';
+    }
+    final remaining = _toolStreamBuffer;
+    _toolStreamBuffer = '';
+    return remaining;
+  }
 
   void _handleAgentEvent(dynamic event) {
     if (!mounted || event is! Map) return;
@@ -56,7 +107,8 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     if (step['type'] == 'stream_token') {
       final token = step['text']?.toString() ?? '';
-      if (token.isNotEmpty) setState(() => _streamingResponse += token);
+      final visible = _visibleAnswerDelta(token);
+      if (visible.isNotEmpty) setState(() => _streamingResponse += visible);
       _scrollToBottom();
       return;
     }
@@ -80,11 +132,17 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<String> _generateWithStages(String prompt) async {
+    _toolStreamBuffer = '';
+    _insideToolCall = false;
     if (mounted) setState(() { _streamingResponse = ''; _thinkingStage = 'بانتظار أحداث المحرك المحلي...'; });
     try {
       return await _modelService.processInput(prompt);
     } finally {
-      if (mounted) setState(() => _thinkingStage = '');
+      final tail = _flushVisibleAnswerBuffer();
+      if (mounted) setState(() {
+        if (tail.isNotEmpty) _streamingResponse += tail;
+        _thinkingStage = '';
+      });
     }
   }
   List<Map<String, dynamic>> _models = [];
@@ -787,8 +845,22 @@ class _ChatScreenState extends State<ChatScreen> {
                   ])),
                   if (hasPreview) const Icon(Icons.open_in_new, size: 14, color: Colors.white38),
                   const SizedBox(width: 5),
-                  if (running) SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2, color: color))
-                  else Icon(failed ? Icons.error_outline : Icons.check_circle_outline, color: color, size: 16),
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 220),
+                    child: running
+                        ? SizedBox(
+                            key: const ValueKey('running'),
+                            width: 15,
+                            height: 15,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: color),
+                          )
+                        : Icon(
+                            key: ValueKey(failed ? 'failed' : 'completed'),
+                            failed ? Icons.error_outline : Icons.check_circle_outline,
+                            color: color,
+                            size: 16,
+                          ),
+                  ),
                 ],
               ),
             ),
