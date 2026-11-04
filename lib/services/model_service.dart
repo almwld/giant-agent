@@ -131,10 +131,19 @@ class ModelService {
     }
   }
 
-  Future<String> processInput(String input) async {
-    final context = await AgentMemoryService.instance.buildContext(input);
-    final response = await _processInput(context.isEmpty ? input : '$context\n\nطلب المستخدم: $input');
-    await AgentMemoryService.instance.saveTurn(input, response);
+  Future<String> processInput(String input, {String conversationId = 'global'}) async {
+    final context = await AgentMemoryService.instance.buildContext(
+      input,
+      conversationId: conversationId,
+    );
+    final response = await _processInput(
+      context.isEmpty ? input : '$context\n\nطلب المستخدم: $input',
+    );
+    await AgentMemoryService.instance.saveTurn(
+      input,
+      response,
+      conversationId: conversationId,
+    );
     return response;
   }
 
