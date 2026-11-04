@@ -401,7 +401,24 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  void _showTerminal() {
+  void _showTerminal({Map<String, dynamic>? step}) {
+    if (step != null) {
+      _terminal.write('\x1B[2J\x1B[H');
+      final title = step['title']?.toString() ?? 'Agent execution';
+      final tool = step['tool_name']?.toString() ?? '';
+      final code = step['content']?.toString() ?? '';
+      final output = step['output']?.toString() ?? step['details']?.toString() ?? '';
+      _terminal.write('\x1B[36m$title\x1B[0m\r\n');
+      if (tool.isNotEmpty) _terminal.write('\x1B[90mTool: $tool\x1B[0m\r\n');
+      if (code.isNotEmpty) _terminal.write('\x1B[33m>>>\x1B[0m\r\n$code\r\n');
+      if (output.isNotEmpty) _terminal.write('$output\r\n');
+      final status = step['status']?.toString() ?? 'unknown';
+      _terminal.write(status == 'failed'
+          ? '\x1B[31m[failed]\x1B[0m\r\n'
+          : status == 'completed'
+              ? '\x1B[32m[completed]\x1B[0m\r\n'
+              : '\x1B[33m[$status]\x1B[0m\r\n');
+    }
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -415,7 +432,12 @@ class _ChatScreenState extends State<ChatScreen> {
               child: Row(children: [
                 const Icon(Icons.terminal, color: Colors.greenAccent),
                 const SizedBox(width: 8),
-                const Expanded(child: Text('Python Terminal', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+                Expanded(child: Text(
+                  step == null ? 'Agent Terminal' : (step['title']?.toString() ?? 'نتيجة التنفيذ'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                )),
                 IconButton(onPressed: () => _terminal.write('\x1B[2J\x1B[H'), icon: const Icon(Icons.delete_sweep, color: Colors.white70)),
                 IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close, color: Colors.white70)),
               ]),
@@ -758,23 +780,33 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  bool _stepIsSvg(Map<String, dynamic> step) {
+    final type = step['type']?.toString().toLowerCase() ?? '';
+    final mime = step['mime_type']?.toString().toLowerCase() ?? '';
+    final fileName = step['file_name']?.toString().toLowerCase() ?? '';
+    final payload = '${step['content'] ?? ''} ${step['output'] ?? ''}'.toLowerCase();
+    return mime.contains('image/svg+xml') ||
+        fileName.endsWith('.svg') ||
+        type.contains('svg') ||
+        payload.contains('<svg');
+  }
+
   bool _opensTerminalFromStep(Map<String, dynamic> step) {
     final type = step['type']?.toString().toLowerCase() ?? '';
     final title = step['title']?.toString().toLowerCase() ?? '';
     final toolName = step['tool_name']?.toString().toLowerCase() ?? '';
-    return type == 'thought' ||
-        type == 'code' ||
-        type.contains('tool') ||
-        type.contains('terminal') ||
-        toolName == 'execute_python' ||
-        title.contains('svg') ||
+    return toolName == 'execute_python' ||
+        type == 'terminal' ||
+        type == 'terminal_run' ||
+        type == 'terminal_output' ||
         title.contains('طرفية') ||
-        title.contains('terminal');
+        title.contains('terminal') ||
+        _stepIsSvg(step);
   }
 
   void _showAgentStep(Map<String, dynamic> step) {
     if (_opensTerminalFromStep(step)) {
-      _showTerminal();
+      _showTerminal(step: step);
       return;
     }
     final title = step['title']?.toString() ?? 'تفاصيل التنفيذ';
@@ -883,8 +915,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 ? Column(
                     children: List.generate(_agentSteps.length, (index) {
                       final step = _agentSteps[index];
-                      final failed = step['status'] == 'failed';
-                      final running = step['status'] == 'running';
+                      final status = step['status']?.toString() ?? 'completed';
+                      final failed = status == 'failed' || status == 'interrupted';
+                      final running = status == 'running' || status == 'pending';
                       final type = step['type']?.toString() ?? 'thought';
                       final icon = _agentStepIcon(type);
                       final color = failed
@@ -899,10 +932,21 @@ class _ChatScreenState extends State<ChatScreen> {
                           step['command'] != null ||
                           step['details'] != null ||
                           step['file_name'] != null;
-                      final isTool = type.contains('tool') ||
+                      final toolName = step['tool_name']?.toString() ?? '';
+                      final isTool = toolName.isNotEmpty ||
+                          type.contains('tool') ||
                           type.contains('terminal') ||
-                          type == 'code' || type == 'file_created' ||
-                          type == 'file_updated';
+                          type == 'file_created' ||
+                          type == 'file_updated' ||
+                          type == 'file_read' ||
+                          _stepIsSvg(step);
+                      final statusLabel = running
+                          ? 'قيد التنفيذ'
+                          : failed
+                              ? 'فشل'
+                              : status == 'interrupted'
+                                  ? 'متوقف'
+                                  : 'مكتمل';
                       return InkWell(
                         onTap: hasPreview ? () => _showAgentStep(step) : null,
                         child: Padding(
@@ -938,6 +982,16 @@ class _ChatScreenState extends State<ChatScreen> {
                                         child: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis,
                                           style: const TextStyle(color: mutedColor, fontSize: 10)),
                                       ),
+                                    const SizedBox(height: 3),
+                                    Text(statusLabel,
+                                      style: TextStyle(
+                                        color: failed
+                                            ? const Color(0xFFFF9292)
+                                            : running
+                                                ? const Color(0xFF54C7B7)
+                                                : mutedColor,
+                                        fontSize: 9,
+                                      )),
                                   ],
                                 ),
                               ),
@@ -958,7 +1012,11 @@ class _ChatScreenState extends State<ChatScreen> {
                                       )
                                     : Icon(
                                         key: ValueKey(failed ? 'failed' : 'completed'),
-                                        failed ? Icons.error_outline : Icons.check_circle,
+                                        failed
+                                            ? Icons.error_outline
+                                            : status == 'interrupted'
+                                                ? Icons.pause_circle_outline
+                                                : Icons.check_circle,
                                         color: color,
                                         size: 15,
                                       ),
