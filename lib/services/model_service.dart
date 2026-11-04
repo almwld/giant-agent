@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import '../services/llama_service.dart';
@@ -13,6 +14,7 @@ class ModelService {
   String _activeModelId = '';
   bool _isLoading = false;
   bool _cancelRequested = false;
+  Future<void> _requestTail = Future<void>.value();
 
   Future<void> init() => scanModels();
   Future<void> scanModels() async {
@@ -131,20 +133,30 @@ class ModelService {
     }
   }
 
+  /// Serializes requests because llama.cpp owns one mutable native context.
+  /// Concurrent calls can interleave prompts, cancellation and tool execution.
   Future<String> processInput(String input, {String conversationId = 'global'}) async {
-    final context = await AgentMemoryService.instance.buildContext(
-      input,
-      conversationId: conversationId,
-    );
-    final response = await _processInput(
-      context.isEmpty ? input : '$context\n\nطلب المستخدم: $input',
-    );
-    await AgentMemoryService.instance.saveTurn(
-      input,
-      response,
-      conversationId: conversationId,
-    );
-    return response;
+    final gate = Completer<void>();
+    final previous = _requestTail;
+    _requestTail = gate.future;
+    await previous;
+    try {
+      final context = await AgentMemoryService.instance.buildContext(
+        input,
+        conversationId: conversationId,
+      );
+      final response = await _processInput(
+        context.isEmpty ? input : '$context\\n\\nطلب المستخدم: $input',
+      );
+      await AgentMemoryService.instance.saveTurn(
+        input,
+        response,
+        conversationId: conversationId,
+      );
+      return response;
+    } finally {
+      gate.complete();
+    }
   }
 
   static const int _maxPromptCharacters = 9000;
