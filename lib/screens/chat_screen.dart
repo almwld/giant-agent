@@ -289,6 +289,27 @@ class _ChatScreenState extends State<ChatScreen> {
     await _loadSessions();
   }
 
+  Future<void> _clearAllSessions() async {
+    if (_isLoading) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('مسح جميع الجلسات'),
+        content: const Text('سيتم حذف سجل المحادثات والأحداث المحفوظة. لن تُحذف ملفات مساحة العمل.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('مسح الكل', style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await _db?.delete('messages');
+    await _db?.delete('agent_events');
+    await _db?.delete('sessions');
+    await _createNewSession();
+  }
+
   Future<void> _clearHistory() async {
     showDialog(
       context: context,
@@ -837,6 +858,12 @@ class _ChatScreenState extends State<ChatScreen> {
                   );
                 },
               ),
+            ),
+            ListTile(
+              dense: true,
+              leading: const Icon(Icons.delete_sweep_outlined, color: Colors.redAccent),
+              title: const Text('مسح جميع الجلسات'),
+              onTap: () { Navigator.pop(context); _clearAllSessions(); },
             ),
             const Divider(),
             Padding(
