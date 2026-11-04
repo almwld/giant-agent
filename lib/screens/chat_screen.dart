@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import '../services/model_service.dart';
 import 'agent_workspace_screen.dart';
 import 'package:flutter/services.dart';
+import 'package:xterm/xterm.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -28,10 +29,25 @@ class _ChatScreenState extends State<ChatScreen> {
   StreamSubscription<dynamic>? _agentEventSubscription;
   final List<Map<String, dynamic>> _agentSteps = [];
   String _streamingResponse = '';
+  final Terminal _terminal = Terminal(maxLines: 5000);
 
   void _handleAgentEvent(dynamic event) {
     if (!mounted || event is! Map) return;
     final step = Map<String, dynamic>.from(event);
+    if (step['tool_name'] == 'execute_python') {
+      final type = step['type']?.toString();
+      if (type == 'tool_start') {
+        _terminal.write('\r\n\x1B[33m>>> Python execution started\x1B[0m\r\n');
+        final code = step['content']?.toString() ?? '';
+        if (code.isNotEmpty) _terminal.write('\x1B[90m$code\x1B[0m\r\n');
+      } else if (type == 'tool_output') {
+        final output = step['output']?.toString() ?? '';
+        if (output.isNotEmpty) _terminal.write('$output\r\n');
+        _terminal.write('\x1B[32m[completed]\x1B[0m\r\n');
+      } else if (type == 'tool_error') {
+        _terminal.write('\x1B[31m${step['output']?.toString() ?? step['details']?.toString() ?? 'Python failed'}\x1B[0m\r\n');
+      }
+    }
     if (step['type'] == 'stream_token') {
       final token = step['text']?.toString() ?? '';
       if (token.isNotEmpty) setState(() => _streamingResponse += token);
@@ -138,6 +154,33 @@ class _ChatScreenState extends State<ChatScreen> {
             child: const Text('مسح', style: TextStyle(color: Colors.red)),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showTerminal() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF050A0F),
+      builder: (context) => SizedBox(
+        height: MediaQuery.of(context).size.height * .72,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(children: [
+                const Icon(Icons.terminal, color: Colors.greenAccent),
+                const SizedBox(width: 8),
+                const Expanded(child: Text('Python Terminal', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+                IconButton(onPressed: () => _terminal.write('\x1B[2J\x1B[H'), icon: const Icon(Icons.delete_sweep, color: Colors.white70)),
+                IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close, color: Colors.white70)),
+              ]),
+            ),
+            const Divider(height: 1, color: Colors.white24),
+            Expanded(child: TerminalView(_terminal, readOnly: true)),
+          ],
+        ),
       ),
     );
   }
@@ -436,6 +479,11 @@ class _ChatScreenState extends State<ChatScreen> {
         title: const Text('Giant Agent X'),
         centerTitle: true,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.terminal),
+            tooltip: 'Python Terminal',
+            onPressed: _showTerminal,
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _refreshModels,
