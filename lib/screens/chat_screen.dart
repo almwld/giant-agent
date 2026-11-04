@@ -26,10 +26,17 @@ class _ChatScreenState extends State<ChatScreen> {
   static const EventChannel _agentEvents = EventChannel('giant_agent_stream');
   StreamSubscription<dynamic>? _agentEventSubscription;
   final List<Map<String, dynamic>> _agentSteps = [];
+  String _streamingResponse = '';
 
   void _handleAgentEvent(dynamic event) {
     if (!mounted || event is! Map) return;
     final step = Map<String, dynamic>.from(event);
+    if (step['type'] == 'stream_token') {
+      final token = step['text']?.toString() ?? '';
+      if (token.isNotEmpty) setState(() => _streamingResponse += token);
+      _scrollToBottom();
+      return;
+    }
     final id = step['id']?.toString() ?? '';
     if (id.isEmpty) return;
     setState(() {
@@ -41,7 +48,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<String> _generateWithStages(String prompt) async {
-    if (mounted) setState(() { _agentSteps.clear(); _thinkingStage = 'بانتظار أحداث المحرك المحلي...'; });
+    if (mounted) setState(() { _agentSteps.clear(); _streamingResponse = ''; _thinkingStage = 'بانتظار أحداث المحرك المحلي...'; });
     try {
       return await _modelService.processInput(prompt);
     } finally {
@@ -190,6 +197,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final response = await _generateWithStages(text);
 
     setState(() {
+      _streamingResponse = '';
       _messages.add({
         'isUser': false,
         'content': response,
@@ -526,6 +534,14 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
           if (_agentSteps.isNotEmpty) _buildAgentTimeline(),
+          if (_isLoading && _streamingResponse.isNotEmpty)
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.fromLTRB(16, 6, 16, 10),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(14)),
+              child: SelectableText(_streamingResponse, style: const TextStyle(color: Colors.black87, fontSize: 14)),
+            ),
           if (_isLoading)
             Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
