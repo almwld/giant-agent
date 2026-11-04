@@ -13,8 +13,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: giant-agent-apk-${{ github.ref }}
-  cancel-in-progress: true
+  group: giant-agent-apk-${{ github.run_id }}
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -32,6 +32,17 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Set up Python for Chaquopy
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Verify Chaquopy build Python
+        run: |
+          python --version
+          python3.11 --version
+          command -v python3.11
+
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -48,20 +59,10 @@ jobs:
           mkdir -p dist
           cp build/app/outputs/flutter-apk/app-release.apk dist/giant-agent-universal.apk
 
-      - name: Build release APKs per ABI
-        run: |
-          flutter build apk --release --split-per-abi
-          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk dist/
-          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk dist/
-          cp build/app/outputs/flutter-apk/app-x86_64-release.apk dist/
-
       - name: Verify APK outputs
         run: |
           set -e
           test -s dist/giant-agent-universal.apk
-          test -s dist/app-armeabi-v7a-release.apk
-          test -s dist/app-arm64-v8a-release.apk
-          test -s dist/app-x86_64-release.apk
           echo "APK files produced:"
           ls -lh dist/*.apk
           sha256sum dist/*.apk | tee dist/SHA256SUMS.txt
@@ -70,31 +71,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: giant-agent-universal-release
-          path: build/app/outputs/flutter-apk/app-release.apk
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: 📤 Upload arm64-v8a
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-arm64-v8a-release
-          path: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: 📤 Upload armeabi-v7a
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-armeabi-v7a-release
-          path: build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: 📤 Upload x86_64
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-x86_64-release
-          path: build/app/outputs/flutter-apk/app-x86_64-release.apk
+          path: dist/giant-agent-universal.apk
           if-no-files-found: error
           retention-days: 30
 
