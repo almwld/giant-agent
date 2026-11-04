@@ -21,7 +21,7 @@ _ALLOWED_NODES = (
     ast.Store, ast.Constant, ast.List, ast.Tuple, ast.Dict, ast.Set,
     ast.BinOp, ast.UnaryOp, ast.BoolOp, ast.Compare, ast.If, ast.For,
     ast.Break, ast.Continue, ast.Pass, ast.Call, ast.Subscript, ast.Slice,
-    ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv, ast.Mod, ast.Pow,
+    ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv, ast.Mod,
     ast.USub, ast.UAdd, ast.Not, ast.And, ast.Or, ast.Eq, ast.NotEq,
     ast.Lt, ast.LtE, ast.Gt, ast.GtE, ast.In, ast.NotIn,
 )
