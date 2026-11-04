@@ -17,6 +17,8 @@ import com.chaquo.python.android.AndroidPlatform
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import com.google.mlkit.vision.label.ImageLabeling
+import com.google.mlkit.vision.label.defaults.ImageLabelerOptions
 
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "file_receiver"
@@ -125,25 +127,47 @@ class MainActivity: FlutterActivity() {
                         recognizer.process(input)
                             .addOnSuccessListener { visionText ->
                                 recognizer.close()
-                                result.success(mapOf(
-                                    "ok" to true,
-                                    "text" to visionText.text,
-                                    "blocks" to visionText.textBlocks.size,
-                                    "lines" to visionText.textBlocks.flatMap { block ->
-                                        block.lines.map { line ->
-                                            val box = line.boundingBox
-                                            mapOf(
-                                                "text" to line.text,
-                                                "confidence" to line.confidence,
-                                                "left" to (box?.left ?: 0),
-                                                "top" to (box?.top ?: 0),
-                                                "width" to (box?.width() ?: 0),
-                                                "height" to (box?.height() ?: 0)
-                                            )
+                                val labeler = ImageLabeling.getClient(ImageLabelerOptions.DEFAULT_OPTIONS)
+                                labeler.process(input)
+                                    .addOnSuccessListener { labels ->
+                                        labeler.close()
+                                        val lineData = visionText.textBlocks.flatMap { block ->
+                                            block.lines.map { line ->
+                                                val box = line.boundingBox
+                                                mapOf(
+                                                    "text" to line.text,
+                                                    "confidence" to line.confidence,
+                                                    "left" to (box?.left ?: 0),
+                                                    "top" to (box?.top ?: 0),
+                                                    "width" to (box?.width() ?: 0),
+                                                    "height" to (box?.height() ?: 0)
+                                                )
+                                            }
                                         }
-                                    },
-                                    "engine" to "Google ML Kit Text Recognition (Latin script)"
-                                ))
+                                        result.success(mapOf(
+                                            "ok" to true,
+                                            "text" to visionText.text,
+                                            "blocks" to visionText.textBlocks.size,
+                                            "lines" to lineData,
+                                            "labels" to labels.map { label ->
+                                                mapOf("text" to label.text, "confidence" to label.confidence, "index" to label.index)
+                                            },
+                                            "engines" to listOf(
+                                                "Google ML Kit Text Recognition (Latin script)",
+                                                "Google ML Kit Image Labeling (bundled offline model)"
+                                            )
+                                        ))
+                                    }
+                                    .addOnFailureListener { error ->
+                                        labeler.close()
+                                        result.success(mapOf(
+                                            "ok" to true,
+                                            "text" to visionText.text,
+                                            "blocks" to visionText.textBlocks.size,
+                                            "labels" to emptyList<Map<String, Any>>(),
+                                            "warning" to (error.message ?: "Image labeling unavailable")
+                                        ))
+                                    }
                             }
                             .addOnFailureListener { error ->
                                 recognizer.close()
