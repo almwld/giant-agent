@@ -29,10 +29,22 @@ class ImageRecognitionService {
           }).join('\n')
         : '';
 
+    final rawLabels = result['labels'];
+    final labels = rawLabels is List
+        ? rawLabels.whereType<Map>().map((label) {
+            final name = label['text']?.toString() ?? '';
+            final confidence = (label['confidence'] as num?)?.toDouble();
+            final score = confidence == null
+                ? ''
+                : ' • ثقة ${(confidence * 100).toStringAsFixed(0)}%';
+            return '- $name$score';
+          }).join('\n')
+        : '';
     return 'النص المستخرج من الصورة (OCR):\n$text'
         '${lines.isEmpty ? '' : '\n\nتفاصيل الأسطر:\n$lines'}'
-        '\n\nملاحظة: الإحداثيات نسبةً إلى أبعاد الصورة الأصلية. '
-        'المحرك الحالي يدعم النصوص اللاتينية، ولا يدعم العربية أو فهم المشاهد والأجسام.';
+        '${labels.isEmpty ? '' : '\n\nتصنيفات المحتوى البصري:\n$labels'}'
+        '\n\nحدود التحليل: OCR الحالي للنصوص اللاتينية فقط. '
+        'التصنيفات مؤشرات احتمالية من نموذج محلي ولا تمثل وصفًا تفصيليًا أو إثباتًا لمحتوى الصورة.';
   }
 
   static Future<String> extractTextFromImage(File imageFile) async {
