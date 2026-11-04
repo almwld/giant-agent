@@ -43,6 +43,14 @@ jobs:
           python3.11 --version
           command -v python3.11
 
+      - name: Install parser test dependency
+        run: python -m pip install pypdf==4.2.0
+
+      - name: Test PDF DOCX XLSX parser
+        run: |
+          cd android/app/src/main/python
+          python -m unittest -v test_document_parser
+
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
