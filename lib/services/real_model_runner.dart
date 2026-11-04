@@ -1,34 +1,29 @@
-import 'llama_service.dart';
+import 'model_service.dart';
 
-/// Compatibility facade for older callers. The app owns one GGUF/JNI runtime.
+/// Compatibility facade for older callers. It never owns or unloads the
+/// process-wide GGUF/JNI runtime.
 class RealModelRunner {
   RealModelRunner._();
   static final RealModelRunner _instance = RealModelRunner._();
   factory RealModelRunner() => _instance;
 
-  final LlamaService _runtime = LlamaService.instance;
+  final ModelService _runtime = ModelService();
   String? _modelPath;
-  bool _isLoading = false;
 
   Future<bool> loadModel(String modelPath) async {
-    if (_isLoading) return false;
-    _isLoading = true;
-    try {
-      final loaded = await _runtime.loadModel(modelPath);
-      if (loaded) _modelPath = modelPath;
-      return loaded;
-    } finally {
-      _isLoading = false;
-    }
+    final loaded = await _runtime.loadModelByPath(modelPath);
+    if (loaded) _modelPath = modelPath;
+    return loaded;
   }
 
-  Future<String> run(String input) => _runtime.generate(input);
-  Future<bool> isLoaded() => _runtime.isLoaded();
-  bool isLoading() => _isLoading;
-  String getModelName() => _modelPath?.split('/').last ?? 'لا يوجد';
+  Future<String> run(String input) => _runtime.processInput(input);
 
-  Future<void> dispose() async {
-    await _runtime.unload();
-    _modelPath = null;
-  }
+  Future<bool> isLoaded() => _runtime.isModelLoaded();
+
+  bool isLoading() => _runtime.isBusy;
+
+  String getModelName() => _modelPath?.split('/').last ?? _runtime.getActiveModelName();
+
+  /// The runtime is process-wide; legacy facade disposal must not unload it.
+  Future<void> dispose() async {}
 }
