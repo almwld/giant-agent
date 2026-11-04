@@ -10,7 +10,9 @@ import 'agent_workspace_screen.dart';
 import 'package:flutter/services.dart';
 import 'package:xterm/xterm.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:cross_file/cross_file.dart';\nimport 'package:shared_preferences/shared_preferences.dart';\nimport 'settings_screen.dart';
+import 'package:cross_file/cross_file.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'settings_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -109,6 +111,7 @@ class _ChatScreenState extends State<ChatScreen> {
       },
     );
     await _loadHistory();
+    await _resumePendingTask();
   }
 
   Future<void> _loadHistory() async {
