@@ -98,7 +98,7 @@ class ModelService {
 أدواتك:
 1) create_file: arguments path و content. تنشئ ملفاً جديداً فقط ولا تستبدل الموجود.
 2) read_file: arguments path. تقرأ ملفاً موجوداً داخل مساحة العمل.
-3) execute_python: arguments code. يشغّل سكربت Python محلياً ضمن مفسر مقيّد؛ يدعم الحسابات والطباعة والحلقات المحدودة. لا يدعم الاستيراد أو الوصول إلى النظام أو السمات أو فتح الملفات. استخدم مساحة العمل الحالية فقط عند الحاجة إلى الملفات.
+3) execute_python: arguments code. يشغّل سكربت Python محلياً ضمن مفسر مقيّد؛ يدعم الحسابات والطباعة والحلقات المحدودة. لا يدعم الاستيراد أو الوصول إلى النظام أو السمات أو فتح الملفات. تعامل مع الملفات عبر أداتي create_file و read_file فقط؛ لا يملك Python صلاحية فتح الملفات.
 عند الحاجة لاستخدام أداة أخرج استدعاءً واحداً فقط:
 <tool_call>{"name":"create_file","arguments":{"path":"src/main.dart","content":"..."}}</tool_call>
 أو:
@@ -123,7 +123,7 @@ class ModelService {
           final resultJson = jsonEncode(result);
           final pythonTail = (result['output']?.toString() ?? result['error']?.toString() ?? '');
           final contextResult = toolName == 'execute_python'
-              ? 'ok=${result['ok']}\\n${pythonTail.length > 500 ? pythonTail.substring(pythonTail.length - 500) + '\\n[Python output truncated to last 500 characters]' : pythonTail}'
+              ? 'ok=${result['ok']}\n${pythonTail.length > 500 ? pythonTail.substring(pythonTail.length - 500) + '\n[Python output truncated to last 500 characters]' : pythonTail}'
               : resultJson;
           history
             ..write('\n\nSystem Note: $toolName execution result: ')
