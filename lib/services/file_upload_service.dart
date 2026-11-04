@@ -8,9 +8,8 @@ import 'package:sqflite/sqflite.dart';
 
 /// Local document intake and analysis history.
 ///
-/// This service intentionally handles text/code formats only. Binary office
-/// documents and images must go through dedicated parsers rather than being
-/// decoded as UTF-8 and misrepresented as successfully analyzed.
+/// Handles UTF-8 text/code plus PDF, DOCX and XLSX through the native
+/// document extraction channel. Image OCR is handled by ImageRecognitionService.
 class FileUploadService {
   FileUploadService._();
   static final FileUploadService instance = FileUploadService._();
@@ -75,7 +74,7 @@ class FileUploadService {
     final selected = result.files.single;
     if (selected.size > maxFileBytes) {
       throw FileSystemException(
-        'File exceeds the 8 MB processing limit.',
+        'File must be between 1 byte and 8 MB.',
         selected.name,
       );
     }
@@ -97,7 +96,7 @@ class FileUploadService {
       throw FileSystemException('File does not exist.', file.path);
     }
     final size = await file.length();
-    if (size > maxFileBytes) {
+    if (size < 1 || size > maxFileBytes) {
       throw FileSystemException('File exceeds the 8 MB processing limit.', file.path);
     }
 
@@ -126,6 +125,9 @@ class FileUploadService {
         throw FormatException(parsed?['error']?.toString() ?? 'Document extraction failed.');
       }
       content = parsed['text']?.toString() ?? '';
+      if (content.trim().isEmpty) {
+        throw FormatException('No searchable text was extracted. Scanned PDFs and image-only documents need OCR.');
+      }
       documentMetadata = {
         'characters_extracted': parsed['characters_extracted'],
         'truncated': parsed['truncated'],
