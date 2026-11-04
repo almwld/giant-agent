@@ -456,11 +456,11 @@ class _ChatScreenState extends State<ChatScreen> {
     if (success && mounted) {
       await _refreshModels();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('✅ تم استيراد النموذج بنجاح')),
+        const SnackBar(content: Text('تم استيراد النموذج بنجاح')),
       );
     } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('❌ فشل استيراد النموذج')),
+        const SnackBar(content: Text('فشل استيراد النموذج')),
       );
     }
   }
@@ -638,7 +638,7 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         _messages.add({
           'isUser': true,
-          'content': '📁 ${result.files.single.name}\n${content.length > 500 ? content.substring(0, 500) + '...' : content}',
+          'content': 'ملف: ${result.files.single.name}\n${content.length > 500 ? content.substring(0, 500) + '...' : content}',
           'time': DateTime.now(),
         });
         _isLoading = true;
@@ -665,7 +665,7 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         _messages.add({
           'isUser': true,
-          'content': '🖼️ ${image.name}',
+          'content': 'صورة: ${image.name}',
           'time': DateTime.now(),
         });
         _isLoading = true;
@@ -689,7 +689,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void _switchModel(Map<String, dynamic> model) async {
     if (model['id'] == 'no_model') {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('⚠️ لا يوجد نموذج محدد')),
+        const SnackBar(content: Text('لا يوجد نموذج محدد')),
       );
       return;
     }
