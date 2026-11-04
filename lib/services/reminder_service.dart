@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:sqflite/sqflite.dart';
 import 'package:path_provider/path_provider.dart';
 import 'notification_service.dart';
@@ -8,8 +9,27 @@ class ReminderService {
   ReminderService._internal();
   
   Database? _db;
+  Future<void>? _opening;
+  Timer? _timer;
+  bool _checking = false;
   
   Future<void> init() async {
+    if (_db == null) {
+      _opening ??= _open();
+      try {
+        await _opening;
+      } catch (_) {
+        _opening = null;
+        rethrow;
+      }
+    }
+    _timer ??= Timer.periodic(const Duration(seconds: 30), (_) {
+      checkReminders();
+    });
+    await checkReminders();
+  }
+
+  Future<void> _open() async {
     final dir = await getApplicationDocumentsDirectory();
     _db = await openDatabase(
       '${dir.path}/reminders.db',
@@ -17,18 +37,19 @@ class ReminderService {
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE reminders (
-            id INTEGER PRIMARY KEY,
-            title TEXT,
-            description TEXT,
-            reminder_time INTEGER,
-            is_completed INTEGER,
-            created_at INTEGER
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            reminder_time INTEGER NOT NULL,
+            is_completed INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL
           )
         ''');
+        await db.execute('CREATE INDEX reminders_due ON reminders(is_completed, reminder_time)');
       },
     );
   }
-  
+
   Future<int> addReminder(String title, String description, DateTime time) async {
     return await _db?.insert('reminders', {
       'title': title,
@@ -67,6 +88,9 @@ class ReminderService {
   }
   
   Future<void> checkReminders() async {
+    if (_db == null || _checking) return;
+    _checking = true;
+    try {
     final now = DateTime.now().millisecondsSinceEpoch;
     final reminders = await _db?.query(
       'reminders',
@@ -84,9 +108,16 @@ class ReminderService {
         await completeReminder(reminder['id'] as int);
       }
     }
+    } finally {
+      _checking = false;
+    }
   }
-  
-  void dispose() {
-    _db?.close();
+
+  Future<void> dispose() async {
+    _timer?.cancel();
+    _timer = null;
+    await _db?.close();
+    _db = null;
+    _opening = null;
   }
 }
