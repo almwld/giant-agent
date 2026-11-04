@@ -11,6 +11,8 @@ import android.app.Activity
 import android.provider.OpenableColumns
 import java.io.File
 import java.io.FileOutputStream
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import java.util.concurrent.Executors
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
@@ -89,6 +91,38 @@ class MainActivity: FlutterActivity() {
                             val message = t.message ?: "Python runtime failed"
                             emitPythonEvent("tool_error", code, message, "failed")
                             runOnUiThread { result.success(mapOf("ok" to false, "output" to "", "error" to message)) }
+                        }
+                    }
+                }
+                "exportWorkspace" -> {
+                    aiExecutor.execute {
+                        try {
+                            val workspace = File(filesDir, "agent_workspace").apply { mkdirs() }.canonicalFile
+                            val exportFile = File(cacheDir, "giant-agent-workspace.zip")
+                            var count = 0
+                            ZipOutputStream(FileOutputStream(exportFile)).use { zip ->
+                                workspace.walkTopDown().filter { it.isFile }.forEach { file ->
+                                    val canonical = file.canonicalFile
+                                    require(canonical.path.startsWith(workspace.path + File.separator)) {
+                                        "Workspace contains a path outside its root."
+                                    }
+                                    require(canonical.absolutePath == file.absolutePath) {
+                                        "Symbolic links are not included in workspace exports."
+                                    }
+                                    val relative = file.relativeTo(workspace).invariantSeparatorsPath
+                                    zip.putNextEntry(ZipEntry(relative))
+                                    file.inputStream().use { input -> input.copyTo(zip) }
+                                    zip.closeEntry()
+                                    count++
+                                }
+                            }
+                            runOnUiThread {
+                                result.success(mapOf("ok" to true, "path" to exportFile.absolutePath, "files" to count))
+                            }
+                        } catch (t: Throwable) {
+                            runOnUiThread {
+                                result.success(mapOf("ok" to false, "error" to (t.message ?: "Workspace export failed")))
+                            }
                         }
                     }
                 }
