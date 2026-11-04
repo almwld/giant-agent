@@ -35,6 +35,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isLoading = false;
   String _thinkingStage = '';
   static const EventChannel _agentEvents = EventChannel('giant_agent_stream');
+  static const MethodChannel _fileReceiver = MethodChannel('file_receiver');
   StreamSubscription<dynamic>? _agentEventSubscription;
   final List<Map<String, dynamic>> _agentSteps = [];
   String _streamingResponse = '';
@@ -94,6 +95,11 @@ class _ChatScreenState extends State<ChatScreen> {
   void _handleAgentEvent(dynamic event) {
     if (!mounted || event is! Map) return;
     final step = Map<String, dynamic>.from(event);
+    if (step['type'] == 'shared_file') {
+      final path = step['path']?.toString();
+      if (path != null && path.isNotEmpty) _processSharedFilePath(path);
+      return;
+    }
     if (step['tool_name'] == 'execute_python') {
       final type = step['type']?.toString();
       if (type == 'tool_start') {
@@ -219,6 +225,24 @@ class _ChatScreenState extends State<ChatScreen> {
     await _loadHistory();
     await _init();
     await _resumePendingTask();
+    await _consumeInitialSharedFile();
+  }
+
+  Future<void> _consumeInitialSharedFile() async {
+    try {
+      final path = await _fileReceiver.invokeMethod<String>('getSharedFile');
+      if (path != null && path.isNotEmpty && mounted) {
+        await _processSharedFilePath(path);
+      }
+    } on PlatformException catch (error) {
+      debugPrint('Unable to receive initial shared file: ${error.message}');
+    } on MissingPluginException {
+      // The native share bridge is Android-only.
+    }
+  }
+
+  Future<void> _processSharedFilePath(String path) async {
+    await _processFile(File(path));
   }
 
   String _newSessionId() => DateTime.now().microsecondsSinceEpoch.toString();
@@ -662,6 +686,21 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
       final file = await FileUploadService.instance.pickFile();
       if (file == null || !mounted) return;
+      await _processFile(file);
+    } catch (error) {
+      if (!mounted) return;
+      final message = 'تعذر استيراد الملف أو تحليله: $error';
+      setState(() {
+        _messages.add({'isUser': false, 'content': message, 'time': DateTime.now()});
+        _isLoading = false;
+      });
+      await _saveMessage(message, false);
+    }
+  }
+
+  Future<void> _processFile(File file) async {
+    if (!mounted || _isLoading) return;
+    try {
       final analysis = await FileUploadService.instance.processFile(file);
       final document = await file.readAsString();
       final boundedDocument = document.length > 40000
