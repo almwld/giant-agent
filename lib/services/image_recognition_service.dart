@@ -1,34 +1,28 @@
 import 'dart:io';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 
+/// Capability boundary for image input.
+///
+/// The bundled local GGUF runtime is text-only. This service reports file
+/// metadata, but deliberately refuses to fabricate visual descriptions or
+/// OCR results until a real vision/OCR model is installed and wired.
 class ImageRecognitionService {
   static Future<String> analyzeImage(File imageFile) async {
-    // محاكاة تحليل الصورة
-    // في الإصدار الحقيقي يمكن ربطها بـ Google Vision API أو TensorFlow Lite
-    
-    final bytes = await imageFile.readAsBytes();
-    final base64Image = base64Encode(bytes);
-    
-    // تحليل بسيط
-    return '''
-Image Analysis Results:
-- Size: ${await imageFile.length()} bytes
-- Type: ${imageFile.path.split('.').last}
-- Resolution: Detected
-- Content: Image analyzed successfully
-
-Based on the image analysis, I can see various elements in this picture.
-''';
+    if (!await imageFile.exists()) {
+      throw FileSystemException('Image file does not exist.', imageFile.path);
+    }
+    final size = await imageFile.length();
+    final extension = imageFile.path.split('.').last.toLowerCase();
+    return 'تم استلام الصورة دون تحليل بصري. '
+        'الحجم: $size بايت؛ النوع: $extension. '
+        'يلزم ربط نموذج رؤية فعلي لتحليل محتواها.';
   }
-  
+
   static Future<String> extractTextFromImage(File imageFile) async {
-    // محاكاة استخراج النص من الصورة (OCR)
-    return '''
-Extracted Text from Image:
-- Text detected in the image
-- Multiple lines of content found
-- OCR processing completed
-''';
+    if (!await imageFile.exists()) {
+      throw FileSystemException('Image file does not exist.', imageFile.path);
+    }
+    throw UnsupportedError(
+      'OCR is not configured. Install and connect a real OCR engine before requesting text extraction.',
+    );
   }
 }
