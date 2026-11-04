@@ -6,6 +6,7 @@
 #include <mutex>
 #include <string>
 #include <vector>
+#include <cstdint>
 #include "llama.h"
 
 #define LOG_TAG "ZionLLM"
@@ -36,6 +37,36 @@ void freeLocked() {
     if (g_ctx) { llama_free(g_ctx); g_ctx = nullptr; }
     if (g_lora) { llama_adapter_lora_free(g_lora); g_lora = nullptr; }
     if (g_model) { llama_model_free(g_model); g_model = nullptr; }
+}
+
+
+size_t completeUtf8Prefix(const std::string & value) {
+    size_t i = 0;
+    while (i < value.size()) {
+        const unsigned char lead = static_cast<unsigned char>(value[i]);
+        size_t width = 1;
+        if ((lead & 0xE0) == 0xC0) width = 2;
+        else if ((lead & 0xF0) == 0xE0) width = 3;
+        else if ((lead & 0xF8) == 0xF0) width = 4;
+        if (i + width > value.size()) break;
+        bool valid = true;
+        for (size_t j = 1; j < width; ++j) {
+            const unsigned char continuation = static_cast<unsigned char>(value[i + j]);
+            if ((continuation & 0xC0) != 0x80) { valid = false; break; }
+        }
+        if (!valid) { ++i; continue; }
+        i += width;
+    }
+    return i;
+}
+
+void emitToken(JNIEnv * env, jobject callback, jmethodID method, const std::string & bytes) {
+    if (!callback || !method || bytes.empty()) return;
+    jstring piece = env->NewStringUTF(bytes.c_str());
+    if (!piece) { if (env->ExceptionCheck()) env->ExceptionClear(); return; }
+    env->CallVoidMethod(callback, method, piece);
+    env->DeleteLocalRef(piece);
+    if (env->ExceptionCheck()) env->ExceptionClear();
 }
 
 std::string fail(const char * message) { LOGE("%s", message); return std::string("ERROR: ") + message; }
@@ -110,7 +141,7 @@ Java_com_zion_os_ai_LlamaBridge_nativeLoadModel(JNIEnv * env, jobject, jstring m
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_zion_os_ai_LlamaBridge_nativeGenerate(JNIEnv * env, jobject, jstring prompt, jint maxTokens, jfloat temperature) {
+Java_com_zion_os_ai_LlamaBridge_nativeGenerateStreaming(JNIEnv * env, jobject, jstring prompt, jint maxTokens, jfloat temperature, jobject callback) {
     if (!prompt) return env->NewStringUTF("ERROR: Empty prompt");
     const char * text = env->GetStringUTFChars(prompt, nullptr);
     if (!text) return env->NewStringUTF("ERROR: Unable to read prompt");
@@ -121,6 +152,9 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerate(JNIEnv * env, jobject, jstring pr
         return env->NewStringUTF("ERROR: Model not loaded");
     }
     GenerationStateGuard generationState;
+    jobject callbackRef = callback ? env->NewGlobalRef(callback) : nullptr;
+    jclass callbackClass = callbackRef ? env->GetObjectClass(callbackRef) : nullptr;
+    jmethodID onToken = callbackClass ? env->GetMethodID(callbackClass, "onToken", "(Ljava/lang/String;)V") : nullptr;
 
     llama_memory_clear(llama_get_memory(g_ctx), true);
     llama_sampler_reset(g_sampler);
@@ -194,7 +228,15 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerate(JNIEnv * env, jobject, jstring pr
 
         char piece[1024];
         const int32_t n = llama_token_to_piece(vocab, next, piece, sizeof(piece), 0, true);
-        if (n > 0) output.append(piece, n);
+        if (n > 0) {
+            output.append(piece, n);
+            const size_t ready = completeUtf8Prefix(output);
+            if (ready > 0 && callbackRef && onToken) {
+                const std::string chunk = output.substr(0, ready);
+                emitToken(env, callbackRef, onToken, chunk);
+                output.erase(0, ready);
+            }
+        }
 
         llama_sampler_accept(g_sampler, next);
         auto nextBatch = llama_batch_get_one(&next, 1);
@@ -203,6 +245,9 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerate(JNIEnv * env, jobject, jstring pr
             break;
         }
     }
+    if (!output.empty() && callbackRef && onToken) emitToken(env, callbackRef, onToken, output);
+    if (callbackClass) env->DeleteLocalRef(callbackClass);
+    if (callbackRef) env->DeleteGlobalRef(callbackRef);
     LOGE("Inference finished; generated %zu UTF-8 bytes", output.size());
     return env->NewStringUTF(output.c_str());
 }
