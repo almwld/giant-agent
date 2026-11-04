@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: giant-agent-apk-${{ github.ref }}
+  group: giant-agent-apk-${{ github.run_id }}
   cancel-in-progress: false
 
 jobs:
