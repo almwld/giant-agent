@@ -404,6 +404,7 @@ class MainActivity: FlutterActivity() {
             else -> null
         } ?: return null
 
+        var partialCopy: File? = null
         return try {
             if (source.scheme == "file") {
                 val file = File(source.path ?: return null).canonicalFile
@@ -423,6 +424,7 @@ class MainActivity: FlutterActivity() {
             val now = System.currentTimeMillis()
             destinationDir.listFiles()?.filter { it.isFile && now - it.lastModified() > 24L * 60 * 60 * 1000 }?.forEach { it.delete() }
             val destination = File(destinationDir, "${System.nanoTime()}_$safeName")
+            partialCopy = destination
             val input = contentResolver.openInputStream(source) ?: return null
             input.use { stream ->
                 FileOutputStream(destination).use { output ->
@@ -438,8 +440,10 @@ class MainActivity: FlutterActivity() {
                     output.fd.sync()
                 }
             }
+            partialCopy = null
             destination.absolutePath
         } catch (error: Throwable) {
+            partialCopy?.delete()
             android.util.Log.e("GiantAgent", "Unable to import shared file", error)
             null
         }
