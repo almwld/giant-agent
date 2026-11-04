@@ -140,7 +140,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _insideToolCall = false;
     if (mounted) setState(() { _streamingResponse = ''; _thinkingStage = 'بانتظار أحداث المحرك المحلي...'; });
     try {
-      return await _modelService.processInput(prompt);
+      return await _modelService.processInput(prompt, conversationId: _currentSessionId);
     } finally {
       final tail = _flushVisibleAnswerBuffer();
       if (mounted) setState(() {
