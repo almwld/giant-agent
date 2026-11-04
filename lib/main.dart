@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';\nimport 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'screens/welcome_screen.dart';
 import 'screens/chat_screen.dart';
 import 'services/app_preferences.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await [Permission.storage, Permission.photos, Permission.camera, Permission.notification].request();
   await AppPreferences.instance.load();
   final prefs = await SharedPreferences.getInstance();
   final lastSplash = prefs.getInt('giant_last_splash_at') ?? 0;
