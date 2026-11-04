@@ -60,6 +60,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _scrollToBottom();
       return;
     }
+    step.putIfAbsent('session_id', () => _currentSessionId);
     final eventType = step['type']?.toString();
     if (eventType == 'file_created' || eventType == 'file_updated') {
       final path = step['file_name']?.toString();
@@ -508,7 +509,7 @@ class _ChatScreenState extends State<ChatScreen> {
         : (lastTool['output'] ?? lastTool['content'] ?? lastTool['file_name'] ?? '').toString();
     final toolContext = rawToolResult.isEmpty
         ? ''
-        : '\\n\\nآخر نتيجة أداة محفوظة قبل الانقطاع:\\n${rawToolResult.substring(0, rawToolResult.length.clamp(0, 1800))}';
+        : '\\n\\nآخر نتيجة أداة محفوظة قبل الانقطاع:\\n${(rawToolResult.length > 1800 ? rawToolResult.substring(0, 1800) : rawToolResult)}';
 
     setState(() => _isLoading = true);
     try {
