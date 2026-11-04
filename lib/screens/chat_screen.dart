@@ -443,13 +443,15 @@ class _ChatScreenState extends State<ChatScreen> {
 
   String _contextualPrompt(String currentPrompt) {
     final prior = _messages.length > 1 ? _messages.sublist(0, _messages.length - 1) : <Map<String, dynamic>>[];
-    final recent = prior.length > 8 ? prior.sublist(prior.length - 8) : prior;
+    final recent = prior.length > 5 ? prior.sublist(prior.length - 5) : prior;
     if (recent.isEmpty) return currentPrompt;
-    final buffer = StringBuffer('سياق المحادثة الحالية (الأحدث أولاً):\n');
+    final buffer = StringBuffer('سياق الجلسة الحالية فقط (آخر خمس رسائل، الأقدم أولاً):\\n');
     for (final message in recent) {
-      buffer.writeln('${message['isUser'] == true ? 'المستخدم' : 'المساعد'}: ${message['content']}');
+      final raw = message['content']?.toString() ?? '';
+      final clipped = raw.length > 1800 ? '${raw.substring(0, 1800)}…' : raw;
+      buffer.writeln('${message['isUser'] == true ? 'المستخدم' : 'المساعد'}: $clipped');
     }
-    buffer.writeln('\nالطلب الحالي:');
+    buffer.writeln('\\nالطلب الحالي:');
     buffer.write(currentPrompt);
     return buffer.toString();
   }
@@ -458,20 +460,72 @@ class _ChatScreenState extends State<ChatScreen> {
     final prefs = await SharedPreferences.getInstance();
     final pending = prefs.getString('giant_pending_task');
     final pendingSession = prefs.getString('giant_pending_session_id');
-    if (pendingSession != null && pendingSession != _currentSessionId) return;
     if (pending == null || pending.trim().isEmpty || !mounted) return;
-    setState(() => _isLoading = true);
-    final response = await _generateWithStages(_contextualPrompt(pending));
-    await prefs.remove('giant_pending_task');
-    await prefs.remove('giant_pending_session_id');
+    if (pendingSession != null && pendingSession != _currentSessionId) return;
+
+    final shortId = _currentSessionId.length > 4
+        ? _currentSessionId.substring(_currentSessionId.length - 4)
+        : _currentSessionId;
+    final interrupted = <String, dynamic>{
+      'id': 'task_interrupted_${DateTime.now().microsecondsSinceEpoch}',
+      'type': 'task_interrupted',
+      'title': 'توقفت مهمة قبل اكتمالها',
+      'subtitle': 'الجلسة #$shortId',
+      'status': 'interrupted',
+      'details': 'أُغلق التطبيق قبل حفظ النتيجة النهائية. يمكن إعادة إرسال الطلب مع سياق هذه الجلسة وآخر مخرجات الأدوات المحفوظة.',
+      'session_id': _currentSessionId,
+    };
+    await _saveAgentEvent(interrupted);
     if (!mounted) return;
-    setState(() {
-      _streamingResponse = '';
-      _messages.add({'isUser': false, 'content': response, 'time': DateTime.now()});
-      _isLoading = false;
-    });
-    await _saveMessage(response, false);
-    _scrollToBottom();
+    setState(() => _agentSteps.add(interrupted));
+
+    final shouldResume = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('مهمة غير مكتملة'),
+        content: const Text('تم إغلاق التطبيق أثناء تنفيذ مهمة. هل تريد إعادة إرسال الطلب مع سياق الجلسة وآخر نتائج الأدوات المحفوظة؟'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('إلغاء المهمة')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('استئناف')),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (shouldResume != true) {
+      await prefs.remove('giant_pending_task');
+      await prefs.remove('giant_pending_session_id');
+      return;
+    }
+
+    final completedTools = _agentSteps.where((event) =>
+      event['status'] == 'completed' &&
+      (event['type'] == 'tool_output' || event['type'] == 'file_created' || event['type'] == 'file_updated')
+    ).toList();
+    final lastTool = completedTools.isEmpty ? null : completedTools.last;
+    final rawToolResult = lastTool == null
+        ? ''
+        : (lastTool['output'] ?? lastTool['content'] ?? lastTool['file_name'] ?? '').toString();
+    final toolContext = rawToolResult.isEmpty
+        ? ''
+        : '\\n\\nآخر نتيجة أداة محفوظة قبل الانقطاع:\\n${rawToolResult.substring(0, rawToolResult.length.clamp(0, 1800))}';
+
+    setState(() => _isLoading = true);
+    try {
+      final response = await _generateWithStages('${_contextualPrompt(pending)}$toolContext');
+      await prefs.remove('giant_pending_task');
+      await prefs.remove('giant_pending_session_id');
+      if (!mounted) return;
+      setState(() {
+        _streamingResponse = '';
+        _messages.add({'isUser': false, 'content': response, 'time': DateTime.now()});
+        _isLoading = false;
+      });
+      await _saveMessage(response, false);
+      _scrollToBottom();
+    } catch (_) {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _sendMessage() async {
@@ -624,7 +678,7 @@ class _ChatScreenState extends State<ChatScreen> {
       case 'tool_start':
       case 'tool_output': return Icons.terminal;
       case 'todo': return Icons.checklist;
-      case 'thought': return Icons.psychology_alt_outlined;
+      case 'thought': return Icons.psychology_alt_outlined;\n      case 'task_interrupted': return Icons.pause_circle_outline;
       case 'tool_error': return Icons.error_outline;
       default: return Icons.circle_outlined;
     }
@@ -714,7 +768,16 @@ class _ChatScreenState extends State<ChatScreen> {
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 7, children: [
                       Text(step['title']?.toString() ?? 'حدث', style: TextStyle(color: failed ? Colors.red.shade200 : Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
-                      if (subtitle != null && subtitle.isNotEmpty)
+                      if (step['session_id'] != null || subtitle?.contains('الجلسة #') == true)
+                        DecoratedBox(
+                          decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(5)),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                            child: Text(subtitle?.contains('الجلسة #') == true ? subtitle! : 'الجلسة #${step['session_id'].toString().substring(step['session_id'].toString().length > 4 ? step['session_id'].toString().length - 4 : 0)}',
+                              style: const TextStyle(color: Colors.tealAccent, fontSize: 9)),
+                          ),
+                        ),
+                      if (subtitle != null && subtitle.isNotEmpty && !subtitle.contains('الجلسة #'))
                         Text('| $subtitle', style: const TextStyle(color: Colors.white54, fontSize: 11)),
                     ]),
                     if (step['details'] != null)
