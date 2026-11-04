@@ -12,6 +12,8 @@ import android.provider.OpenableColumns
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.Executors
+import com.chaquo.python.Python
+import com.chaquo.python.android.AndroidPlatform
 
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "file_receiver"
@@ -63,6 +65,31 @@ class MainActivity: FlutterActivity() {
                     } catch (t: Throwable) {
                         emitAgentToolError("read_file", t.message ?: "File read failed")
                         result.error("READ_FILE_FAILED", t.message ?: "File read failed", null)
+                    }
+                }
+                "executePython" -> {
+                    val code = call.argument<String>("code").orEmpty()
+                    emitPythonEvent("tool_start", code, null, "running")
+                    aiExecutor.execute {
+                        try {
+                            if (!Python.isStarted()) Python.start(AndroidPlatform(this))
+                            val workspace = File(filesDir, "agent_workspace").apply { mkdirs() }.canonicalPath
+                            val pyResult = Python.getInstance().getModule("sandbox")
+                                .callAttr("run_code", code, workspace)
+                            val status = pyResult.get("status")?.toString() ?: "error"
+                            val output = pyResult.get("output")?.toString() ?: ""
+                            val error = pyResult.get("error")?.toString() ?: ""
+                            val ok = status == "success"
+                            emitPythonEvent(if (ok) "tool_output" else "tool_error", code,
+                                if (ok) output else error, if (ok) "completed" else "failed")
+                            runOnUiThread {
+                                result.success(mapOf("ok" to ok, "output" to output, "error" to error))
+                            }
+                        } catch (t: Throwable) {
+                            val message = t.message ?: "Python runtime failed"
+                            emitPythonEvent("tool_error", code, message, "failed")
+                            runOnUiThread { result.success(mapOf("ok" to false, "output" to "", "error" to message)) }
+                        }
                     }
                 }
                 else -> result.notImplemented()
@@ -148,6 +175,20 @@ class MainActivity: FlutterActivity() {
                 "title" to title,
                 "status" to status,
                 "details" to details
+            ))
+        }
+    }
+
+    private fun emitPythonEvent(type: String, code: String, output: String?, status: String) {
+        runOnUiThread {
+            agentEventSink?.success(mapOf(
+                "id" to "python_${System.currentTimeMillis()}",
+                "type" to type,
+                "tool_name" to "execute_python",
+                "title" to if (type == "tool_start") "تشغيل Python" else if (type == "tool_output") "مخرجات Python" else "خطأ Python",
+                "content" to code,
+                "output" to output,
+                "status" to status
             ))
         }
     }
