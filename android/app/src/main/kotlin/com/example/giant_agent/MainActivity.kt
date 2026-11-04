@@ -21,6 +21,7 @@ class MainActivity: FlutterActivity() {
     private val AGENT_EVENTS_CHANNEL = "giant_agent_stream"
     private val AGENT_TOOLS_CHANNEL = "giant_agent/tools"
     @Volatile private var agentEventSink: EventChannel.EventSink? = null
+    private val pendingSharedFiles = java.util.concurrent.ConcurrentLinkedQueue<String>()
     private val aiExecutor = AgentRuntime.aiExecutor
     private val llamaBridge = AgentRuntime.llamaBridge
     private var pendingModelResult: MethodChannel.Result? = null
@@ -34,6 +35,10 @@ class MainActivity: FlutterActivity() {
             .setStreamHandler(object : EventChannel.StreamHandler {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
                     agentEventSink = events
+                    while (true) {
+                        val path = pendingSharedFiles.poll() ?: break
+                        events?.success(mapOf("id" to "shared_${System.nanoTime()}", "type" to "shared_file", "path" to path))
+                    }
                 }
                 override fun onCancel(arguments: Any?) {
                     agentEventSink = null
@@ -243,6 +248,21 @@ class MainActivity: FlutterActivity() {
         }
     }
     
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.action == Intent.ACTION_SEND || intent.action == Intent.ACTION_VIEW) {
+            aiExecutor.execute {
+                val path = getSharedFile() ?: return@execute
+                runOnUiThread {
+                    val event = mapOf("id" to "shared_${System.nanoTime()}", "type" to "shared_file", "path" to path)
+                    val sink = agentEventSink
+                    if (sink != null) sink.success(event) else pendingSharedFiles.add(path)
+                }
+            }
+        }
+    }
+
     private fun emitAgentEvent(id: String, title: String, status: String, details: String? = null) {
         runOnUiThread {
             agentEventSink?.success(mapOf(
