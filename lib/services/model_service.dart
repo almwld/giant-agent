@@ -146,7 +146,7 @@ class ModelService {
         conversationId: conversationId,
       );
       final response = await _processInput(
-        context.isEmpty ? input : '$context\\n\\nطلب المستخدم: $input',
+        context.isEmpty ? input : '$context\n\nطلب المستخدم: $input',
       );
       await AgentMemoryService.instance.saveTurn(
         input,
