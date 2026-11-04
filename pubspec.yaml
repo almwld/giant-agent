@@ -8,6 +8,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
   file_picker: ^6.0.0
   image_picker: ^1.0.0
   permission_handler: ^11.0.0
