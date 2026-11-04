@@ -75,11 +75,14 @@ class ReminderService {
     ) ?? [];
     
     for (var reminder in reminders) {
-      await NotificationService().showNotification(
+      final delivered = await NotificationService().showNotification(
         reminder['title'],
         reminder['description'],
+        id: reminder['id'] as int,
       );
-      await completeReminder(reminder['id']);
+      if (delivered) {
+        await completeReminder(reminder['id'] as int);
+      }
     }
   }
   
