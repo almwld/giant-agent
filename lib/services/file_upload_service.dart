@@ -138,7 +138,7 @@ class FileUploadService {
     return _database!.query(
       'processed_files',
       orderBy: 'created_at DESC',
-      limit: limit.clamp(1, 500),
+      limit: limit.clamp(1, 500).toInt(),
     );
   }
 
