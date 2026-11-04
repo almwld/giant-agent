@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
@@ -20,6 +21,29 @@ class _ChatScreenState extends State<ChatScreen> {
   final ModelService _modelService = ModelService();
   
   bool _isLoading = false;
+  String _thinkingStage = '';
+
+  Future<String> _generateWithStages(String prompt) async {
+    const stages = <String>[
+      'تحليل الطلب وفهم السياق',
+      'تجهيز السياق للنموذج المحلي',
+      'استدلال النموذج وتوليد الإجابة',
+      'تنسيق المخرجات النهائية',
+    ];
+    var stageIndex = 0;
+    if (mounted) setState(() => _thinkingStage = stages.first);
+    final timer = Timer.periodic(const Duration(milliseconds: 1800), (_) {
+      if (!mounted) return;
+      stageIndex = (stageIndex + 1) % stages.length;
+      setState(() => _thinkingStage = stages[stageIndex]);
+    });
+    try {
+      return await _modelService.processInput(prompt);
+    } finally {
+      timer.cancel();
+      if (mounted) setState(() => _thinkingStage = '');
+    }
+  }
   List<Map<String, dynamic>> _models = [];
   Map<String, dynamic> _activeModel = {};
   Database? _db;
@@ -152,7 +176,7 @@ class _ChatScreenState extends State<ChatScreen> {
     await _saveMessage(text, true);
     _scrollToBottom();
 
-    final response = await _modelService.processInput(text);
+    final response = await _generateWithStages(text);
 
     setState(() {
       _messages.add({
@@ -181,7 +205,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _isLoading = true;
       });
       
-      final response = await _modelService.processInput('تحليل الملف: $content');
+      final response = await _generateWithStages('تحليل الملف: $content');
       
       setState(() {
         _messages.add({
@@ -208,7 +232,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _isLoading = true;
       });
       
-      final response = await _modelService.processInput('تحليل الصورة: ${image.name}');
+      final response = await _generateWithStages('تحليل الصورة: ${image.name}');
       
       setState(() {
         _messages.add({
@@ -457,7 +481,33 @@ class _ChatScreenState extends State<ChatScreen> {
               },
             ),
           ),
-          if (_isLoading) const LinearProgressIndicator(),
+          if (_isLoading)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+                  child: Row(
+                    children: [
+                      const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          _thinkingStage.isEmpty ? 'يعالج النموذج طلبك...' : _thinkingStage,
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      const Text('Giant AI', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                    ],
+                  ),
+                ),
+                const LinearProgressIndicator(),
+              ],
+            ),
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
