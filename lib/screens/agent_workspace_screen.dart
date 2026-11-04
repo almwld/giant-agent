@@ -225,6 +225,10 @@ class _AgentWorkspaceScreenState extends State<AgentWorkspaceScreen> {
                       minLines: null,
                       maxLines: null,
                       keyboardType: TextInputType.multiline,
+                      // Code is always edited left-to-right even while the
+                      // surrounding workspace UI follows the Arabic locale.
+                      textDirection: TextDirection.ltr,
+                      textAlign: TextAlign.left,
                       textAlignVertical: TextAlignVertical.top,
                       style: const TextStyle(color: Color(0xFFE2E8F0), fontFamily: 'monospace', fontSize: 12, height: 1.5),
                       decoration: const InputDecoration(
