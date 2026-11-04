@@ -72,7 +72,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<String> _generateWithStages(String prompt) async {
-    if (mounted) setState(() { _agentSteps.clear(); _streamingResponse = ''; _thinkingStage = 'بانتظار أحداث المحرك المحلي...'; });
+    if (mounted) setState(() { _streamingResponse = ''; _thinkingStage = 'بانتظار أحداث المحرك المحلي...'; });
     try {
       return await _modelService.processInput(prompt);
     } finally {
@@ -103,7 +103,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final dir = await getApplicationDocumentsDirectory();
     _db = await openDatabase(
       '${dir.path}/conversations.db',
-      version: 2,
+      version: 3,
       onCreate: (db, version) async {
         await db.execute('''CREATE TABLE sessions (
           id TEXT PRIMARY KEY, title TEXT NOT NULL,
@@ -115,7 +115,8 @@ class _ChatScreenState extends State<ChatScreen> {
         )''');
         await db.execute('''CREATE TABLE agent_events (
           id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL,
-          event_json TEXT NOT NULL, timestamp INTEGER NOT NULL
+          event_key TEXT NOT NULL, event_json TEXT NOT NULL, timestamp INTEGER NOT NULL,
+          UNIQUE(session_id, event_key)
         )''');
       },
       onUpgrade: (db, oldVersion, newVersion) async {
@@ -132,6 +133,14 @@ class _ChatScreenState extends State<ChatScreen> {
             id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL,
             event_json TEXT NOT NULL, timestamp INTEGER NOT NULL
           )''');
+        }
+        if (oldVersion < 3) {
+          await db.execute('ALTER TABLE agent_events ADD COLUMN event_key TEXT');
+          final oldEvents = await db.query('agent_events');
+          for (final row in oldEvents) {
+            await db.update('agent_events', {'event_key': 'legacy_${row['id']}'}, where: 'id = ?', whereArgs: [row['id']]);
+          }
+          await db.execute('CREATE UNIQUE INDEX agent_events_session_key ON agent_events(session_id, event_key)');
         }
       },
     );
@@ -189,11 +198,22 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _saveAgentEvent(Map<String, dynamic> event) async {
     if (!_sessionReady || _db == null || event['type'] == 'stream_token') return;
-    await _db!.insert('agent_events', {
+    final eventKey = event['id']?.toString();
+    if (eventKey == null || eventKey.isEmpty) return;
+    final existing = await _db!.query('agent_events',
+      columns: ['id'], where: 'session_id = ? AND event_key = ?',
+      whereArgs: [_currentSessionId, eventKey], limit: 1);
+    final values = {
       'session_id': _currentSessionId,
+      'event_key': eventKey,
       'event_json': jsonEncode(event),
       'timestamp': DateTime.now().millisecondsSinceEpoch,
-    });
+    };
+    if (existing.isEmpty) {
+      await _db!.insert('agent_events', values);
+    } else {
+      await _db!.update('agent_events', values, where: 'id = ?', whereArgs: [existing.first['id']]);
+    }
   }
 
   Future<void> _createNewSession() async {
