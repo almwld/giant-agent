@@ -187,7 +187,7 @@ class MainActivity: FlutterActivity() {
         require(!canonicalTarget.exists()) { "A file with this path already exists." }
         require(canonicalTarget.canonicalPath == canonicalTarget.absolutePath) { "Symbolic links are not allowed." }
         canonicalTarget.writeText(content, Charsets.UTF_8)
-        return Pair(root.toPath().relativize(canonicalTarget.toPath()).toString().replace(File.separator, "/"), name)
+        return Pair(canonicalTarget.path.removePrefix(root.path + File.separator), name)
     }
 
     private fun emitAgentToken(token: String) {
