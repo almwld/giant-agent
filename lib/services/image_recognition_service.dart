@@ -7,16 +7,40 @@ class ImageRecognitionService {
   static const MethodChannel _channel = MethodChannel('giant_agent/tools');
 
   static Future<String> analyzeImage(File imageFile) async {
-    final text = await extractTextFromImage(imageFile);
+    final result = await _recognize(imageFile);
+    final text = result['text']?.toString() ?? '';
     if (text.trim().isEmpty) {
       return 'تم فحص الصورة بمحرك OCR المحلي، ولم يُعثر على نص قابل للاستخراج. '
-          'هذا المحرك يستخرج النصوص اللاتينية فقط ولا يصف محتوى الصورة بصريًا.';
+          'المحرك الحالي يدعم النصوص اللاتينية فقط ولا يصف محتوى الصورة بصريًا.';
     }
-    return 'النص المستخرج من الصورة (OCR):\n$text\n\n'
-        'ملاحظة: محرك OCR الحالي يدعم النصوص اللاتينية، ولا يدعم العربية أو فهم المشاهد والأجسام.';
+
+    final rawLines = result['lines'];
+    final lines = rawLines is List
+        ? rawLines.whereType<Map>().map((line) {
+            final value = line['text']?.toString() ?? '';
+            final confidence = (line['confidence'] as num?)?.toDouble();
+            final box = [
+              line['left'], line['top'], line['width'], line['height'],
+            ].map((v) => v?.toString() ?? '0').join(',');
+            final score = confidence == null
+                ? ''
+                : ' • ثقة ${(confidence * 100).toStringAsFixed(0)}%';
+            return '- $value$score • موضع الصورة: $box';
+          }).join('\n')
+        : '';
+
+    return 'النص المستخرج من الصورة (OCR):\n$text'
+        '${lines.isEmpty ? '' : '\n\nتفاصيل الأسطر:\n$lines'}'
+        '\n\nملاحظة: الإحداثيات نسبةً إلى أبعاد الصورة الأصلية. '
+        'المحرك الحالي يدعم النصوص اللاتينية، ولا يدعم العربية أو فهم المشاهد والأجسام.';
   }
 
   static Future<String> extractTextFromImage(File imageFile) async {
+    final result = await _recognize(imageFile);
+    return result['text']?.toString() ?? '';
+  }
+
+  static Future<Map<String, dynamic>> _recognize(File imageFile) async {
     if (!await imageFile.exists()) {
       throw FileSystemException('Image file does not exist.', imageFile.path);
     }
@@ -31,6 +55,6 @@ class ImageRecognitionService {
     if (result == null || result['ok'] != true) {
       throw StateError(result?['error']?.toString() ?? 'OCR engine failed.');
     }
-    return result['text']?.toString() ?? '';
+    return result;
   }
 }
