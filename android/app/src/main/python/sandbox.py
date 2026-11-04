@@ -68,10 +68,8 @@ def run_code(code, workspace_path):
                 raise TimeoutError("Python execution limit exceeded.")
         return guard
 
-    old_cwd = os.getcwd()
     old_trace = sys.gettrace()
     try:
-        os.chdir(workspace)
         tree = ast.parse(code, mode="exec")
         _validate(tree)
         compiled = compile(tree, "<giant-agent>", "exec")
@@ -82,7 +80,6 @@ def run_code(code, workspace_path):
         stderr.write(type(exc).__name__ + ": " + str(exc))
     finally:
         sys.settrace(old_trace)
-        os.chdir(old_cwd)
 
     output = stdout.getvalue()
     error = stderr.getvalue()
