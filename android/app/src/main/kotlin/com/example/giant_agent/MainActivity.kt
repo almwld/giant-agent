@@ -41,6 +41,20 @@ class MainActivity: FlutterActivity() {
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, AGENT_TOOLS_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
+                "listWorkspaceFiles" -> {
+                    try {
+                        val root = File(filesDir, "agent_workspace").apply { mkdirs() }.canonicalFile
+                        val files = root.walkTopDown().filter { it.isFile }.mapNotNull { file ->
+                            val canonical = file.canonicalFile
+                            if (!canonical.path.startsWith(root.path + File.separator) ||
+                                canonical.absolutePath != file.absolutePath) null
+                            else canonical.relativeTo(root).invariantSeparatorsPath
+                        }.take(300).toList()
+                        result.success(mapOf("ok" to true, "files" to files))
+                    } catch (t: Throwable) {
+                        result.error("WORKSPACE_LIST_FAILED", t.message ?: "Unable to list workspace.", null)
+                    }
+                }
                 "createFile" -> {
                     val relativePath = call.argument<String>("path").orEmpty()
                     val content = call.argument<String>("content").orEmpty()
