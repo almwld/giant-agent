@@ -373,24 +373,54 @@ class MainActivity: FlutterActivity() {
     }
 
     private fun getSharedFile(): String? {
-        when (intent?.action) {
+        val source = when (intent?.action) {
             Intent.ACTION_SEND -> {
-                if (intent.type?.startsWith("file/") == true || intent.type == "*/*") {
-                    val uri = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
-                    if (uri != null) {
-                        return uri.path
+                @Suppress("DEPRECATION")
+                intent?.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+            }
+            Intent.ACTION_VIEW -> intent?.data
+            else -> null
+        } ?: return null
+
+        return try {
+            if (source.scheme == "file") {
+                val file = File(source.path ?: return null).canonicalFile
+                if (!file.isFile || !file.canRead()) return null
+                return file.absolutePath
+            }
+
+            require(source.scheme == "content") { "Unsupported shared-file URI scheme." }
+            val displayName = contentResolver.query(
+                source, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            } ?: "shared_file"
+            val safeName = displayName.substringAfterLast('/').substringAfterLast('\\')
+                .replace(Regex("[^A-Za-z0-9._-]"), "_").take(100).ifBlank { "shared_file" }
+            val destinationDir = File(cacheDir, "shared_files").apply { mkdirs() }.canonicalFile
+            val destination = File(destinationDir, "${System.currentTimeMillis()}_$safeName")
+            val input = contentResolver.openInputStream(source) ?: return null
+            input.use { stream ->
+                FileOutputStream(destination).use { output ->
+                    val buffer = ByteArray(64 * 1024)
+                    var total = 0L
+                    while (true) {
+                        val count = stream.read(buffer)
+                        if (count < 0) break
+                        total += count
+                        require(total <= 50L * 1024 * 1024) { "Shared file exceeds the 50 MB limit." }
+                        output.write(buffer, 0, count)
                     }
+                    output.fd.sync()
                 }
             }
-            Intent.ACTION_VIEW -> {
-                val uri = intent.data
-                if (uri != null) {
-                    return uri.path
-                }
-            }
+            destination.absolutePath
+        } catch (error: Throwable) {
+            android.util.Log.e("GiantAgent", "Unable to import shared file", error)
+            null
         }
-        return null
     }
+
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != REQUEST_OPEN_MODEL) return
