@@ -28,8 +28,13 @@ object NotificationBridge {
                         )
                     }
                     when (call.method) {
-                        "initialize" -> result.success(true)
+                        "initialize" -> result.success(manager.areNotificationsEnabled())
+                        "areNotificationsEnabled" -> result.success(manager.areNotificationsEnabled())
                         "show" -> {
+                            if (!manager.areNotificationsEnabled()) {
+                                result.success(false)
+                                return@setMethodCallHandler
+                            }
                             val id = call.argument<Int>("id") ?: 1
                             val title = call.argument<String>("title") ?: "Giant Agent"
                             val body = call.argument<String>("body") ?: ""
