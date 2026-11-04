@@ -101,6 +101,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _init() async {
     await _modelService.init();
+    if (!mounted) return;
     setState(() {
       _models = _modelService.getModels();
       _activeModel = _modelService.getActiveModel();
@@ -109,6 +110,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _refreshModels() async {
     await _modelService.refreshModels();
+    if (!mounted) return;
     setState(() {
       _models = _modelService.getModels();
       _activeModel = _modelService.getActiveModel();
@@ -119,7 +121,9 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _importModel() async {
-    final success = await _modelService.importModelFromFile();
+    bool success = false;
+    try { success = await _modelService.importModelFromFile(); }
+    catch (_) { success = false; }
     if (success && mounted) {
       await _refreshModels();
       ScaffoldMessenger.of(context).showSnackBar(
@@ -312,7 +316,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ListTile(
               leading: const Icon(Icons.upload_file, color: Colors.blue),
               title: const Text('استيراد نموذج'),
-              subtitle: const Text('اختر ملف TFLite من الهاتف'),
+              subtitle: const Text('اختر نموذج GGUF من الهاتف'),
               onTap: () {
                 Navigator.pop(context);
                 _importModel();
@@ -357,7 +361,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       model['name'],
                       style: TextStyle(fontWeight: isActive ? FontWeight.bold : FontWeight.normal),
                     ),
-                    subtitle: Text('${model['size']} MB • ${model['type']}'),
+                    subtitle: Text('${model['size']} • ${model['type']}'),
                     trailing: isActive
                         ? Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
