@@ -144,6 +144,15 @@ class AgentMemoryService {
     return context.length > 5000 ? context.substring(0, 5000) : context;
   }
 
+  /// Removes only one conversation's recalled turns without touching other sessions.
+  Future<void> deleteConversationMemory(String conversationId) async {
+    final normalized = conversationId.trim();
+    if (normalized.isEmpty) return;
+    final db = await database;
+    await db.delete('turns', where: 'session_id = ?', whereArgs: [normalized]);
+  }
+
+  /// Clears every stored conversation turn while preserving explicitly saved facts.
   Future<void> clearConversationMemory() async {
     final db = await database;
     await db.delete('turns');
