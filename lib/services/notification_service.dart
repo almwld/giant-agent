@@ -20,6 +20,16 @@ class NotificationService {
     }
   }
 
+  static Future<bool> areNotificationsEnabled() async {
+    try {
+      final status = await Permission.notification.status;
+      if (!status.isGranted) return false;
+      return await _channel.invokeMethod<bool>('areNotificationsEnabled') ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   static Future<bool> showDailyTip() =>
       NotificationService().showNotification(
         'نصيحة اليوم',
@@ -28,6 +38,7 @@ class NotificationService {
 
   Future<bool> showNotification(Object? title, Object? body, {int id = 1}) async {
     try {
+      if (!await areNotificationsEnabled()) return false;
       return await _channel.invokeMethod<bool>('show', {
             'id': id,
             'title': title?.toString() ?? 'Giant Agent',
