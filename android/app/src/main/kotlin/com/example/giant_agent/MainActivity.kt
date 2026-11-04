@@ -129,6 +129,19 @@ class MainActivity: FlutterActivity() {
                                     "ok" to true,
                                     "text" to visionText.text,
                                     "blocks" to visionText.textBlocks.size,
+                                    "lines" to visionText.textBlocks.flatMap { block ->
+                                        block.lines.map { line ->
+                                            val box = line.boundingBox
+                                            mapOf(
+                                                "text" to line.text,
+                                                "confidence" to line.confidence,
+                                                "left" to (box?.left ?: 0),
+                                                "top" to (box?.top ?: 0),
+                                                "width" to (box?.width() ?: 0),
+                                                "height" to (box?.height() ?: 0)
+                                            )
+                                        }
+                                    },
                                     "engine" to "Google ML Kit Text Recognition (Latin script)"
                                 ))
                             }
