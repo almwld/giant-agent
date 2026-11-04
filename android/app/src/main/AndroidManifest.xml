@@ -46,7 +46,6 @@
                 <data android:scheme="file"/>
                 <data android:mimeType="*/*"/>
                 <data android:pathPattern=".*\\.gguf"/>
-                <data android:pathPattern=".*\\.gguf"/>
             </intent-filter>
             
             <!-- استقبال الملفات عبر المشاركة -->
