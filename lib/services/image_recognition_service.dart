@@ -9,11 +9,6 @@ class ImageRecognitionService {
   static Future<String> analyzeImage(File imageFile) async {
     final result = await _recognize(imageFile);
     final text = result['text']?.toString() ?? '';
-    if (text.trim().isEmpty) {
-      return 'تم فحص الصورة بمحرك OCR المحلي، ولم يُعثر على نص قابل للاستخراج. '
-          'المحرك الحالي يدعم النصوص اللاتينية فقط ولا يصف محتوى الصورة بصريًا.';
-    }
-
     final rawLines = result['lines'];
     final lines = rawLines is List
         ? rawLines.whereType<Map>().map((line) {
@@ -40,9 +35,15 @@ class ImageRecognitionService {
             return '- $name$score';
           }).join('\n')
         : '';
-    return 'النص المستخرج من الصورة (OCR):\n$text'
+    final summary = text.trim().isEmpty
+        ? 'لم يُعثر على نص قابل للاستخراج بواسطة OCR المحلي.'
+        : 'النص المستخرج من الصورة (OCR):\n$text';
+    final warnings = [result['ocr_warning']?.toString(), result['labeling_warning']?.toString()]
+        .whereType<String>().where((warning) => warning.trim().isNotEmpty).toList();
+    return '$summary'
         '${lines.isEmpty ? '' : '\n\nتفاصيل الأسطر:\n$lines'}'
         '${labels.isEmpty ? '' : '\n\nتصنيفات المحتوى البصري:\n$labels'}'
+        '${warnings.isEmpty ? '' : '\n\nتنبيهات المحركات:\n- ${warnings.join('\n- ')}'}'
         '\n\nحدود التحليل: OCR الحالي للنصوص اللاتينية فقط. '
         'التصنيفات مؤشرات احتمالية من نموذج محلي ولا تمثل وصفًا تفصيليًا أو إثباتًا لمحتوى الصورة.';
   }
