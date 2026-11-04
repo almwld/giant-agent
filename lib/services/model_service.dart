@@ -16,6 +16,21 @@ class ModelService {
   bool _cancelRequested = false;
   Future<void> _requestTail = Future<void>.value();
 
+  /// One FIFO lock protects every operation that touches the mutable JNI model.
+  Future<T> _withRuntimeLock<T>(Future<T> Function() operation) async {
+    final gate = Completer<void>();
+    final previous = _requestTail;
+    _requestTail = gate.future;
+    await previous;
+    _isLoading = true;
+    try {
+      return await operation();
+    } finally {
+      _isLoading = false;
+      gate.complete();
+    }
+  }
+
   Future<void> init() => scanModels();
   Future<void> scanModels() async {
     final found = await _llama.discoverModels();
@@ -28,7 +43,7 @@ class ModelService {
   }
   Future<void> refreshModels() => scanModels();
   Future<bool> importModelFromFile() async {
-    final model = await _llama.importModel();
+    final model = await _withRuntimeLock(() => _llama.importModel());
     if (model == null) return false;
     await scanModels();
     return _models.any((m) => m['path'] == model.path);
@@ -36,14 +51,24 @@ class ModelService {
   Future<bool> switchModel(String modelId) async {
     Map<String, dynamic>? model;
     for (final item in _models) { if (item['id'] == modelId) { model = item; break; } }
-    if (model == null || _isLoading) return false;
-    _isLoading = true;
-    try {
-      final ok = await _llama.loadModel(model['path'] as String);
+    if (model == null) return false;
+    return _withRuntimeLock(() async {
+      final ok = await _llama.loadModel(model!['path'] as String);
       if (ok) _activeModelId = modelId;
       return ok;
-    } finally { _isLoading = false; }
+    });
   }
+
+  Future<bool> loadModelByPath(String modelPath) async {
+    await scanModels();
+    for (final model in _models) {
+      if (model['path'] == modelPath) return switchModel(model['id'] as String);
+    }
+    return false;
+  }
+
+  Future<bool> isModelLoaded() => _llama.isLoaded();
+  bool get isBusy => _isLoading;
   bool hasActiveModel() => _activeModelId.isNotEmpty && _models.any((m) => m['id'] == _activeModelId);
   String getActiveModelName() => getActiveModel()['name']?.toString() ?? 'لا يوجد';
   String getActiveModelSize() => getActiveModel()['size']?.toString() ?? '0';
@@ -135,12 +160,8 @@ class ModelService {
 
   /// Serializes requests because llama.cpp owns one mutable native context.
   /// Concurrent calls can interleave prompts, cancellation and tool execution.
-  Future<String> processInput(String input, {String conversationId = 'global'}) async {
-    final gate = Completer<void>();
-    final previous = _requestTail;
-    _requestTail = gate.future;
-    await previous;
-    try {
+  Future<String> processInput(String input, {String conversationId = 'global'}) {
+    return _withRuntimeLock(() async {
       final context = await AgentMemoryService.instance.buildContext(
         input,
         conversationId: conversationId,
@@ -154,9 +175,7 @@ class ModelService {
         conversationId: conversationId,
       );
       return response;
-    } finally {
-      gate.complete();
-    }
+    });
   }
 
   static const int _maxPromptCharacters = 9000;
