@@ -1,6 +1,7 @@
 import os
 import zipfile
 import xml.etree.ElementTree as ET
+import posixpath
 
 MAX_INPUT = 8 * 1024 * 1024
 MAX_EXPANDED = 32 * 1024 * 1024
@@ -44,9 +45,9 @@ def _xlsx(path):
             target = targets.get(sheet.attrib.get(R + "id"), "")
             if not target or target.startswith("/"):
                 continue
-            part = target.lstrip("/")
-            if not part.startswith("xl/"):
-                part = "xl/" + part
+            part = posixpath.normpath(posixpath.join("xl", target))
+            if not part.startswith("xl/") or part.startswith("../"):
+                continue
             root = ET.fromstring(z.read(part))
             result.append("[Sheet: " + name + "]")
             for row in root.iter(S + "row"):
@@ -70,6 +71,8 @@ def _xlsx(path):
 def _pdf(path):
     from pypdf import PdfReader
     reader = PdfReader(path, strict=False)
+    if len(reader.pages) > 500:
+        raise ValueError("PDF exceeds the 500-page extraction limit.")
     if reader.is_encrypted and not reader.decrypt(""):
         raise ValueError("Password-protected PDF is not supported.")
     pages = []
@@ -94,6 +97,8 @@ def extract_document(path):
         text = _xlsx(path)
     else:
         raise ValueError("Only PDF, DOCX and XLSX are supported.")
+    if not text.strip():
+        raise ValueError("No extractable text was found. Scanned/image-only PDFs require OCR.")
     length = len(text)
     return {"text": text[:MAX_OUTPUT], "characters_extracted": length,
             "truncated": length > MAX_OUTPUT, "file_size": size,
