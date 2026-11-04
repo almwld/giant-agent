@@ -51,7 +51,11 @@ class ReminderService {
   }
 
   Future<int> addReminder(String title, String description, DateTime time) async {
-    return await _db?.insert('reminders', {
+    await init();
+    if (!time.isAfter(DateTime.now())) {
+      throw ArgumentError.value(time, 'time', 'Reminder time must be in the future.');
+    }
+    return await _db!.insert('reminders', {
       'title': title,
       'description': description,
       'reminder_time': time.millisecondsSinceEpoch,
@@ -61,12 +65,14 @@ class ReminderService {
   }
   
   Future<List<Map<String, dynamic>>> getReminders() async {
-    return await _db?.query('reminders', orderBy: 'reminder_time ASC') ?? [];
+    await init();
+    return _db!.query('reminders', orderBy: 'reminder_time ASC');
   }
   
   Future<List<Map<String, dynamic>>> getActiveReminders() async {
+    await init();
     final now = DateTime.now().millisecondsSinceEpoch;
-    return await _db?.query(
+    return await _db!.query(
       'reminders',
       where: 'reminder_time > ? AND is_completed = 0',
       whereArgs: [now],
@@ -75,7 +81,8 @@ class ReminderService {
   }
   
   Future<void> completeReminder(int id) async {
-    await _db?.update(
+    await init();
+    await _db!.update(
       'reminders',
       {'is_completed': 1},
       where: 'id = ?',
@@ -84,7 +91,8 @@ class ReminderService {
   }
   
   Future<void> deleteReminder(int id) async {
-    await _db?.delete('reminders', where: 'id = ?', whereArgs: [id]);
+    await init();
+    await _db!.delete('reminders', where: 'id = ?', whereArgs: [id]);
   }
   
   Future<void> checkReminders() async {
