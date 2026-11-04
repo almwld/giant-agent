@@ -14,7 +14,6 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
-import androidx.annotation.Keep
 
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "file_receiver"
