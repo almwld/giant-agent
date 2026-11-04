@@ -5,6 +5,7 @@ import android.net.Uri
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import io.flutter.plugin.common.EventChannel
 import com.zion.os.ai.LlamaBridge
 import android.app.Activity
 import android.provider.OpenableColumns
@@ -15,6 +16,8 @@ import java.util.concurrent.Executors
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "file_receiver"
     private val AI_CHANNEL = "giant_agent/llama"
+    private val AGENT_EVENTS_CHANNEL = "giant_agent_stream"
+    @Volatile private var agentEventSink: EventChannel.EventSink? = null
     private val aiExecutor = Executors.newSingleThreadExecutor()
     private val llamaBridge = LlamaBridge()
     private var pendingModelResult: MethodChannel.Result? = null
@@ -22,6 +25,16 @@ class MainActivity: FlutterActivity() {
     
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, AGENT_EVENTS_CHANNEL)
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    agentEventSink = events
+                }
+                override fun onCancel(arguments: Any?) {
+                    agentEventSink = null
+                }
+            })
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, AI_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
@@ -83,6 +96,18 @@ class MainActivity: FlutterActivity() {
         }
     }
     
+    private fun emitAgentEvent(id: String, title: String, status: String, details: String? = null) {
+        runOnUiThread {
+            agentEventSink?.success(mapOf(
+                "id" to id,
+                "type" to "agent_status",
+                "title" to title,
+                "status" to status,
+                "details" to details
+            ))
+        }
+    }
+
     private fun getSharedFile(): String? {
         when (intent?.action) {
             Intent.ACTION_SEND -> {
