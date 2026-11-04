@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// Local, read-only workspace for artifacts emitted by the agent runtime.
 /// It previews only files explicitly included in agent events; it is not a
