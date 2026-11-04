@@ -787,85 +787,153 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  bool _timelineExpanded = true;
+
   Widget _buildAgentTimeline() {
     if (_agentSteps.isEmpty) return const SizedBox.shrink();
+    const cardColor = Color(0xFF1E1E1E);
+    const mutedColor = Color(0xFF9CA3AF);
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-      decoration: BoxDecoration(color: Colors.grey.shade900, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white12)),
-      child: ExpansionTile(
-        initiallyExpanded: true,
-        leading: const Icon(Icons.account_tree_outlined, color: Colors.tealAccent),
-        title: const Text('سجل تنفيذ الوكيل', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
-        subtitle: Text('${_agentSteps.length} أحداث من المحرك', style: const TextStyle(color: Colors.white60, fontSize: 11)),
-        trailing: IconButton(
-          tooltip: 'فتح مساحة عمل الوكيل',
-          icon: const Icon(Icons.computer_outlined, color: Colors.tealAccent),
-          onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => AgentWorkspaceScreen(steps: List<Map<String, dynamic>>.from(_agentSteps)),
-          )),
-        ),
-        children: _agentSteps.map((step) {
-          final failed = step['status'] == 'failed';
-          final running = step['status'] == 'running';
-          final color = failed ? Colors.redAccent : (running ? Colors.orangeAccent : Colors.tealAccent);
-          final type = step['type']?.toString() ?? 'thought';
-          final icon = _agentStepIcon(type);
-          final subtitle = step['subtitle']?.toString();
-          final hasPreview = step['content'] != null || step['output'] != null ||
-              step['command'] != null || step['details'] != null || step['file_name'] != null;
-          return InkWell(
-            onTap: hasPreview ? () => _showAgentStep(step) : null,
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withOpacity(.045)),
+      ),
+      child: Column(
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () => setState(() => _timelineExpanded = !_timelineExpanded),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              padding: const EdgeInsetsDirectional.fromSTEB(14, 13, 12, 13),
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  SizedBox(width: 26, child: Column(children: [
-                    Icon(icon, color: color, size: 18),
-                    Container(width: 1, height: 24, color: Colors.white24),
-                  ])),
-                  const SizedBox(width: 9),
-                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 7, children: [
-                      Text(step['title']?.toString() ?? 'حدث', style: TextStyle(color: failed ? Colors.red.shade200 : Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
-                      if (step['session_id'] != null || subtitle?.contains('الجلسة #') == true)
-                        DecoratedBox(
-                          decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(5)),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                            child: Text(subtitle?.contains('الجلسة #') == true ? subtitle! : 'الجلسة #${step['session_id'].toString().substring(step['session_id'].toString().length > 4 ? step['session_id'].toString().length - 4 : 0)}',
-                              style: const TextStyle(color: Colors.tealAccent, fontSize: 9)),
-                          ),
-                        ),
-                      if (subtitle != null && subtitle.isNotEmpty && !subtitle.contains('الجلسة #'))
-                        Text('| $subtitle', style: const TextStyle(color: Colors.white54, fontSize: 11)),
-                    ]),
-                    if (step['details'] != null)
-                      Padding(padding: const EdgeInsets.only(top: 3), child: Text(step['details'].toString(), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white54, fontSize: 11))),
-                  ])),
-                  if (hasPreview) const Icon(Icons.open_in_new, size: 14, color: Colors.white38),
-                  const SizedBox(width: 5),
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 220),
-                    child: running
-                        ? SizedBox(
-                            key: const ValueKey('running'),
-                            width: 15,
-                            height: 15,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: color),
-                          )
-                        : Icon(
-                            key: ValueKey(failed ? 'failed' : 'completed'),
-                            failed ? Icons.error_outline : Icons.check_circle_outline,
-                            color: color,
-                            size: 16,
-                          ),
+                  const Icon(Icons.account_tree_outlined, color: mutedColor, size: 18),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('سجل تنفيذ الوكيل',
+                          style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 3),
+                        Text('${_agentSteps.length} أحداث من المحرك',
+                          style: const TextStyle(color: mutedColor, fontSize: 10)),
+                      ],
+                    ),
                   ),
+                  IconButton(
+                    tooltip: 'فتح مساحة عمل الوكيل',
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.computer_outlined, color: Color(0xFF0D8274), size: 19),
+                    onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => AgentWorkspaceScreen(steps: List<Map<String, dynamic>>.from(_agentSteps)),
+                    )),
+                  ),
+                  Icon(_timelineExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                    color: mutedColor, size: 20),
                 ],
               ),
             ),
-          );
-        }).toList(),
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 240),
+            curve: Curves.easeInOut,
+            alignment: Alignment.topCenter,
+            child: _timelineExpanded
+                ? Column(
+                    children: List.generate(_agentSteps.length, (index) {
+                      final step = _agentSteps[index];
+                      final failed = step['status'] == 'failed';
+                      final running = step['status'] == 'running';
+                      final type = step['type']?.toString() ?? 'thought';
+                      final icon = _agentStepIcon(type);
+                      final color = failed
+                          ? const Color(0xFFEF6A6A)
+                          : (running ? const Color(0xFF0D8274) : mutedColor);
+                      final title = step['title']?.toString() ?? 'حدث من الوكيل';
+                      final subtitle = step['subtitle']?.toString();
+                      final hasPreview = step['content'] != null ||
+                          step['output'] != null ||
+                          step['command'] != null ||
+                          step['details'] != null ||
+                          step['file_name'] != null;
+                      final isTool = type.contains('tool') ||
+                          type.contains('terminal') ||
+                          type == 'code' || type == 'file_created' ||
+                          type == 'file_updated';
+                      return InkWell(
+                        onTap: hasPreview ? () => _showAgentStep(step) : null,
+                        child: Padding(
+                          padding: const EdgeInsetsDirectional.fromSTEB(12, 7, 12, 7),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 20,
+                                height: 22,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF2A2A2A),
+                                  borderRadius: BorderRadius.circular(5),
+                                ),
+                                alignment: Alignment.center,
+                                child: Icon(icon, size: 13, color: isTool ? const Color(0xFF0D8274) : mutedColor),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: failed ? const Color(0xFFFF9292) : Colors.white,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w500,
+                                      )),
+                                    if (subtitle != null && subtitle.isNotEmpty && !subtitle.contains('الجلسة #'))
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 2),
+                                        child: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(color: mutedColor, fontSize: 10)),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              if (hasPreview)
+                                const Padding(
+                                  padding: EdgeInsetsDirectional.only(start: 5),
+                                  child: Icon(Icons.chevron_right, size: 17, color: mutedColor),
+                                ),
+                              const SizedBox(width: 5),
+                              AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 200),
+                                child: running
+                                    ? SizedBox(
+                                        key: const ValueKey('running'),
+                                        width: 14,
+                                        height: 14,
+                                        child: CircularProgressIndicator(strokeWidth: 2, color: color),
+                                      )
+                                    : Icon(
+                                        key: ValueKey(failed ? 'failed' : 'completed'),
+                                        failed ? Icons.error_outline : Icons.check_circle,
+                                        color: color,
+                                        size: 15,
+                                      ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
+                  )
+                : const SizedBox(width: double.infinity),
+          ),
+          if (_timelineExpanded)
+            const SizedBox(height: 7),
+        ],
       ),
     );
   }
@@ -873,8 +941,12 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
-        title: const Text('Giant Agent X'),
+        backgroundColor: const Color(0xFF121212),
+        foregroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        title: const Text('Giant Agent X', style: TextStyle(color: Colors.white)),
         centerTitle: true,
         actions: [
           if (_isLoading)
@@ -1055,7 +1127,7 @@ class _ChatScreenState extends State<ChatScreen> {
         children: [
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            color: _modelService.hasActiveModel() ? (Theme.of(context).brightness == Brightness.dark ? const Color(0xFF15352B) : Colors.green.shade50) : (Theme.of(context).brightness == Brightness.dark ? const Color(0xFF382B18) : Colors.orange.shade50),
+            color: _modelService.hasActiveModel() ? const Color(0xFF18352F) : const Color(0xFF382B18),
             child: Row(
               children: [
                 Icon(
@@ -1071,7 +1143,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         : '⚠️ لا يوجد نموذج - اضغط ☰ ← استيراد نموذج',
                     style: TextStyle(
                       fontSize: 13,
-                      color: _modelService.hasActiveModel() ? (Theme.of(context).brightness == Brightness.dark ? Colors.green.shade200 : Colors.green.shade700) : (Theme.of(context).brightness == Brightness.dark ? Colors.orange.shade200 : Colors.orange.shade700),
+                      color: _modelService.hasActiveModel() ? Colors.green.shade200 : Colors.orange.shade200,
                     ),
                   ),
                 ),
@@ -1095,7 +1167,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       maxWidth: MediaQuery.of(context).size.width * 0.8,
                     ),
                     decoration: BoxDecoration(
-                      color: isUser ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.surfaceVariant,
+                      color: isUser ? const Color(0xFF0D8274) : const Color(0xFF1E1E1E),
                       borderRadius: BorderRadius.only(
                         topLeft: const Radius.circular(16),
                         topRight: const Radius.circular(16),
@@ -1109,7 +1181,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         SelectableText(
                           msg['content'],
                           style: TextStyle(
-                            color: isUser ? Theme.of(context).colorScheme.onPrimary : Theme.of(context).colorScheme.onSurface,
+                            color: Colors.white,
                             fontSize: 14,
                           ),
                         ),
@@ -1118,7 +1190,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           '${(msg['time'] as DateTime).hour.toString().padLeft(2, '0')}:${(msg['time'] as DateTime).minute.toString().padLeft(2, '0')}',
                           style: TextStyle(
                             fontSize: 10,
-                            color: isUser ? Theme.of(context).colorScheme.onPrimary.withOpacity(.72) : Theme.of(context).colorScheme.onSurfaceVariant,
+                            color: Colors.white60,
                           ),
                         ),
                       ],
@@ -1134,8 +1206,8 @@ class _ChatScreenState extends State<ChatScreen> {
               width: double.infinity,
               margin: const EdgeInsets.fromLTRB(16, 6, 16, 10),
               padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceVariant, borderRadius: BorderRadius.circular(14)),
-              child: SelectableText(_streamingResponse, style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14)),
+              decoration: BoxDecoration(color: const Color(0xFF1E1E1E), borderRadius: BorderRadius.circular(14)),
+              child: SelectableText(_streamingResponse, style: const TextStyle(color: Colors.white, fontSize: 14)),
             ),
           if (_isLoading)
             Column(
@@ -1167,8 +1239,8 @@ class _ChatScreenState extends State<ChatScreen> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
-              border: Border(top: BorderSide(color: Theme.of(context).colorScheme.outlineVariant)),
+              color: const Color(0xFF1E1E1E),
+              border: const Border(top: BorderSide(color: Colors.white12)),
             ),
             child: Row(
               children: [
@@ -1186,14 +1258,16 @@ class _ChatScreenState extends State<ChatScreen> {
                   child: TextField(
                     controller: _controller,
                     enabled: true,
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
                     decoration: InputDecoration(
+                      hintStyle: const TextStyle(color: Color(0xFF9CA3AF)),
                       hintText: 'اكتب رسالتك...',
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(30),
                         borderSide: BorderSide.none,
                       ),
                       filled: true,
-                      fillColor: Theme.of(context).colorScheme.surfaceVariant,
+                      fillColor: const Color(0xFF2A2A2A),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                     ),
                     onSubmitted: (_) => _sendMessage(),
@@ -1208,7 +1282,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       color: Colors.deepPurple,
                       shape: BoxShape.circle,
                     ),
-                    child: Icon(Icons.send, color: Theme.of(context).colorScheme.onPrimary, size: 20),
+                    child: const Icon(Icons.send, color: Colors.white, size: 20),
                   ),
                 ),
               ],
