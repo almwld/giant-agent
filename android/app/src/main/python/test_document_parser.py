@@ -1,5 +1,6 @@
 import os
 import sys
+from reportlab.pdfgen import canvas
 import tempfile
 import unittest
 import zipfile
@@ -40,6 +41,16 @@ class DocumentParserTests(unittest.TestCase):
                 "xl/worksheets/sheet1.xml",
                 '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1"><v>250</v></c></row></sheetData></worksheet>',
             )
+
+    def test_pdf_extracts_page_text(self):
+        path = self.path("sample.pdf")
+        document = canvas.Canvas(path)
+        document.drawString(72, 720, "Giant Agent PDF")
+        document.save()
+        result = extract_document(path)
+        self.assertEqual(result["format"], "pdf")
+        self.assertIn("[Page 1]", result["text"])
+        self.assertIn("Giant Agent PDF", result["text"])
 
     def test_docx_extracts_paragraph_text(self):
         path = self.path("sample.docx")
