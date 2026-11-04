@@ -253,7 +253,9 @@ class MainActivity: FlutterActivity() {
         setIntent(intent)
         if (intent.action == Intent.ACTION_SEND || intent.action == Intent.ACTION_VIEW) {
             aiExecutor.execute {
-                val path = getSharedFile() ?: return@execute
+                // Capture this exact intent: a later share may replace Activity.intent
+                // before this background task reads the content URI.
+                val path = getSharedFile(intent) ?: return@execute
                 runOnUiThread {
                     val event = mapOf("id" to "shared_${System.nanoTime()}", "type" to "shared_file", "path" to path)
                     val sink = agentEventSink
@@ -392,13 +394,13 @@ class MainActivity: FlutterActivity() {
         }
     }
 
-    private fun getSharedFile(): String? {
-        val source = when (intent?.action) {
+    private fun getSharedFile(sourceIntent: Intent? = intent): String? {
+        val source = when (sourceIntent?.action) {
             Intent.ACTION_SEND -> {
                 @Suppress("DEPRECATION")
-                intent?.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+                sourceIntent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
             }
-            Intent.ACTION_VIEW -> intent?.data
+            Intent.ACTION_VIEW -> sourceIntent.data
             else -> null
         } ?: return null
 
