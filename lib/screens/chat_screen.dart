@@ -310,6 +310,64 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
+  IconData _agentStepIcon(String type) {
+    switch (type) {
+      case 'code':
+      case 'tool_code': return Icons.code;
+      case 'file':
+      case 'file_created': return Icons.insert_drive_file_outlined;
+      case 'terminal':
+      case 'terminal_run': return Icons.terminal;
+      case 'todo': return Icons.checklist;
+      case 'thought': return Icons.psychology_alt_outlined;
+      case 'tool_error': return Icons.error_outline;
+      default: return Icons.circle_outlined;
+    }
+  }
+
+  void _showAgentStep(Map<String, dynamic> step) {
+    final title = step['title']?.toString() ?? 'تفاصيل التنفيذ';
+    final fileName = step['file_name']?.toString();
+    final content = step['content']?.toString();
+    final command = step['command']?.toString();
+    final output = step['output']?.toString();
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF101820),
+      builder: (context) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: .72,
+        maxChildSize: .94,
+        minChildSize: .35,
+        builder: (context, controller) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
+              child: Row(children: [
+                const Icon(Icons.computer, color: Colors.tealAccent),
+                const SizedBox(width: 9),
+                Expanded(child: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16))),
+                IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close, color: Colors.white70)),
+              ]),
+            ),
+            if (fileName != null) Padding(padding: const EdgeInsets.symmetric(horizontal: 18), child: Text(fileName, style: const TextStyle(color: Colors.tealAccent, fontSize: 12))),
+            if (command != null) Padding(padding: const EdgeInsets.all(18), child: SelectableText('$ $command', style: const TextStyle(color: Colors.lightGreenAccent, fontFamily: 'monospace'))),
+            Expanded(child: SingleChildScrollView(
+              controller: controller,
+              padding: const EdgeInsets.all(18),
+              child: SelectableText(
+                content ?? output ?? step['details']?.toString() ?? 'لا توجد تفاصيل إضافية.',
+                style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.5, fontFamily: 'monospace'),
+              ),
+            )),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildAgentTimeline() {
     if (_agentSteps.isEmpty) return const SizedBox.shrink();
     return Container(
@@ -324,11 +382,39 @@ class _ChatScreenState extends State<ChatScreen> {
           final failed = step['status'] == 'failed';
           final running = step['status'] == 'running';
           final color = failed ? Colors.redAccent : (running ? Colors.orangeAccent : Colors.tealAccent);
-          return ListTile(
-            dense: true,
-            leading: running ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: color)) : Icon(failed ? Icons.error_outline : Icons.check_circle_outline, color: color, size: 18),
-            title: Text(step['title']?.toString() ?? 'حدث', style: TextStyle(color: failed ? Colors.red.shade200 : Colors.white70, fontSize: 13)),
-            subtitle: step['details'] == null ? null : Text(step['details'].toString(), style: const TextStyle(color: Colors.white54, fontSize: 11)),
+          final type = step['type']?.toString() ?? 'thought';
+          final icon = _agentStepIcon(type);
+          final subtitle = step['subtitle']?.toString();
+          final hasPreview = step['content'] != null || step['output'] != null ||
+              step['command'] != null || step['details'] != null || step['file_name'] != null;
+          return InkWell(
+            onTap: hasPreview ? () => _showAgentStep(step) : null,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(width: 26, child: Column(children: [
+                    Icon(icon, color: color, size: 18),
+                    Container(width: 1, height: 24, color: Colors.white24),
+                  ])),
+                  const SizedBox(width: 9),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 7, children: [
+                      Text(step['title']?.toString() ?? 'حدث', style: TextStyle(color: failed ? Colors.red.shade200 : Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
+                      if (subtitle != null && subtitle.isNotEmpty)
+                        Text('| $subtitle', style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                    ]),
+                    if (step['details'] != null)
+                      Padding(padding: const EdgeInsets.only(top: 3), child: Text(step['details'].toString(), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white54, fontSize: 11))),
+                  ])),
+                  if (hasPreview) const Icon(Icons.open_in_new, size: 14, color: Colors.white38),
+                  const SizedBox(width: 5),
+                  if (running) SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2, color: color))
+                  else Icon(failed ? Icons.error_outline : Icons.check_circle_outline, color: color, size: 16),
+                ],
+              ),
+            ),
           );
         }).toList(),
       ),
