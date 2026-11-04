@@ -400,6 +400,19 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  String _contextualPrompt(String currentPrompt) {
+    final prior = _messages.length > 1 ? _messages.sublist(0, _messages.length - 1) : <Map<String, dynamic>>[];
+    final recent = prior.length > 8 ? prior.sublist(prior.length - 8) : prior;
+    if (recent.isEmpty) return currentPrompt;
+    final buffer = StringBuffer('سياق المحادثة الحالية (الأحدث أولاً):\n');
+    for (final message in recent) {
+      buffer.writeln('${message['isUser'] == true ? 'المستخدم' : 'المساعد'}: ${message['content']}');
+    }
+    buffer.writeln('\nالطلب الحالي:');
+    buffer.write(currentPrompt);
+    return buffer.toString();
+  }
+
   Future<void> _resumePendingTask() async {
     final prefs = await SharedPreferences.getInstance();
     final pending = prefs.getString('giant_pending_task');
@@ -407,9 +420,9 @@ class _ChatScreenState extends State<ChatScreen> {
     if (pendingSession != null && pendingSession != _currentSessionId) return;
     if (pending == null || pending.trim().isEmpty || !mounted) return;
     setState(() => _isLoading = true);
-    final response = await _generateWithStages(pending);
+    final response = await _generateWithStages(_contextualPrompt(pending));
     await prefs.remove('giant_pending_task');
-    await prefs.remove('giant_pending_session_id');\n    await prefs.remove('giant_pending_session_id');
+    await prefs.remove('giant_pending_session_id');
     if (!mounted) return;
     setState(() {
       _streamingResponse = '';
@@ -445,8 +458,9 @@ class _ChatScreenState extends State<ChatScreen> {
     await taskPrefs.setString('giant_pending_session_id', _currentSessionId);
     _scrollToBottom();
 
-    final response = await _generateWithStages(text);
+    final response = await _generateWithStages(_contextualPrompt(text));
     await taskPrefs.remove('giant_pending_task');
+    await taskPrefs.remove('giant_pending_session_id');
 
     setState(() {
       _streamingResponse = '';
