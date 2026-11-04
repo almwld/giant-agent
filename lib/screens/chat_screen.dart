@@ -679,7 +679,8 @@ class _ChatScreenState extends State<ChatScreen> {
       case 'tool_start':
       case 'tool_output': return Icons.terminal;
       case 'todo': return Icons.checklist;
-      case 'thought': return Icons.psychology_alt_outlined;\n      case 'task_interrupted': return Icons.pause_circle_outline;
+      case 'thought': return Icons.psychology_alt_outlined;
+      case 'task_interrupted': return Icons.pause_circle_outline;
       case 'tool_error': return Icons.error_outline;
       default: return Icons.circle_outlined;
     }
