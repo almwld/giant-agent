@@ -15,10 +15,20 @@ class FileUploadService {
 
   static const int maxFileBytes = 8 * 1024 * 1024;
   static const int maxStoredContentChars = 100000;
-  Database? _database;
+  Database? _database;\n  Future<void>? _opening;
 
   Future<void> init() async {
     if (_database != null) return;
+    _opening ??= _openDatabase();
+    try {
+      await _opening;
+    } catch (_) {
+      _opening = null;
+      rethrow;
+    }
+  }
+
+  Future<void> _openDatabase() async {
     final directory = await getApplicationDocumentsDirectory();
     _database = await openDatabase(
       '${directory.path}/giant_processed_files.db',
@@ -47,10 +57,24 @@ class FileUploadService {
       type: FileType.custom,
       allowedExtensions: const ['txt', 'md', 'json', 'csv'],
       allowMultiple: false,
-      withData: false,
+      withData: true,
     );
-    final path = result?.files.single.path;
-    return path == null ? null : File(path);
+    if (result == null || result.files.isEmpty) return null;
+    final selected = result.files.single;
+    if (selected.size > maxFileBytes) {
+      throw FileSystemException('File exceeds the 8 MB processing limit.', selected.name);
+    }
+    final path = selected.path;
+    if (path != null) return File(path);
+    final bytes = selected.bytes;
+    if (bytes == null) {
+      throw FileSystemException('The selected provider did not supply readable file bytes.', selected.name);
+    }
+    final directory = await getTemporaryDirectory();
+    final safeName = selected.name.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+    final cached = File('${directory.path}/giant_upload_${DateTime.now().microsecondsSinceEpoch}_$safeName');
+    await cached.writeAsBytes(bytes, flush: true);
+    return cached;
   }
 
   Future<Map<String, dynamic>> processFile(File file) async {
@@ -150,5 +174,6 @@ class FileUploadService {
   Future<void> dispose() async {
     await _database?.close();
     _database = null;
+    _opening = null;
   }
 }
