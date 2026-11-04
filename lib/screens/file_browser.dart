@@ -1,8 +1,10 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:permission_handler/permission_handler.dart';
 
+import '../services/model_service.dart';
+
+/// Model library screen backed by the app-private GGUF runtime.
+/// Android storage permissions and public Downloads paths are deliberately
+/// avoided; model import is handled by the native Storage Access Framework.
 class FileBrowser extends StatefulWidget {
   const FileBrowser({super.key});
 
@@ -11,165 +13,154 @@ class FileBrowser extends StatefulWidget {
 }
 
 class _FileBrowserState extends State<FileBrowser> {
-  List<FileSystemEntity> _files = [];
-  String _currentPath = '/storage/emulated/0/';
-  bool _isLoading = false;
+  final ModelService _models = ModelService();
+  List<Map<String, dynamic>> _items = const [];
+  Map<String, dynamic> _active = const {};
+  bool _loading = true;
+  bool _importing = false;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
-    _requestPermission();
+    _refresh();
   }
 
-  Future<void> _requestPermission() async {
-    final status = await Permission.storage.request();
-    if (status.isGranted) {
-      _loadFiles();
-    }
-  }
-
-  Future<void> _loadFiles() async {
-    setState(() => _isLoading = true);
+  Future<void> _refresh() async {
+    if (mounted) setState(() { _loading = true; _error = null; });
     try {
-      final dir = Directory(_currentPath);
-      if (await dir.exists()) {
-        final files = await dir.list().toList();
-        setState(() {
-          _files = files;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      setState(() => _isLoading = false);
+      await _models.refreshModels();
+      if (!mounted) return;
+      setState(() {
+        _items = _models.getModels();
+        _active = _models.getActiveModel();
+      });
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString());
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
-  Future<void> _pickModel() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['tflite'],
-    );
-    
-    if (result != null) {
-      final filePath = result.files.single.path!;
-      final fileName = result.files.single.name;
-      
-      final modelsDir = Directory('/storage/emulated/0/Download/models/');
-      if (!await modelsDir.exists()) {
-        await modelsDir.create(recursive: true);
+  Future<void> _importModel() async {
+    if (_importing) return;
+    setState(() { _importing = true; _error = null; });
+    try {
+      final imported = await _models.importModelFromFile();
+      if (!mounted) return;
+      await _refresh();
+      if (!mounted) return;
+      if (imported) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تم استيراد نموذج GGUF إلى مساحة التطبيق الخاصة')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('لم يتم استيراد نموذج جديد')),
+        );
       }
-      
-      final destPath = '/storage/emulated/0/Download/models/$fileName';
-      await File(filePath).copy(destPath);
-      
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString());
+    } finally {
+      if (mounted) setState(() => _importing = false);
+    }
+  }
+
+  Future<void> _activate(Map<String, dynamic> model) async {
+    final id = model['id']?.toString();
+    if (id == null || id.isEmpty || _loading || _importing) return;
+    setState(() { _loading = true; _error = null; });
+    try {
+      final loaded = await _models.switchModel(id);
+      if (!mounted) return;
+      await _refresh();
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('✅ تم نسخ النموذج: $fileName')),
+        SnackBar(content: Text(loaded
+            ? 'تم تفعيل النموذج: ${model['name']}'
+            : 'تعذر تفعيل النموذج المحدد')),
       );
-      Navigator.pop(context, true);
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString());
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final activeName = _active['name']?.toString();
     return Scaffold(
       appBar: AppBar(
-        title: Text('متصفح الملفات'),
+        title: const Text('مكتبة نماذج GGUF'),
         centerTitle: true,
         actions: [
           IconButton(
-            icon: const Icon(Icons.search),
-            onPressed: _pickModel,
-            tooltip: 'اختيار نموذج',
+            tooltip: 'تحديث النماذج',
+            onPressed: _loading || _importing ? null : _refresh,
+            icon: const Icon(Icons.refresh),
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            child: Wrap(
-              spacing: 8,
+      body: _loading && _items.isEmpty
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
               children: [
-                _buildQuickButton('المجلد الرئيسي', Icons.home, () {
-                  setState(() {
-                    _currentPath = '/storage/emulated/0/';
-                    _loadFiles();
-                  });
-                }),
-                _buildQuickButton('التحميلات', Icons.download, () {
-                  setState(() {
-                    _currentPath = '/storage/emulated/0/Download/';
-                    _loadFiles();
-                  });
-                }),
-                _buildQuickButton('اختيار نموذج', Icons.model_training, _pickModel),
+                if (activeName != null && activeName.isNotEmpty)
+                  ListTile(
+                    leading: const Icon(Icons.check_circle, color: Colors.green),
+                    title: const Text('النموذج النشط'),
+                    subtitle: Text(activeName),
+                  ),
+                if (_error != null)
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Text(_error!, style: const TextStyle(color: Colors.red)),
+                  ),
+                Expanded(
+                  child: _items.isEmpty
+                      ? const Center(
+                          child: Text('لا توجد نماذج GGUF بعد. استورد نموذجًا للبدء.'),
+                        )
+                      : ListView.separated(
+                          itemCount: _items.length,
+                          separatorBuilder: (_, __) => const Divider(height: 1),
+                          itemBuilder: (context, index) {
+                            final model = _items[index];
+                            final selected = model['id'] == _active['id'];
+                            return ListTile(
+                              leading: Icon(
+                                selected ? Icons.check_circle : Icons.memory,
+                                color: selected ? Colors.green : null,
+                              ),
+                              title: Text(model['name']?.toString() ?? 'GGUF model'),
+                              subtitle: Text(
+                                '${model['size'] ?? 'الحجم غير معروف'} • GGUF',
+                              ),
+                              trailing: selected
+                                  ? const Text('نشط')
+                                  : TextButton(
+                                      onPressed: _loading || _importing
+                                          ? null
+                                          : () => _activate(model),
+                                      child: const Text('تفعيل'),
+                                    ),
+                            );
+                          },
+                        ),
+                ),
               ],
             ),
-          ),
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : ListView.builder(
-                    itemCount: _files.length,
-                    itemBuilder: (context, index) {
-                      final file = _files[index];
-                      final isDirectory = FileSystemEntity.isDirectorySync(file.path);
-                      final fileName = file.path.split('/').last;
-                      final isModel = fileName.endsWith('.tflite');
-                      
-                      return ListTile(
-                        leading: Icon(
-                          isDirectory ? Icons.folder : (isModel ? Icons.model_training : Icons.insert_drive_file),
-                          color: isDirectory ? Colors.blue : (isModel ? Colors.green : Colors.grey),
-                        ),
-                        title: Text(fileName),
-                        trailing: isModel
-                            ? ElevatedButton(
-                                onPressed: () async {
-                                  final modelsDir = Directory('/storage/emulated/0/Download/models/');
-                                  if (!await modelsDir.exists()) {
-                                    await modelsDir.create(recursive: true);
-                                  }
-                                  final destPath = '/storage/emulated/0/Download/models/$fileName';
-                                  await File(file.path).copy(destPath);
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('✅ تم نسخ النموذج: $fileName')),
-                                  );
-                                  Navigator.pop(context, true);
-                                },
-                                child: const Text('تشغيل'),
-                              )
-                            : null,
-                        onTap: () {
-                          if (isDirectory) {
-                            setState(() {
-                              _currentPath = file.path;
-                              _loadFiles();
-                            });
-                          }
-                        },
-                      );
-                    },
-                  ),
-          ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _pickModel,
-        child: const Icon(Icons.add),
-        tooltip: 'إضافة نموذج',
-      ),
-    );
-  }
-
-  Widget _buildQuickButton(String label, IconData icon, VoidCallback onTap) {
-    return ElevatedButton.icon(
-      onPressed: onTap,
-      icon: Icon(icon, size: 16),
-      label: Text(label),
-      style: ElevatedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        minimumSize: Size.zero,
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _loading || _importing ? null : _importModel,
+        icon: _importing
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.add),
+        label: Text(_importing ? 'جارٍ الاستيراد...' : 'استيراد GGUF'),
       ),
     );
   }
