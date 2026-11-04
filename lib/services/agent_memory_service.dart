@@ -25,17 +25,18 @@ class AgentMemoryService {
     final dir = await getApplicationDocumentsDirectory();
     _db = await openDatabase(
       '${dir.path}/giant_agent_memory.db',
-      version: 1,
+      version: 2,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE turns (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL DEFAULT 'global',
             user_text TEXT NOT NULL,
             assistant_text TEXT NOT NULL,
             created_at INTEGER NOT NULL
           )
         ''');
-        await db.execute('CREATE INDEX turns_created_at ON turns(created_at DESC)');
+        await db.execute('CREATE INDEX turns_session_created_at ON turns(session_id, created_at DESC)');
         await db.execute('''
           CREATE TABLE facts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -46,18 +47,26 @@ class AgentMemoryService {
           )
         ''');
       },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await db.execute("ALTER TABLE turns ADD COLUMN session_id TEXT NOT NULL DEFAULT 'global'");
+          await db.execute('CREATE INDEX turns_session_created_at ON turns(session_id, created_at DESC)');
+        }
+      },
     );
   }
 
-  Future<void> saveTurn(String userText, String assistantText) async {
+  Future<void> saveTurn(String userText, String assistantText, {String conversationId = 'global'}) async {
     final db = await database;
     await db.insert('turns', {
+      'session_id': conversationId,
       'user_text': userText.length > 12000 ? userText.substring(0, 12000) : userText,
       'assistant_text': assistantText.length > 24000 ? assistantText.substring(0, 24000) : assistantText,
       'created_at': DateTime.now().millisecondsSinceEpoch,
     });
     await db.rawDelete(
-      'DELETE FROM turns WHERE id NOT IN (SELECT id FROM turns ORDER BY created_at DESC LIMIT 300)',
+      'DELETE FROM turns WHERE session_id = ? AND id NOT IN (SELECT id FROM turns WHERE session_id = ? ORDER BY created_at DESC LIMIT 300)',
+      [conversationId, conversationId],
     );
   }
 
@@ -75,7 +84,7 @@ class AgentMemoryService {
     );
   }
 
-  Future<String> buildContext(String query, {int limit = 5}) async {
+  Future<String> buildContext(String query, {int limit = 5, String conversationId = 'global'}) async {
     final db = await database;
     final words = query
         .toLowerCase()
@@ -86,6 +95,8 @@ class AgentMemoryService {
     final rows = await db.query(
       'turns',
       columns: const ['user_text', 'assistant_text'],
+      where: 'session_id = ?',
+      whereArgs: [conversationId],
       orderBy: 'created_at DESC',
       limit: 8,
     );
