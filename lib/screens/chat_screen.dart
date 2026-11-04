@@ -10,7 +10,7 @@ import 'agent_workspace_screen.dart';
 import 'package:flutter/services.dart';
 import 'package:xterm/xterm.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:cross_file/cross_file.dart';
+import 'package:cross_file/cross_file.dart';\nimport 'package:shared_preferences/shared_preferences.dart';\nimport 'settings_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -259,6 +259,23 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _resumePendingTask() async {
+    final prefs = await SharedPreferences.getInstance();
+    final pending = prefs.getString('giant_pending_task');
+    if (pending == null || pending.trim().isEmpty || !mounted) return;
+    setState(() => _isLoading = true);
+    final response = await _generateWithStages(pending);
+    await prefs.remove('giant_pending_task');
+    if (!mounted) return;
+    setState(() {
+      _streamingResponse = '';
+      _messages.add({'isUser': false, 'content': response, 'time': DateTime.now()});
+      _isLoading = false;
+    });
+    await _saveMessage(response, false);
+    _scrollToBottom();
+  }
+
   Future<void> _sendMessage() async {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
@@ -273,9 +290,12 @@ class _ChatScreenState extends State<ChatScreen> {
       _isLoading = true;
     });
     await _saveMessage(text, true);
+    final taskPrefs = await SharedPreferences.getInstance();
+    await taskPrefs.setString('giant_pending_task', text);
     _scrollToBottom();
 
     final response = await _generateWithStages(text);
+    await taskPrefs.remove('giant_pending_task');
 
     setState(() {
       _streamingResponse = '';
@@ -548,6 +568,13 @@ class _ChatScreenState extends State<ChatScreen> {
             icon: const Icon(Icons.history),
             onPressed: _clearHistory,
             tooltip: 'مسح المحادثات',
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+            ),
+            tooltip: 'الإعدادات',
           ),
         ],
       ),
