@@ -14,6 +14,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
+import androidx.annotation.Keep
 
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "file_receiver"
@@ -198,8 +199,8 @@ class MainActivity: FlutterActivity() {
                         emitAgentEvent("request", "تم استلام الطلب وتجهيز النموذج المحلي", "completed")
                         emitAgentEvent("inference", "استدلال النموذج المحلي جارٍ", "running")
                         try {
-                            val tokenCallback = object {
-                                fun onToken(token: String) { emitAgentToken(token) }
+                            val tokenCallback = object : TokenCallback {
+                                override fun onToken(token: String) { emitAgentToken(token) }
                             }
                             val answer = llamaBridge.nativeGenerateStreaming(prompt, tokens, temp, tokenCallback)
                             emitAgentEvent("inference", "اكتمل توليد الإجابة", "completed")
