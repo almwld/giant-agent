@@ -32,6 +32,18 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Set up Python for Chaquopy
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Verify Chaquopy build Python
+        run: |
+          python --version
+          python3.11 --version
+          command -v python3.11
+
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
