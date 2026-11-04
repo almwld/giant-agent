@@ -354,7 +354,7 @@ class _ChatScreenState extends State<ChatScreen> {
               ]),
             ),
             if (fileName != null) Padding(padding: const EdgeInsets.symmetric(horizontal: 18), child: Text(fileName, style: const TextStyle(color: Colors.tealAccent, fontSize: 12))),
-            if (command != null) Padding(padding: const EdgeInsets.all(18), child: SelectableText('$ $command', style: const TextStyle(color: Colors.lightGreenAccent, fontFamily: 'monospace'))),
+            if (command != null) Padding(padding: const EdgeInsets.all(18), child: SelectableText('\\$ $command', style: const TextStyle(color: Colors.lightGreenAccent, fontFamily: 'monospace'))),
             Expanded(child: SingleChildScrollView(
               controller: controller,
               padding: const EdgeInsets.all(18),
