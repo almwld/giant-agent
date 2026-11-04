@@ -68,6 +68,14 @@ class ModelService {
     return result;
   }
 
+  Future<Map<String, dynamic>> executePython({required String code}) async {
+    final result = await _agentTools.invokeMapMethod<String, dynamic>('executePython', {'code': code});
+    if (result == null) {
+      throw PlatformException(code: 'PYTHON_FAILED', message: 'Python runtime returned no result.');
+    }
+    return result;
+  }
+
   Future<Map<String, dynamic>> _executeTool(Map<String, dynamic> payload) async {
     final name = payload['name'];
     final args = payload['arguments'];
@@ -77,6 +85,8 @@ class ModelService {
         return createFile(path: args['path']?.toString() ?? '', content: args['content']?.toString() ?? '');
       case 'read_file':
         return readFile(path: args['path']?.toString() ?? '');
+      case 'execute_python':
+        return executePython(code: args['code']?.toString() ?? '');
       default:
         throw FormatException('Unsupported tool: $name');
     }
@@ -88,10 +98,13 @@ class ModelService {
 أدواتك:
 1) create_file: arguments path و content. تنشئ ملفاً جديداً فقط ولا تستبدل الموجود.
 2) read_file: arguments path. تقرأ ملفاً موجوداً داخل مساحة العمل.
+3) execute_python: arguments code. يشغّل سكربت Python محلياً ضمن مفسر مقيّد؛ يدعم الحسابات والطباعة والحلقات المحدودة. لا يدعم الاستيراد أو الوصول إلى النظام أو السمات أو فتح الملفات. استخدم مساحة العمل الحالية فقط عند الحاجة إلى الملفات.
 عند الحاجة لاستخدام أداة أخرج استدعاءً واحداً فقط:
 <tool_call>{"name":"create_file","arguments":{"path":"src/main.dart","content":"..."}}</tool_call>
 أو:
 <tool_call>{"name":"read_file","arguments":{"path":"src/main.dart"}}</tool_call>
+أو:
+<tool_call>{"name":"execute_python","arguments":{"code":"for i in range(1, 11):\n    print(i)"}}</tool_call>
 لا تدّع نجاح أي عملية قبل استلام نتيجتها. لا تطلب أدوات إذا لم تكن لازمة.
 لا تعرض التفكير الداخلي التفصيلي.
 
@@ -107,10 +120,14 @@ class ModelService {
           final payload = jsonDecode(match.group(1)!) as Map<String, dynamic>;
           final result = await _executeTool(payload);
           final toolName = payload['name'];
+          final resultJson = jsonEncode(result);
+          final contextResult = toolName == 'execute_python' && resultJson.length > 500
+              ? '${resultJson.substring(resultJson.length - 500)} [Python result truncated to last 500 characters for model context]'
+              : resultJson;
           history
-            ..write('\n\nSystem Note: $toolName completed successfully. Result: ')
-            ..write(jsonEncode(result))
-            ..write('\nContinue the user's task. Use another tool if required; otherwise provide the final answer.\n\nAssistant:');
+            ..write('\n\nSystem Note: $toolName execution result: ')
+            ..write(contextResult)
+            ..write('\nDo not claim success if the tool result contains ok=false. Continue the user's task. Use another tool if required; otherwise provide the final answer.\n\nAssistant:');
         } on PlatformException catch (e) {
           history
             ..write('\n\nSystem Note: Tool failed: ${e.code}: ${e.message}. Do not claim success. You may correct the arguments and retry once.\n\nAssistant:');
