@@ -69,7 +69,7 @@ class TaskManager {
     final previous = _writeTail;
     _writeTail = completer.future;
     return () async {
-      await previous;
+      await previous.catchError((_) {});
       try {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(_storageKey, snapshot);
