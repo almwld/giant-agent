@@ -17,6 +17,7 @@ class MainActivity: FlutterActivity() {
     private val CHANNEL = "file_receiver"
     private val AI_CHANNEL = "giant_agent/llama"
     private val AGENT_EVENTS_CHANNEL = "giant_agent_stream"
+    private val AGENT_TOOLS_CHANNEL = "giant_agent/tools"
     @Volatile private var agentEventSink: EventChannel.EventSink? = null
     private val aiExecutor = Executors.newSingleThreadExecutor()
     private val llamaBridge = LlamaBridge()
@@ -35,6 +36,24 @@ class MainActivity: FlutterActivity() {
                     agentEventSink = null
                 }
             })
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, AGENT_TOOLS_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "createFile" -> {
+                    val relativePath = call.argument<String>("path").orEmpty()
+                    val content = call.argument<String>("content").orEmpty()
+                    try {
+                        val created = createAgentFile(relativePath, content)
+                        emitAgentFileCreated(created.first, content)
+                        result.success(mapOf("ok" to true, "path" to created.first, "name" to created.second))
+                    } catch (t: Throwable) {
+                        emitAgentToolError("create_file", t.message ?: "File creation failed")
+                        result.error("CREATE_FILE_FAILED", t.message ?: "File creation failed", null)
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, AI_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
@@ -117,6 +136,58 @@ class MainActivity: FlutterActivity() {
                 "details" to details
             ))
         }
+    }
+
+    private fun emitAgentFileCreated(relativePath: String, content: String) {
+        runOnUiThread {
+            agentEventSink?.success(mapOf(
+                "id" to "file_${System.currentTimeMillis()}",
+                "type" to "file_created",
+                "title" to "File created",
+                "subtitle" to "تم إنشاء الملف داخل مساحة العمل الآمنة",
+                "file_name" to relativePath,
+                "content" to content,
+                "status" to "completed"
+            ))
+        }
+    }
+
+    private fun emitAgentToolError(tool: String, message: String) {
+        runOnUiThread {
+            agentEventSink?.success(mapOf(
+                "id" to "tool_error_${System.currentTimeMillis()}",
+                "type" to "tool_error",
+                "title" to "تعذر تنفيذ الأداة: $tool",
+                "status" to "failed",
+                "details" to message
+            ))
+        }
+    }
+
+    private fun createAgentFile(relativePath: String, content: String): Pair<String, String> {
+        require(relativePath.isNotBlank()) { "File path is required." }
+        require(!relativePath.startsWith("/") && !relativePath.startsWith("\\")) { "Absolute paths are not allowed." }
+        require(!relativePath.contains("\\") && relativePath.split("/").none { it.isBlank() || it == "." || it == ".." }) {
+            "Invalid relative path."
+        }
+        require(content.toByteArray(Charsets.UTF_8).size <= 1024 * 1024) { "File content exceeds the 1 MB limit." }
+        val allowed = setOf("dart", "md", "txt", "json", "yaml", "yml", "html", "css", "js", "kt", "java", "cpp", "h")
+        val name = relativePath.substringAfterLast("/")
+        require(name.substringAfterLast(".", "").lowercase() in allowed) { "File extension is not allowed." }
+
+        val root = File(filesDir, "agent_workspace").apply { mkdirs() }.canonicalFile
+        val target = File(root, relativePath)
+        val parent = target.parentFile ?: throw IllegalArgumentException("Invalid parent directory.")
+        parent.mkdirs()
+        val canonicalParent = parent.canonicalFile
+        require(canonicalParent.path == root.path || canonicalParent.path.startsWith(root.path + File.separator)) {
+            "File path escapes the agent workspace."
+        }
+        val canonicalTarget = File(canonicalParent, target.name)
+        require(!canonicalTarget.exists()) { "A file with this path already exists." }
+        require(canonicalTarget.canonicalPath == canonicalTarget.absolutePath) { "Symbolic links are not allowed." }
+        canonicalTarget.writeText(content, Charsets.UTF_8)
+        return Pair(root.toPath().relativize(canonicalTarget.toPath()).toString().replace(File.separator, "/"), name)
     }
 
     private fun emitAgentToken(token: String) {
