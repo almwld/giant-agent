@@ -61,7 +61,7 @@ class ReminderService {
       'reminder_time': time.millisecondsSinceEpoch,
       'is_completed': 0,
       'created_at': DateTime.now().millisecondsSinceEpoch,
-    }) ?? 0;
+    });
   }
   
   Future<List<Map<String, dynamic>>> getReminders() async {
@@ -77,7 +77,7 @@ class ReminderService {
       where: 'reminder_time > ? AND is_completed = 0',
       whereArgs: [now],
       orderBy: 'reminder_time ASC',
-    ) ?? [];
+    );
   }
   
   Future<void> completeReminder(int id) async {
