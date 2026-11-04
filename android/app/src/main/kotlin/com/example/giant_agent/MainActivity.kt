@@ -150,10 +150,15 @@ class MainActivity: FlutterActivity() {
                     val path = call.argument<String>("path").orEmpty()
                     val threads = (call.argument<Int>("threads") ?: 2).coerceIn(1, 8)
                     if (path.isBlank() || !File(path).isFile || !File(path).canRead()) result.success(false)
-                    else aiExecutor.execute {
-                        val ok = try { llamaBridge.nativeLoadModel(path, threads, null, 1.0f) }
-                        catch (t: Throwable) { android.util.Log.e("GiantLLM", "GGUF load failed", t); false }
-                        runOnUiThread { result.success(ok) }
+                    else {
+                        if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(Intent(this, AgentForegroundService::class.java))
+                        else startService(Intent(this, AgentForegroundService::class.java))
+                        aiExecutor.execute {
+                            val ok = try { llamaBridge.nativeLoadModel(path, threads, null, 1.0f) }
+                            catch (t: Throwable) { android.util.Log.e("GiantLLM", "GGUF load failed", t); false }
+                            if (!ok) stopService(Intent(this, AgentForegroundService::class.java))
+                            runOnUiThread { result.success(ok) }
+                        }
                     }
                 }
                 "generate" -> {
