@@ -154,8 +154,8 @@ class MainActivity: FlutterActivity() {
 
     private fun resolveAgentFile(relativePath: String): File {
         require(relativePath.isNotBlank()) { "File path is required." }
-        require(!relativePath.startsWith("/") && !relativePath.startsWith("\\\\")) { "Absolute paths are not allowed." }
-        require(!relativePath.contains("\\\\") && relativePath.split("/").none { it.isBlank() || it == "." || it == ".." }) {
+        require(!relativePath.startsWith("/") && !relativePath.startsWith("\\")) { "Absolute paths are not allowed." }
+        require(!relativePath.contains("\\") && relativePath.split("/").none { it.isBlank() || it == "." || it == ".." }) {
             "Invalid relative path."
         }
         val allowed = setOf("dart", "md", "txt", "json", "yaml", "yml", "html", "css", "js", "kt", "java", "cpp", "h")
