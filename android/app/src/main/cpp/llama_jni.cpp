@@ -210,8 +210,23 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerateStreaming(JNIEnv * env, jobject, j
     }
 
     jobject callbackRef = callback ? env->NewGlobalRef(callback) : nullptr;
-    jclass callbackClass = callbackRef ? env->GetObjectClass(callbackRef) : nullptr;
-    jmethodID onToken = callbackClass ? env->GetMethodID(callbackClass, "onToken", "(Ljava/lang/String;)V") : nullptr;
+    // Resolve the method from a stable, named Java interface rather than a
+    // Kotlin anonymous class (whose generated name/members are compiler-specific).
+    jclass callbackClass = env->FindClass("com/example/giant_agent/TokenCallback");
+    if (!callbackClass || env->ExceptionCheck()) {
+        if (env->ExceptionCheck()) env->ExceptionClear();
+        if (callbackRef) env->DeleteGlobalRef(callbackRef);
+        LOGE("Unable to resolve TokenCallback JNI interface");
+        return env->NewStringUTF("ERROR: Token streaming callback interface is unavailable.");
+    }
+    jmethodID onToken = env->GetMethodID(callbackClass, "onToken", "(Ljava/lang/String;)V");
+    if (!onToken || env->ExceptionCheck()) {
+        if (env->ExceptionCheck()) env->ExceptionClear();
+        env->DeleteLocalRef(callbackClass);
+        if (callbackRef) env->DeleteGlobalRef(callbackRef);
+        LOGE("TokenCallback.onToken(String) JNI method was not found");
+        return env->NewStringUTF("ERROR: Token streaming callback method is unavailable.");
+    }
 
     std::string output;
     std::string pendingUtf8;
