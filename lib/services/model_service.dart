@@ -61,6 +61,25 @@ class ModelService {
     return result;
   }
 
+  Future<List<String>> listWorkspaceFiles() async {
+    final result = await _agentTools.invokeMapMethod<String, dynamic>('listWorkspaceFiles');
+    if (result == null || result['ok'] != true) {
+      throw PlatformException(code: 'WORKSPACE_LIST_FAILED', message: 'Unable to list workspace files.');
+    }
+    return (result['files'] as List<dynamic>? ?? const []).map((item) => item.toString()).toList();
+  }
+
+  Future<Map<String, dynamic>> writeFile({required String path, required String content}) async {
+    final result = await _agentTools.invokeMapMethod<String, dynamic>('writeFile', {
+      'path': path,
+      'content': content,
+    });
+    if (result == null || result['ok'] != true) {
+      throw PlatformException(code: 'WRITE_FILE_FAILED', message: 'Unable to update workspace file.');
+    }
+    return result;
+  }
+
   Future<Map<String, dynamic>> readFile({required String path}) async {
     final result = await _agentTools.invokeMapMethod<String, dynamic>('readFile', {'path': path});
     if (result == null || result['ok'] != true) {
