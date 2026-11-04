@@ -58,18 +58,22 @@ class MainActivity: FlutterActivity() {
                 "createFile" -> {
                     val relativePath = call.argument<String>("path").orEmpty()
                     val content = call.argument<String>("content").orEmpty()
+                    val eventId = "tool_${System.nanoTime()}"
+                    emitAgentToolStart(eventId, "create_file", relativePath)
                     try {
                         val created = createAgentFile(relativePath, content)
-                        emitAgentFileCreated(created.first, content)
+                        emitAgentFileCreated(created.first, content, eventId)
                         result.success(mapOf("ok" to true, "path" to created.first, "name" to created.second))
                     } catch (t: Throwable) {
-                        emitAgentToolError("create_file", t.message ?: "File creation failed")
+                        emitAgentToolError("create_file", t.message ?: "File creation failed", eventId)
                         result.error("CREATE_FILE_FAILED", t.message ?: "File creation failed", null)
                     }
                 }
                 "writeFile" -> {
                     val relativePath = call.argument<String>("path").orEmpty()
                     val content = call.argument<String>("content").orEmpty()
+                    val eventId = "tool_${System.nanoTime()}"
+                    emitAgentToolStart(eventId, "write_file", relativePath)
                     try {
                         require(content.toByteArray(Charsets.UTF_8).size <= 1024 * 1024) {
                             "File content exceeds the 1 MB limit."
@@ -77,24 +81,26 @@ class MainActivity: FlutterActivity() {
                         val file = resolveAgentFile(relativePath)
                         require(file.isFile) { "Only existing workspace files can be edited." }
                         file.writeText(content, Charsets.UTF_8)
-                        emitAgentFileUpdated(relativePath, content)
+                        emitAgentFileUpdated(relativePath, content, eventId)
                         result.success(mapOf("ok" to true, "path" to relativePath))
                     } catch (t: Throwable) {
-                        emitAgentToolError("write_file", t.message ?: "File update failed")
+                        emitAgentToolError("write_file", t.message ?: "File update failed", eventId)
                         result.error("WRITE_FILE_FAILED", t.message ?: "File update failed", null)
                     }
                 }
                 "readFile" -> {
                     val relativePath = call.argument<String>("path").orEmpty()
+                    val eventId = "tool_${System.nanoTime()}"
+                    emitAgentToolStart(eventId, "read_file", relativePath)
                     try {
                         val file = resolveAgentFile(relativePath)
                         require(file.isFile && file.canRead()) { "File does not exist or cannot be read." }
                         require(file.length() <= 1024 * 1024) { "File exceeds the 1 MB read limit." }
                         val content = file.readText(Charsets.UTF_8)
-                        emitAgentFileRead(relativePath, content)
+                        emitAgentFileRead(relativePath, content, eventId)
                         result.success(mapOf("ok" to true, "path" to relativePath, "content" to content))
                     } catch (t: Throwable) {
-                        emitAgentToolError("read_file", t.message ?: "File read failed")
+                        emitAgentToolError("read_file", t.message ?: "File read failed", eventId)
                         result.error("READ_FILE_FAILED", t.message ?: "File read failed", null)
                     }
                 }
@@ -279,11 +285,12 @@ class MainActivity: FlutterActivity() {
         return canonical
     }
 
-    private fun emitAgentFileUpdated(relativePath: String, content: String) {
+    private fun emitAgentFileUpdated(relativePath: String, content: String, eventId: String) {
         runOnUiThread {
             agentEventSink?.success(mapOf(
-                "id" to "file_updated_${System.currentTimeMillis()}",
+                "id" to eventId,
                 "type" to "file_updated",
+                "tool_name" to "write_file",
                 "title" to "File updated",
                 "file_name" to relativePath,
                 "content" to content,
@@ -292,11 +299,12 @@ class MainActivity: FlutterActivity() {
         }
     }
 
-    private fun emitAgentFileRead(relativePath: String, content: String) {
+    private fun emitAgentFileRead(relativePath: String, content: String, eventId: String) {
         runOnUiThread {
             agentEventSink?.success(mapOf(
-                "id" to "file_read_${System.currentTimeMillis()}",
+                "id" to eventId,
                 "type" to "file_read",
+                "tool_name" to "read_file",
                 "title" to "File read",
                 "subtitle" to "تمت قراءة الملف من مساحة العمل",
                 "file_name" to relativePath,
@@ -306,11 +314,12 @@ class MainActivity: FlutterActivity() {
         }
     }
 
-    private fun emitAgentFileCreated(relativePath: String, content: String) {
+    private fun emitAgentFileCreated(relativePath: String, content: String, eventId: String) {
         runOnUiThread {
             agentEventSink?.success(mapOf(
-                "id" to "file_${System.currentTimeMillis()}",
+                "id" to eventId,
                 "type" to "file_created",
+                "tool_name" to "create_file",
                 "title" to "File created",
                 "subtitle" to "تم إنشاء الملف داخل مساحة العمل الآمنة",
                 "file_name" to relativePath,
@@ -320,11 +329,25 @@ class MainActivity: FlutterActivity() {
         }
     }
 
-    private fun emitAgentToolError(tool: String, message: String) {
+    private fun emitAgentToolStart(eventId: String, tool: String, target: String) {
         runOnUiThread {
             agentEventSink?.success(mapOf(
-                "id" to "tool_error_${System.currentTimeMillis()}",
+                "id" to eventId,
+                "type" to "tool_start",
+                "tool_name" to tool,
+                "title" to "بدء تنفيذ $tool",
+                "subtitle" to target,
+                "status" to "running"
+            ))
+        }
+    }
+
+    private fun emitAgentToolError(tool: String, message: String, eventId: String? = null) {
+        runOnUiThread {
+            agentEventSink?.success(mapOf(
+                "id" to eventId ?: "tool_error_${System.currentTimeMillis()}",
                 "type" to "tool_error",
+                "tool_name" to tool,
                 "title" to "تعذر تنفيذ الأداة: $tool",
                 "status" to "failed",
                 "details" to message
