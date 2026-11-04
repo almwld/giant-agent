@@ -147,8 +147,19 @@ class ModelService {
     return response;
   }
 
+  static const int _maxPromptCharacters = 9000;
+
+  String _boundPrompt(String prompt) {
+    if (prompt.length <= _maxPromptCharacters) return prompt;
+    const headLength = 1800;
+    const tailLength = _maxPromptCharacters - headLength;
+    return '${prompt.substring(0, headLength)}\n\n[تم اختصار السياق الأقدم لتجنب تجاوز نافذة النموذج]\n\n'
+        '${prompt.substring(prompt.length - tailLength)}';
+  }
+
   Future<String> _processInput(String input) async {
     _cancelRequested = false;
+    input = _boundPrompt(input);
     if (!hasActiveModel()) return '⚠️ استورد نموذج GGUF واختره أولاً.';
     final history = StringBuffer('''أنت Giant Agent، مساعد محلي يعمل دون اتصال. أجب بلغة المستخدم.
 أدواتك:
@@ -173,7 +184,7 @@ class ModelService {
 المساعد:''');
     try {
       final executedCalls = <String>{};
-      const maxToolCalls = 10;
+      const maxToolCalls = 16;
       for (var step = 0; step < maxToolCalls; step++) {
         if (_cancelRequested) return 'تم إيقاف تنفيذ الوكيل بناءً على طلب المستخدم.';
         final generated = await _llama.generate(history.toString(), maxTokens: 768, temperature: .25);
