@@ -6,14 +6,12 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.EventChannel
-import com.zion.os.ai.LlamaBridge
 import android.app.Activity
 import android.provider.OpenableColumns
 import java.io.File
 import java.io.FileOutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
-import java.util.concurrent.Executors
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
 
@@ -23,8 +21,8 @@ class MainActivity: FlutterActivity() {
     private val AGENT_EVENTS_CHANNEL = "giant_agent_stream"
     private val AGENT_TOOLS_CHANNEL = "giant_agent/tools"
     @Volatile private var agentEventSink: EventChannel.EventSink? = null
-    private val aiExecutor = Executors.newSingleThreadExecutor()
-    private val llamaBridge = LlamaBridge()
+    private val aiExecutor = AgentRuntime.aiExecutor
+    private val llamaBridge = AgentRuntime.llamaBridge
     private var pendingModelResult: MethodChannel.Result? = null
     companion object { private const val REQUEST_OPEN_MODEL = 7402 }
     
