@@ -153,9 +153,9 @@ class MainActivity: FlutterActivity() {
                             val payload = mapOf(
                                 "ok" to true,
                                 "text" to (parsed.get("text")?.toString() ?: ""),
-                                "characters_extracted" to (parsed.get("characters_extracted")?.toInt() ?: 0),
-                                "truncated" to (parsed.get("truncated")?.toBoolean() ?: false),
-                                "file_size" to (parsed.get("file_size")?.toInt() ?: 0),
+                                "characters_extracted" to (parsed.get("characters_extracted")?.toString()?.toIntOrNull() ?: 0),
+                                "truncated" to (parsed.get("truncated")?.toString()?.toBoolean() ?: false),
+                                "file_size" to (parsed.get("file_size")?.toString()?.toIntOrNull() ?: 0),
                                 "format" to (parsed.get("format")?.toString() ?: "")
                             )
                             runOnUiThread { result.success(payload) }
