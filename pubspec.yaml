@@ -1,5 +1,5 @@
 name: giant_agent_x
-description: AI Agent with TFLite Models
+description: Local-first AI agent powered by a shared GGUF runtime
 version: 6.0.0+1
 
 environment:
@@ -18,6 +18,7 @@ dependencies:
   cross_file: ^0.3.3+2
   sqflite: ^2.3.0
   shared_preferences: ^2.2.0
+  flutter_secure_storage: ^9.0.0
   xterm: ^3.5.0
   webview_flutter: ^4.5.0
 
