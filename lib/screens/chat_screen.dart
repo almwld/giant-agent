@@ -6,6 +6,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path_provider/path_provider.dart';
 import '../services/model_service.dart';
+import '../services/file_upload_service.dart';
+import '../services/image_recognition_service.dart';
 import 'agent_workspace_screen.dart';
 import 'agent_workflow_screen.dart';
 import 'package:flutter/services.dart';
@@ -657,22 +659,33 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _pickFile() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles();
-    if (result != null && mounted) {
-      final file = File(result.files.single.path!);
-      final content = await file.readAsString();
-      
+    try {
+      final file = await FileUploadService.instance.pickFile();
+      if (file == null || !mounted) return;
+      final analysis = await FileUploadService.instance.processFile(file);
+      final document = await file.readAsString();
+      final boundedDocument = document.length > 40000
+          ? '${document.substring(0, 40000)}\\n[تم اقتطاع بقية الملف لحماية نافذة السياق]'
+          : document;
+      final attachmentMessage = 'ملف مرفق: ${analysis['filename']}\\n'
+          'النوع: ${analysis['extension']} • الحجم: ${analysis['size_bytes']} بايت\\n'
+          'البيانات الأولية: ${jsonEncode(analysis)}';
       setState(() {
         _messages.add({
           'isUser': true,
-          'content': 'ملف: ${result.files.single.name}\n${content.length > 500 ? content.substring(0, 500) + '...' : content}',
+          'content': attachmentMessage,
           'time': DateTime.now(),
         });
         _isLoading = true;
       });
-      
-      final response = await _generateWithStages('تحليل الملف: $content');
-      
+      await _saveMessage(attachmentMessage, true);
+      final response = await _generateWithStages(
+        'حلّل محتوى الملف المرفق اعتماداً على النص الفعلي التالي. '
+        'اذكر حدود التحليل ولا تخترع بيانات غير موجودة.\\n'
+        'تحليل الملف: ${jsonEncode(analysis)}\\n'
+        'محتوى الملف:\\n$boundedDocument',
+      );
+      if (!mounted) return;
       setState(() {
         _messages.add({
           'isUser': false,
@@ -681,34 +694,45 @@ class _ChatScreenState extends State<ChatScreen> {
         });
         _isLoading = false;
       });
+      await _saveMessage(response, false);
+    } catch (error) {
+      if (!mounted) return;
+      final message = 'تعذر استيراد الملف أو تحليله: $error';
+      setState(() {
+        _messages.add({'isUser': false, 'content': message, 'time': DateTime.now()});
+        _isLoading = false;
+      });
+      await _saveMessage(message, false);
     }
   }
 
   Future<void> _pickImage() async {
-    final ImagePicker picker = ImagePicker();
-    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
-    
-    if (image != null && mounted) {
-      setState(() {
-        _messages.add({
-          'isUser': true,
-          'content': 'صورة: ${image.name}',
-          'time': DateTime.now(),
-        });
-        _isLoading = true;
+    final picker = ImagePicker();
+    final image = await picker.pickImage(source: ImageSource.gallery);
+    if (image == null || !mounted) return;
+    setState(() {
+      _messages.add({
+        'isUser': true,
+        'content': 'صورة مرفقة: ${image.name}',
+        'time': DateTime.now(),
       });
-      
-      final response = await _generateWithStages('تحليل الصورة: ${image.name}');
-      
-      setState(() {
-        _messages.add({
-          'isUser': false,
-          'content': response,
-          'time': DateTime.now(),
-        });
-        _isLoading = false;
-      });
+      _isLoading = true;
+    });
+    await _saveMessage('صورة مرفقة: ${image.name}', true);
+    String response;
+    try {
+      // The current bundled GGUF model is text-only. Report this capability
+      // boundary honestly instead of asking it to guess from a filename.
+      response = await ImageRecognitionService.analyzeImage(File(image.path));
+    } catch (error) {
+      response = 'تعذر استقبال الصورة: $error';
     }
+    if (!mounted) return;
+    setState(() {
+      _messages.add({'isUser': false, 'content': response, 'time': DateTime.now()});
+      _isLoading = false;
+    });
+    await _saveMessage(response, false);
   }
 
   void _newConversation() => _createNewSession();
