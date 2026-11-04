@@ -14,6 +14,9 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "file_receiver"
@@ -108,6 +111,33 @@ class MainActivity: FlutterActivity() {
                     } catch (t: Throwable) {
                         emitAgentToolError("read_file", t.message ?: "File read failed", eventId)
                         result.error("READ_FILE_FAILED", t.message ?: "File read failed", null)
+                    }
+                }
+                "recognizeText" -> {
+                    val imagePath = call.argument<String>("path").orEmpty()
+                    try {
+                        val imageFile = File(imagePath)
+                        require(imageFile.isFile && imageFile.length() in 1..(12L * 1024L * 1024L)) {
+                            "Image must exist and be no larger than 12 MB."
+                        }
+                        val input = InputImage.fromFilePath(this, Uri.fromFile(imageFile))
+                        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+                        recognizer.process(input)
+                            .addOnSuccessListener { visionText ->
+                                recognizer.close()
+                                result.success(mapOf(
+                                    "ok" to true,
+                                    "text" to visionText.text,
+                                    "blocks" to visionText.textBlocks.size,
+                                    "engine" to "Google ML Kit Text Recognition (Latin script)"
+                                ))
+                            }
+                            .addOnFailureListener { error ->
+                                recognizer.close()
+                                result.success(mapOf("ok" to false, "error" to (error.message ?: "OCR failed")))
+                            }
+                    } catch (t: Throwable) {
+                        result.success(mapOf("ok" to false, "error" to (t.message ?: "Unable to read image")))
                     }
                 }
                 "extractDocument" -> {
