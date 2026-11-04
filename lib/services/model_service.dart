@@ -155,13 +155,20 @@ class ModelService {
 
 المساعد:''');
     try {
-      for (var step = 0; step < 4; step++) {
+      final executedCalls = <String>{};
+      const maxToolCalls = 10;
+      for (var step = 0; step < maxToolCalls; step++) {
+        if (_cancelRequested) return 'تم إيقاف تنفيذ الوكيل بناءً على طلب المستخدم.';
         final generated = await _llama.generate(history.toString(), maxTokens: 768, temperature: .25);
         if (_cancelRequested) return generated.trim().isEmpty ? 'تم إيقاف التوليد.' : '${generated.trim()}\n\n[تم إيقاف التوليد]';
         final match = RegExp(r'<tool_call>\s*(\{.*?\})\s*</tool_call>', dotAll: true).firstMatch(generated);
         if (match == null) return generated.trim();
         try {
           final payload = jsonDecode(match.group(1)!) as Map<String, dynamic>;
+          final signature = jsonEncode(payload);
+          if (!executedCalls.add(signature)) {
+            return 'أوقف الوكيل تكرار استدعاء الأداة نفسه دون تقدم. راجع النتيجة السابقة وحدد خطوة مختلفة.';
+          }
           final result = await _executeTool(payload);
           if (_cancelRequested) return 'تم إيقاف الوكيل بعد اكتمال الأداة الحالية.';
           final toolName = payload['name'];
@@ -185,7 +192,7 @@ class ModelService {
           return 'تعذر تحليل استدعاء الأداة أو تنفيذه: $e';
         }
       }
-      return 'توقفت دورة الأدوات بعد بلوغ الحد الآمن (4 خطوات). أعد الطلب لتكملة العمل.';
+      return 'وصل الوكيل إلى الحد الآمن ($maxToolCalls استدعاءات أدوات) دون إنهاء المهمة. أعد الطلب لمتابعة العمل من سياق المحادثة.';
     } catch (e) {
       return 'تعذر تشغيل النموذج المحلي: $e';
     }
