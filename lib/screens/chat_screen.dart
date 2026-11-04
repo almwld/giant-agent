@@ -9,6 +9,8 @@ import '../services/model_service.dart';
 import 'agent_workspace_screen.dart';
 import 'package:flutter/services.dart';
 import 'package:xterm/xterm.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:cross_file/cross_file.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -218,6 +220,41 @@ class _ChatScreenState extends State<ChatScreen> {
     } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('❌ فشل استيراد النموذج')),
+      );
+    }
+  }
+
+  Future<void> _cancelAgent() async {
+    try {
+      final stopped = await _modelService.cancelGeneration();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(stopped
+            ? 'تم إرسال طلب إيقاف التوليد.'
+            : 'تم تسجيل طلب الإيقاف؛ ستتوقف دورة الوكيل بعد الأداة الحالية.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذر إيقاف التوليد: $e')),
+      );
+    }
+  }
+
+  Future<void> _exportWorkspace() async {
+    try {
+      final exported = await _modelService.exportWorkspace();
+      final path = exported['path']?.toString();
+      if (path == null || path.isEmpty) throw Exception('لم يتم إنشاء ملف ZIP.');
+      await Share.shareXFiles(
+        [XFile(path, mimeType: 'application/zip')],
+        text: 'مشروع مساحة عمل Giant Agent',
+        subject: 'Giant Agent Workspace',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('فشل تصدير مساحة العمل: $e')),
       );
     }
   }
@@ -481,6 +518,17 @@ class _ChatScreenState extends State<ChatScreen> {
         title: const Text('Giant Agent X'),
         centerTitle: true,
         actions: [
+          if (_isLoading)
+            IconButton(
+              icon: const Icon(Icons.stop_circle_outlined, color: Colors.redAccent),
+              tooltip: 'إيقاف الوكيل',
+              onPressed: _cancelAgent,
+            ),
+          IconButton(
+            icon: const Icon(Icons.archive_outlined),
+            tooltip: 'تصدير مساحة العمل ZIP',
+            onPressed: _exportWorkspace,
+          ),
           IconButton(
             icon: const Icon(Icons.terminal),
             tooltip: 'Python Terminal',
