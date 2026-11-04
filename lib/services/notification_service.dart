@@ -1,13 +1,19 @@
 import 'package:flutter/services.dart';
+import 'package:permission_handler/permission_handler.dart';
 
-/// Optional platform notification bridge. Unsupported devices fail closed:
-/// callers receive false and must not mark an alert as delivered.
+/// Local notification bridge. Permission is requested only on Android 13+;
+/// unsupported platforms fail closed instead of pretending delivery worked.
 class NotificationService {
   static const MethodChannel _channel =
       MethodChannel('giant_agent/notifications');
 
   static Future<bool> init() async {
     try {
+      final status = await Permission.notification.status;
+      if (!status.isGranted) {
+        final requested = await Permission.notification.request();
+        if (!requested.isGranted) return false;
+      }
       return await _channel.invokeMethod<bool>('initialize') ?? false;
     } catch (_) {
       return false;
