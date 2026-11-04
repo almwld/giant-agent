@@ -425,7 +425,8 @@ class MainActivity: FlutterActivity() {
             destinationDir.listFiles()?.filter { it.isFile && now - it.lastModified() > 24L * 60 * 60 * 1000 }?.forEach { it.delete() }
             val destination = File(destinationDir, "${System.nanoTime()}_$safeName")
             partialCopy = destination
-            val input = contentResolver.openInputStream(source) ?: return null
+            val input = contentResolver.openInputStream(source)
+                ?: throw java.io.IOException("Unable to open the shared content URI.")
             input.use { stream ->
                 FileOutputStream(destination).use { output ->
                     val buffer = ByteArray(64 * 1024)
