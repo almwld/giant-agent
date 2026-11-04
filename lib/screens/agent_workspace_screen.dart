@@ -40,7 +40,7 @@ class _AgentWorkspaceScreenState extends State<AgentWorkspaceScreen> {
         },
       ));
     AgentWorkspaceScreen.fileChanges.addListener(_onFileChanged);
-    _refreshFiles();
+    _refreshFiles(selectPath: AgentWorkspaceScreen.fileChanges.value);
   }
 
   @override
