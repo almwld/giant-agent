@@ -726,6 +726,20 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
+  PopupMenuItem<String> _menuItem(String value, IconData icon, String label) {
+    return PopupMenuItem<String>(
+      value: value,
+      height: 46,
+      child: Row(
+        children: [
+          Icon(icon, size: 19, color: const Color(0xFFB7C4C2)),
+          const SizedBox(width: 12),
+          Text(label, style: const TextStyle(color: Colors.white, fontSize: 13)),
+        ],
+      ),
+    );
+  }
+
   IconData _agentStepIcon(String type) {
     switch (type) {
       case 'code':
@@ -955,38 +969,53 @@ class _ChatScreenState extends State<ChatScreen> {
               tooltip: 'إيقاف الوكيل',
               onPressed: _cancelAgent,
             ),
-          IconButton(
-            icon: const Icon(Icons.archive_outlined),
-            tooltip: 'تصدير مساحة العمل ZIP',
-            onPressed: _exportWorkspace,
-          ),
-          IconButton(
-            icon: const Icon(Icons.terminal),
-            tooltip: 'Python Terminal',
-            onPressed: _showTerminal,
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _refreshModels,
-            tooltip: 'تحديث',
-          ),
-          IconButton(
-            icon: const Icon(Icons.delete_outline),
-            onPressed: _newConversation,
-            tooltip: 'جديد',
-          ),
-          IconButton(
-            icon: const Icon(Icons.history),
-            onPressed: _clearHistory,
-            tooltip: 'مسح المحادثات',
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+          PopupMenuButton<String>(
+            tooltip: 'القائمة',
+            icon: const Icon(Icons.more_vert, color: Colors.white),
+            color: const Color(0xFF242424),
+            elevation: 10,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: const BorderSide(color: Colors.white12),
             ),
-            tooltip: 'الإعدادات',
+            offset: const Offset(0, 8),
+            constraints: const BoxConstraints(minWidth: 220),
+            onSelected: (value) {
+              switch (value) {
+                case 'new':
+                  _newConversation();
+                  break;
+                case 'terminal':
+                  _showTerminal();
+                  break;
+                case 'export':
+                  _exportWorkspace();
+                  break;
+                case 'refresh':
+                  _refreshModels();
+                  break;
+                case 'history':
+                  _clearHistory();
+                  break;
+                case 'settings':
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                  );
+                  break;
+              }
+            },
+            itemBuilder: (context) => [
+              _menuItem('new', Icons.add_comment_outlined, 'محادثة جديدة'),
+              _menuItem('terminal', Icons.terminal, 'طرفية Python'),
+              _menuItem('export', Icons.archive_outlined, 'تصدير مساحة العمل'),
+              const PopupMenuDivider(height: 8),
+              _menuItem('refresh', Icons.refresh, 'تحديث النماذج'),
+              _menuItem('history', Icons.history, 'مسح سجل المحادثات'),
+              const PopupMenuDivider(height: 8),
+              _menuItem('settings', Icons.settings_outlined, 'الإعدادات'),
+            ],
           ),
+          const SizedBox(width: 6),
         ],
       ),
       drawer: Drawer(
@@ -1140,7 +1169,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   child: Text(
                     _modelService.hasActiveModel() 
                         ? 'النموذج: ${_modelService.getActiveModelName()}' 
-                        : '⚠️ لا يوجد نموذج - اضغط ☰ ← استيراد نموذج',
+                        : 'لا يوجد نموذج — افتح القائمة ثم اختر استيراد نموذج',
                     style: TextStyle(
                       fontSize: 13,
                       color: _modelService.hasActiveModel() ? Colors.green.shade200 : Colors.orange.shade200,
