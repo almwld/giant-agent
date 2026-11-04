@@ -361,7 +361,9 @@ class _ChatScreenState extends State<ChatScreen> {
       case 'file':
       case 'file_created': return Icons.insert_drive_file_outlined;
       case 'terminal':
-      case 'terminal_run': return Icons.terminal;
+      case 'terminal_run':
+      case 'tool_start':
+      case 'tool_output': return Icons.terminal;
       case 'todo': return Icons.checklist;
       case 'thought': return Icons.psychology_alt_outlined;
       case 'tool_error': return Icons.error_outline;
