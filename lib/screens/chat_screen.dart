@@ -62,6 +62,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     final id = step['id']?.toString() ?? '';
     if (id.isEmpty) return;
+    _saveAgentEvent(step);
     setState(() {
       final index = _agentSteps.indexWhere((item) => item['id'] == id);
       if (index >= 0) { _agentSteps[index] = step; } else { _agentSteps.add(step); }
@@ -242,11 +243,17 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _saveMessage(String content, bool isUser) async {
+    if (!_sessionReady || _currentSessionId.isEmpty) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
     await _db?.insert('messages', {
+      'session_id': _currentSessionId,
       'content': content,
       'isUser': isUser ? 1 : 0,
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
+      'timestamp': now,
     });
+    await _db?.update('sessions', {'updated_at': now},
+      where: 'id = ?', whereArgs: [_currentSessionId]);
+    await _loadSessions();
   }
 
   Future<void> _clearHistory() async {
@@ -259,8 +266,9 @@ class _ChatScreenState extends State<ChatScreen> {
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
           TextButton(
             onPressed: () async {
-              await _db?.delete('messages');
-              setState(() => _messages.clear());
+              await _db?.delete('messages', where: 'session_id = ?', whereArgs: [_currentSessionId]);
+              await _db?.delete('agent_events', where: 'session_id = ?', whereArgs: [_currentSessionId]);
+              setState(() { _messages.clear(); _agentSteps.clear(); });
               Navigator.pop(ctx);
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('تم مسح المحادثات')),
@@ -375,10 +383,13 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _resumePendingTask() async {
     final prefs = await SharedPreferences.getInstance();
     final pending = prefs.getString('giant_pending_task');
+    final pendingSession = prefs.getString('giant_pending_session_id');
+    if (pendingSession != null && pendingSession != _currentSessionId) return;
     if (pending == null || pending.trim().isEmpty || !mounted) return;
     setState(() => _isLoading = true);
     final response = await _generateWithStages(pending);
-    await prefs.remove('giant_pending_task');\n    await prefs.remove('giant_pending_session_id');
+    await prefs.remove('giant_pending_task');
+    await prefs.remove('giant_pending_session_id');\n    await prefs.remove('giant_pending_session_id');
     if (!mounted) return;
     setState(() {
       _streamingResponse = '';
@@ -410,7 +421,8 @@ class _ChatScreenState extends State<ChatScreen> {
       await _loadSessions();
     }
     final taskPrefs = await SharedPreferences.getInstance();
-    await taskPrefs.setString('giant_pending_task', text);\n    await taskPrefs.setString('giant_pending_session_id', _currentSessionId);
+    await taskPrefs.setString('giant_pending_task', text);
+    await taskPrefs.setString('giant_pending_session_id', _currentSessionId);
     _scrollToBottom();
 
     final response = await _generateWithStages(text);
