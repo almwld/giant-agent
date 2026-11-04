@@ -719,7 +719,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       maxWidth: MediaQuery.of(context).size.width * 0.8,
                     ),
                     decoration: BoxDecoration(
-                      color: isUser ? Colors.deepPurple : Colors.grey.shade200,
+                      color: isUser ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.surfaceVariant,
                       borderRadius: BorderRadius.only(
                         topLeft: const Radius.circular(16),
                         topRight: const Radius.circular(16),
@@ -733,7 +733,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         SelectableText(
                           msg['content'],
                           style: TextStyle(
-                            color: isUser ? Colors.white : Colors.black87,
+                            color: isUser ? Theme.of(context).colorScheme.onPrimary : Theme.of(context).colorScheme.onSurface,
                             fontSize: 14,
                           ),
                         ),
@@ -742,7 +742,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           '${(msg['time'] as DateTime).hour.toString().padLeft(2, '0')}:${(msg['time'] as DateTime).minute.toString().padLeft(2, '0')}',
                           style: TextStyle(
                             fontSize: 10,
-                            color: isUser ? Colors.white70 : Colors.grey.shade600,
+                            color: isUser ? Theme.of(context).colorScheme.onPrimary.withOpacity(.72) : Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
                         ),
                       ],
@@ -817,7 +817,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         borderSide: BorderSide.none,
                       ),
                       filled: true,
-                      fillColor: Colors.grey.shade100,
+                      fillColor: Theme.of(context).colorScheme.surfaceVariant,
                       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                     ),
                     onSubmitted: (_) => _sendMessage(),
@@ -832,7 +832,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       color: Colors.deepPurple,
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.send, color: Colors.white, size: 20),
+                    child: Icon(Icons.send, color: Theme.of(context).colorScheme.onPrimary, size: 20),
                   ),
                 ),
               ],
