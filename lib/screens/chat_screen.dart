@@ -7,6 +7,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path_provider/path_provider.dart';
 import '../services/model_service.dart';
 import '../services/file_upload_service.dart';
+import '../services/agent_memory_service.dart';
 import '../services/image_recognition_service.dart';
 import 'agent_workspace_screen.dart';
 import 'agent_workflow_screen.dart';
@@ -363,6 +364,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (_isLoading) return;
     await _db?.delete('messages', where: 'session_id = ?', whereArgs: [session.id]);
     await _db?.delete('agent_events', where: 'session_id = ?', whereArgs: [session.id]);
+    await AgentMemoryService.instance.deleteConversationMemory(session.id);
     await _db?.delete('sessions', where: 'id = ?', whereArgs: [session.id]);
     if (session.id == _currentSessionId) {
       final remaining = await _db?.query('sessions', orderBy: 'updated_at DESC', limit: 1);
@@ -410,6 +412,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (confirmed != true) return;
     await _db?.delete('messages');
     await _db?.delete('agent_events');
+    await AgentMemoryService.instance.clearConversationMemory();
     await _db?.delete('sessions');
     await _createNewSession();
   }
@@ -426,6 +429,7 @@ class _ChatScreenState extends State<ChatScreen> {
             onPressed: () async {
               await _db?.delete('messages', where: 'session_id = ?', whereArgs: [_currentSessionId]);
               await _db?.delete('agent_events', where: 'session_id = ?', whereArgs: [_currentSessionId]);
+              await AgentMemoryService.instance.deleteConversationMemory(_currentSessionId);
               setState(() { _messages.clear(); _agentSteps.clear(); });
               AgentWorkflowScreen.publish(_agentSteps);
               Navigator.pop(ctx);
