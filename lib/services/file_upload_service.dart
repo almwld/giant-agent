@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
@@ -20,8 +21,10 @@ class FileUploadService {
     'txt', 'md', 'json', 'csv', 'log', 'xml', 'yaml', 'yml',
     'html', 'htm', 'css', 'js', 'ts', 'dart', 'py', 'java',
     'kt', 'kts', 'c', 'h', 'cpp', 'hpp', 'sql', 'sh',
-    'gradle', 'properties', 'toml', 'ini', 'env',
+    'gradle', 'properties', 'toml', 'ini', 'env', 'pdf', 'docx', 'xlsx',
   };
+
+  static const MethodChannel _documentChannel = MethodChannel('giant_agent/tools');
 
   Database? _database;
   Future<void>? _opening;
@@ -111,8 +114,27 @@ class FileUploadService {
       );
     }
 
-    var content = await file.readAsString(encoding: utf8);
-    if (content.startsWith('\uFEFF')) content = content.substring(1);
+    String content;
+    final isBinaryDocument = {'pdf', 'docx', 'xlsx'}.contains(extension);
+    Map<String, dynamic> documentMetadata = {};
+    if (isBinaryDocument) {
+      final parsed = await _documentChannel.invokeMapMethod<String, dynamic>(
+        'extractDocument',
+        {'path': file.path},
+      );
+      if (parsed == null || parsed['ok'] != true) {
+        throw FormatException(parsed?['error']?.toString() ?? 'Document extraction failed.');
+      }
+      content = parsed['text']?.toString() ?? '';
+      documentMetadata = {
+        'characters_extracted': parsed['characters_extracted'],
+        'truncated': parsed['truncated'],
+        'format': parsed['format'],
+      };
+    } else {
+      content = await file.readAsString(encoding: utf8);
+      if (content.startsWith('\\uFEFF')) content = content.substring(1);
+    }
 
     final lines = content.isEmpty ? const <String>[] : const LineSplitter().convert(content);
     final analysis = <String, dynamic>{
@@ -126,6 +148,7 @@ class FileUploadService {
       'lines': lines.length,
       'processed_at': DateTime.now().toUtc().toIso8601String(),
       'content_truncated': content.length > maxStoredContentChars,
+      ...documentMetadata,
     };
 
     if (extension == 'json') {
@@ -166,6 +189,7 @@ class FileUploadService {
       ...analysis,
       'id': id,
       'stored_characters': stored.length,
+      'extracted_text': stored,
     };
   }
 
