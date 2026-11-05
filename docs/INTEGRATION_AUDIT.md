@@ -29,7 +29,7 @@ The Flutter `ModelService` and the kernel/service facades use a factory singleto
 |---|---|---|
 | Agent Core | `AgentService` facade and singleton `AgentKernel` | Connected to ChatScreen; request admission prevents overlapping kernel requests. |
 | Reasoning / Planning | `PlannerService` selects fixed step templates using keyword rules | Connected, but not yet adaptive reasoning or dynamic plan revision. |
-| Tool execution | `ModelService._executeTool` dispatches create/read/write file and Python calls | Runtime-backed and bounded. `ToolManager` contains a second registry but is not the dispatch path; consolidate before expanding tools. |
+| Tool execution | `ToolManager` is now the canonical model-facing catalogue and runtime allow-list; `ModelService._executeTool` performs the platform dispatch for create/read/write file and Python calls | Registry and dispatch are connected; add handler-level contract tests before expanding tools. |
 | Workflow / Timeline | Kernel lifecycle events plus native tool events | Persisted in the chat database by session and displayed in the workflow screen. The UI displays emitted events, not every internal model operation or private chain-of-thought. |
 | Memory | `AgentMemoryService` SQLite turns scoped by conversation and ranked explicit facts | This is the active memory path. Separate legacy stores (`MemoryService`, `LongTermMemory`, `ConversationMemory`) also exist; verify references/migration before removal. |
 | Workspace | Native file operations in app-private `agent_workspace`; Flutter editor and WebView preview | Connected. HTML/JS can be previewed; non-HTML source is shown as code and is not compiled/executed. |
@@ -43,14 +43,14 @@ The Flutter `ModelService` and the kernel/service facades use a factory singleto
 
 ## 3. Confirmed integration gaps / risks
 
-1. **Duplicate tool dispatch abstractions:** `ToolManager` is not wired into `ModelService`; the active runtime has its own switch-based dispatcher. Maintain one authoritative registry before adding tools.
+1. **Tool dispatch boundary:** the canonical `ToolManager` registry now drives both the model prompt catalogue and runtime allow-list; `ModelService` remains the single platform dispatcher. Keep the two contracts synchronized with tests.
 2. **Multiple legacy memory stores:** only `AgentMemoryService` is confirmed in the active model request path. The other memory classes must be reference-audited and either migrated or clearly retired; do not delete them blindly.
 3. **Planning is heuristic:** `PlannerService` builds predetermined templates from keyword matching. It does not inspect tool capabilities, dynamically revise plans from intermediate results, or verify each step independently beyond response/error classification.
 4. **Workflow completeness:** timeline events are truthful emitted lifecycle/tool events. They do not represent hidden model reasoning and should not be described as a complete trace of every internal operation.
 5. **Python isolation boundary:** the Python runner itself states it is defense-in-depth, not an OS sandbox. Keep execution restricted and never claim process/container isolation.
 6. **External service boundaries:** web search returns snippets; GitHub is read-only; cloud is upload-only. UI labels and agent prompts must continue to communicate those limits.
-7. **Android storage permissions:** the manifest declares broad legacy/external-storage permissions, including `MANAGE_EXTERNAL_STORAGE`. Confirm each use case and remove excess permissions only after model import, file attachment, and sharing flows are checked.
-8. **Automated verification coverage:** current tests cover timeline serialization and planner templates only. Add focused tests for kernel lifecycle/cancellation, memory session isolation, task recovery, native tool path validation, and provider failure behavior.
+7. **Android storage permissions:** removed broad `READ_EXTERNAL_STORAGE`, `WRITE_EXTERNAL_STORAGE`, `MANAGE_EXTERNAL_STORAGE`, and `requestLegacyExternalStorage` declarations. Model import and file attachments use Storage Access Framework/content URIs and app-private copies; still verify these flows on supported Android versions.
+8. **Automated verification coverage:** tests now cover timeline serialization, planner templates, and the canonical tool registry. Add focused tests for kernel lifecycle/cancellation, memory session isolation, task recovery, native tool path validation, and provider failure behavior.
 9. **CI analyzer gate:** the latest preceding run failed because three conversation actions were unused. The actions have now been restored to the overflow menu; the new run must confirm the analyzer and subsequent build stages.
 
 ## 4. Completion gates
@@ -70,3 +70,12 @@ Do not mark the integrated agent complete until all of the following are evidenc
 ## 5. Working rule
 
 Complete and stabilize the current subsystem before expanding the feature surface. Record each change group in a separate commit, and distinguish code inspection, automated CI evidence, and on-device verification in all status reports.
+
+
+## 6. Progress recorded during this audit
+
+- Restored the overflow-menu actions for conversation history, conversation sharing, and agent information; kept destructive history clearing as a separate action.
+- Added the canonical tool registry and made the model prompt catalogue and runtime allow-list derive from it.
+- Added registry tests for supported tools and prompt formatting.
+- Removed broad external-storage permissions after confirming model import and attachment flows use document/content pickers and app-private storage.
+- CI run `41976790710` on commit `54716a43ad1801c01bb492fa0c43b53a97e2789b`: Flutter analysis and unit tests passed; universal APK build was still running at the time of this note. This is not a full CI success or device verification.
