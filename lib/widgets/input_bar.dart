@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../core/theme.dart';
+import 'agent_activity_indicators.dart';
 
 class InputBar extends StatelessWidget {
   final TextEditingController controller;
@@ -97,16 +98,7 @@ class InputBar extends StatelessWidget {
                   ? const SizedBox(
                       width: 48,
                       height: 48,
-                      child: Center(
-                        child: SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
+                      child: Center(child: AgentPulseDot(size: 11)),
                     )
                   : IconButton(
                       icon: const Icon(Icons.send),

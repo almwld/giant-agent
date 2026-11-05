@@ -1,4 +1,3 @@
-import 'package:sqflite/sqflite.dart';
 import 'database_service.dart';
 
 class SearchService {

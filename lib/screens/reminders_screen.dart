@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../services/reminder_service.dart';
-import '../services/notification_service.dart';
 
 class RemindersScreen extends StatefulWidget {
   const RemindersScreen({super.key});
@@ -28,6 +27,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
   
   Future<void> _loadReminders() async {
     final reminders = await _reminderService.getReminders();
+    if (!mounted) return;
     setState(() {
       _reminders = reminders;
     });
@@ -55,12 +55,6 @@ class _RemindersScreenState extends State<RemindersScreen> {
           reminderTime,
         );
         
-        await NotificationService().scheduleNotification(
-          reminderTime,
-          _titleController.text,
-          _descController.text,
-        );
-        
         _titleController.clear();
         _descController.clear();
         await _loadReminders();
@@ -72,6 +66,13 @@ class _RemindersScreenState extends State<RemindersScreen> {
     }
   }
   
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(

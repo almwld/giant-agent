@@ -1,88 +1,88 @@
-import 'packagefltter/material.dart'
+import 'package:flutter/material.dart';
 
-class ickctions extends tatelessidget {
-  final nction(tring) onap
+class QuickActions extends StatelessWidget {
+  final Function(String) onTap;
 
-  const ickctions({sper.key, reqired this.onap})
+  const QuickActions({super.key, required this.onTap});
 
-  override
-  idget bild(ildontext context) {
-    final istaptring, dynamic actions  
-      {'icon' cons.chat, 'label' '', 'color' olors.ble, 'command' ''},
-      {'icon' cons.web, 'label' '', 'color' olors.green, 'command' ' '},
-      {'icon' cons.code, 'label' '', 'color' olors.orange, 'command' ' '},
-      {'icon' cons.analytics, 'label' '', 'color' olors.prple, 'command' '      '},
-      {'icon' cons.calclate, 'label' '', 'color' olors.red, 'command' '+'},
-      {'icon' cons.model_training, 'label' '', 'color' olors.teal, 'command' ''},
-      {'icon' cons.clod_pload, 'label' '', 'color' olors.cyan, 'command' ' '},
-      {'icon' cons.storage, 'label' ' ', 'color' olors.indigo, 'command' ' '},
-    ]
+  @override
+  Widget build(BuildContext context) {
+    final List<Map<String, dynamic>> actions = [
+      {'icon': Icons.chat, 'label': 'مرحبا', 'color': Colors.blue, 'command': 'مرحبا'},
+      {'icon': Icons.web, 'label': 'موقع', 'color': Colors.green, 'command': 'أنشئ موقعاً'},
+      {'icon': Icons.code, 'label': 'كود', 'color': Colors.orange, 'command': 'اكتب كود'},
+      {'icon': Icons.analytics, 'label': 'تحليل', 'color': Colors.purple, 'command': 'حلل نص: الذكاء الاصطناعي هو مستقبل التكنولوجيا'},
+      {'icon': Icons.calculate, 'label': 'حساب', 'color': Colors.red, 'command': '15+27'},
+      {'icon': Icons.model_training, 'label': 'نماذج', 'color': Colors.teal, 'command': 'النماذج'},
+      {'icon': Icons.cloud_upload, 'label': 'رفع', 'color': Colors.cyan, 'command': 'رفع ملف'},
+      {'icon': Icons.storage, 'label': 'قاعدة بيانات', 'color': Colors.indigo, 'command': 'قاعدة بيانات'},
+    ];
 
-    retrn ontainer(
-      height ,
-      padding const dgensets.symmetric(horizontal , vertical ),
-      child istiew.separated(
-        scrollirection xis.horizontal,
-        itemont actions.length,
-        separatorilder (_, __)  const izedox(width ),
-        itemilder (context, index) {
-          final action  actionsindex]
-          retrn _ickctionhip(
-            icon action'icon'],
-            label action'label'],
-            color action'color'],
-            onap ()  onap(action'command']),
-          )
+    return Container(
+      height: 70,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: actions.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        itemBuilder: (context, index) {
+          final action = actions[index];
+          return _QuickActionChip(
+            icon: action['icon'],
+            label: action['label'],
+            color: action['color'],
+            onTap: () => onTap(action['command']),
+          );
         },
       ),
-    )
+    );
   }
 }
 
-class _ickctionhip extends tatelessidget {
-  final conata icon
-  final tring label
-  final olor color
-  final oidallback onap
+class _QuickActionChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
 
-  const _ickctionhip({
-    reqired this.icon,
-    reqired this.label,
-    reqired this.color,
-    reqired this.onap,
-  })
+  const _QuickActionChip({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
 
-  override
-  idget bild(ildontext context) {
-    retrn aterial(
-      elevation ,
-      borderadis orderadis.circlar(),
-      child nkell(
-        onap onap,
-        borderadis orderadis.circlar(),
-        child ontainer(
-          padding const dgensets.symmetric(horizontal , vertical ),
-          decoration oxecoration(
-            gradient inearradient(
-              colors color.withpacity(.), color.withpacity(.)],
-              begin lignment.topeft,
-              end lignment.bottomight,
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      elevation: 2,
+      borderRadius: BorderRadius.circular(30),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(30),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [color.withOpacity(0.2), color.withOpacity(0.1)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
-            borderadis orderadis.circlar(),
-            border order.all(color color.withpacity(.), width ),
+            borderRadius: BorderRadius.circular(30),
+            border: Border.all(color: color.withOpacity(0.5), width: 1),
           ),
-          child ow(
-            children 
-              con(icon, size , color color),
-              const izedox(width ),
-              ext(
+          child: Row(
+            children: [
+              Icon(icon, size: 16, color: color),
+              const SizedBox(width: 8),
+              Text(
                 label,
-                style exttyle(fontize , fonteight onteight.w, color color),
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: color),
               ),
             ],
           ),
         ),
       ),
-    )
+    );
   }
 }

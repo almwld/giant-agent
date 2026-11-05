@@ -115,7 +115,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                     // Features
                     _buildFeature(Icons.speed, 'سرعة فائقة', 'استجابة فورية'),
                     const SizedBox(height: 16),
-                    _buildFeature(Icons.model_training, 'نماذج متعددة', 'TFLite, ONNX, GGUF'),
+                    _buildFeature(Icons.model_training, 'نماذج متعددة', 'نماذج GGUF محلية دون اتصال'),
                     const SizedBox(height: 16),
                     _buildFeature(Icons.cloud_upload, 'رفع ملفات', 'نصوص، صور، JSON، CSV'),
                     const SizedBox(height: 32),

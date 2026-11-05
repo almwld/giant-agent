@@ -1,213 +1,267 @@
-import 'packagefltter/material.dart'
-import 'packageshare_pls/share_pls.dart'
-import '../services/agent_service.dart'
-import '../services/database_service.dart'
-import '../widgets/message_bbble.dart'
-import '../widgets/qick_actions.dart'
-import 'settings_screen.dart'
+import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
+import '../agent/task_manager.dart';
+import '../services/database_service.dart';
+import '../widgets/message_bubble.dart';
+import '../widgets/quick_actions.dart';
+import 'settings_screen.dart';
 
-class omecreen extends tateflidget {
-  const omecreen({sper.key})
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
 
-  override
-  tateomecreen createtate()  _omecreentate()
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _omecreentate extends tateomecreen {
-  final extditingontroller _controller  extditingontroller()
-  final istaptring, dynamic _messages  ]
-  final crollontroller _scrollontroller  crollontroller()
-  final gentervice _agent  gentervice()
-  bool _isoading  false
+class _HomeScreenState extends State<HomeScreen> {
+  final TextEditingController _controller = TextEditingController();
+  final List<Map<String, dynamic>> _messages = [];
+  final ScrollController _scrollController = ScrollController();
+  bool _isLoading = false;
 
-  override
-  void inittate() {
-    sper.inittate()
-    _loadessages()
-    _addelcomeessage()
+  @override
+  void initState() {
+    super.initState();
+    _loadMessages();
   }
 
-  trevoid _loadessages() async {
-    final messages  await atabaseervice.getessages()
-    settate(() {
-      _messages.clear()
-      _messages.addll(messages)
-    })
+  Future<void> _loadMessages() async {
+    try {
+      final stored = await DatabaseService.getMessages();
+      if (!mounted) return;
+      setState(() {
+        _messages
+          ..clear()
+          ..addAll(stored.map((row) => {
+                'isUser': row['isUser'] == 1,
+                'content': row['text']?.toString() ?? '',
+                'time': DateTime.fromMillisecondsSinceEpoch(
+                  (row['timestamp'] as int?) ?? 0,
+                ),
+              }));
+        if (_messages.isEmpty) _addWelcomeMessage();
+      });
+      _scrollToBottom();
+      await _resumePausedTask();
+    } catch (error) {
+      if (!mounted) return;
+      setState(_addWelcomeMessage);
+    }
   }
 
-  void _addelcomeessage() {
+  void _addWelcomeMessage() {
     _messages.add({
-      'isser' false,
-      'content' '''
- **   iant gent!**
+      'isUser': false,
+      'content': '''
+**مرحباً بك في Giant Agent**
 
-    
+وكيل محلي يعتمد على نموذج GGUF والأدوات المتاحة داخل التطبيق.
 
- **   **
-    
-    
-    
-   
-   
-   
+يمكنك طلب:
+- إنشاء ملفات ومحتوى برمجي.
+- قراءة الملفات وتحديثها داخل مساحة العمل.
+- تنفيذ Python ضمن البيئة المحلية المقيّدة.
+- تحليل الأسئلة والمهام متعددة الخطوات.
 
-**  **
- "    "
- "  ython"
- "  "
- "+"
- " "
- "   "
-
-**    ** 
+ابدأ بكتابة المهمة التي تريد تنفيذها.
 ''',
-      'time' ateime.now(),
-    })
+      'time': DateTime.now(),
+    });
   }
 
-  trevoid _sendessage() async {
-    final text  _controller.text.trim()
-    if (text.ismpty) retrn
-
-    settate(() {
-      _messages.add({'isser' tre, 'content' text, 'time' ateime.now()})
-      _controller.clear()
-      _isoading  tre
-    })
-    _scrolloottom()
-
-    await atabaseervice.saveessage(text, tre)
-    final response  await _agent.process(text)
-
-    settate(() {
-      _messages.add({'isser' false, 'content' response, 'time' ateime.now()})
-      _isoading  false
-    })
-    _scrolloottom()
-
-    await atabaseervice.saveessage(response, false)
-  }
-
-  void _scrolloottom() {
-    tre.delayed(const ration(milliseconds ), () {
-      if (_scrollontroller.haslients) {
-        _scrollontroller.animateo(
-          _scrollontroller.position.maxcrollxtent,
-          dration const ration(milliseconds ),
-          crve rves.easet,
-        )
-      }
-    })
-  }
-
-  trevoid _clearhat() async {
-    await atabaseervice.clearessages()
-    settate(() {
-      _messages.clear()
-      _addelcomeessage()
-    })
-  }
-
-  trevoid _sharehat() async {
-    final content  await atabaseervice.exporthat()
-    await hare.share(content, shareositionrigin ect.zero)
-  }
-
-  override
-  idget bild(ildontext context) {
-    retrn caffold(
-      appar ppar(
-        title const ext(' iant gent'),
-        centeritle tre,
-        actions 
-          contton(
-            icon const con(cons.settings),
-            onressed () {
-              avigator.psh(
-                context,
-                aterialageote(bilder (context)  const ettingscreen()),
-              )
-            },
+  Future<void> _resumePausedTask() async {
+    final manager = TaskManager();
+    final recoverable = (await manager.getTasksForConversation('home'))
+        .where((task) => {'paused', 'pending', 'failed'}.contains(task['status']))
+        .toList(growable: false);
+    if (recoverable.isEmpty || !mounted) return;
+    final task = recoverable.last;
+    final taskId = task['id'].toString();
+    final description = task['description']?.toString() ?? 'مهمة محفوظة';
+    final shouldResume = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('مهمة منزلية غير مكتملة'),
+        content: Text('توقفت المهمة التالية قبل اكتمالها:\n$description\n\nهل تريد استئنافها؟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('إلغاء المهمة'),
           ),
-          contton(
-            icon const con(cons.share),
-            onressed _sharehat,
-          ),
-          contton(
-            icon const con(cons.delete_otline),
-            onressed _clearhat,
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('استئناف'),
           ),
         ],
       ),
-      body olmn(
-        children 
-          ickctions(onap (text) {
-            _controller.text  text
-            _sendessage()
-          }),
-          xpanded(
-            child istiew.bilder(
-              controller _scrollontroller,
-              padding const dgensets.all(),
-              itemont _messages.length,
-              itemilder (context, index) {
-                final msg  _messagesindex]
-                retrn essagebble(
-                  isser msg'isser'],
-                  content msg'content'],
-                  time msg'time'],
-                )
+    );
+    if (!mounted) return;
+    if (shouldResume != true) {
+      await manager.markCancelled(taskId);
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    String output;
+    var continueRecovery = false;
+    try {
+      final result = await manager.resumeTask(taskId);
+      continueRecovery = result['status'] == 'completed';
+      output = result['result']?.toString() ??
+          result['error']?.toString() ??
+          'حالة المهمة: ${result['status']}';
+    } catch (error) {
+      output = 'تعذر استئناف المهمة: $error';
+      await manager.markFailed(taskId, output);
+    }
+    if (!mounted) return;
+    setState(() {
+      _messages.add({'isUser': false, 'content': output, 'time': DateTime.now()});
+      _isLoading = false;
+    });
+    await DatabaseService.saveMessage(output, false);
+    _scrollToBottom();
+    if (continueRecovery) await _resumePausedTask();
+  }
+
+  Future<void> _sendMessage() async {
+    final text = _controller.text.trim();
+    if (text.isEmpty || _isLoading) return;
+
+    setState(() {
+      _messages.add({'isUser': true, 'content': text, 'time': DateTime.now()});
+      _controller.clear();
+      _isLoading = true;
+    });
+    _scrollToBottom();
+
+    await DatabaseService.saveMessage(text, true);
+    String response;
+    try {
+      await TaskManager().createTask(text, conversationId: 'home');
+      final execution = await TaskManager().executeNextStep();
+      response = {'completed', 'paused'}.contains(execution['status'])
+          ? execution['result']?.toString() ?? ''
+          : 'تعذر إكمال الطلب: ${execution['error'] ?? execution['status']}';
+    } catch (error) {
+      response = 'تعذر إكمال الطلب: $error';
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _messages.add({'isUser': false, 'content': response, 'time': DateTime.now()});
+      _isLoading = false;
+    });
+    await DatabaseService.saveMessage(response, false);
+    _scrollToBottom();
+  }
+
+  void _scrollToBottom() {
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (!mounted || !_scrollController.hasClients) return;
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  Future<void> _clearChat() async {
+    await DatabaseService.clearMessages();
+    if (!mounted) return;
+    setState(() {
+      _messages.clear();
+      _addWelcomeMessage();
+    });
+  }
+
+  Future<void> _shareChat() async {
+    final content = await DatabaseService.exportToText();
+    await Share.share(content);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Giant Agent'),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+            ),
+          ),
+          IconButton(icon: const Icon(Icons.share), onPressed: _shareChat),
+          IconButton(icon: const Icon(Icons.delete_outline), onPressed: _clearChat),
+        ],
+      ),
+      body: Column(
+        children: [
+          QuickActions(
+            onTap: (text) {
+              _controller.text = text;
+              _sendMessage();
+            },
+          ),
+          Expanded(
+            child: ListView.builder(
+              controller: _scrollController,
+              padding: const EdgeInsets.all(12),
+              itemCount: _messages.length,
+              itemBuilder: (context, index) {
+                final message = _messages[index];
+                return MessageBubble(
+                  isUser: message['isUser'] as bool,
+                  content: message['content'] as String,
+                  time: message['time'] as DateTime,
+                );
               },
             ),
           ),
-          if (_isoading)
-            const adding(
-              padding dgensets.all(),
-              child inearrogressndicator(),
+          if (_isLoading)
+            const Padding(
+              padding: EdgeInsets.all(8),
+              child: LinearProgressIndicator(),
             ),
-          ontainer(
-            padding const dgensets.all(),
-            decoration oxecoration(
-              color const olor(x),
-              border order(top orderide(color olors.grey.shade)),
-            ),
-            child ow(
-              children 
-                xpanded(
-                  child extield(
-                    controller _controller,
-                    style const exttyle(color olors.white),
-                    decoration nptecoration(
-                      hintext '   ...',
-                      hinttyle exttyle(color olors.grey.shade),
-                      border tlinenptorder(
-                        borderadis orderadis.circlar(),
-                        borderide orderide.none,
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _controller,
+                      decoration: const InputDecoration(
+                        hintText: 'اكتب مهمة أو سؤالاً...',
+                        border: OutlineInputBorder(),
                       ),
-                      filled tre,
-                      fillolor const olor(x),
-                      contentadding const dgensets.symmetric(horizontal , vertical ),
+                      onSubmitted: (_) => _sendMessage(),
                     ),
-                    onbmitted (_)  _sendessage(),
                   ),
-                ),
-                const izedox(width ),
-                estreetector(
-                  onap _sendessage,
-                  child ontainer(
-                    padding const dgensets.all(),
-                    decoration const oxecoration(
-                      color olor(x),
-                      shape oxhape.circle,
-                    ),
-                    child const con(cons.send, color olors.white, size ),
+                  const SizedBox(width: 8),
+                  IconButton.filled(
+                    onPressed: _isLoading ? null : _sendMessage,
+                    icon: const Icon(Icons.send),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
       ),
-    )
+    );
   }
 }

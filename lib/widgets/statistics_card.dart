@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../services/statistics_service.dart';
-import '../core/theme.dart';
 
 class StatisticsCard extends StatefulWidget {
   const StatisticsCard({super.key});

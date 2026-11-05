@@ -1,247 +1,362 @@
-import 'packagefltter/material.dart'
-import '../services/agent_service.dart'
+import 'package:flutter/material.dart';
+import '../agent/task_manager.dart';
+import '../services/file_upload_service.dart';
+import '../services/model_service.dart';
+import '../widgets/status_bar.dart';
+import '../widgets/chat_bubble.dart';
+import '../widgets/quick_actions.dart';
+import '../widgets/thinking_indicator.dart';
+import '../widgets/model_selector.dart';
 
-class clearcreen extends tateflidget {
-  const clearcreen({sper.key})
+class NuclearScreen extends StatefulWidget {
+  const NuclearScreen({super.key});
 
-  override
-  tateclearcreen createtate()  _clearcreentate()
+  @override
+  State<NuclearScreen> createState() => _NuclearScreenState();
 }
 
-class _clearcreentate extends tateclearcreen {
-  final extditingontroller _controller  extditingontroller()
-  final istaptring, dynamic _messages  ]
-  final crollontroller _scrollontroller  crollontroller()
-  final gentervice _agent  gentervice()
-  bool _isoading  false
+class _NuclearScreenState extends State<NuclearScreen> {
+  final TextEditingController _controller = TextEditingController();
+  final List<Map<String, dynamic>> _messages = [];
+  final ScrollController _scrollController = ScrollController();
+  final ModelService _models = ModelService();
+  final FileUploadService _files = FileUploadService.instance;
 
-  override
-  void inittate() {
-    sper.inittate()
-    _addelcomeessage()
+  bool _isLoading = false;
+  String _thinkingMessage = 'جاري تنفيذ المهمة';
+  int _processedFiles = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _initialize();
   }
 
-  void _addelcomeessage() {
+  Future<void> _initialize() async {
+    try {
+      await _files.init();
+      await _models.refreshModels();
+      final history = await _files.getHistory();
+      if (!mounted) return;
+      setState(() {
+        _processedFiles = history.length;
+        _addWelcomeMessage();
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _addWelcomeMessage();
+        _messages.add({
+          'isUser': false,
+          'content': 'تعذر تهيئة خدمات الملفات أو النماذج: $error',
+          'time': DateTime.now(),
+        });
+      });
+    }
+    await _resumePausedTask();
+  }
+
+  Future<void> _resumePausedTask() async {
+    final manager = TaskManager();
+    final recoverable = (await manager.getTasksForConversation('nuclear'))
+        .where((task) => {'paused', 'pending', 'failed'}.contains(task['status']))
+        .toList(growable: false);
+    if (recoverable.isEmpty || !mounted) return;
+    final task = recoverable.last;
+    final taskId = task['id'].toString();
+    final description = task['description']?.toString() ?? 'مهمة محفوظة';
+    final shouldResume = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('مهمة غير مكتملة'),
+        content: Text('توقفت المهمة التالية قبل اكتمالها:\n$description\n\nهل تريد استئنافها؟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('إلغاء المهمة'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('استئناف'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (shouldResume != true) {
+      await manager.markCancelled(taskId);
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _thinkingMessage = 'استئناف المهمة المحفوظة...';
+    });
+    String output;
+    var continueRecovery = false;
+    try {
+      final result = await manager.resumeTask(taskId);
+      continueRecovery = result['status'] == 'completed';
+      output = result['result']?.toString() ??
+          result['error']?.toString() ??
+          'حالة المهمة: ${result['status']}';
+    } catch (error) {
+      output = 'تعذر استئناف المهمة: $error';
+      await manager.markFailed(taskId, output);
+    }
+    if (!mounted) return;
+    setState(() {
+      _messages.add({'isUser': false, 'content': output, 'time': DateTime.now()});
+      _isLoading = false;
+      _thinkingMessage = 'جاري تنفيذ المهمة';
+    });
+    _scrollToBottom();
+    if (continueRecovery) await _resumePausedTask();
+  }
+
+  void _addWelcomeMessage() {
+    final activeModel = _models.getActiveModel();
     _messages.add({
-      'isser' false,
-      'content' '''
- **   -    ** 
+      'isUser': false,
+      'content': '''
+**GIANT AGENT**
 
- **    !**
+النموذج المحلي: ${activeModel['name']}
 
- ** **
+يمكنك تنفيذ المهام من خلال المحرك المحلي، أو اختيار ملف لتحليله وحفظه في سجل الملفات.
 
- ` ` -    
- ` ]` -  
- ` ]` -  
- ` ]` -  
- `` -   
- `` - 
- `` -   
- `` -  
-
- ** !**      .
+الأدوات المتاحة تعتمد على النموذج المحلي وواجهات التنفيذ المفعّلة.
 ''',
-      'time' ateime.now(),
-    })
+      'time': DateTime.now(),
+    });
   }
 
-  trevoid _sendessage() async {
-    final text  _controller.text.trim()
-    if (text.ismpty) retrn
+  Future<void> _uploadFile() async {
+    if (_isLoading) return;
+    try {
+      final file = await _files.pickFile();
+      if (file == null) return;
+      if (!mounted) return;
 
-    settate(() {
-      _messages.add({'isser' tre, 'content' text, 'time' ateime.now()})
-      _controller.clear()
-      _isoading  tre
-    })
-    _scrolloottom()
+      setState(() {
+        _isLoading = true;
+        _thinkingMessage = 'جارٍ تحليل الملف';
+        _messages.add({
+          'isUser': true,
+          'content': 'ملف: ${file.uri.pathSegments.last}',
+          'time': DateTime.now(),
+        });
+      });
 
-    final response  await _agent.process(text)
+      final result = await _files.processFile(file);
+      final extracted = result['extracted_text']?.toString() ?? '';
+      final summary = StringBuffer()
+        ..writeln('تمت معالجة الملف وحفظه في السجل.')
+        ..writeln('الاسم: ${result['filename']}')
+        ..writeln('النوع: ${result['extension']}')
+        ..writeln('الحجم: ${result['size_bytes']} بايت')
+        ..writeln('الأسطر: ${result['lines']}')
+        ..writeln('الكلمات: ${result['words']}')
+        ..writeln('الأحرف المستخرجة: ${result['characters']}');
 
-    settate(() {
-      _messages.add({'isser' false, 'content' response, 'time' ateime.now()})
-      _isoading  false
-    })
-    _scrolloottom()
-  }
-
-  void _scrolloottom() {
-    tre.delayed(const ration(milliseconds ), () {
-      if (_scrollontroller.haslients) {
-        _scrollontroller.animateo(
-          _scrollontroller.position.maxcrollxtent,
-          dration const ration(milliseconds ),
-          crve rves.easet,
-        )
+      if (extracted.isNotEmpty) {
+        summary
+          ..writeln()
+          ..writeln('مقتطف من المحتوى:')
+          ..writeln(extracted.length > 1800 ? extracted.substring(0, 1800) : extracted);
       }
-    })
+
+      final history = await _files.getHistory();
+      if (!mounted) return;
+      setState(() {
+        _processedFiles = history.length;
+        _messages.add({
+          'isUser': false,
+          'content': summary.toString(),
+          'time': DateTime.now(),
+        });
+        _isLoading = false;
+      });
+      _scrollToBottom();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _messages.add({
+          'isUser': false,
+          'content': 'تعذرت معالجة الملف: $error',
+          'time': DateTime.now(),
+        });
+        _isLoading = false;
+      });
+    }
   }
 
-  void _rnllgents() {
-    _controller.text  ' '
-    _sendessage()
+  Future<void> _sendMessage() async {
+    final prompt = _controller.text.trim();
+    if (prompt.isEmpty || _isLoading) return;
+
+    setState(() {
+      _messages.add({
+        'isUser': true,
+        'content': prompt,
+        'time': DateTime.now(),
+      });
+      _controller.clear();
+      _isLoading = true;
+      _thinkingMessage = 'جارٍ تنفيذ الطلب عبر النموذج المحلي';
+    });
+    _scrollToBottom();
+
+    String response;
+    try {
+      await TaskManager().createTask(prompt, conversationId: 'nuclear');
+      final execution = await TaskManager().executeNextStep();
+      response = {'completed', 'paused'}.contains(execution['status'])
+          ? execution['result']?.toString() ?? ''
+          : 'تعذر إكمال الطلب: ${execution['error'] ?? execution['status']}';
+    } catch (error) {
+      response = 'تعذر إكمال الطلب: $error';
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _messages.add({
+        'isUser': false,
+        'content': response,
+        'time': DateTime.now(),
+      });
+      _isLoading = false;
+    });
+    _scrollToBottom();
   }
 
-  void _rnnalyst() {
-    _controller.text  '  '
-    _sendessage()
+  Future<void> _showModels() async {
+    await _models.refreshModels();
+    if (!mounted) return;
+    final models = _models.getModels();
+    final active = _models.getActiveModel();
+    final lines = models.map((model) {
+      final marker = model['id'] == active['id'] ? '✓' : '•';
+      return '$marker ${model['name']} — ${model['size']}';
+    }).join('\n');
+    setState(() {
+      _messages.add({
+        'isUser': false,
+        'content': lines.isEmpty ? 'لم يتم العثور على نماذج GGUF.' : 'النماذج المحلية:\n$lines',
+        'time': DateTime.now(),
+      });
+    });
+    _scrollToBottom();
   }
 
-  void _rnoder() {
-    _controller.text  '  '
-    _sendessage()
+  void _scrollToBottom() {
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (!mounted || !_scrollController.hasClients) return;
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    });
   }
 
-  void _rnreator() {
-    _controller.text  ' '
-    _sendessage()
+  @override
+  void dispose() {
+    _controller.dispose();
+    _scrollController.dispose();
+    super.dispose();
   }
 
-  void _showtats() {
-    _controller.text  ''
-    _sendessage()
-  }
-
-  override
-  idget bild(ildontext context) {
-    retrn caffold(
-      appar ppar(
-        title const ext('   '),
-        centeritle tre,
-        actions 
-          contton(
-            icon const con(cons.analytics),
-            onressed _showtats,
-            tooltip '',
+  @override
+  Widget build(BuildContext context) {
+    final activeModel = _models.getActiveModel();
+    return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      appBar: AppBar(
+        title: const Text('Giant Agent'),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.model_training),
+            onPressed: _showModels,
+            tooltip: 'النماذج المتاحة',
           ),
         ],
-      ),
-      body olmn(
-        children 
-          //   
-          ontainer(
-            height ,
-            padding const dgensets.symmetric(horizontal , vertical ),
-            child istiew(
-              scrollirection xis.horizontal,
-              children 
-                _bildicktton('', '', _rnllgents, olors.deeprple),
-                _bildicktton('', '', _rnnalyst, olors.ble),
-                _bildicktton('', '', _rnoder, olors.green),
-                _bildicktton('', '', _rnreator, olors.orange),
-                _bildicktton('', '', _showtats, olors.teal),
-              ],
-            ),
-          ),
-          xpanded(
-            child istiew.bilder(
-              controller _scrollontroller,
-              padding const dgensets.all(),
-              itemont _messages.length,
-              itemilder (context, index) {
-                final msg  _messagesindex]
-                final isser  msg'isser'] as bool
-                retrn lign(
-                  alignment isser  lignment.centeright  lignment.centereft,
-                  child ontainer(
-                    margin const dgensets.only(bottom ),
-                    padding const dgensets.all(),
-                    constraints oxonstraints(
-                      maxidth ediaery.of(context).size.width * .,
-                    ),
-                    decoration oxecoration(
-                      color isser  olors.deeprple  olors.grey.shade,
-                      borderadis orderadis.circlar(),
-                    ),
-                    child electableext(
-                      msg'content'],
-                      style const exttyle(color olors.white, fontize ),
-                    ),
-                  ),
-                )
-              },
-            ),
-          ),
-          if (_isoading)
-            const adding(
-              padding dgensets.all(),
-              child inearrogressndicator(),
-            ),
-          ontainer(
-            padding const dgensets.all(),
-            decoration oxecoration(
-              color olors.grey.shade,
-              border order(top orderide(color olors.deeprple)),
-            ),
-            child ow(
-              children 
-                xpanded(
-                  child extield(
-                    controller _controller,
-                    style const exttyle(color olors.white),
-                    decoration nptecoration(
-                      hintext ' ...',
-                      hinttyle exttyle(color olors.grey.shade),
-                      border tlinenptorder(
-                        borderadis orderadis.circlar(),
-                        borderide orderide.none,
-                      ),
-                      filled tre,
-                      fillolor olors.grey.shade,
-                      contentadding const dgensets.symmetric(horizontal , vertical ),
-                    ),
-                    onbmitted (_)  _sendessage(),
-                  ),
-                ),
-                const izedox(width ),
-                estreetector(
-                  onap _sendessage,
-                  child ontainer(
-                    padding const dgensets.all(),
-                    decoration const oxecoration(
-                      color olors.deeprple,
-                      shape oxhape.circle,
-                    ),
-                    child const con(cons.send, color olors.white, size ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    )
-  }
-
-  idget _bildicktton(tring icon, tring label, oidallback onap, olor color) {
-    retrn adding(
-      padding const dgensets.symmetric(horizontal ),
-      child aterial(
-        elevation ,
-        borderadis orderadis.circlar(),
-        child nkell(
-          onap onap,
-          borderadis orderadis.circlar(),
-          child ontainer(
-            padding const dgensets.symmetric(horizontal , vertical ),
-            decoration oxecoration(
-              gradient inearradient(
-                colors color.withpacity(.), color.withpacity(.)],
-              ),
-              borderadis orderadis.circlar(),
-              border order.all(color color.withpacity(.)),
-            ),
-            child ow(
-              children 
-                ext(icon, style const exttyle(fontize )),
-                const izedox(width ),
-                ext(label, style exttyle(fontize , color color)),
-              ],
-            ),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(48),
+          child: ModelSelector(
+            onModelChanged: () {
+              if (mounted) setState(() {});
+            },
           ),
         ),
       ),
-    )
+      body: Column(
+        children: [
+          StatusBar(
+            modelName: activeModel['name']?.toString() ?? 'لا يوجد',
+            processedFiles: _processedFiles,
+            speed: _models.isBusy ? 'BUSY' : 'READY',
+          ),
+          Expanded(
+            child: ListView.builder(
+              controller: _scrollController,
+              padding: const EdgeInsets.all(12),
+              itemCount: _messages.length,
+              itemBuilder: (context, index) {
+                final message = _messages[index];
+                return ChatBubble(
+                  isUser: message['isUser'] as bool,
+                  message: message['content'] as String,
+                  time: message['time'] as DateTime,
+                );
+              },
+            ),
+          ),
+          if (_isLoading)
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: ThinkingIndicator(message: _thinkingMessage),
+            ),
+          QuickActions(
+            onTap: (command) {
+              _controller.text = command;
+              _sendMessage();
+            },
+          ),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  IconButton(
+                    onPressed: _isLoading ? null : _uploadFile,
+                    icon: const Icon(Icons.attach_file),
+                    tooltip: 'تحليل ملف',
+                  ),
+                  Expanded(
+                    child: TextField(
+                      controller: _controller,
+                      decoration: const InputDecoration(
+                        hintText: 'اكتب مهمة أو سؤالاً...',
+                        border: OutlineInputBorder(),
+                      ),
+                      onSubmitted: (_) => _sendMessage(),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton.filled(
+                    onPressed: _isLoading ? null : _sendMessage,
+                    icon: const Icon(Icons.send),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

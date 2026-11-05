@@ -61,7 +61,7 @@ class MemoryService {
     );
     
     if (results != null && results.isNotEmpty) {
-      return results.first['agent_response'];
+      return results.first['agent_response'] as String?;
     }
     return null;
   }
@@ -85,7 +85,7 @@ class MemoryService {
       whereArgs: [key],
     );
     if (result != null && result.isNotEmpty) {
-      return result.first['value'];
+      return result.first['value'] as String?;
     }
     return null;
   }
