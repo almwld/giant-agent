@@ -38,7 +38,7 @@ The Flutter `ModelService` and the kernel/service facades use a factory singleto
 | Web search | DuckDuckGo HTML search snippets | Context enrichment only; not a full browser, crawler, or source-verification engine. |
 | GitHub | Repository metadata, bounded tree, README context | Read-only. It does not edit files, commit, or push to repositories. |
 | Cloud storage | Nextcloud/WebDAV workspace ZIP upload | Upload path only; no restore/download workflow is currently exposed. |
-| Recovery | Persistent `TaskManager` records interrupted running tasks as paused | Recovery state is persisted; end-to-end resume behavior still needs dedicated tests and UI verification. |
+| Recovery | ChatScreen stores a pending prompt/session and offers re-send with the latest saved tool result; `TaskManager` separately persists paused tasks | Two recovery paths exist. `TaskManager` has no current screen consumer; unify or retire it before declaring recovery integrated. |
 | Android lifecycle | Shared `AgentRuntime` and foreground service when a local model loads | Local model runtime path is wired; verify behavior under backgrounding, process death, and OpenRouter-only use on-device. |
 
 ## 3. Confirmed integration gaps / risks
@@ -50,7 +50,7 @@ The Flutter `ModelService` and the kernel/service facades use a factory singleto
 5. **Python isolation boundary:** the Python runner itself states it is defense-in-depth, not an OS sandbox. Keep execution restricted and never claim process/container isolation.
 6. **External service boundaries:** web search returns snippets; GitHub is read-only; cloud is upload-only. UI labels and agent prompts must continue to communicate those limits.
 7. **Android storage permissions:** removed broad `READ_EXTERNAL_STORAGE`, `WRITE_EXTERNAL_STORAGE`, `MANAGE_EXTERNAL_STORAGE`, and `requestLegacyExternalStorage` declarations. Model import and file attachments use Storage Access Framework/content URIs and app-private copies; still verify these flows on supported Android versions.
-8. **Automated verification coverage:** tests now cover timeline serialization, planner templates, and the canonical tool registry. Add focused tests for kernel lifecycle/cancellation, memory session isolation, native tool path validation, and provider failure behavior. A recovery test now verifies that interrupted task and step states are restored as paused/pending.
+8. **Automated verification coverage:** tests now cover timeline serialization, planner templates, and the canonical tool registry. Add focused tests for kernel lifecycle/cancellation, memory session isolation, native tool path validation, and provider failure behavior. Decide and implement one canonical recovery path: connect `TaskManager` to the active UI/runtime or retire it in favor of the existing ChatScreen pending-task recovery. A unit test verifies `TaskManager` restores interrupted task and step states as paused/pending; the manager itself is not yet connected to a user-facing task flow.
 9. **CI analyzer gate:** the latest preceding run failed because three conversation actions were unused. The actions have now been restored to the overflow menu; the new run must confirm the analyzer and subsequent build stages.
 
 ## 4. Completion gates
