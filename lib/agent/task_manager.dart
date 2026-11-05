@@ -276,8 +276,8 @@ class TaskManager {
     task['started_at'] ??= DateTime.now().toIso8601String();
     task['updated_at'] = DateTime.now().toIso8601String();
     step['status'] = 'running';
-    await _persist();
     try {
+      await _persist();
       final result = await _agent.runTask(
         task['description'] as String,
         conversationId: task['conversation_id']?.toString() ?? 'global',
