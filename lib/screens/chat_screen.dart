@@ -1765,137 +1765,158 @@ class _ChatScreenState extends State<ChatScreen> {
         ],
       ),
       drawer: Drawer(
-        child: Column(
-          children: [
-            Container(
-              height: 180,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Colors.deepPurple.shade700, Colors.deepPurple.shade900],
+        width:  min(340, MediaQuery.of(context).size.width * 0.88),
+        backgroundColor: const Color(0xFF111827),
+        child: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                padding: const EdgeInsets.fromLTRB(22, 24, 22, 22),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topRight,
+                    end: Alignment.bottomLeft,
+                    colors: [Color(0xFF172B45), Color(0xFF111827)],
+                  ),
+                  border: Border(bottom: BorderSide(color: Color(0xFF26364A))),
                 ),
-              ),
-              child: const Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                child: Row(
                   children: [
-                    Icon(Icons.bolt, size: 50, color: Colors.white),
-                    SizedBox(height: 10),
-                    Text(
-                      'Giant Agent X',
-                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
+                    Container(
+                      width: 52,
+                      height: 52,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF38BDF8).withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: const Color(0xFF38BDF8).withOpacity(0.35)),
+                      ),
+                      child: const Icon(Icons.bolt_rounded, color: Color(0xFF38BDF8), size: 30),
                     ),
-                    SizedBox(height: 5),
-                    Text(
-                      'الوكيل العملاق',
-                      style: TextStyle(fontSize: 14, color: Colors.white70),
+                    const SizedBox(width: 14),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Giant Agent X', style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w700)),
+                          SizedBox(height: 4),
+                          Text('مساحة الوكيل الذكي', style: TextStyle(color: Color(0xFF9CAFC2), fontSize: 12)),
+                        ],
+                      ),
                     ),
                   ],
                 ),
               ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.upload_file, color: Colors.blue),
-              title: const Text('استيراد نموذج'),
-              subtitle: const Text('اختر نموذج GGUF من الهاتف'),
-              onTap: () {
-                Navigator.pop(context);
-                _importModel();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.attach_file, color: Colors.green),
-              title: const Text('رفع ملف'),
-              onTap: () {
-                Navigator.pop(context);
-                _pickFile();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.image, color: Colors.orange),
-              title: const Text('رفع صورة'),
-              onTap: () {
-                Navigator.pop(context);
-                _pickImage();
-              },
-            ),
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.add_comment_outlined),
-              title: const Text('جلسة جديدة'),
-              onTap: () { Navigator.pop(context); _createNewSession(); },
-            ),
-            Padding(
-              padding: const EdgeInsetsDirectional.fromSTEB(16, 12, 16, 6),
-              child: Text('سجل المحادثات', style: Theme.of(context).textTheme.titleSmall),
-            ),
-            SizedBox(
-              height: 220,
-              child: ListView.builder(
-                itemCount: _sessions.length,
-                itemBuilder: (context, index) {
-                  final session = _sessions[index];
-                  return ListTile(
-                    dense: true,
-                    selected: session.id == _currentSessionId,
-                    leading: const Icon(Icons.chat_bubble_outline, size: 18),
-                    title: Text(session.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                    subtitle: Text(session.updatedAt.toLocal().toString().substring(0, 16)),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.delete_outline, size: 18),
-                      onPressed: () => _deleteSession(session),
-                    ),
-                    onTap: () => _switchSession(session),
-                  );
-                },
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
+                child: Text('إجراءات سريعة', style: TextStyle(color: Color(0xFF8FA3B8), fontSize: 11, fontWeight: FontWeight.w700)),
               ),
-            ),
-            ListTile(
-              dense: true,
-              leading: const Icon(Icons.delete_sweep_outlined, color: Colors.redAccent),
-              title: const Text('مسح جميع الجلسات'),
-              onTap: () { Navigator.pop(context); _clearAllSessions(); },
-            ),
-            const Divider(),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                'النماذج المتاحة',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey.shade700),
+              _drawerActionTile(
+                icon: Icons.add_comment_rounded,
+                title: 'جلسة جديدة',
+                subtitle: 'ابدأ محادثة مستقلة',
+                onTap: () { Navigator.pop(context); _createNewSession(); },
               ),
-            ),
-            Expanded(
-              child: ListView.builder(
-                itemCount: _models.length,
-                itemBuilder: (context, index) {
-                  final model = _models[index];
-                  final isActive = model['id'] == _activeModel['id'];
-                  return ListTile(
-                    leading: Icon(
-                      isActive ? Icons.check_circle : Icons.circle_outlined,
-                      color: isActive ? Colors.green : Colors.grey,
-                    ),
-                    title: Text(
-                      model['name'],
-                      style: TextStyle(fontWeight: isActive ? FontWeight.bold : FontWeight.normal),
-                    ),
-                    subtitle: Text('${model['size']} • ${model['type']}'),
-                    trailing: isActive
-                        ? Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              _drawerActionTile(
+                icon: Icons.file_open_rounded,
+                title: 'استيراد نموذج',
+                subtitle: 'تحميل نموذج GGUF من الجهاز',
+                onTap: () { Navigator.pop(context); _importModel(); },
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 7),
+                child: Row(
+                  children: [
+                    const Expanded(child: Text('سجل المحادثات', style: TextStyle(color: Color(0xFF8FA3B8), fontSize: 11, fontWeight: FontWeight.w700))),
+                    Text('${_sessions.length}', style: const TextStyle(color: Color(0xFF64748B), fontSize: 11)),
+                  ],
+                ),
+              ),
+              Expanded(
+                flex: 3,
+                child: _sessions.isEmpty
+                    ? const Center(child: Text('لا توجد جلسات سابقة', style: TextStyle(color: Color(0xFF64748B), fontSize: 12)))
+                    : ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        itemCount: _sessions.length,
+                        itemBuilder: (context, index) {
+                          final session = _sessions[index];
+                          final selected = session.id == _currentSessionId;
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 4),
                             decoration: BoxDecoration(
-                              color: Colors.green.withOpacity(0.2),
+                              color: selected ? const Color(0xFF1E3A50) : Colors.transparent,
                               borderRadius: BorderRadius.circular(12),
+                              border: selected ? Border.all(color: const Color(0xFF38BDF8).withOpacity(0.25)) : null,
                             ),
-                            child: const Text('نشط', style: TextStyle(fontSize: 10, color: Colors.green)),
-                          )
-                        : null,
-                    onTap: () => _switchModel(model),
-                  );
-                },
+                            child: ListTile(
+                              dense: true,
+                              visualDensity: const VisualDensity(vertical: -2),
+                              leading: Icon(selected ? Icons.chat_rounded : Icons.chat_bubble_outline_rounded,
+                                  size: 19, color: selected ? const Color(0xFF38BDF8) : const Color(0xFF8294A8)),
+                              title: Text(session.title, maxLines: 1, overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(color: selected ? Colors.white : const Color(0xFFD5DEE8), fontSize: 12, fontWeight: selected ? FontWeight.w600 : FontWeight.normal)),
+                              subtitle: Text(session.updatedAt.toLocal().toString().substring(0, 16),
+                                  style: const TextStyle(color: Color(0xFF718096), fontSize: 10)),
+                              trailing: IconButton(
+                                tooltip: 'حذف الجلسة',
+                                visualDensity: VisualDensity.compact,
+                                icon: const Icon(Icons.delete_outline_rounded, size: 17, color: Color(0xFF718096)),
+                                onPressed: () => _deleteSession(session),
+                              ),
+                              onTap: () => _switchSession(session),
+                            ),
+                          );
+                        },
+                      ),
               ),
-            ),
-          ],
+              _drawerActionTile(
+                icon: Icons.delete_sweep_outlined,
+                title: 'مسح جميع الجلسات',
+                iconColor: const Color(0xFFF87171),
+                titleColor: const Color(0xFFFCA5A5),
+                onTap: () { Navigator.pop(context); _clearAllSessions(); },
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: Divider(color: Color(0xFF263445), height: 18),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 7),
+                child: Row(
+                  children: [
+                    const Expanded(child: Text('النماذج المتاحة', style: TextStyle(color: Color(0xFF8FA3B8), fontSize: 11, fontWeight: FontWeight.w700))),
+                    Text('${_models.length}', style: const TextStyle(color: Color(0xFF64748B), fontSize: 11)),
+                  ],
+                ),
+              ),
+              Expanded(
+                flex: 2,
+                child: ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  itemCount: _models.length,
+                  itemBuilder: (context, index) {
+                    final model = _models[index];
+                    final isActive = model['id'] == _activeModel['id'];
+                    return ListTile(
+                      dense: true,
+                      visualDensity: const VisualDensity(vertical: -2),
+                      leading: Icon(isActive ? Icons.check_circle_rounded : Icons.circle_outlined,
+                          size: 19, color: isActive ? const Color(0xFF34D399) : const Color(0xFF64748B)),
+                      title: Text(model['name'], maxLines: 1, overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: isActive ? Colors.white : const Color(0xFFD5DEE8), fontSize: 12, fontWeight: isActive ? FontWeight.w600 : FontWeight.normal)),
+                      subtitle: Text('${model['size']} • ${model['type']}', style: const TextStyle(color: Color(0xFF718096), fontSize: 10)),
+                      trailing: isActive
+                          ? const Text('نشط', style: TextStyle(color: Color(0xFF34D399), fontSize: 10, fontWeight: FontWeight.w700))
+                          : null,
+                      onTap: () => _switchModel(model),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
         ),
       ),
       body: Container(
