@@ -186,6 +186,22 @@ class AgentKernel {
         conversationId: request.conversationId,
       );
       final normalizedOutput = output.trim();
+      if (normalizedOutput.startsWith('تم إيقاف تنفيذ الوكيل') ||
+          normalizedOutput.startsWith('تم إيقاف التوليد')) {
+        _state = AgentKernelState.idle;
+        _emit(
+          requestId: request.id,
+          type: 'execution_interrupted',
+          title: 'توقف التنفيذ بطلب المستخدم',
+          status: 'interrupted',
+          details: 'أعاد المحرك المحلي حالة الإيقاف بدل إعلان اكتمال المهمة.',
+        );
+        return AgentResponse(
+          requestId: request.id,
+          output: output,
+          completedAt: DateTime.now(),
+        );
+      }
       if (normalizedOutput.isEmpty ||
           normalizedOutput.startsWith('ERROR:') ||
           normalizedOutput.startsWith('تعذر تشغيل النموذج المحلي:') ||
