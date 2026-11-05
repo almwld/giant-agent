@@ -1,31 +1,11 @@
 import 'package:flutter/material.dart';
+import 'agent_activity_indicators.dart';
 
-class ThinkingIndicator extends StatefulWidget {
+/// Consistent thinking state used by legacy and secondary chat surfaces.
+class ThinkingIndicator extends StatelessWidget {
   final String message;
 
   const ThinkingIndicator({super.key, required this.message});
-
-  @override
-  State<ThinkingIndicator> createState() => _ThinkingIndicatorState();
-}
-
-class _ThinkingIndicatorState extends State<ThinkingIndicator> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      duration: const Duration(milliseconds: 1500),
-      vsync: this,
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -33,46 +13,24 @@ class _ThinkingIndicatorState extends State<ThinkingIndicator> with SingleTicker
       margin: const EdgeInsets.all(8),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.grey.shade800,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.deepPurple.shade300, width: 1),
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF38BDF8).withOpacity(.14)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          AnimatedBuilder(
-            animation: _controller,
-            builder: (context, child) {
-              return Row(
-                children: [
-                  _buildDot(0),
-                  const SizedBox(width: 4),
-                  _buildDot(1),
-                  const SizedBox(width: 4),
-                  _buildDot(2),
-                ],
-              );
-            },
-          ),
+          const AgentPulseDot(size: 8),
+          const SizedBox(width: 10),
+          const AgentThinkingDots(),
           const SizedBox(width: 12),
-          Text(
-            widget.message,
-            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          Flexible(
+            child: Text(
+              message,
+              style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 12),
+            ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildDot(int index) {
-    final value = (_controller.value * 3 + index) % 3;
-    final opacity = value < 1 ? value : 2 - value;
-    return Container(
-      width: 6,
-      height: 6,
-      decoration: BoxDecoration(
-        color: Colors.deepPurple.withOpacity(opacity.clamp(0.3, 1.0)),
-        shape: BoxShape.circle,
       ),
     );
   }
