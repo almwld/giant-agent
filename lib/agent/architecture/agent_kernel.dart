@@ -209,14 +209,8 @@ class AgentKernel {
         conversationId: request.conversationId,
       );
       final normalizedOutput = output.trim();
-      final wasCancelled =
-          normalizedOutput.startsWith('تم إيقاف تنفيذ الوكيل') ||
-          normalizedOutput.startsWith('تم إيقاف الوكيل بعد اكتمال الأداة') ||
-          normalizedOutput.startsWith('تم إيقاف التوليد') ||
-          normalizedOutput.contains('[تم إيقاف التوليد]');
-      final executionWasBounded =
-          normalizedOutput.startsWith('وصل الوكيل إلى الحد الآمن') ||
-          normalizedOutput.startsWith('أوقف الوكيل تكرار استدعاء الأداة');
+      final wasCancelled = _isCancelledOutput(normalizedOutput);
+      final executionWasBounded = _isIncompleteOutput(normalizedOutput);
 
       if (wasCancelled || executionWasBounded) {
         _state = AgentKernelState.idle;
@@ -238,14 +232,10 @@ class AgentKernel {
           completedAt: DateTime.now(),
         );
       }
-      if (normalizedOutput.isEmpty ||
-          normalizedOutput.startsWith('ERROR:') ||
-          normalizedOutput.startsWith('تعذر تشغيل النموذج المحلي:') ||
-          normalizedOutput.startsWith('تعذر تحليل استدعاء الأداة أو تنفيذه:') ||
-          normalizedOutput.startsWith('⚠️ استورد نموذج')) {
+      if (_isFailureOutput(normalizedOutput)) {
         throw StateError(
           normalizedOutput.isEmpty
-              ? 'The local model returned an empty response.'
+              ? 'The agent runtime returned an empty response.'
               : normalizedOutput,
         );
       }
@@ -288,6 +278,7 @@ class AgentKernel {
 
 
   bool _isCancelledOutput(String output) =>
+      output.startsWith('تم إيقاف المهمة') ||
       output.startsWith('تم إيقاف تنفيذ الوكيل') ||
       output.startsWith('تم إيقاف الوكيل بعد اكتمال الأداة') ||
       output.startsWith('تم إيقاف التوليد') ||
@@ -302,6 +293,8 @@ class AgentKernel {
       output.startsWith('ERROR:') ||
       output.startsWith('تعذر تشغيل النموذج المحلي:') ||
       output.startsWith('تعذر تحليل استدعاء الأداة أو تنفيذه:') ||
+      output.startsWith('تعذر إكمال الطلب:') ||
+      output.startsWith('⚠️ اختر نموذج') ||
       output.startsWith('⚠️ استورد نموذج');
 
   Future<String> _executePlannedRequest(
