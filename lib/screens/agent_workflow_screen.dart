@@ -9,8 +9,8 @@ class AgentWorkflowScreen extends StatelessWidget {
       ValueNotifier<List<Map<String, dynamic>>>(const []);
   static final ValueNotifier<String> finalOutput = ValueNotifier<String>('');
 
-  static void publish(List<Map<String, dynamic>> value, {String? finalOutput: output}) {
-    finalOutput.value = output ?? '';
+  static void publish(List<Map<String, dynamic>> value, {String? finalOutputText}) {
+    AgentWorkflowScreen.finalOutput.value = finalOutputText ?? '';
     events.value = value
         .map((event) => Map<String, dynamic>.from(event))
         .toList(growable: false);
