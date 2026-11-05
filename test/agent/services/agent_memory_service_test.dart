@@ -58,7 +58,7 @@ void main() {
         isEmpty,
       );
       expect(
-        await memory.buildContext('الإنجليزية', conversationId: 'session-en'),
+        await memory.buildContext('مشروع باللغة الإنجليزية', conversationId: 'session-en'),
         contains('الجلسة الثانية'),
       );
     } finally {
