@@ -6,9 +6,9 @@ class PlannerService {
   bool requiresPlan(String request) {
     final text = request.trim().toLowerCase();
     if (text.length < 12) return false;
-    final action = RegExp(r'(أنشئ|انشئ|ابن|طور|نفذ|صمم|اكتب|حلل|قارن|راجع|أصلح|اصلح|برمج|ابحث|build|create|develop|implement|design|analy[sz]e|compare|review|refactor|fix|research)').hasMatch(text);
-    final scope = RegExp(r'(مشروع|تطبيق|موقع|برنامج|كود|ملف|نظام|قاعدة|واجهة|خدمة|project|application|website|software|code|file|system|service|api)').hasMatch(text);
-    final sequence = RegExp(r'(ثم|بعد ذلك|خطوة|مراحل|متعدد|كامل|شامل|and then|after that|multiple steps|end.to.end)').hasMatch(text);
+    final action = RegExp(r'(أنشئ|انشئ|ابن|طور|نفذ|نفّذ|صمم|اكتب|حلل|قارن|راجع|أصلح|اصلح|برمج|ابحث|أكمل|اكمل|استكمل|أغلق|اغلق|سد|تحقق|استعد|ادمج|حدّث|حدث|build|create|develop|implement|design|analy[sz]e|compare|review|refactor|fix|research|complete|integrate|restore|verify)').hasMatch(text);
+    final scope = RegExp(r'(مشروع|تطبيق|موقع|برنامج|كود|ملف|نظام|قاعدة|واجهة|خدمة|نواة|ذاكرة|تخطيط|استعادة|تكامل|مؤشر|دورة عمل|جهاز|project|application|website|software|code|file|system|service|kernel|memory|planner|recovery|integration|device|workflow|indicator|end.to.end)').hasMatch(text);
+    final sequence = RegExp(r'(ثم|بعد ذلك|خطوة|مراحل|متعدد|كامل|شامل|فجوات|دورة|من البداية إلى النهاية|and then|after that|multiple steps|end.to.end)').hasMatch(text);
     return (action && (scope || text.length >= 55)) || sequence;
   }
 
