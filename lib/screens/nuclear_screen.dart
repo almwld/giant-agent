@@ -152,7 +152,7 @@ class _NuclearScreenState extends State<NuclearScreen> {
     try {
       await TaskManager().createTask(prompt, conversationId: 'nuclear');
       final execution = await TaskManager().executeNextStep();
-      response = execution['status'] == 'completed'
+      response = {'completed', 'paused'}.contains(execution['status'])
           ? execution['result']?.toString() ?? ''
           : 'تعذر إكمال الطلب: ${execution['error'] ?? execution['status']}';
     } catch (error) {
