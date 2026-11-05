@@ -71,9 +71,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _resumePausedTask() async {
     final manager = TaskManager();
-    final paused = await manager.getTasksForConversation('home', status: 'paused');
-    if (paused.isEmpty || !mounted) return;
-    final task = paused.last;
+    final recoverable = (await manager.getTasksForConversation('home'))
+        .where((task) => {'paused', 'pending', 'failed'}.contains(task['status']))
+        .toList(growable: false);
+    if (recoverable.isEmpty || !mounted) return;
+    final task = recoverable.last;
     final taskId = task['id'].toString();
     final description = task['description']?.toString() ?? 'مهمة محفوظة';
     final shouldResume = await showDialog<bool>(
