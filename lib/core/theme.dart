@@ -152,7 +152,27 @@ class AppTheme {
       ),
     ),
   );
-}
+  // Compatibility tokens used by legacy presentation widgets.
+  static const Color primaryColor = primary;
+  static const Color textLightColor = textLight;
+  static const Color cosmicPurple = Color(0xFF7C3AED);
+  static const Color cyberBlue = Color(0xFF38BDF8);
+  static const Color neonPink = Color(0xFFEC4899);
+  static const Color glassDark = darkSurface;
+  static const Color gradientStart = Color(0xFF6C63FF);
+  static const Color gradientMiddle = Color(0xFF3F3D9E);
+  static const Color gradientEnd = Color(0xFF1A1A2E);
+  static const LinearGradient premiumGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [gradientStart, gradientMiddle, gradientEnd],
+  );
+  static const BoxShadow glowShadow = BoxShadow(
+    color: Color(0x336C63FF),
+    blurRadius: 20,
+    spreadRadius: 5,
+  );
+
 
 // ألوان إضافية
 static const Color gradientStart = Color(0xFF6C63FF);
