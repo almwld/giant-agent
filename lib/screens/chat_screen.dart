@@ -339,7 +339,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ..clear()
         ..addAll((events ?? []).map((row) => Map<String, dynamic>.from(jsonDecode(row['event_json'] as String) as Map)));
     });
-    AgentWorkflowScreen.publish(_agentSteps, finalOutput: _latestAssistantOutput);
+    AgentWorkflowScreen.publish(_agentSteps, finalOutputText: _latestAssistantOutput);
     _scrollToBottom();
   }
 
@@ -389,7 +389,7 @@ class _ChatScreenState extends State<ChatScreen> {
     await _pruneOldSessions();
     if (!mounted) return;
     setState(() { _messages.clear(); _agentSteps.clear(); _streamingResponse = ''; });
-    AgentWorkflowScreen.publish(_agentSteps, finalOutput: _latestAssistantOutput);
+    AgentWorkflowScreen.publish(_agentSteps, finalOutputText: _latestAssistantOutput);
     await _loadSessions();
     _scrollToBottom();
   }
@@ -474,7 +474,7 @@ class _ChatScreenState extends State<ChatScreen> {
               await _db?.delete('agent_events', where: 'session_id = ?', whereArgs: [_currentSessionId]);
               await AgentMemoryService.instance.deleteConversationMemory(_currentSessionId);
               setState(() { _messages.clear(); _agentSteps.clear(); });
-              AgentWorkflowScreen.publish(_agentSteps, finalOutput: _latestAssistantOutput);
+              AgentWorkflowScreen.publish(_agentSteps, finalOutputText: _latestAssistantOutput);
               Navigator.pop(ctx);
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('تم مسح المحادثات')),
