@@ -30,6 +30,7 @@ object NotificationBridge {
                     when (call.method) {
                         "initialize" -> result.success(manager.areNotificationsEnabled())
                         "areNotificationsEnabled" -> result.success(manager.areNotificationsEnabled())
+                        "cancelAll" -> { manager.cancelAll(); result.success(true) }
                         "show" -> {
                             if (!manager.areNotificationsEnabled()) {
                                 result.success(false)
