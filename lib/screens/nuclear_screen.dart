@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../services/agent_service.dart';
+import '../agent/task_manager.dart';
 import '../services/file_upload_service.dart';
 import '../services/model_service.dart';
 import '../widgets/status_bar.dart';
@@ -19,7 +19,6 @@ class _NuclearScreenState extends State<NuclearScreen> {
   final TextEditingController _controller = TextEditingController();
   final List<Map<String, dynamic>> _messages = [];
   final ScrollController _scrollController = ScrollController();
-  final AgentService _agent = AgentService.instance;
   final ModelService _models = ModelService();
   final FileUploadService _files = FileUploadService.instance;
 
@@ -151,7 +150,11 @@ class _NuclearScreenState extends State<NuclearScreen> {
 
     String response;
     try {
-      response = await _agent.runTask(prompt);
+      await TaskManager().createTask(prompt, conversationId: 'nuclear');
+      final execution = await TaskManager().executeNextStep();
+      response = execution['status'] == 'completed'
+          ? execution['result']?.toString() ?? ''
+          : 'تعذر إكمال الطلب: ${execution['error'] ?? execution['status']}';
     } catch (error) {
       response = 'تعذر إكمال الطلب: $error';
     }
