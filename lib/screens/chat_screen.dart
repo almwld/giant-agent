@@ -890,12 +890,24 @@ class _ChatScreenState extends State<ChatScreen> {
         _isLoading = true;
       });
       await _saveMessage(attachmentMessage, true);
-      final response = await _runTrackedTask(
-        'حلّل محتوى الملف المرفق اعتماداً على النص الفعلي التالي. '
-        'اذكر حدود التحليل ولا تخترع بيانات غير موجودة.\n'
-        'تحليل الملف: ${jsonEncode(analysis)}\n'
-        'محتوى الملف:\n$boundedDocument',
+      final analysisPrompt =
+          'حلّل محتوى الملف المرفق اعتماداً على النص الفعلي التالي. '
+          'اذكر حدود التحليل ولا تخترع بيانات غير موجودة.\n'
+          'تحليل الملف: ${jsonEncode(analysis)}\n'
+          'محتوى الملف:\n$boundedDocument';
+      final taskPrefs = await SharedPreferences.getInstance();
+      final trackedTask = await TaskManager().createTask(
+        'تحليل الملف: ${analysis['filename']}',
+        conversationId: _currentSessionId,
       );
+      final taskId = trackedTask['id'].toString();
+      await taskPrefs.setString('giant_pending_task', analysisPrompt);
+      await taskPrefs.setString('giant_pending_session_id', _currentSessionId);
+      await taskPrefs.setString('giant_pending_task_id', taskId);
+      final response = await _runTrackedTask(analysisPrompt, taskId: taskId);
+      await taskPrefs.remove('giant_pending_task');
+      await taskPrefs.remove('giant_pending_session_id');
+      await taskPrefs.remove('giant_pending_task_id');
       if (!mounted) return;
       setState(() {
         _messages.add({
