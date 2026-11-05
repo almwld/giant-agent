@@ -209,7 +209,10 @@ class AgentKernel {
         conversationId: request.conversationId,
       );
       final normalizedOutput = output.trim();
-      final wasCancelled = _isCancelledOutput(normalizedOutput);
+      // The coordinator flag is authoritative even if a provider finishes
+      // its in-flight request before it can observe the cancellation signal.
+      final wasCancelled =
+          _cancellationRequested || _isCancelledOutput(normalizedOutput);
       final executionWasBounded = _isIncompleteOutput(normalizedOutput);
 
       if (wasCancelled || executionWasBounded) {
