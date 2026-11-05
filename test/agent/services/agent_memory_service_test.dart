@@ -5,6 +5,34 @@ import 'package:giant_agent_x/services/agent_memory_service.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test('upgrades legacy v1 memory tables and creates missing facts table',
+      () async {
+    sqfliteFfiInit();
+    final database = await databaseFactoryFfi.openDatabase(
+      inMemoryDatabasePath,
+      options: OpenDatabaseOptions(
+        version: 1,
+        onCreate: (db, version) async {
+          await db.execute(
+            'CREATE TABLE turns (id INTEGER PRIMARY KEY AUTOINCREMENT, user_text TEXT NOT NULL, assistant_text TEXT NOT NULL, created_at INTEGER NOT NULL)',
+          );
+        },
+      ),
+    );
+    try {
+      await AgentMemoryService.migrateSchema(database, 1);
+      final columns = await database.rawQuery('PRAGMA table_info(turns)');
+      expect(columns.any((column) => column['name'] == 'session_id'), isTrue);
+      expect(await database.query('facts'), isEmpty);
+
+      // A second migration pass must be safe for partially upgraded installs.
+      await AgentMemoryService.migrateSchema(database, 2);
+      expect(await database.query('facts'), isEmpty);
+    } finally {
+      await database.close();
+    }
+  });
+
   test('conversation recall is isolated by session and deletions stay scoped',
       () async {
     sqfliteFfiInit();
