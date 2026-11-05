@@ -84,3 +84,6 @@ Complete and stabilize the current subsystem before expanding the feature surfac
 - Connected persistent task lifecycle tracking to the ChatScreen, HomeScreen, and NuclearScreen agent entry points. Chat task and document-analysis recovery now persist a task ID alongside the pending prompt/session.
 - Changed `TaskManager` so interrupted/bounded results remain paused instead of being incorrectly marked completed; execution-lock cleanup now covers persistence failures.
 - Added conversation-scoped task retrieval and resume/cancel dialogs to HomeScreen and NuclearScreen so paused tasks are no longer orphaned after process death.
+
+- CI run `41977233732` on commit `492d6c09dc45fcf8c20ef012fc60afaf97bc7a27` completed successfully: Flutter analysis, unit tests, universal APK, arm64-v8a, armeabi-v7a, x86_64, checksum verification, and all five artifact uploads passed.
+- Subsequent task-lifecycle/recovery integration commits are newer than that green baseline and remain subject to their own CI run and device verification.
