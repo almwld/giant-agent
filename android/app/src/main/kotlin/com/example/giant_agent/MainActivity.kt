@@ -309,18 +309,22 @@ class MainActivity: FlutterActivity() {
                     val tokens = (call.argument<Int>("maxTokens") ?: 256).coerceIn(1, 2048)
                     val temp = (call.argument<Double>("temperature") ?: 0.25).toFloat().coerceIn(0.05f, 1.5f)
                     if (prompt.isBlank()) result.success("") else aiExecutor.execute {
-                        emitAgentEvent("request", "تم استلام الطلب وتجهيز النموذج المحلي", "completed")
-                        emitAgentEvent("inference", "استدلال النموذج المحلي جارٍ", "running")
+                        // Keep each native inference cycle independently addressable in
+                        // the persisted timeline; reusing "request"/"inference" overwrote
+                        // earlier cycles in the same conversation.
+                        val requestId = "native_${System.nanoTime()}"
+                        emitAgentEvent("${requestId}_request", "تم استلام الطلب وتجهيز النموذج المحلي", "completed", requestId = requestId)
+                        emitAgentEvent("${requestId}_inference", "استدلال النموذج المحلي جارٍ", "running", requestId = requestId)
                         try {
                             val tokenCallback = object : TokenCallback {
                                 override fun onToken(token: String) { emitAgentToken(token) }
                             }
                             val answer = llamaBridge.nativeGenerateStreaming(prompt, tokens, temp, tokenCallback)
-                            emitAgentEvent("inference", "اكتمل توليد الإجابة", "completed")
+                            emitAgentEvent("${requestId}_inference", "اكتمل توليد الإجابة", "completed", requestId = requestId)
                             runOnUiThread { result.success(answer) }
                         } catch (t: Throwable) {
                             val message = t.message ?: "native inference failed"
-                            emitAgentEvent("inference", "تعذر إكمال الاستدلال المحلي", "failed", message)
+                            emitAgentEvent("${requestId}_inference", "تعذر إكمال الاستدلال المحلي", "failed", message, requestId)
                             runOnUiThread { result.error("INFERENCE_FAILED", message, null) }
                         }
                     }
@@ -366,10 +370,17 @@ class MainActivity: FlutterActivity() {
         }
     }
 
-    private fun emitAgentEvent(id: String, title: String, status: String, details: String? = null) {
+    private fun emitAgentEvent(
+        id: String,
+        title: String,
+        status: String,
+        details: String? = null,
+        requestId: String? = null
+    ) {
         runOnUiThread {
             agentEventSink?.success(mapOf(
                 "id" to id,
+                "request_id" to requestId,
                 "type" to "agent_status",
                 "title" to title,
                 "status" to status,
