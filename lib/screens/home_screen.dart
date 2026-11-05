@@ -42,6 +42,7 @@ class _HomeScreenState extends State<HomeScreen> {
         if (_messages.isEmpty) _addWelcomeMessage();
       });
       _scrollToBottom();
+      await _resumePausedTask();
     } catch (error) {
       if (!mounted) return;
       setState(_addWelcomeMessage);
@@ -66,6 +67,62 @@ class _HomeScreenState extends State<HomeScreen> {
 ''',
       'time': DateTime.now(),
     });
+  }
+
+  Future<void> _resumePausedTask() async {
+    final manager = TaskManager();
+    final paused = await manager.getTasksForConversation('home', status: 'paused');
+    if (paused.isEmpty || !mounted) return;
+    final task = paused.last;
+    final taskId = task['id'].toString();
+    final description = task['description']?.toString() ?? 'مهمة محفوظة';
+    final shouldResume = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('مهمة منزلية غير مكتملة'),
+        content: Text('توقفت المهمة التالية قبل اكتمالها:\n$description\n\nهل تريد استئنافها؟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('إلغاء المهمة'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('استئناف'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (shouldResume != true) {
+      await manager.markCancelled(taskId);
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    String output;
+    try {
+      final result = await manager.resumeTask(taskId);
+      output = result['result']?.toString() ??
+          result['error']?.toString() ??
+          'حالة المهمة: ${result['status']}';
+    } catch (error) {
+      output = 'تعذر استئناف المهمة: $error';
+      await manager.markFailed(taskId, output);
+    }
+    if (!mounted) return;
+    setState(() {
+      _messages.add({'isUser': false, 'content': output, 'time': DateTime.now()});
+      _isLoading = false;
+    });
+    await DatabaseService.saveMessage(output, false);
+    _scrollToBottom();
+    if (!output.startsWith('تم إيقاف') &&
+        !output.startsWith('وصل الوكيل إلى الحد الآمن') &&
+        !output.startsWith('أوقف الوكيل تكرار استدعاء الأداة')) {
+      await _resumePausedTask();
+    }
   }
 
   Future<void> _sendMessage() async {
