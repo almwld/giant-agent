@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
-import '../services/agent_service.dart';
+import '../agent/task_manager.dart';
 import '../services/database_service.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/quick_actions.dart';
@@ -17,7 +17,6 @@ class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _controller = TextEditingController();
   final List<Map<String, dynamic>> _messages = [];
   final ScrollController _scrollController = ScrollController();
-  final AgentService _agent = AgentService.instance;
   bool _isLoading = false;
 
   @override
@@ -83,7 +82,11 @@ class _HomeScreenState extends State<HomeScreen> {
     await DatabaseService.saveMessage(text, true);
     String response;
     try {
-      response = await _agent.runTask(text);
+      await TaskManager().createTask(text, conversationId: 'home');
+      final execution = await TaskManager().executeNextStep();
+      response = execution['status'] == 'completed'
+          ? execution['result']?.toString() ?? ''
+          : 'تعذر إكمال الطلب: ${execution['error'] ?? execution['status']}';
     } catch (error) {
       response = 'تعذر إكمال الطلب: $error';
     }
