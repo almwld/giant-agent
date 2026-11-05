@@ -15,15 +15,16 @@ class PlannerService {
   List<Map<String, dynamic>> createPlan(String request) {
     final text = request.trim().toLowerCase();
     if (text.isEmpty) throw ArgumentError.value(request, 'request');
-    final software = RegExp(r'(كود|برمج|تطبيق|موقع|برنامج|ملف|نظام|قاعدة|واجهة|api|flutter|dart|python|javascript|software|code|app|website|project|refactor|debug|fix)').hasMatch(text);
+    final software = RegExp(r'(كود|برمج|تطبيق|موقع|برنامج|ملف|نظام|قاعدة|واجهة|نواة|ذاكرة|وكيل|تخطيط|استعادة|تكامل|دورة عمل|مؤشر|جهاز|api|flutter|dart|python|javascript|software|code|app|website|project|refactor|debug|fix|kernel|memory|agent|planner|recovery|integration|workflow|device|indicator)').hasMatch(text);
     final research = RegExp(r'(ابحث|بحث|حلل|تحليل|قارن|دراسة|تقييم|مصادر|research|analy[sz]e|compare|evaluate|investigate)').hasMatch(text);
     final writing = RegExp(r'(اكتب|صياغة|مقال|تقرير|رسالة|محتوى|عرض|ترجم|write|draft|report|article|translate|proposal)').hasMatch(text);
     final actions = software
         ? <String>[
-            'تحليل الهدف والمتطلبات والقيود ومعايير القبول.',
-            'تصميم الحل وتقسيمه إلى مكونات وخطوات تنفيذ واضحة.',
-            'تنفيذ المتطلبات باستخدام الأدوات المتاحة وتسجيل النتائج الفعلية.',
-            'مراجعة المخرجات والتحقق مما اكتمل وما بقي دون ادعاء اختبارات لم تنفذ.',
+            'فحص بنية المشروع ومسارات التنفيذ الحالية وتحديد الفجوات الفعلية.',
+            'تتبع دورة الطلب عبر النواة والتخطيط والذاكرة والأدوات وحالة المهمة.',
+            'تنفيذ الإصلاحات المتوافقة مع البنية الحالية مع الحفاظ على البيانات والإعدادات.',
+            'ربط الاستعادة وسجل الأحداث ومؤشرات الحالة بنتائج التنفيذ الفعلية.',
+            'التحقق من دورة العمل والاختبارات والبناء، وتوثيق ما تعذر التحقق منه على الجهاز.',
           ]
         : research
             ? <String>[
