@@ -1,86 +1,57 @@
-import 'agent_service.dart';
-
-/// Model-driven task planner. It asks the active local model for a plan and
-/// keeps planning separate from execution; a step is not completed until the
-/// caller explicitly reports its real result.
 class PlannerService {
-  PlannerService._internal();
-  static final PlannerService _instance = PlannerService._internal();
+  PlannerService._();
+  static final PlannerService _instance = PlannerService._();
   factory PlannerService() => _instance;
 
-  final AgentService _agent = AgentService.instance;
-  final List<Map<String, dynamic>> _plan = [];
+  bool requiresPlan(String request) {
+    final text = request.trim().toLowerCase();
+    if (text.length < 12) return false;
+    final action = RegExp(r'(أنشئ|انشئ|ابن|طور|نفذ|صمم|اكتب|حلل|قارن|راجع|أصلح|اصلح|برمج|ابحث|build|create|develop|implement|design|analy[sz]e|compare|review|refactor|fix|research)').hasMatch(text);
+    final scope = RegExp(r'(مشروع|تطبيق|موقع|برنامج|كود|ملف|نظام|قاعدة|واجهة|خدمة|project|application|website|software|code|file|system|service|api)').hasMatch(text);
+    final sequence = RegExp(r'(ثم|بعد ذلك|خطوة|مراحل|متعدد|كامل|شامل|and then|after that|multiple steps|end.to.end)').hasMatch(text);
+    return (action && (scope || text.length >= 55)) || sequence;
+  }
 
-  Future<List<Map<String, dynamic>>> createPlan(String goal) async {
-    final normalized = goal.trim();
-    if (normalized.isEmpty) throw ArgumentError.value(goal, 'goal');
-    final answer = await _agent.runTask(
-      'أنشئ خطة تنفيذ عملية للهدف التالي فقط، ولا تنفذ أي أدوات أو تغييرات. '
-      'أخرج قائمة مرقمة من 3 إلى 8 خطوات، خطوة واحدة في كل سطر، '
-      'واجعل الخطوات قابلة للتحقق ولا تفترض موارد غير متاحة.\nالهدف: $normalized',
-    );
-    final parsed = answer
-        .split('\n')
-        .map((line) => line.trim())
-        .where((line) => RegExp(r'^(?:[-*•]|\d+[.)、])\s*').hasMatch(line))
-        .map((line) => line.replaceFirst(RegExp(r'^(?:[-*•]|\d+[.)、])\s*'), '').trim())
-        .where((line) => line.isNotEmpty)
-        .take(8)
-        .toList();
-    if (parsed.isEmpty) {
-      throw StateError('لم يتمكن النموذج من إنتاج خطة قابلة للقراءة: $answer');
-    }
-    _plan
-      ..clear()
-      ..addAll(List.generate(parsed.length, (index) => {
+  List<Map<String, dynamic>> createPlan(String request) {
+    final text = request.trim().toLowerCase();
+    if (text.isEmpty) throw ArgumentError.value(request, 'request');
+    final software = RegExp(r'(كود|برمج|تطبيق|موقع|برنامج|ملف|نظام|قاعدة|واجهة|api|flutter|dart|python|javascript|software|code|app|website|project|refactor|debug|fix)').hasMatch(text);
+    final research = RegExp(r'(ابحث|بحث|حلل|تحليل|قارن|دراسة|تقييم|مصادر|research|analy[sz]e|compare|evaluate|investigate)').hasMatch(text);
+    final writing = RegExp(r'(اكتب|صياغة|مقال|تقرير|رسالة|محتوى|عرض|ترجم|write|draft|report|article|translate|proposal)').hasMatch(text);
+    final actions = software
+        ? <String>[
+            'تحليل الهدف والمتطلبات والقيود ومعايير القبول.',
+            'تصميم الحل وتقسيمه إلى مكونات وخطوات تنفيذ واضحة.',
+            'تنفيذ المتطلبات باستخدام الأدوات المتاحة وتسجيل النتائج الفعلية.',
+            'مراجعة المخرجات والتحقق مما اكتمل وما بقي دون ادعاء اختبارات لم تنفذ.',
+          ]
+        : research
+            ? <String>[
+                'تحديد أسئلة الدراسة ونطاقها ومعايير تقييم المعلومات.',
+                'جمع وتنظيم المعلومات المتاحة وتحديد الفجوات.',
+                'تحليل المعلومات ومقارنة النتائج وفق المعايير المحددة.',
+                'مراجعة الاتساق وصياغة خلاصة تفصل الحقائق عن الاستنتاجات.',
+              ]
+            : writing
+                ? <String>[
+                    'تحديد هدف النص والجمهور والنبرة والمتطلبات.',
+                    'إعداد المسودة الكاملة وفق البنية المناسبة.',
+                    'مراجعة الدقة واللغة والترابط والالتزام بالمتطلبات.',
+                    'إخراج النسخة النهائية وتوضيح المعلومات الناقصة أو الافتراضات.',
+                  ]
+                : <String>[
+                    'تحليل المطلوب وتحديد النتيجة المستهدفة والقيود.',
+                    'تنفيذ العمل على مراحل صغيرة قابلة للمراجعة.',
+                    'مراجعة النتيجة والتحقق من اكتمال المطلوب.',
+                  ];
+    return List<Map<String, dynamic>>.generate(
+      actions.length,
+      (index) => <String, dynamic>{
         'step': index + 1,
-        'action': parsed[index],
+        'action': actions[index],
         'status': 'pending',
-        'result': null,
-      }));
-    return getPlan();
-  }
-
-  String getNextAction() {
-    for (final step in _plan) {
-      if (step['status'] == 'pending') {
-        step['status'] = 'in_progress';
-        return step['action'] as String;
-      }
-    }
-    return 'completed';
-  }
-
-  void markStepComplete(int stepNumber, {String? result}) {
-    for (final step in _plan) {
-      if (step['step'] == stepNumber) {
-        step['status'] = 'completed';
-        if (result != null) step['result'] = result;
-        return;
-      }
-    }
-  }
-
-  void markStepFailed(int stepNumber, String error) {
-    for (final step in _plan) {
-      if (step['step'] == stepNumber) {
-        step['status'] = 'failed';
-        step['error'] = error;
-        return;
-      }
-    }
-  }
-
-  List<Map<String, dynamic>> getPlan() =>
-      _plan.map((step) => Map<String, dynamic>.from(step)).toList(growable: false);
-
-  bool isPlanComplete() =>
-      _plan.isNotEmpty && _plan.every((step) => step['status'] == 'completed');
-
-  String getProgress() {
-    final completed = _plan.where((step) => step['status'] == 'completed').length;
-    final total = _plan.length;
-    if (total == 0) return 'لا توجد خطة';
-    return 'تقدم: $completed/$total خطوة (${(completed / total * 100).toStringAsFixed(0)}%)';
+      },
+      growable: false,
+    );
   }
 }
