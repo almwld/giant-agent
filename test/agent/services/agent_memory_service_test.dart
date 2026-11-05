@@ -35,8 +35,8 @@ void main() {
         conversationId: 'session-ar',
       );
       await memory.saveTurn(
-        'أعمل على مشروع باللغة الإنجليزية',
-        'هذا سياق مستقل للجلسة الثانية.',
+        'I work on an English project',
+        'Second session context.',
         conversationId: 'session-en',
       );
 
@@ -58,8 +58,8 @@ void main() {
         isEmpty,
       );
       expect(
-        await memory.buildContext('مشروع باللغة الإنجليزية', conversationId: 'session-en'),
-        contains('الجلسة الثانية'),
+        await memory.buildContext('English project', conversationId: 'session-en'),
+        contains('Second session context'),
       );
     } finally {
       await memory.close();
