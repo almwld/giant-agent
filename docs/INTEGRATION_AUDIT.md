@@ -38,7 +38,7 @@ The Flutter `ModelService` and the kernel/service facades use a factory singleto
 | Web search | DuckDuckGo HTML search snippets | Context enrichment only; not a full browser, crawler, or source-verification engine. |
 | GitHub | Repository metadata, bounded tree, README context | Read-only. It does not edit files, commit, or push to repositories. |
 | Cloud storage | Nextcloud/WebDAV workspace ZIP upload | Upload path only; no restore/download workflow is currently exposed. |
-| Recovery | ChatScreen stores a pending prompt/session and offers re-send with the latest saved tool result; `TaskManager` separately persists paused tasks | Two recovery paths exist. `TaskManager` has no current screen consumer; unify or retire it before declaring recovery integrated. |
+| Recovery | `TaskManager` now records task lifecycle for ChatScreen, HomeScreen, NuclearScreen, and document analysis; ChatScreen persists the pending prompt/session/task ID and offers re-send with the latest saved tool result | Task state and chat recovery are connected. Home/Nuclear paused tasks are persisted but still need a user-facing resume surface. |
 | Android lifecycle | Shared `AgentRuntime` and foreground service when a local model loads | Local model runtime path is wired; verify behavior under backgrounding, process death, and OpenRouter-only use on-device. |
 
 ## 3. Confirmed integration gaps / risks
@@ -50,7 +50,7 @@ The Flutter `ModelService` and the kernel/service facades use a factory singleto
 5. **Python isolation boundary:** the Python runner itself states it is defense-in-depth, not an OS sandbox. Keep execution restricted and never claim process/container isolation.
 6. **External service boundaries:** web search returns snippets; GitHub is read-only; cloud is upload-only. UI labels and agent prompts must continue to communicate those limits.
 7. **Android storage permissions:** removed broad `READ_EXTERNAL_STORAGE`, `WRITE_EXTERNAL_STORAGE`, `MANAGE_EXTERNAL_STORAGE`, and `requestLegacyExternalStorage` declarations. Model import and file attachments use Storage Access Framework/content URIs and app-private copies; still verify these flows on supported Android versions.
-8. **Automated verification coverage:** tests now cover timeline serialization, planner templates, and the canonical tool registry. Add focused tests for kernel lifecycle/cancellation, memory session isolation, native tool path validation, and provider failure behavior. Decide and implement one canonical recovery path: connect `TaskManager` to the active UI/runtime or retire it in favor of the existing ChatScreen pending-task recovery. A unit test verifies `TaskManager` restores interrupted task and step states as paused/pending; the manager itself is not yet connected to a user-facing task flow.
+8. **Automated verification coverage:** tests now cover timeline serialization, planner templates, and the canonical tool registry. Add focused tests for kernel lifecycle/cancellation, memory session isolation, native tool path validation, and provider failure behavior. Complete the recovery surface for tasks created by HomeScreen and NuclearScreen so paused records can be resumed or cancelled after process death. Unit tests verify `TaskManager` restores interrupted task/step states and transitions through running, paused, and completed. Chat and the Home/Nuclear task entry points now use the manager; Home/Nuclear still need a resume surface for tasks paused by process death.
 9. **CI analyzer gate:** the latest preceding run failed because three conversation actions were unused. The actions have now been restored to the overflow menu; the new run must confirm the analyzer and subsequent build stages.
 
 ## 4. Completion gates
@@ -80,3 +80,6 @@ Complete and stabilize the current subsystem before expanding the feature surfac
 - Added a persistent-task recovery test for interrupted process state.
 - Removed broad external-storage permissions after confirming model import and attachment flows use document/content pickers and app-private storage.
 - CI run `41976790710` on commit `54716a43ad1801c01bb492fa0c43b53a97e2789b`: Flutter analysis and unit tests passed; universal APK build was still running at the time of this note. This is not a full CI success or device verification.
+
+- Connected persistent task lifecycle tracking to the ChatScreen, HomeScreen, and NuclearScreen agent entry points. Chat task and document-analysis recovery now persist a task ID alongside the pending prompt/session.
+- Changed `TaskManager` so interrupted/bounded results remain paused instead of being incorrectly marked completed; execution-lock cleanup now covers persistence failures.
