@@ -78,9 +78,10 @@ class AgentKernel {
     required String title,
     required String status,
     String? details,
+    String? eventId,
   }) {
     _events.add(AgentTimelineEvent(
-      id: 'kernel_${requestId}_${++_eventSequence}',
+      id: eventId ?? 'kernel_${requestId}_${++_eventSequence}',
       requestId: requestId,
       type: type,
       title: title,
@@ -108,6 +109,7 @@ class AgentKernel {
     _state = AgentKernelState.initializing;
     _emit(
       requestId: 'runtime',
+      eventId: 'kernel_runtime_initialization',
       type: 'runtime_initializing',
       title: 'تهيئة محرك الوكيل',
       status: 'running',
@@ -117,6 +119,7 @@ class AgentKernel {
       _state = AgentKernelState.idle;
       _emit(
         requestId: 'runtime',
+        eventId: 'kernel_runtime_initialization',
         type: 'runtime_ready',
         title: 'محرك الوكيل جاهز',
         status: 'completed',
@@ -126,6 +129,7 @@ class AgentKernel {
       _state = AgentKernelState.failed;
       _emit(
         requestId: 'runtime',
+        eventId: 'kernel_runtime_initialization',
         type: 'runtime_initialization_failed',
         title: 'تعذرت تهيئة محرك الوكيل',
         status: 'failed',
@@ -193,6 +197,7 @@ class AgentKernel {
       _state = AgentKernelState.executing;
       _emit(
         requestId: request.id,
+        eventId: 'kernel_${request.id}_execution',
         type: 'execution_started',
         title: 'بدأ تنفيذ الطلب',
         status: 'running',
@@ -217,6 +222,7 @@ class AgentKernel {
         _state = AgentKernelState.idle;
         _emit(
           requestId: request.id,
+          eventId: 'kernel_${request.id}_execution',
           type: wasCancelled ? 'execution_interrupted' : 'execution_incomplete',
           title: wasCancelled
               ? 'توقف التنفيذ بطلب المستخدم'
@@ -247,6 +253,7 @@ class AgentKernel {
       _state = AgentKernelState.idle;
       _emit(
         requestId: request.id,
+        eventId: 'kernel_${request.id}_execution',
         type: 'response_generated',
         title: 'اكتمل توليد الإجابة',
         status: 'completed',
@@ -261,6 +268,7 @@ class AgentKernel {
       _state = AgentKernelState.failed;
       _emit(
         requestId: request.id,
+        eventId: 'kernel_${request.id}_execution',
         type: 'execution_failed',
         title: 'تعذر إكمال الطلب',
         status: 'failed',
@@ -324,6 +332,7 @@ class AgentKernel {
       final action = step['action'] as String;
       _emit(
         requestId: requestId,
+        eventId: 'kernel_${requestId}_step_$number',
         type: 'step_started',
         title: 'الخطوة $number: $action',
         status: 'running',
@@ -362,11 +371,20 @@ $previous
 
       if (_cancellationRequested || _isCancelledOutput(output) ||
           _isIncompleteOutput(output)) {
+        _emit(
+          requestId: requestId,
+          eventId: 'kernel_${requestId}_step_$number',
+          type: 'step_interrupted',
+          title: 'توقفت الخطوة $number قبل اكتمالها',
+          status: 'interrupted',
+          details: output,
+        );
         return output;
       }
       if (_isFailureOutput(output)) {
         _emit(
           requestId: requestId,
+          eventId: 'kernel_${requestId}_step_$number',
           type: 'step_failed',
           title: 'فشلت الخطوة $number',
           status: 'failed',
@@ -382,6 +400,7 @@ $previous
           output.length > 1200 ? '${output.substring(0, 1200)}…' : output;
       _emit(
         requestId: requestId,
+        eventId: 'kernel_${requestId}_step_$number',
         type: 'step_completed',
         title: 'اكتملت الخطوة $number',
         status: 'completed',
@@ -395,6 +414,7 @@ $previous
 
     _emit(
       requestId: requestId,
+      eventId: 'kernel_${requestId}_synthesis',
       type: 'synthesis_started',
       title: 'مراجعة النتائج وإعداد الإجابة النهائية',
       status: 'running',
@@ -420,14 +440,39 @@ $evidence
       persistTurn: false,
     );
     final normalizedFinal = finalOutput.trim();
-    if (!_cancellationRequested &&
-        !_isCancelledOutput(normalizedFinal) &&
-        !_isIncompleteOutput(normalizedFinal) &&
-        !_isFailureOutput(normalizedFinal)) {
+    if (_cancellationRequested ||
+        _isCancelledOutput(normalizedFinal) ||
+        _isIncompleteOutput(normalizedFinal)) {
+      _emit(
+        requestId: requestId,
+        eventId: 'kernel_${requestId}_synthesis',
+        type: 'synthesis_interrupted',
+        title: 'توقف إعداد الإجابة النهائية',
+        status: 'interrupted',
+        details: normalizedFinal,
+      );
+    } else if (_isFailureOutput(normalizedFinal)) {
+      _emit(
+        requestId: requestId,
+        eventId: 'kernel_${requestId}_synthesis',
+        type: 'synthesis_failed',
+        title: 'تعذر إعداد الإجابة النهائية',
+        status: 'failed',
+        details: normalizedFinal,
+      );
+    } else {
       await AgentMemoryService.instance.saveTurn(
         prompt,
         normalizedFinal,
         conversationId: conversationId,
+      );
+      _emit(
+        requestId: requestId,
+        eventId: 'kernel_${requestId}_synthesis',
+        type: 'synthesis_completed',
+        title: 'اكتملت مراجعة النتائج',
+        status: 'completed',
+        details: 'تم إعداد الإجابة النهائية من نتائج الخطوات المسجلة.',
       );
     }
     return normalizedFinal;
@@ -440,6 +485,7 @@ $evidence
     _state = AgentKernelState.cancelling;
     _emit(
       requestId: requestId,
+      eventId: 'kernel_${requestId}_cancellation',
       type: 'cancellation_requested',
       title: 'طلب إيقاف التنفيذ',
       status: 'running',
@@ -453,6 +499,7 @@ $evidence
     }
     _emit(
       requestId: requestId,
+      eventId: 'kernel_${requestId}_cancellation',
       type: 'cancellation_recorded',
       title: 'تم تسجيل طلب الإيقاف',
       status: 'completed',
