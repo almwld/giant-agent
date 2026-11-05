@@ -40,7 +40,7 @@ class ToolManager {
     AgentToolDefinition(
       name: 'execute_python',
       description: 'تنفيذ Python محلي مقيّد للحساب والطباعة والحلقات المحدودة؛ لا يدعم الاستيراد أو فتح الملفات أو الوصول إلى النظام.',
-      example: '{"name":"execute_python","arguments":{"code":"for i in range(1, 4):\\n    print(i)"}}',
+      example: '{"name":"execute_python","arguments":{"code":"for i in range(1, 4):\n    print(i)"}}',
     ),
   ];
 
@@ -63,6 +63,6 @@ class ToolManager {
   /// Text inserted into the model system prompt from the same definitions
   /// used by runtime validation.
   String get promptCatalog => _definitions
-      .map((tool) => '- ${tool.name}: ${tool.description}\\n  مثال: ${tool.example}')
-      .join('\\n');
+      .map((tool) => '- ${tool.name}: ${tool.description}\n  مثال: ${tool.example}')
+      .join('\n');
 }
