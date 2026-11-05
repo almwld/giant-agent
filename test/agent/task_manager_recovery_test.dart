@@ -21,6 +21,11 @@ void main() {
       TaskExecutionOutcome.failed,
     );
     expect(
+      TaskManager.classifyResult('⚠️ اختر نموذج GGUF محلياً أو فعّل OpenRouter.'),
+      TaskExecutionOutcome.failed,
+    );
+
+    expect(
       TaskManager.classifyResult('اكتملت المهمة والنتيجة جاهزة.'),
       TaskExecutionOutcome.completed,
     );
