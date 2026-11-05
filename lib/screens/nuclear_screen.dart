@@ -94,8 +94,10 @@ class _NuclearScreenState extends State<NuclearScreen> {
       _thinkingMessage = 'استئناف المهمة المحفوظة...';
     });
     String output;
+    var continueRecovery = false;
     try {
       final result = await manager.resumeTask(taskId);
+      continueRecovery = result['status'] == 'completed';
       output = result['result']?.toString() ??
           result['error']?.toString() ??
           'حالة المهمة: ${result['status']}';
@@ -110,11 +112,7 @@ class _NuclearScreenState extends State<NuclearScreen> {
       _thinkingMessage = 'جاري تنفيذ المهمة';
     });
     _scrollToBottom();
-    if (!output.startsWith('تم إيقاف') &&
-        !output.startsWith('وصل الوكيل إلى الحد الآمن') &&
-        !output.startsWith('أوقف الوكيل تكرار استدعاء الأداة')) {
-      await _resumePausedTask();
-    }
+    if (continueRecovery) await _resumePausedTask();
   }
 
   void _addWelcomeMessage() {
