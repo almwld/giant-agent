@@ -18,6 +18,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'settings_screen.dart';
 import '../models/chat_session.dart';
 import 'dart:convert';
+import 'package:speech_to_text/speech_to_text.dart';
+import '../services/openrouter_service.dart';
+import '../services/github_repository_service.dart';
+import '../services/cloud_storage_service.dart';
+import '../services/web_search_service.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -45,6 +50,11 @@ class _ChatScreenState extends State<ChatScreen> {
   static const String _toolCallOpen = '<tool_call>';
   static const String _toolCallClose = '</tool_call>';
   final Terminal _terminal = Terminal(maxLines: 5000);
+  final SpeechToText _speech = SpeechToText();
+  bool _isListening = false;
+  bool _webSearchEnabled = false;
+  bool _includeGithubContext = false;
+  bool _openRouterEnabled = false;
 
   // Keep tool-call JSON out of the user-facing answer stream. The actual
   // invocation and result are represented by structured native tool events.
@@ -521,10 +531,12 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _init() async {
     await AgentService.instance.initialize();
+    final remoteEnabled = await OpenRouterService.instance.isEnabled();
     if (!mounted) return;
     setState(() {
       _models = _modelService.getModels();
       _activeModel = _modelService.getActiveModel();
+      _openRouterEnabled = remoteEnabled;
     });
   }
 
@@ -558,7 +570,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _cancelAgent() async {
     try {
-      final stopped = await _modelService.cancelGeneration();
+      final stopped = await AgentService.instance.cancel();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(stopped
@@ -720,7 +732,27 @@ class _ChatScreenState extends State<ChatScreen> {
 
     String response;
     try {
-      response = await _generateWithStages(_contextualPrompt(text));
+      var enrichedPrompt = _contextualPrompt(text);
+      if (_webSearchEnabled) {
+        if (mounted) setState(() => _thinkingStage = 'يبحث على الويب عن مصادر حديثة...');
+        try {
+          final results = await WebSearchService.instance.search(text, limit: 5);
+          enrichedPrompt += '\n\nنتائج البحث المباشر على الويب (استخدم المصادر التي تدعم الإجابة وأدرج روابطها):\n'
+              + WebSearchService.instance.formatForPrompt(results);
+        } catch (error) {
+          enrichedPrompt += '\n\nتعذر إجراء البحث على الويب: ' + error.toString()
+              + '. وضّح أن البحث لم ينجح ولا تخترع نتائج.';
+        }
+      }
+      if (_includeGithubContext) {
+        if (mounted) setState(() => _thinkingStage = 'يقرأ سياق مستودع GitHub...');
+        try {
+          enrichedPrompt += '\n\n' + await GitHubRepositoryService.instance.buildContext();
+        } catch (error) {
+          enrichedPrompt += '\n\nتعذر جلب سياق مستودع GitHub: ' + error.toString();
+        }
+      }
+      response = await _generateWithStages(enrichedPrompt);
     } catch (error) {
       response = 'تعذر إكمال الطلب: $error';
     } finally {
@@ -834,6 +866,246 @@ class _ChatScreenState extends State<ChatScreen> {
     await _saveMessage(response, false);
   }
 
+
+  Future<void> _toggleVoiceInput() async {
+    if (_speech.isListening) {
+      await _speech.stop();
+      if (mounted) setState(() => _isListening = false);
+      return;
+    }
+    final available = await _speech.initialize(
+      onStatus: (_) {
+        if (mounted) setState(() => _isListening = _speech.isListening);
+      },
+      onError: (error) {
+        if (mounted) {
+          setState(() => _isListening = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('تعذر تشغيل الإدخال الصوتي: ' + error.errorMsg)),
+          );
+        }
+      },
+    );
+    if (!available || !mounted) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('خدمة التعرف على الكلام غير متاحة على هذا الجهاز.')),
+      );
+      return;
+    }
+    final locales = await _speech.locales();
+    final arabic = locales.where((item) => item.localeId.toLowerCase().startsWith('ar')).toList();
+    await _speech.listen(
+      localeId: arabic.isNotEmpty ? arabic.first.localeId : null,
+      listenFor: const Duration(seconds: 60),
+      pauseFor: const Duration(seconds: 5),
+      partialResults: true,
+      cancelOnError: true,
+      onResult: (result) {
+        if (!mounted || result.recognizedWords.isEmpty) return;
+        setState(() {
+          _controller.text = result.recognizedWords;
+          _controller.selection = TextSelection.collapsed(offset: _controller.text.length);
+        });
+      },
+    );
+    if (mounted) setState(() => _isListening = _speech.isListening);
+  }
+
+  Future<void> _openOpenRouterDialog() async {
+    final keyController = TextEditingController(text: await OpenRouterService.instance.getApiKey() ?? '');
+    final modelController = TextEditingController(text: await OpenRouterService.instance.getModel());
+    var enabled = await OpenRouterService.instance.isEnabled();
+    var busy = false;
+    var error = '';
+    if (!mounted) { keyController.dispose(); modelController.dispose(); return; }
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, updateDialog) => AlertDialog(
+          backgroundColor: const Color(0xFF202024),
+          title: const Text('ربط OpenRouter', style: TextStyle(color: Colors.white)),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Text('يُحفظ مفتاح API مشفراً على الجهاز ولا يُضاف إلى المحادثات.',
+                style: TextStyle(color: Color(0xFFA1A1AA), fontSize: 12)),
+              const SizedBox(height: 12),
+              TextField(controller: keyController, obscureText: true, autocorrect: false,
+                decoration: const InputDecoration(labelText: 'OpenRouter API Key', hintText: 'sk-or-...', border: OutlineInputBorder())),
+              const SizedBox(height: 10),
+              TextField(controller: modelController,
+                decoration: const InputDecoration(labelText: 'معرّف النموذج', hintText: 'openai/gpt-4o-mini', border: OutlineInputBorder())),
+              SwitchListTile(contentPadding: EdgeInsets.zero, value: enabled,
+                onChanged: (v) => updateDialog(() => enabled = v),
+                title: const Text('استخدام OpenRouter للاستدلال')),
+              if (error.isNotEmpty) Text(error, style: const TextStyle(color: Colors.redAccent, fontSize: 12)),
+              if (busy) const LinearProgressIndicator(),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: busy ? null : () async {
+              await OpenRouterService.instance.disconnect();
+              if (mounted) setState(() => _openRouterEnabled = false);
+              if (dialogContext.mounted) Navigator.pop(dialogContext);
+              if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('تم فصل OpenRouter وحذف المفتاح.')));
+            }, child: const Text('فصل وحذف المفتاح')),
+            TextButton(onPressed: busy ? null : () => Navigator.pop(dialogContext), child: const Text('إلغاء')),
+            FilledButton(onPressed: busy ? null : () async {
+              updateDialog(() { busy = true; error = ''; });
+              try {
+                if (keyController.text.trim().isNotEmpty) {
+                  await OpenRouterService.instance.configure(
+                    apiKey: keyController.text, model: modelController.text, enable: enabled);
+                } else {
+                  await OpenRouterService.instance.setEnabled(enabled);
+                }
+                if (mounted) setState(() => _openRouterEnabled = enabled);
+                if (dialogContext.mounted) Navigator.pop(dialogContext);
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text(enabled ? 'تم تفعيل OpenRouter: ' + modelController.text.trim() : 'تم تعطيل OpenRouter.')));
+              } catch (e) { updateDialog(() { busy = false; error = e.toString(); }); }
+            }, child: const Text('حفظ')),
+          ],
+        ),
+      ),
+    );
+    keyController.dispose();
+    modelController.dispose();
+  }
+
+  Future<void> _openGitHubDialog() async {
+    final repositoryController = TextEditingController(
+      text: await GitHubRepositoryService.instance.getRepository() ?? '');
+    final tokenController = TextEditingController();
+    var busy = false;
+    var error = '';
+    if (!mounted) { repositoryController.dispose(); tokenController.dispose(); return; }
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, updateDialog) => AlertDialog(
+          backgroundColor: const Color(0xFF202024),
+          title: const Text('ربط مستودع GitHub', style: TextStyle(color: Colors.white)),
+          content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Text('المستودعات العامة لا تحتاج رمزاً. للمستودعات الخاصة أدخل Personal Access Token. الربط الحالي للقراءة والسياق فقط.',
+              style: TextStyle(color: Color(0xFFA1A1AA), fontSize: 12)),
+            const SizedBox(height: 12),
+            TextField(controller: repositoryController,
+              decoration: const InputDecoration(labelText: 'رابط المستودع', hintText: 'https://github.com/owner/repository', border: OutlineInputBorder())),
+            const SizedBox(height: 10),
+            TextField(controller: tokenController, obscureText: true, autocorrect: false,
+              decoration: const InputDecoration(labelText: 'GitHub Token (اختياري)', border: OutlineInputBorder())),
+            if (error.isNotEmpty) Text(error, style: const TextStyle(color: Colors.redAccent, fontSize: 12)),
+            if (busy) const LinearProgressIndicator(),
+          ])),
+          actions: [
+            TextButton(onPressed: busy ? null : () async {
+              await GitHubRepositoryService.instance.disconnect();
+              if (mounted) setState(() => _includeGithubContext = false);
+              if (dialogContext.mounted) Navigator.pop(dialogContext);
+              if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('تم فصل مستودع GitHub.')));
+            }, child: const Text('فصل المستودع')),
+            TextButton(onPressed: busy ? null : () => Navigator.pop(dialogContext), child: const Text('إلغاء')),
+            FilledButton(onPressed: busy ? null : () async {
+              updateDialog(() { busy = true; error = ''; });
+              try {
+                final metadata = await GitHubRepositoryService.instance.connect(
+                  repositoryUrl: repositoryController.text, token: tokenController.text);
+                if (mounted) setState(() => _includeGithubContext = true);
+                if (dialogContext.mounted) Navigator.pop(dialogContext);
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('تم ربط ' + (metadata['full_name']?.toString() ?? 'المستودع') + ' بنجاح.')));
+              } catch (e) { updateDialog(() { busy = false; error = e.toString(); }); }
+            }, child: const Text('تحقق واربط')),
+          ],
+        ),
+      ),
+    );
+    repositoryController.dispose();
+    tokenController.dispose();
+  }
+
+
+  Future<void> _toggleGitHubContext() async {
+    if (!await GitHubRepositoryService.instance.isConnected()) {
+      await _openGitHubDialog();
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _includeGithubContext = !_includeGithubContext);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(_includeGithubContext
+        ? 'سيُرفق سياق مستودع GitHub مع الطلب التالي.'
+        : 'تم إيقاف إرفاق سياق المستودع.'),
+    ));
+  }
+
+  Future<void> _openCloudDialog() async {
+    final config = await CloudStorageService.instance.getConfiguration();
+    final serverController = TextEditingController(text: config['server'] ?? '');
+    final userController = TextEditingController(text: config['username'] ?? '');
+    final passwordController = TextEditingController(text: config['password'] ?? '');
+    var busy = false;
+    var error = '';
+    if (!mounted) { serverController.dispose(); userController.dispose(); passwordController.dispose(); return; }
+    final shouldUpload = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, updateDialog) => AlertDialog(
+          backgroundColor: const Color(0xFF202024),
+          title: const Text('اتصال السحابة', style: TextStyle(color: Colors.white)),
+          content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Text('يدعم Nextcloud وأي خادم WebDAV. استخدم كلمة مرور تطبيق مخصصة.',
+              style: TextStyle(color: Color(0xFFA1A1AA), fontSize: 12)),
+            const SizedBox(height: 12),
+            TextField(controller: serverController, keyboardType: TextInputType.url,
+              decoration: const InputDecoration(labelText: 'عنوان الخادم', hintText: 'https://cloud.example.com', border: OutlineInputBorder())),
+            const SizedBox(height: 10),
+            TextField(controller: userController,
+              decoration: const InputDecoration(labelText: 'اسم المستخدم', border: OutlineInputBorder())),
+            const SizedBox(height: 10),
+            TextField(controller: passwordController, obscureText: true,
+              decoration: const InputDecoration(labelText: 'كلمة مرور التطبيق', border: OutlineInputBorder())),
+            if (error.isNotEmpty) Text(error, style: const TextStyle(color: Colors.redAccent, fontSize: 12)),
+            if (busy) const LinearProgressIndicator(),
+          ])),
+          actions: [
+            TextButton(onPressed: busy ? null : () async {
+              await CloudStorageService.instance.disconnect();
+              if (dialogContext.mounted) Navigator.pop(dialogContext, false);
+              if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('تم فصل السحابة وحذف بيانات الاتصال.')));
+            }, child: const Text('فصل')),
+            TextButton(onPressed: busy ? null : () => Navigator.pop(dialogContext, false), child: const Text('إلغاء')),
+            FilledButton(onPressed: busy ? null : () async {
+              updateDialog(() { busy = true; error = ''; });
+              try {
+                await CloudStorageService.instance.configure(
+                  server: serverController.text, username: userController.text,
+                  appPassword: passwordController.text);
+                if (dialogContext.mounted) Navigator.pop(dialogContext, true);
+              } catch (e) { updateDialog(() { busy = false; error = e.toString(); }); }
+            }, child: const Text('حفظ ورفع مساحة العمل')),
+          ],
+        ),
+      ),
+    );
+    serverController.dispose(); userController.dispose(); passwordController.dispose();
+    if (shouldUpload != true || !mounted) return;
+    try {
+      final exported = await _modelService.exportWorkspace();
+      final path = exported['path']?.toString();
+      if (path == null || path.isEmpty) throw StateError('لم يتم إنشاء ملف مساحة العمل.');
+      final remote = await CloudStorageService.instance.uploadWorkspace(File(path));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تم رفع مساحة العمل إلى السحابة: ' + remote.pathSegments.last)));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذر رفع مساحة العمل: ' + e.toString())));
+    }
+  }
+
   void _newConversation() => _createNewSession();
 
   void _switchModel(Map<String, dynamic> model) async {
@@ -872,6 +1144,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _agentEventSubscription?.cancel();
     _kernelEventSubscription?.cancel();
+    _speech.stop();
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -1234,7 +1507,13 @@ class _ChatScreenState extends State<ChatScreen> {
           color: const Color(0xFF242428),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           onSelected: (value) {
-            if (value == 'workflow') {
+            if (value == 'github') {
+              _openGitHubDialog();
+            } else if (value == 'cloud') {
+              _openCloudDialog();
+            } else if (value == 'openrouter') {
+              _openOpenRouterDialog();
+            } else if (value == 'workflow') {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const AgentWorkflowScreen()),
               );
@@ -1246,6 +1525,9 @@ class _ChatScreenState extends State<ChatScreen> {
           },
           itemBuilder: (_) => const [
             PopupMenuItem(value: 'workflow', child: Text('سير تنفيذ الوكيل')),
+            PopupMenuItem(value: 'github', child: Text('ربط مستودع GitHub')),
+            PopupMenuItem(value: 'cloud', child: Text('اتصال السحابة')),
+            PopupMenuItem(value: 'openrouter', child: Text('مفتاح OpenRouter')),
             PopupMenuItem(value: 'settings', child: Text('الإعدادات')),
           ],
           child: const Row(
@@ -1302,6 +1584,15 @@ class _ChatScreenState extends State<ChatScreen> {
                 case 'history':
                   _clearHistory();
                   break;
+                case 'github':
+                  _openGitHubDialog();
+                  break;
+                case 'cloud':
+                  _openCloudDialog();
+                  break;
+                case 'openrouter':
+                  _openOpenRouterDialog();
+                  break;
                 case 'settings':
                   Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const SettingsScreen()),
@@ -1313,6 +1604,10 @@ class _ChatScreenState extends State<ChatScreen> {
               PopupMenuItem(value: 'desktop', child: Text('سطح المكتب')),
               PopupMenuItem(value: 'refresh', child: Text('تحديث النماذج')),
               PopupMenuItem(value: 'history', child: Text('مسح سجل المحادثة')),
+              PopupMenuDivider(),
+              PopupMenuItem(value: 'github', child: Text('ربط مستودع GitHub')),
+              PopupMenuItem(value: 'cloud', child: Text('اتصال السحابة')),
+              PopupMenuItem(value: 'openrouter', child: Text('مفتاح OpenRouter')),
               PopupMenuItem(value: 'settings', child: Text('الإعدادات')),
             ],
           ),
@@ -1559,7 +1854,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             child: Text(
                               _isLoading
                                   ? (_thinkingStage.isEmpty ? 'يعمل الوكيل...' : _thinkingStage)
-                                  : 'لا يوجد نموذج نشط — استورد نموذج GGUF من القائمة',
+                                  : (_openRouterEnabled ? 'OpenRouter متصل وجاهز للاستدلال' : 'لا يوجد نموذج نشط — استورد نموذج GGUF من القائمة'),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
@@ -1623,22 +1918,51 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                       const SizedBox(width: 8),
                       _composerIconButton(
-                        icon: Icons.mic_none_rounded,
-                        tooltip: 'التسجيل الصوتي غير مفعّل بعد',
-                        onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('التسجيل الصوتي غير مفعّل في هذا الإصدار.'),
-                            behavior: SnackBarBehavior.floating,
-                          ),
-                        ),
+                        icon: _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
+                        tooltip: _isListening ? 'إيقاف الإدخال الصوتي' : 'الإملاء الصوتي',
+                        foreground: _isListening ? Colors.white : const Color(0xFFA1A1AA),
+                        background: _isListening ? const Color(0xFF2563EB) : const Color(0xFF2A2A2E),
+                        onPressed: _toggleVoiceInput,
                       ),
                       const Spacer(),
+                      Flexible(
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                      _composerIconButton(
+                        icon: Icons.public_rounded,
+                        tooltip: _webSearchEnabled ? 'إيقاف البحث المباشر' : 'تفعيل البحث التفاعلي على الويب',
+                        foreground: _webSearchEnabled ? Colors.white : const Color(0xFFA1A1AA),
+                        background: _webSearchEnabled ? const Color(0xFF2563EB) : const Color(0xFF2A2A2E),
+                        onPressed: () {
+                          setState(() => _webSearchEnabled = !_webSearchEnabled);
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                            content: Text(_webSearchEnabled ? 'البحث المباشر مفعّل للرسائل التالية.' : 'تم إيقاف البحث المباشر.')));
+                        },
+                      ),
+                      const SizedBox(width: 6),
+                      _composerIconButton(
+                        icon: Icons.key_rounded,
+                        tooltip: _openRouterEnabled ? 'إعدادات OpenRouter — متصل' : 'إدخال مفتاح OpenRouter',
+                        foreground: _openRouterEnabled ? const Color(0xFF4ADE80) : const Color(0xFFA1A1AA),
+                        onPressed: _openOpenRouterDialog,
+                      ),
+                      const SizedBox(width: 6),
+                      _composerIconButton(
+                        icon: Icons.code_rounded,
+                        tooltip: _includeGithubContext ? 'مستودع GitHub متصل — إدارة الاتصال' : 'ربط مستودع GitHub',
+                        foreground: _includeGithubContext ? const Color(0xFF4ADE80) : const Color(0xFFA1A1AA),
+                        onPressed: _toggleGitHubContext,
+                      ),
+                      const SizedBox(width: 6),
                       _composerPillButton(
                         icon: Icons.cloud_outlined,
                         label: 'السحابة',
-                        onPressed: _exportWorkspace,
+                        onPressed: _openCloudDialog,
                       ),
-                      const SizedBox(width: 7),
+                      const SizedBox(width: 6),
                       _composerIconButton(
                         icon: Icons.account_tree_outlined,
                         tooltip: 'سير تنفيذ الوكيل',
@@ -1667,12 +1991,25 @@ class _ChatScreenState extends State<ChatScreen> {
                             case 'new':
                               _newConversation();
                               break;
+                            case 'github':
+                              _openGitHubDialog();
+                              break;
+                            case 'cloud':
+                              _openCloudDialog();
+                              break;
+                            case 'openrouter':
+                              _openOpenRouterDialog();
+                              break;
                           }
                         },
                         itemBuilder: (_) => const [
                           PopupMenuItem(value: 'file', child: Text('إرفاق ملف')),
                           PopupMenuItem(value: 'image', child: Text('إرفاق صورة')),
                           PopupMenuItem(value: 'model', child: Text('استيراد نموذج')),
+                          PopupMenuDivider(),
+                          PopupMenuItem(value: 'github', child: Text('ربط مستودع GitHub')),
+                          PopupMenuItem(value: 'cloud', child: Text('اتصال السحابة')),
+                          PopupMenuItem(value: 'openrouter', child: Text('مفتاح OpenRouter')),
                           PopupMenuDivider(),
                           PopupMenuItem(value: 'new', child: Text('محادثة جديدة')),
                         ],
@@ -1684,6 +2021,10 @@ class _ChatScreenState extends State<ChatScreen> {
                             borderRadius: BorderRadius.circular(13),
                           ),
                           child: const Icon(Icons.add_rounded, color: Colors.white, size: 22),
+                        ),
+                      ),
+                            ],
+                          ),
                         ),
                       ),
                     ],

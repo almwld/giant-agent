@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/services.dart';
 import '../services/llama_service.dart';
 import 'agent_memory_service.dart';
+import 'openrouter_service.dart';
 
 class ModelService {
   static final ModelService _instance = ModelService._internal();
@@ -194,11 +195,32 @@ class ModelService {
         '${prompt.substring(prompt.length - tailLength)}';
   }
 
+  Future<String> _generateText(
+    String prompt, {
+    required int maxTokens,
+    required double temperature,
+  }) async {
+    if (await OpenRouterService.instance.isEnabled()) {
+      return OpenRouterService.instance.generate(
+        prompt,
+        maxTokens: maxTokens,
+        temperature: temperature,
+      );
+    }
+    return _llama.generate(
+      prompt,
+      maxTokens: maxTokens,
+      temperature: temperature,
+    );
+  }
+
   Future<String> _processInput(String input) async {
     _cancelRequested = false;
     input = _boundPrompt(input);
-    if (!hasActiveModel()) return '⚠️ استورد نموذج GGUF واختره أولاً.';
-    final history = StringBuffer('''أنت Giant Agent، مساعد محلي يعمل دون اتصال. أجب بلغة المستخدم.
+    if (!hasActiveModel() && !await OpenRouterService.instance.isEnabled()) {
+      return '⚠️ اختر نموذج GGUF محلياً أو فعّل مزود OpenRouter من شريط الإدخال.';
+    }
+    final history = StringBuffer('''أنت Giant Agent، مساعد ذكي متعدد المصادر. أجب بلغة المستخدم.
 أدواتك:
 1) create_file: arguments path و content. تنشئ ملفاً جديداً فقط ولا تستبدل الموجود.
 2) read_file: arguments path. تقرأ ملفاً موجوداً داخل مساحة العمل.
@@ -224,7 +246,7 @@ class ModelService {
       const maxToolCalls = 16;
       for (var step = 0; step < maxToolCalls; step++) {
         if (_cancelRequested) return 'تم إيقاف تنفيذ الوكيل بناءً على طلب المستخدم.';
-        final generated = await _llama.generate(history.toString(), maxTokens: 768, temperature: .25);
+        final generated = await _generateText(history.toString(), maxTokens: 768, temperature: .25);
         if (_cancelRequested) return generated.trim().isEmpty ? 'تم إيقاف التوليد.' : '${generated.trim()}\n\n[تم إيقاف التوليد]';
         final match = RegExp(r'<tool_call>\s*(\{.*?\})\s*</tool_call>', dotAll: true).firstMatch(generated);
         if (match == null) return generated.trim();
