@@ -1804,7 +1804,9 @@ class _ChatScreenState extends State<ChatScreen> {
         ],
       ),
       drawer: Drawer(
-        width: 340,
+        width: MediaQuery.of(context).size.width < 386
+            ? MediaQuery.of(context).size.width * 0.88
+            : 340,
         backgroundColor: const Color(0xFF111827),
         child: SafeArea(
           child: Column(
