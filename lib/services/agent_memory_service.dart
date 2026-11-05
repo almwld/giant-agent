@@ -47,23 +47,35 @@ class AgentMemoryService {
           )
         ''');
       },
-      onUpgrade: (db, oldVersion, newVersion) async {
-        if (oldVersion < 2) {
-          await db.execute("ALTER TABLE turns ADD COLUMN session_id TEXT NOT NULL DEFAULT 'global'");
-        }
-        // Version 2's upgrade path did not create facts on databases that
-        // originated at version 1. Ensure the table exists for every upgrade.
-        await db.execute('''
-          CREATE TABLE IF NOT EXISTS facts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            fact_key TEXT NOT NULL UNIQUE,
-            fact_value TEXT NOT NULL,
-            importance INTEGER NOT NULL DEFAULT 1,
-            updated_at INTEGER NOT NULL
-          )
-        ''');
-        await db.execute('CREATE INDEX IF NOT EXISTS turns_session_created_at ON turns(session_id, created_at DESC)');
-      },
+      onUpgrade: (db, oldVersion, newVersion) =>
+          migrateSchema(db, oldVersion),
+    );
+  }
+
+  /// Applies forward-only memory schema migrations. Kept separate so the
+  /// legacy v1 -> current migration can be exercised with an in-memory DB.
+  static Future<void> migrateSchema(
+    DatabaseExecutor db,
+    int oldVersion,
+  ) async {
+    if (oldVersion < 2) {
+      await db.execute(
+        "ALTER TABLE turns ADD COLUMN session_id TEXT NOT NULL DEFAULT 'global'",
+      );
+    }
+    // Version 2's upgrade path did not create facts on databases that
+    // originated at version 1. Ensure the table exists for every upgrade.
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS facts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fact_key TEXT NOT NULL UNIQUE,
+        fact_value TEXT NOT NULL,
+        importance INTEGER NOT NULL DEFAULT 1,
+        updated_at INTEGER NOT NULL
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS turns_session_created_at ON turns(session_id, created_at DESC)',
     );
   }
 
