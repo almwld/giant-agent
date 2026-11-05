@@ -1229,8 +1229,16 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  void _showAgentInformation() {
-    final modelName = _activeModel['name']?.toString();
+  Future<void> _showAgentInformation() async {
+    final openRouterEnabled = await OpenRouterService.instance.isEnabled();
+    final modelName = openRouterEnabled
+        ? await OpenRouterService.instance.getModel()
+        : _activeModel['name']?.toString();
+    if (!mounted) return;
+    final provider = openRouterEnabled ? 'OpenRouter' : 'محلي (GGUF)';
+    final selectedModel = modelName?.isNotEmpty == true
+        ? modelName!
+        : 'لم يتم تحديد نموذج';
     showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -1242,16 +1250,27 @@ class _ChatScreenState extends State<ChatScreen> {
           children: [
             const Text('الإصدار 2.0', style: TextStyle(color: Colors.white70)),
             const SizedBox(height: 12),
-            Text('النموذج المحلي: ${modelName?.isNotEmpty == true ? modelName : 'لم يتم تحديد نموذج'}',
+            Text('مزود الاستدلال: $provider',
               style: const TextStyle(color: Colors.white70)),
             const SizedBox(height: 8),
-            Text('المحادثات المحفوظة: ${_sessions.length}', style: const TextStyle(color: Colors.white70)),
+            Text('النموذج النشط: $selectedModel',
+              style: const TextStyle(color: Colors.white70)),
             const SizedBox(height: 8),
-            const Text('يعمل الوكيل محلياً افتراضياً، ويمكن تفعيل مزود خارجي من إعدادات OpenRouter.',
-              style: TextStyle(color: Color(0xFFA1A1AA), height: 1.4)),
+            Text('المحادثات المحفوظة: ${_sessions.length}',
+              style: const TextStyle(color: Colors.white70)),
+            const SizedBox(height: 8),
+            const Text(
+              'يعمل الوكيل محلياً افتراضياً، ويمكن اختيار OpenRouter كمزود استدلال خارجي.',
+              style: TextStyle(color: Color(0xFFA1A1AA), height: 1.4),
+            ),
           ],
         ),
-        actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('إغلاق'))],
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('إغلاق'),
+          ),
+        ],
       ),
     );
   }
