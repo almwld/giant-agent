@@ -1109,6 +1109,135 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+
+  Future<void> _showConversationHistory() async {
+    await _loadSessions();
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF18181B),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.of(sheetContext).size.height * .72,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 18, 18, 12),
+                child: Row(
+                  children: [
+                    const Icon(Icons.forum_outlined, color: Color(0xFF60A5FA)),
+                    const SizedBox(width: 10),
+                    const Expanded(child: Text('المحادثات السابقة',
+                      style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700))),
+                    TextButton.icon(
+                      onPressed: () {
+                        Navigator.pop(sheetContext);
+                        _createNewSession();
+                      },
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('جديدة'),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1, color: Color(0xFF303036)),
+              Expanded(
+                child: _sessions.isEmpty
+                    ? const Center(child: Text('لا توجد محادثات محفوظة', style: TextStyle(color: Color(0xFFA1A1AA))))
+                    : ListView.separated(
+                        itemCount: _sessions.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1, indent: 60, color: Color(0xFF29292F)),
+                        itemBuilder: (context, index) {
+                          final session = _sessions[index];
+                          final active = session.id == _currentSessionId;
+                          return ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: active ? const Color(0xFF1D4ED8) : const Color(0xFF29292F),
+                              child: Icon(active ? Icons.chat : Icons.chat_bubble_outline, color: Colors.white, size: 18),
+                            ),
+                            title: Text(session.title, maxLines: 1, overflow: TextOverflow.ellipsis,
+                              style: TextStyle(color: Colors.white, fontWeight: active ? FontWeight.w700 : FontWeight.w500)),
+                            subtitle: Text(
+                              '${session.updatedAt.year}/${session.updatedAt.month.toString().padLeft(2, '0')}/${session.updatedAt.day.toString().padLeft(2, '0')}',
+                              style: const TextStyle(color: Color(0xFF71717A), fontSize: 11),
+                            ),
+                            trailing: IconButton(
+                              tooltip: 'حذف المحادثة',
+                              icon: const Icon(Icons.delete_outline, color: Color(0xFF71717A), size: 19),
+                              onPressed: _isLoading ? null : () async {
+                                Navigator.pop(sheetContext);
+                                await _deleteSession(session);
+                                if (mounted) _showConversationHistory();
+                              },
+                            ),
+                            onTap: () {
+                              Navigator.pop(sheetContext);
+                              _switchSession(session);
+                            },
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _shareCurrentConversation() async {
+    if (_messages.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('لا توجد رسائل لمشاركتها بعد.')),
+      );
+      return;
+    }
+    final content = _messages.map((message) {
+      final role = message['isUser'] == true ? 'أنت' : 'Giant Agent';
+      return '$role:\\n${message['content']}';
+    }).join('\\n\\n');
+    try {
+      await Share.share('محادثة Giant Agent\\n\\n$content', subject: 'محادثة Giant Agent');
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تعذرت مشاركة المحادثة: $error')),
+        );
+      }
+    }
+  }
+
+  void _showAgentInformation() {
+    final modelName = _activeModel['name']?.toString();
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFF202024),
+        title: const Text('Giant Agent X', style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('الإصدار 2.0', style: TextStyle(color: Colors.white70)),
+            const SizedBox(height: 12),
+            Text('النموذج المحلي: ${modelName?.isNotEmpty == true ? modelName : 'لم يتم تحديد نموذج'}',
+              style: const TextStyle(color: Colors.white70)),
+            const SizedBox(height: 8),
+            Text('المحادثات المحفوظة: ${_sessions.length}', style: const TextStyle(color: Colors.white70)),
+            const SizedBox(height: 8),
+            const Text('يعمل الوكيل محلياً افتراضياً، ويمكن تفعيل مزود خارجي من إعدادات OpenRouter.',
+              style: TextStyle(color: Color(0xFFA1A1AA), height: 1.4)),
+          ],
+        ),
+        actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('إغلاق'))],
+      ),
+    );
+  }
+
   void _newConversation() => _createNewSession();
 
   void _switchModel(Map<String, dynamic> model) async {
