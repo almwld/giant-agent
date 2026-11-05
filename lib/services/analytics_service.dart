@@ -62,16 +62,31 @@ class AnalyticsService {
   }
   
   Future<Map<String, dynamic>> getStats() async {
-    final eventCount = Sqflite.firstIntValue(await _db?.rawQuery('SELECT COUNT(*) FROM events')) ?? 0;
-    final sessionCount = Sqflite.firstIntValue(await _db?.rawQuery('SELECT COUNT(*) FROM sessions')) ?? 0;
-    
+    final database = _db;
+    if (database == null) {
+      return {
+        'total_events': 0,
+        'total_sessions': 0,
+        'last_updated': DateTime.now(),
+      };
+    }
+
+    final eventCount = Sqflite.firstIntValue(
+          await database.rawQuery('SELECT COUNT(*) FROM events'),
+        ) ??
+        0;
+    final sessionCount = Sqflite.firstIntValue(
+          await database.rawQuery('SELECT COUNT(*) FROM sessions'),
+        ) ??
+        0;
+
     return {
       'total_events': eventCount,
       'total_sessions': sessionCount,
       'last_updated': DateTime.now(),
     };
   }
-  
+
   void dispose() {
     _db?.close();
   }
