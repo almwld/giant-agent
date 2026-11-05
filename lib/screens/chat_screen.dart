@@ -1442,8 +1442,17 @@ class _ChatScreenState extends State<ChatScreen> {
           ],
         ),
       ),
-      body: Column(
-        children: [
+      body: Container(
+        margin: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFF18181B),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: const Color(0xFF27272A), width: 0.7),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: Column(
+            children: [
           Expanded(
             child: ListView.builder(
               controller: _scrollController,
@@ -1672,7 +1681,9 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
           ),
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }
