@@ -71,12 +71,11 @@ class AgentWorkflowScreen extends StatelessWidget {
               ),
             );
           }
-          final ordered = rows.reversed.toList(growable: false);
+          final ordered = rows.toList(growable: false);
           return ListView(
             padding: const EdgeInsets.all(14),
             children: [
               _summaryCard(rows),
-              if (finalOutput.value.trim().isNotEmpty) _finalOutputCard(finalOutput.value),
               const Padding(
                 padding: EdgeInsets.fromLTRB(4, 16, 4, 9),
                 child: Text('التسلسل الكامل لتنفيذ الوكيل', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700)),
@@ -139,6 +138,7 @@ class AgentWorkflowScreen extends StatelessWidget {
                 ),
               );
               }),
+              if (finalOutput.value.trim().isNotEmpty) _finalOutputCard(finalOutput.value),
             ],
           );
         },
