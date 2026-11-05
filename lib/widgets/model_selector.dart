@@ -79,7 +79,7 @@ class _ModelSelectorState extends State<ModelSelector> {
                 final id = model['id']?.toString() ?? '';
                 final name = model['name']?.toString() ?? id;
                 final size = model['size']?.toString() ?? '';
-                final isLoaded = model['isLoaded'] == true;
+                final isLoaded = model['id'] == _activeModelId;
                 return DropdownMenuItem<String>(
                   value: id,
                   child: Row(
