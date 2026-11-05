@@ -168,16 +168,10 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
   bool _isInterruptedTaskOutput(String output) =>
-      output.startsWith('تم إيقاف') ||
-      output.startsWith('وصل الوكيل إلى الحد الآمن') ||
-      output.startsWith('أوقف الوكيل تكرار استدعاء الأداة') ||
-      output.contains('[تم إيقاف التوليد]');
+      TaskManager.classifyResult(output) == TaskExecutionOutcome.interrupted;
 
   bool _isFailedTaskOutput(String output) =>
-      output.startsWith('تعذر تشغيل النموذج المحلي:') ||
-      output.startsWith('تعذر تحليل استدعاء الأداة أو تنفيذه:') ||
-      output.startsWith('ERROR:') ||
-      output.startsWith('تعذر إكمال الطلب:');
+      TaskManager.classifyResult(output) == TaskExecutionOutcome.failed;
 
   Future<String> _runTrackedTask(
     String prompt, {
