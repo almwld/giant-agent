@@ -84,7 +84,10 @@ class TaskManager {
   Map<String, dynamic> _copyTask(Map<String, dynamic> task) =>
       Map<String, dynamic>.from(jsonDecode(jsonEncode(task)) as Map);
 
-  Future<Map<String, dynamic>> createTask(String description) async {
+  Future<Map<String, dynamic>> createTask(
+    String description, {
+    String conversationId = 'global',
+  }) async {
     await _ensureLoaded();
     final goal = description.trim();
     if (goal.isEmpty) throw ArgumentError.value(description, 'description');
@@ -93,6 +96,7 @@ class TaskManager {
     final task = <String, dynamic>{
       'id': id,
       'description': goal,
+      'conversation_id': conversationId,
       'status': 'pending',
       'steps': <Map<String, dynamic>>[
         {
@@ -109,6 +113,105 @@ class TaskManager {
     _currentTask = id;
     await _persist();
     return _copyTask(task);
+  }
+
+  Map<String, dynamic>? _findTask(String taskId) {
+    for (final task in _tasks) {
+      if (task['id'] == taskId) return task;
+    }
+    return null;
+  }
+
+  Map<String, dynamic> _firstStep(Map<String, dynamic> task) {
+    final steps = task['steps'];
+    if (steps is! List || steps.isEmpty || steps.first is! Map) {
+      throw StateError('سجل المهمة لا يحتوي على خطوة قابلة للتنفيذ.');
+    }
+    return Map<String, dynamic>.from(steps.first as Map);
+  }
+
+  /// Marks a task as running when execution is owned by ChatScreen/AgentKernel.
+  /// This keeps the persisted task lifecycle in sync without executing it twice.
+  Future<void> markRunning(String taskId) async {
+    await _ensureLoaded();
+    if (_executing && _currentTask != taskId) {
+      throw StateError('يوجد تنفيذ مهمة جارٍ بالفعل.');
+    }
+    final task = _findTask(taskId);
+    if (task == null) throw StateError('المهمة غير موجودة.');
+    if (task['status'] == 'completed' || task['status'] == 'cancelled') {
+      throw StateError('لا يمكن تشغيل مهمة منتهية.');
+    }
+    _currentTask = taskId;
+    _executing = true;
+    final step = _firstStep(task);
+    step['status'] = 'running';
+    (task['steps'] as List)[0] = step;
+    task['status'] = 'running';
+    task['started_at'] ??= DateTime.now().toIso8601String();
+    task['updated_at'] = DateTime.now().toIso8601String();
+    task.remove('error');
+    task.remove('recovery_note');
+    await _persist();
+  }
+
+  Future<void> markCompleted(String taskId, String result) async {
+    await _ensureLoaded();
+    final task = _findTask(taskId);
+    if (task == null) return;
+    final step = _firstStep(task);
+    step['status'] = 'completed';
+    step['result'] = result;
+    (task['steps'] as List)[0] = step;
+    task['status'] = 'completed';
+    task['result'] = result;
+    task['completed_at'] = DateTime.now().toIso8601String();
+    task['updated_at'] = task['completed_at'];
+    task.remove('error');
+    if (_currentTask == taskId) _executing = false;
+    await _persist();
+  }
+
+  Future<void> markFailed(String taskId, String error) async {
+    await _ensureLoaded();
+    final task = _findTask(taskId);
+    if (task == null) return;
+    final step = _firstStep(task);
+    step['status'] = 'failed';
+    step['error'] = error;
+    (task['steps'] as List)[0] = step;
+    task['status'] = 'failed';
+    task['error'] = error;
+    task['updated_at'] = DateTime.now().toIso8601String();
+    if (_currentTask == taskId) _executing = false;
+    await _persist();
+  }
+
+  Future<void> markInterrupted(String taskId, String note) async {
+    await _ensureLoaded();
+    final task = _findTask(taskId);
+    if (task == null) return;
+    final step = _firstStep(task);
+    step['status'] = 'pending';
+    (task['steps'] as List)[0] = step;
+    task['status'] = 'paused';
+    task['recovery_note'] = note;
+    task['updated_at'] = DateTime.now().toIso8601String();
+    if (_currentTask == taskId) _executing = false;
+    await _persist();
+  }
+
+  Future<void> markCancelled(String taskId) async {
+    await _ensureLoaded();
+    final task = _findTask(taskId);
+    if (task == null) return;
+    final step = _firstStep(task);
+    step['status'] = 'cancelled';
+    (task['steps'] as List)[0] = step;
+    task['status'] = 'cancelled';
+    task['updated_at'] = DateTime.now().toIso8601String();
+    if (_currentTask == taskId) _executing = false;
+    await _persist();
   }
 
   Future<bool> selectTask(String taskId) async {
@@ -163,7 +266,10 @@ class TaskManager {
     step['status'] = 'running';
     await _persist();
     try {
-      final result = await _agent.runTask(task['description'] as String);
+      final result = await _agent.runTask(
+        task['description'] as String,
+        conversationId: task['conversation_id']?.toString() ?? 'global',
+      );
       step['status'] = 'completed';
       step['result'] = result;
       task['status'] = 'completed';
