@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../widgets/agent_activity_indicators.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path_provider/path_provider.dart';
@@ -1601,14 +1602,21 @@ class _ChatScreenState extends State<ChatScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(title,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        color: failed ? const Color(0xFFFF9292) : Colors.white,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w500,
-                                      )),
+                                    if (running)
+                                      AgentShimmerText(
+                                        title,
+                                        maxLines: 1,
+                                        style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
+                                      )
+                                    else
+                                      Text(title,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: failed ? const Color(0xFFFF9292) : Colors.white,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w500,
+                                        )),
                                     if (subtitle != null && subtitle.isNotEmpty && !subtitle.contains('الجلسة #'))
                                       Padding(
                                         padding: const EdgeInsets.only(top: 2),
@@ -1637,12 +1645,7 @@ class _ChatScreenState extends State<ChatScreen> {
                               AnimatedSwitcher(
                                 duration: const Duration(milliseconds: 200),
                                 child: running
-                                    ? SizedBox(
-                                        key: const ValueKey('running'),
-                                        width: 14,
-                                        height: 14,
-                                        child: CircularProgressIndicator(strokeWidth: 2, color: color),
-                                      )
+                                    ? const AgentPulseDot(key: ValueKey('running'), size: 9)
                                     : Icon(
                                         key: ValueKey(failed ? 'failed' : 'completed'),
                                         failed
@@ -2120,13 +2123,39 @@ class _ChatScreenState extends State<ChatScreen> {
               },
             ),
           ),
-          if (_isLoading && _streamingResponse.isNotEmpty)
+          if (_isLoading)
             Container(
               width: double.infinity,
               margin: const EdgeInsets.fromLTRB(16, 6, 16, 10),
               padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(color: const Color(0xFF1E1E1E), borderRadius: BorderRadius.circular(14)),
-              child: SelectableText(_streamingResponse, style: const TextStyle(color: Colors.white, fontSize: 14)),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E1E1E),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFF38BDF8).withOpacity(.12)),
+              ),
+              child: _streamingResponse.isNotEmpty
+                  ? AgentShimmerText(
+                      _streamingResponse,
+                      selectable: true,
+                      style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.55),
+                    )
+                  : Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const AgentPulseDot(size: 8),
+                        const SizedBox(width: 10),
+                        const AgentThinkingDots(),
+                        const SizedBox(width: 10),
+                        Flexible(
+                          child: Text(
+                            _thinkingStage.isEmpty ? 'يفكر في طلبك...' : _thinkingStage,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 11),
+                          ),
+                        ),
+                      ],
+                    ),
             ),
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
@@ -2171,14 +2200,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             ),
                           ),
                           if (_isLoading)
-                            const SizedBox(
-                              width: 13,
-                              height: 13,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 1.7,
-                                color: Color(0xFF2563EB),
-                              ),
-                            ),
+                            const AgentPulseDot(size: 9),
                         ],
                       ),
                     ),
