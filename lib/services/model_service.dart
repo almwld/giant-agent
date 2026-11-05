@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../services/llama_service.dart';
 import 'agent_memory_service.dart';
 import 'openrouter_service.dart';
+import '../tools/tool_manager.dart';
 
 class ModelService {
   static final ModelService _instance = ModelService._internal();
@@ -142,9 +143,14 @@ class ModelService {
   }
 
   Future<Map<String, dynamic>> _executeTool(Map<String, dynamic> payload) async {
-    final name = payload['name'];
+    final name = payload['name']?.toString() ?? '';
+    if (!ToolManager().supports(name)) {
+      throw FormatException('Unsupported tool: $name');
+    }
     final args = payload['arguments'];
-    if (args is! Map<String, dynamic>) throw const FormatException('Tool arguments must be an object.');
+    if (args is! Map<String, dynamic>) {
+      throw const FormatException('Tool arguments must be an object.');
+    }
     switch (name) {
       case 'create_file':
         return createFile(path: args['path']?.toString() ?? '', content: args['content']?.toString() ?? '');
@@ -220,22 +226,14 @@ class ModelService {
     if (!hasActiveModel() && !await OpenRouterService.instance.isEnabled()) {
       return '⚠️ اختر نموذج GGUF محلياً أو فعّل مزود OpenRouter من شريط الإدخال.';
     }
+    final toolCatalog = ToolManager().promptCatalog;
     final history = StringBuffer('''أنت Giant Agent، مساعد ذكي متعدد المصادر. أجب بلغة المستخدم.
-أدواتك:
-1) create_file: arguments path و content. تنشئ ملفاً جديداً فقط ولا تستبدل الموجود.
-2) read_file: arguments path. تقرأ ملفاً موجوداً داخل مساحة العمل.
-3) write_file: arguments path و content. تحدّث ملفاً موجوداً داخل مساحة العمل مع الحفاظ على حدود المسارات والحجم.
-4) execute_python: arguments code. يشغّل سكربت Python محلياً ضمن مفسر مقيّد؛ يدعم الحسابات والطباعة والحلقات المحدودة. لا يدعم الاستيراد أو الوصول إلى النظام أو السمات أو فتح الملفات. تعامل مع الملفات عبر أداتي create_file و read_file فقط؛ لا يملك Python صلاحية فتح الملفات.
+الأدوات المتاحة فعلياً:
+$toolCatalog
 عندما يطلب المستخدم إنشاء واجهة ويب أو نموذج تفاعلي أو تطبيق بسيط، أنشئ ملفاً واحداً باسم index.html باستخدام create_file، واجعل HTML وCSS وJavaScript مكتملة ومضمّنة داخل الملف نفسه حتى تعمل مباشرة في معاينة WebView المحلية دون اتصال. لا تعتمد على CDN أو ملفات خارجية أو خدمات شبكة. صمّم واجهة متجاوبة مع الهاتف، وأضف تفاعلات JavaScript المطلوبة. إذا طلب المستخدم مشروع Flutter أصلياً، أنشئ ملفات Dart المناسبة ولا تدّع أن WebView تستطيع تشغيلها؛ فهي تعرض الكود فقط.
-عند الحاجة لاستخدام أداة أخرج استدعاءً واحداً فقط:
-<tool_call>{"name":"create_file","arguments":{"path":"src/main.dart","content":"..."}}</tool_call>
-أو:
-<tool_call>{"name":"read_file","arguments":{"path":"index.html"}}</tool_call>
-أو:
-<tool_call>{"name":"write_file","arguments":{"path":"index.html","content":"<!doctype html>..."}}</tool_call>
-أو:
-<tool_call>{"name":"execute_python","arguments":{"code":"for i in range(1, 11):\n    print(i)"}}</tool_call>
-لا تدّع نجاح أي عملية قبل استلام نتيجتها. لا تطلب أدوات إذا لم تكن لازمة.
+عند الحاجة لاستخدام أداة أخرج استدعاءً واحداً فقط بالصيغة التالية، مع اسم أداة موجود في القائمة أعلاه ووسائط مطابقة لمثالها:
+<tool_call>{"name":"tool_name","arguments":{}}</tool_call>
+لا تدّع نجاح أي عملية قبل استلام نتيجة الأداة. إذا كانت النتيجة ok=false فاشرح الفشل ولا تعلن النجاح. لا تطلب أدوات إذا لم تكن لازمة.
 لا تعرض التفكير الداخلي التفصيلي.
 
 المستخدم: $input
