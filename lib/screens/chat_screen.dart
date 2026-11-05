@@ -724,15 +724,32 @@ class _ChatScreenState extends State<ChatScreen> {
 
     final completedTools = _agentSteps.where((event) =>
       event['status'] == 'completed' &&
-      (event['type'] == 'tool_output' || event['type'] == 'file_created' || event['type'] == 'file_updated')
+      (event['type'] == 'tool_output' ||
+       event['type'] == 'file_created' ||
+       event['type'] == 'file_updated')
     ).toList();
-    final lastTool = completedTools.isEmpty ? null : completedTools.last;
-    final rawToolResult = lastTool == null
+    final recentTools = completedTools.length > 5
+        ? completedTools.sublist(completedTools.length - 5)
+        : completedTools;
+    final toolContext = recentTools.isEmpty
         ? ''
-        : (lastTool['output'] ?? lastTool['content'] ?? lastTool['file_name'] ?? '').toString();
-    final toolContext = rawToolResult.isEmpty
-        ? ''
-        : '\n\nآخر نتيجة أداة محفوظة قبل الانقطاع:\n${(rawToolResult.length > 1800 ? rawToolResult.substring(0, 1800) : rawToolResult)}';
+        : '\n\nنتائج الأدوات المؤكدة قبل انقطاع التطبيق (الأحدث أخيراً):\n' +
+            recentTools.map((event) {
+              final label = event['title']?.toString() ??
+                  event['tool_name']?.toString() ??
+                  event['file_name']?.toString() ??
+                  'أداة مكتملة';
+              final result = (event['output'] ??
+                      event['content'] ??
+                      event['file_name'] ??
+                      event['details'] ??
+                      '').toString();
+              final bounded = result.length > 1200
+                  ? '${result.substring(0, 1200)}…'
+                  : result;
+              return '- $label\n$bounded';
+            }).join('\n\n') +
+            '\n\nاستأنف من حالة مساحة العمل الحالية. افحص ما أُنجز قبل إعادة أي عملية كتابة، ولا تكرر إجراءً مكتملاً إلا إذا أثبت الفحص الحاجة إليه.';
 
     setState(() => _isLoading = true);
     try {
@@ -1551,7 +1568,8 @@ class _ChatScreenState extends State<ChatScreen> {
                       final step = _agentSteps[index];
                       final status = step['status']?.toString() ?? 'completed';
                       final failed = status == 'failed' || status == 'interrupted';
-                      final running = status == 'running' || status == 'pending';
+                      final running = status == 'running';
+                      final pending = status == 'pending';
                       final type = step['type']?.toString() ?? 'thought';
                       final icon = _agentStepIcon(type);
                       final color = failed
@@ -1576,10 +1594,10 @@ class _ChatScreenState extends State<ChatScreen> {
                           _stepIsSvg(step);
                       final statusLabel = running
                           ? 'قيد التنفيذ'
-                          : failed
-                              ? 'فشل'
-                              : status == 'interrupted'
-                                  ? 'متوقف'
+                          : pending
+                              ? 'بانتظار التنفيذ'
+                              : failed
+                                  ? (status == 'interrupted' ? 'متوقف' : 'فشل')
                                   : 'مكتمل';
                       return InkWell(
                         onTap: hasPreview ? () => _showAgentStep(step) : null,
@@ -1646,16 +1664,23 @@ class _ChatScreenState extends State<ChatScreen> {
                                 duration: const Duration(milliseconds: 200),
                                 child: running
                                     ? const AgentPulseDot(key: ValueKey('running'), size: 9)
-                                    : Icon(
-                                        key: ValueKey(failed ? 'failed' : 'completed'),
-                                        failed
-                                            ? Icons.error_outline
-                                            : status == 'interrupted'
-                                                ? Icons.pause_circle_outline
-                                                : Icons.check_circle,
-                                        color: color,
-                                        size: 15,
-                                      ),
+                                    : pending
+                                        ? const Icon(
+                                            Icons.schedule_rounded,
+                                            key: ValueKey('pending'),
+                                            color: Color(0xFF6B7280),
+                                            size: 14,
+                                          )
+                                        : Icon(
+                                            key: ValueKey(failed ? 'failed' : 'completed'),
+                                            failed
+                                                ? Icons.error_outline
+                                                : status == 'interrupted'
+                                                    ? Icons.pause_circle_outline
+                                                    : Icons.check_circle,
+                                            color: color,
+                                            size: 15,
+                                          ),
                               ),
                             ],
                           ),
