@@ -186,15 +186,27 @@ class AgentKernel {
         conversationId: request.conversationId,
       );
       final normalizedOutput = output.trim();
-      if (normalizedOutput.startsWith('تم إيقاف تنفيذ الوكيل') ||
-          normalizedOutput.startsWith('تم إيقاف التوليد')) {
+      final wasCancelled =
+          normalizedOutput.startsWith('تم إيقاف تنفيذ الوكيل') ||
+          normalizedOutput.startsWith('تم إيقاف الوكيل بعد اكتمال الأداة') ||
+          normalizedOutput.startsWith('تم إيقاف التوليد') ||
+          normalizedOutput.contains('[تم إيقاف التوليد]');
+      final executionWasBounded =
+          normalizedOutput.startsWith('وصل الوكيل إلى الحد الآمن') ||
+          normalizedOutput.startsWith('أوقف الوكيل تكرار استدعاء الأداة');
+
+      if (wasCancelled || executionWasBounded) {
         _state = AgentKernelState.idle;
         _emit(
           requestId: request.id,
-          type: 'execution_interrupted',
-          title: 'توقف التنفيذ بطلب المستخدم',
+          type: wasCancelled ? 'execution_interrupted' : 'execution_incomplete',
+          title: wasCancelled
+              ? 'توقف التنفيذ بطلب المستخدم'
+              : 'توقف التنفيذ قبل اكتمال المهمة',
           status: 'interrupted',
-          details: 'أعاد المحرك المحلي حالة الإيقاف بدل إعلان اكتمال المهمة.',
+          details: wasCancelled
+              ? 'أعاد المحرك المحلي حالة الإيقاف؛ لم يُعلن اكتمال المهمة.'
+              : 'وصل التنفيذ إلى حد الأمان أو اكتشف تكرارًا دون تقدم.',
         );
         return AgentResponse(
           requestId: request.id,
