@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import '../../services/agent_memory_service.dart';
 import '../../services/model_service.dart';
+import '../../services/openrouter_service.dart';
 import '../../services/planner_service.dart';
 import 'agent_timeline_event.dart';
 
@@ -161,22 +162,32 @@ class AgentKernel {
     );
 
     try {
-      if (!_models.hasActiveModel()) {
-        throw StateError('Load a local GGUF model before starting an agent task.');
-      }
+      final openRouterEnabled = await OpenRouterService.instance.isEnabled();
+      if (!openRouterEnabled) {
+        if (!_models.hasActiveModel()) {
+          throw StateError(
+            'Load a local GGUF model or configure OpenRouter before starting an agent task.',
+          );
+        }
 
-      final nativeModelLoaded = await _models.isModelLoaded();
-      if (!nativeModelLoaded) {
-        throw StateError(
-          'The selected GGUF model is not loaded in the native runtime.',
-        );
+        final nativeModelLoaded = await _models.isModelLoaded();
+        if (!nativeModelLoaded) {
+          throw StateError(
+            'The selected GGUF model is not loaded in the native runtime.',
+          );
+        }
       }
 
       _emit(
         requestId: request.id,
         type: 'model_ready',
-        title: 'تم التحقق من جاهزية النموذج المحلي',
+        title: openRouterEnabled
+            ? 'تم التحقق من اتصال OpenRouter'
+            : 'تم التحقق من جاهزية النموذج المحلي',
         status: 'completed',
+        details: openRouterEnabled
+            ? 'سيستخدم الوكيل نموذج OpenRouter المحدد.'
+            : 'سيستخدم الوكيل نموذج GGUF المحلي.',
       );
 
       _state = AgentKernelState.executing;
