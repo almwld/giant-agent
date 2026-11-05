@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 
 import '../../services/model_service.dart';
+import '../../services/planner_service.dart';
 import 'agent_timeline_event.dart';
 
 /// Lifecycle states exposed by the agent orchestration layer.
@@ -49,6 +51,7 @@ class AgentKernel {
   static final AgentKernel instance = AgentKernel._();
 
   final ModelService _models = ModelService();
+  final PlannerService _planner = PlannerService();
   final StreamController<AgentTimelineEvent> _events =
       StreamController<AgentTimelineEvent>.broadcast();
 
@@ -56,6 +59,7 @@ class AgentKernel {
   String? _activeRequestId;
   Future<void>? _initialization;
   int _eventSequence = 0;
+  bool _cancellationRequested = false;
 
   AgentKernelState get state => _state;
   String? get activeRequestId => _activeRequestId;
@@ -147,6 +151,7 @@ class AgentKernel {
     // Reserve the execution slot before the first await so two requests cannot
     // both pass admission while native model readiness is being checked.
     _activeRequestId = request.id;
+    _cancellationRequested = false;
     _emit(
       requestId: request.id,
       type: 'request_received',
@@ -181,8 +186,9 @@ class AgentKernel {
         status: 'running',
       );
 
-      final output = await _models.processInput(
+      final output = await _executePlannedRequest(
         prompt,
+        requestId: request.id,
         conversationId: request.conversationId,
       );
       final normalizedOutput = output.trim();
@@ -251,6 +257,7 @@ class AgentKernel {
       rethrow;
     } finally {
       _activeRequestId = null;
+      _cancellationRequested = false;
       if (_state == AgentKernelState.failed ||
           _state == AgentKernelState.executing ||
           _state == AgentKernelState.cancelling) {
@@ -259,9 +266,151 @@ class AgentKernel {
     }
   }
 
+
+  bool _isCancelledOutput(String output) =>
+      output.startsWith('تم إيقاف تنفيذ الوكيل') ||
+      output.startsWith('تم إيقاف الوكيل بعد اكتمال الأداة') ||
+      output.startsWith('تم إيقاف التوليد') ||
+      output.contains('[تم إيقاف التوليد]');
+
+  bool _isIncompleteOutput(String output) =>
+      output.startsWith('وصل الوكيل إلى الحد الآمن') ||
+      output.startsWith('أوقف الوكيل تكرار استدعاء الأداة');
+
+  bool _isFailureOutput(String output) =>
+      output.isEmpty ||
+      output.startsWith('ERROR:') ||
+      output.startsWith('تعذر تشغيل النموذج المحلي:') ||
+      output.startsWith('تعذر تحليل استدعاء الأداة أو تنفيذه:') ||
+      output.startsWith('⚠️ استورد نموذج');
+
+  Future<String> _executePlannedRequest(
+    String prompt, {
+    required String requestId,
+    required String conversationId,
+  }) async {
+    if (!_planner.requiresPlan(prompt)) {
+      return _models.processInput(prompt, conversationId: conversationId);
+    }
+
+    final plan = _planner.createPlan(prompt);
+    _emit(
+      requestId: requestId,
+      type: 'plan_created',
+      title: 'تم إنشاء خطة تنفيذ منظمة',
+      status: 'completed',
+      details: jsonEncode(plan),
+    );
+
+    final results = <Map<String, String>>[];
+    for (final step in plan) {
+      if (_cancellationRequested) {
+        return 'تم إيقاف المهمة بعد ${results.length} من ${plan.length} خطوات.';
+      }
+
+      final number = step['step'] as int;
+      final action = step['action'] as String;
+      _emit(
+        requestId: requestId,
+        type: 'step_started',
+        title: 'الخطوة $number: $action',
+        status: 'running',
+        details: 'بدأ تنفيذ الخطوة بواسطة النموذج المحلي والأدوات المتاحة.',
+      );
+
+      final previous = results.isEmpty
+          ? 'لا توجد نتائج سابقة.'
+          : results
+              .map((item) =>
+                  'الخطوة: ${item['action']}\nالنتيجة: ${item['result']}')
+              .join('\n\n');
+      final stepPrompt = '''
+المهمة الأصلية:
+$prompt
+
+الخطة:
+${plan.map((item) => '${item['step']}. ${item['action']}').join('\n')}
+
+الخطوة الحالية ($number/${plan.length}):
+$action
+
+نتائج الخطوات السابقة:
+$previous
+
+نفّذ هذه الخطوة فقط. لا تكرر التخطيط ولا تنفذ الخطوات اللاحقة.
+استخدم الأدوات المحلية عند الحاجة. لا تدّع نجاح أي تعديل أو تشغيل دون نتيجة أداة فعلية.
+أعد نتيجة هذه الخطوة بوضوح، واذكر ما تعذر تنفيذه.
+''';
+
+      final output = (await _models.processInput(
+        stepPrompt,
+        conversationId: conversationId,
+      )).trim();
+
+      if (_cancellationRequested || _isCancelledOutput(output) ||
+          _isIncompleteOutput(output)) {
+        return output;
+      }
+      if (_isFailureOutput(output)) {
+        _emit(
+          requestId: requestId,
+          type: 'step_failed',
+          title: 'فشلت الخطوة $number',
+          status: 'failed',
+          details: output,
+        );
+        throw StateError(output.isEmpty
+            ? 'The local model returned an empty step result.'
+            : output);
+      }
+
+      results.add({'action': action, 'result': output});
+      final visibleOutput =
+          output.length > 1200 ? '${output.substring(0, 1200)}…' : output;
+      _emit(
+        requestId: requestId,
+        type: 'step_completed',
+        title: 'اكتملت الخطوة $number',
+        status: 'completed',
+        details: visibleOutput,
+      );
+    }
+
+    if (_cancellationRequested) {
+      return 'تم إيقاف المهمة قبل إعداد الإجابة النهائية.';
+    }
+
+    _emit(
+      requestId: requestId,
+      type: 'synthesis_started',
+      title: 'مراجعة النتائج وإعداد الإجابة النهائية',
+      status: 'running',
+    );
+    final evidence = results
+        .asMap()
+        .entries
+        .map((entry) =>
+            '${entry.key + 1}. ${entry.value['action']}\n${entry.value['result']}')
+        .join('\n\n');
+    return _models.processInput(
+      '''
+المهمة الأصلية: $prompt
+
+نتائج التنفيذ:
+$evidence
+
+اكتب الإجابة النهائية اعتماداً على النتائج أعلاه فقط.
+لا تنفذ أدوات جديدة في هذه المرحلة، ولا تضف نتائج غير موجودة.
+ميّز بين ما تم تنفيذه فعلياً وما لم يكتمل أو لم يمكن التحقق منه.
+''',
+      conversationId: conversationId,
+    );
+  }
+
   Future<bool> cancel() async {
     if (!isExecuting) return false;
     final requestId = _activeRequestId ?? 'runtime';
+    _cancellationRequested = true;
     _state = AgentKernelState.cancelling;
     _emit(
       requestId: requestId,
@@ -270,18 +419,22 @@ class AgentKernel {
       status: 'running',
     );
 
-    final accepted = await _models.cancelGeneration();
+    var accepted = false;
+    try {
+      accepted = await _models.cancelGeneration();
+    } catch (_) {
+      // The orchestrator still stops at the next safe boundary.
+    }
     _emit(
       requestId: requestId,
-      type: accepted ? 'cancellation_accepted' : 'cancellation_rejected',
-      title: accepted ? 'تم قبول طلب الإيقاف' : 'لم يقبل المحرك طلب الإيقاف',
-      status: accepted ? 'completed' : 'failed',
+      type: 'cancellation_recorded',
+      title: 'تم تسجيل طلب الإيقاف',
+      status: 'completed',
       details: accepted
-          ? 'سيوقف المحرك التوليد عند نقطة الإلغاء الآمنة.'
-          : 'لم يؤكد المحرك الأصلي قبول الإلغاء.',
+          ? 'قبل محرك الاستدلال إيقاف التوليد.'
+          : 'سيوقف المنسق الخطوات التالية عند أقرب نقطة آمنة.',
     );
-    if (!accepted) _state = AgentKernelState.executing;
-    return accepted;
+    return true;
   }
 
   Future<Map<String, dynamic>> exportWorkspace() =>
