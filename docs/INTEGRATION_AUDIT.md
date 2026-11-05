@@ -98,3 +98,16 @@ Complete and stabilize the current subsystem before expanding the feature surfac
 - Workspace dispatch was inspected end-to-end: the model-facing tool catalogue and runtime allow-list both come from `ToolManager`; `ModelService` validates tool names and argument object shape; Android native handlers enforce app-private workspace containment, reject absolute/traversal paths and symbolic links, restrict file extensions, cap file reads/writes at 1 MB, and prevent create-file overwrite. Workspace export also checks canonical paths and excludes symbolic links.
 - Remaining workspace test gap: the Android path policy is currently embedded in `MainActivity`; a dedicated native unit-test seam would improve automated traversal/symlink coverage. Do not weaken or duplicate the native policy merely to make it testable.
 - Latest observed CI run for commit `69842836f0f93a1a26acd1cf8602c3b74dcd9cc2` passed parser checks, Flutter analysis, and Flutter unit tests; universal APK packaging was in progress. Full CI and on-device lifecycle verification remain completion gates.
+
+
+## 8. CI completion update — 2026-11-05
+
+- Workflow run [42035232303](https://github.com/almwld/giant-agent/actions/runs/42035232303) completed with conclusion **success** on branch `feat/integrated-agent-completion`, commit `6baba4e504619ebc4313850144aaa9f23fee4afa`.
+- Workflow run [42035223356](https://github.com/almwld/giant-agent/actions/runs/42035223356) also completed with conclusion **success** on the same commit.
+- Both runs completed parser checks, Flutter analysis, Flutter unit tests, universal APK packaging, `arm64-v8a`, `armeabi-v7a`, and `x86_64` APK packaging, APK output/checksum verification, and all five artifact uploads.
+- Run `42035232303` published five artifacts: universal release ZIP (80,315,751 bytes), arm64-v8a (36,476,377 bytes), armeabi-v7a (31,571,877 bytes), x86_64 (35,151,932 bytes), and SHA-256 checksums (375 bytes). These are **artifact archive sizes**, not extracted APK sizes.
+- The two successful runs were produced from the same commit; they provide repeatable CI evidence, not additional source changes.
+- Kernel lifecycle/cancellation still lacks a direct unit test. The current `AgentKernel` is a private-constructor singleton coupled to the concrete `ModelService` and `PlannerService`; adding a fakeable dependency seam would require an intentional refactor. No superficial test or broad refactor was added merely to claim coverage.
+- The native workspace path policy remains embedded in `MainActivity`, and the Android app module currently has no dedicated local Kotlin test seam/dependency configured. Extracting and testing it is a separate contained improvement; the existing validation was left intact rather than duplicated or weakened.
+- **Still unverified on a physical Android device:** model import/load, local inference, actual tool invocation, cancellation during inference, session switching, app process death and task resume, background/foreground behavior, and workspace export. Successful CI does not establish these device behaviors.
+- The previous note that the latest APK jobs were still running is superseded by the two successful runs above. The overall integration is not yet declared complete because device verification and the focused kernel/native-path test coverage remain open.
