@@ -1110,6 +1110,14 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
 
+  Future<void> _activateSessionFromHistory(ChatSession session) async {
+    if (_isLoading || session.id == _currentSessionId) return;
+    _currentSessionId = session.id;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('giant_active_session_id', session.id);
+    await _loadHistory();
+  }
+
   Future<void> _showConversationHistory() async {
     await _loadSessions();
     if (!mounted) return;
@@ -1176,7 +1184,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             ),
                             onTap: () {
                               Navigator.pop(sheetContext);
-                              _switchSession(session);
+                              _activateSessionFromHistory(session);
                             },
                           );
                         },
