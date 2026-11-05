@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - feat/integrated-agent-completion
   pull_request:
     branches:
       - main
