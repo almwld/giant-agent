@@ -436,6 +436,9 @@ class _ChatScreenState extends State<ChatScreen> {
     await _db?.update('sessions', {'updated_at': now},
       where: 'id = ?', whereArgs: [_currentSessionId]);
     await _loadSessions();
+    if (!isUser) {
+      AgentWorkflowScreen.publish(_agentSteps, finalOutputText: _latestAssistantOutput);
+    }
   }
 
   Future<void> _clearAllSessions() async {
