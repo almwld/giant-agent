@@ -11,14 +11,21 @@ if (flutterRoot == null) {
     throw new GradleException("Flutter SDK not found. Define location with flutter.sdk in the local.properties file.")
 }
 
-def flutterVersionCode = localProperties.getProperty('flutter.versionCode')
-if (flutterVersionCode == null) {
-    flutterVersionCode = '1'
-}
+def flutterVersionCode = localProperties.getProperty('flutter.versionCode') ?: '1'
+def flutterVersionName = localProperties.getProperty('flutter.versionName') ?: '1.0'
 
-def flutterVersionName = localProperties.getProperty('flutter.versionName')
-if (flutterVersionName == null) {
-    flutterVersionName = '1.0'
+// Chaquopy requires Android ndk.abiFilters. Flutter's --split-per-abi
+// also configures ABI splits, which Gradle does not allow alongside filters.
+// Build one target platform per invocation and align Chaquopy to that target.
+def flutterTargetPlatforms = (project.findProperty('target-platform') ?: 'android-arm,android-arm64,android-x64')
+        .toString().split(',')
+def chaquopyAbis = flutterTargetPlatforms.collect { platform ->
+    switch (platform.trim()) {
+        case 'android-arm': return 'armeabi-v7a'
+        case 'android-arm64': return 'arm64-v8a'
+        case 'android-x64': return 'x86_64'
+        default: throw new GradleException("Unsupported Flutter Android target platform: ${platform}")
+    }
 }
 
 apply plugin: 'com.android.application'
@@ -35,13 +42,9 @@ android {
         targetCompatibility JavaVersion.VERSION_1_8
     }
 
-    kotlinOptions {
-        jvmTarget = '1.8'
-    }
+    kotlinOptions { jvmTarget = '1.8' }
 
-    sourceSets {
-        main.java.srcDirs += 'src/main/kotlin'
-    }
+    sourceSets { main.java.srcDirs += 'src/main/kotlin' }
 
     externalNativeBuild {
         cmake {
@@ -57,21 +60,16 @@ android {
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
         multiDexEnabled true
-        // ABI selection is owned by Flutter's --split-per-abi build flag.
-        // Do not combine Android ndk.abiFilters with splits.abi.filters.
+        ndk { abiFilters(*chaquopyAbis) }
         python { version "3.11"; pip { install "pypdf==4.2.0" } }
     }
 
     buildTypes {
-        release {
-            signingConfig signingConfigs.debug
-        }
+        release { signingConfig signingConfigs.debug }
     }
 }
 
-flutter {
-    source '../..'
-}
+flutter { source '../..' }
 
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
