@@ -166,7 +166,8 @@ class AgentWorkflowScreen extends StatelessWidget {
   Widget _summaryCard(List<Map<String, dynamic>> rows) {
     final completed = rows.where((e) => {'completed','success'}.contains((e['status'] ?? '').toString().toLowerCase())).length;
     final failed = rows.where((e) => {'failed','error'}.contains((e['status'] ?? '').toString().toLowerCase())).length;
-    final active = rows.where((e) => {'running','pending'}.contains((e['status'] ?? '').toString().toLowerCase())).length;
+    final active = rows.where((e) => (e['status'] ?? '').toString().toLowerCase() == 'running').length;
+    final pending = rows.where((e) => (e['status'] ?? '').toString().toLowerCase() == 'pending').length;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(color: const Color(0xFF1B2835), borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFF38BDF8).withOpacity(.25))),
@@ -177,6 +178,7 @@ class AgentWorkflowScreen extends StatelessWidget {
           _metric('إجمالي الأحداث', rows.length.toString(), Colors.white70),
           _metric('مكتمل', completed.toString(), const Color(0xFF34D399)),
           _metric('قيد التنفيذ', active.toString(), const Color(0xFF38BDF8)),
+          _metric('بانتظار التنفيذ', pending.toString(), const Color(0xFF64748B)),
           _metric('أخطاء', failed.toString(), const Color(0xFFF87171)),
         ]),
       ]),
