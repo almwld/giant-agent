@@ -272,6 +272,7 @@ class TaskManager {
         output.startsWith('تعذر تشغيل النموذج المحلي:') ||
         output.startsWith('تعذر تحليل استدعاء الأداة أو تنفيذه:') ||
         output.startsWith('تعذر إكمال الطلب:') ||
+        output.startsWith('⚠️ اختر نموذج') ||
         output.startsWith('⚠️ استورد نموذج')) {
       return TaskExecutionOutcome.failed;
     }
