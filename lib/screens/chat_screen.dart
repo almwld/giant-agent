@@ -877,20 +877,6 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
-  PopupMenuItem<String> _menuItem(String value, IconData icon, String label) {
-    return PopupMenuItem<String>(
-      value: value,
-      height: 46,
-      child: Row(
-        children: [
-          Icon(icon, size: 19, color: const Color(0xFFB7C4C2)),
-          const SizedBox(width: 12),
-          Text(label, style: const TextStyle(color: Colors.white, fontSize: 13)),
-        ],
-      ),
-    );
-  }
-
   IconData _agentStepIcon(String type) {
     switch (type) {
       case 'code':
@@ -1294,16 +1280,41 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             icon: const Icon(Icons.description_outlined, color: Color(0xFF71717A), size: 20),
           ),
-          IconButton(
-            tooltip: 'سطح المكتب',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => AgentWorkspaceScreen(
-                  steps: List<Map<String, dynamic>>.from(_agentSteps),
-                ),
-              ),
-            ),
+          PopupMenuButton<String>(
+            tooltip: 'المزيد',
             icon: const Icon(Icons.more_horiz_rounded, color: Color(0xFF71717A), size: 22),
+            color: const Color(0xFF242428),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
+            onSelected: (value) {
+              switch (value) {
+                case 'desktop':
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => AgentWorkspaceScreen(
+                        steps: List<Map<String, dynamic>>.from(_agentSteps),
+                      ),
+                    ),
+                  );
+                  break;
+                case 'refresh':
+                  _refreshModels();
+                  break;
+                case 'history':
+                  _clearHistory();
+                  break;
+                case 'settings':
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                  );
+                  break;
+              }
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'desktop', child: Text('سطح المكتب')),
+              PopupMenuItem(value: 'refresh', child: Text('تحديث النماذج')),
+              PopupMenuItem(value: 'history', child: Text('مسح سجل المحادثة')),
+              PopupMenuItem(value: 'settings', child: Text('الإعدادات')),
+            ],
           ),
           const SizedBox(width: 8),
         ],
