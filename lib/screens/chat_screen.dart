@@ -1758,6 +1758,15 @@ class _ChatScreenState extends State<ChatScreen> {
                   _refreshModels();
                   break;
                 case 'history':
+                  _showConversationHistory();
+                  break;
+                case 'share':
+                  _shareCurrentConversation();
+                  break;
+                case 'about':
+                  _showAgentInformation();
+                  break;
+                case 'clearHistory':
                   _clearHistory();
                   break;
                 case 'github':
@@ -1779,7 +1788,11 @@ class _ChatScreenState extends State<ChatScreen> {
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'desktop', child: Text('سطح المكتب')),
               PopupMenuItem(value: 'refresh', child: Text('تحديث النماذج')),
-              PopupMenuItem(value: 'history', child: Text('مسح سجل المحادثة')),
+              PopupMenuItem(value: 'history', child: Text('المحادثات السابقة')),
+              PopupMenuItem(value: 'share', child: Text('مشاركة المحادثة الحالية')),
+              PopupMenuItem(value: 'about', child: Text('حول Giant Agent')),
+              PopupMenuDivider(),
+              PopupMenuItem(value: 'clearHistory', child: Text('مسح سجل المحادثة')),
               PopupMenuDivider(),
               PopupMenuItem(value: 'github', child: Text('ربط مستودع GitHub')),
               PopupMenuItem(value: 'cloud', child: Text('اتصال السحابة')),
