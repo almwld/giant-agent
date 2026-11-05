@@ -82,7 +82,7 @@ class _AgentThinkingDotsState extends State<AgentThinkingDots>
             children: List.generate(3, (index) {
               final phase = (_controller.value - index * .18) % 1.0;
               final wave =
-                  (1 - (phase - .32).abs() / .32).clamp(0.0, 1.0);
+                  (1 - (phase - .32).abs() / .32).clamp(0.0, 1.0).toDouble();
               return Transform.scale(
                 scale: .65 + wave * .55,
                 child: Container(
