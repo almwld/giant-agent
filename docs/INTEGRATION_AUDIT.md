@@ -87,3 +87,4 @@ Complete and stabilize the current subsystem before expanding the feature surfac
 
 - CI run `41977233732` on commit `492d6c09dc45fcf8c20ef012fc60afaf97bc7a27` completed successfully: Flutter analysis, unit tests, universal APK, arm64-v8a, armeabi-v7a, x86_64, checksum verification, and all five artifact uploads passed.
 - Subsequent task-lifecycle/recovery integration commits are newer than that green baseline and remain subject to their own CI run and device verification.
+- Centralized completed/interrupted/failed result classification in `TaskManager`; ChatScreen and the Home/Nuclear execution path now use the same task outcome contract. Added tests for all three classifications.
