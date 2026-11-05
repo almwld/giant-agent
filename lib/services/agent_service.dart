@@ -1,41 +1,39 @@
-import 'dart:async';
-
+import '../agent/architecture/agent_kernel.dart';
 import 'model_service.dart';
 
-/// Public task facade. All inference and tool execution is delegated to the
-/// single process-wide ModelService/LlamaService runtime.
+/// Public facade for task execution. All requests pass through AgentKernel,
+/// which delegates to the single process-wide ModelService/LlamaService.
 class AgentService {
   AgentService._();
+
   static final AgentService instance = AgentService._();
 
+  final AgentKernel _kernel = AgentKernel.instance;
   final ModelService _models = ModelService();
-  bool _running = false;
-  bool get isRunning => _running;
 
-  Future<void> initialize() => _models.init();
+  bool get isRunning => _kernel.isExecuting;
 
-  Future<String> runTask(String prompt) async {
-    final normalized = prompt.trim();
-    if (normalized.isEmpty) {
-      throw ArgumentError.value(prompt, 'prompt', 'Task must not be empty.');
-    }
-    if (_running) {
-      throw StateError('An agent task is already running.');
-    }
-    if (!_models.hasActiveModel()) {
-      throw StateError('Load a local GGUF model before starting an agent task.');
-    }
-    _running = true;
-    try {
-      return await _models.processInput(normalized);
-    } finally {
-      _running = false;
-    }
+  Future<void> initialize() => _kernel.initialize();
+
+  Future<String> runTask(String prompt, {String conversationId = 'global'}) async {
+    final request = AgentRequest(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      prompt: prompt,
+      conversationId: conversationId,
+    );
+    final response = await _kernel.execute(request);
+    return response.output;
   }
 
-  Future<bool> cancel() => _models.cancelGeneration();
+  Future<bool> cancel() => _kernel.cancel();
 
-  Future<Map<String, dynamic>> exportWorkspace() => _models.exportWorkspace();
+  Future<Map<String, dynamic>> exportWorkspace() => _kernel.exportWorkspace();
 
-  Future<List<String>> listWorkspaceFiles() => _models.listWorkspaceFiles();
+  Future<List<String>> listWorkspaceFiles() => _kernel.listWorkspaceFiles();
+
+  /// Exposes the shared model facade for status and model-library screens.
+  ModelService get modelService => _models;
+
+  /// Lifecycle stream for workflow timelines and diagnostics.
+  Stream<AgentKernelEvent> get events => _kernel.events;
 }
