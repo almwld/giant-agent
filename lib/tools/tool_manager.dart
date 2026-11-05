@@ -1,50 +1,68 @@
-import '../services/model_service.dart';
+/// Canonical registry of tools exposed to the agent model.
+///
+/// The registry is the single source for the model-facing tool catalogue and
+/// the runtime allow-list. Actual platform execution remains in ModelService,
+/// which owns the native MethodChannel boundary.
+class AgentToolDefinition {
+  const AgentToolDefinition({
+    required this.name,
+    required this.description,
+    required this.example,
+  });
 
-/// Registry for tools that are genuinely implemented by the local runtime.
-/// Unsupported legacy mock tools are intentionally not advertised.
+  final String name;
+  final String description;
+  final String example;
+}
+
 class ToolManager {
   ToolManager._internal();
+
   static final ToolManager _instance = ToolManager._internal();
   factory ToolManager() => _instance;
 
-  final ModelService _models = ModelService();
-  late final Map<String, Future<String> Function(Map<String, dynamic>)> _tools = {
-    'create_file': (args) async {
-      final result = await _models.createFile(
-        path: args['path']?.toString() ?? '',
-        content: args['content']?.toString() ?? '',
-      );
-      return 'Created ${result['path'] ?? args['path']}';
-    },
-    'read_file': (args) async {
-      final result = await _models.readFile(path: args['path']?.toString() ?? '');
-      return result['content']?.toString() ?? '';
-    },
-    'write_file': (args) async {
-      final result = await _models.writeFile(
-        path: args['path']?.toString() ?? '',
-        content: args['content']?.toString() ?? '',
-      );
-      return 'Updated ${result['path'] ?? args['path']}';
-    },
-    'execute_python': (args) async {
-      final result = await _models.executePython(code: args['code']?.toString() ?? '');
-      if (result['ok'] != true) {
-        throw StateError(result['error']?.toString() ?? 'Python execution failed.');
-      }
-      return result['output']?.toString() ?? '';
-    },
-  };
+  static const List<AgentToolDefinition> _definitions = [
+    AgentToolDefinition(
+      name: 'create_file',
+      description: 'إنشاء ملف جديد فقط داخل مساحة العمل؛ لا يستبدل ملفاً موجوداً.',
+      example: '{"name":"create_file","arguments":{"path":"index.html","content":"<!doctype html>..."}}',
+    ),
+    AgentToolDefinition(
+      name: 'read_file',
+      description: 'قراءة محتوى ملف موجود داخل مساحة العمل.',
+      example: '{"name":"read_file","arguments":{"path":"index.html"}}',
+    ),
+    AgentToolDefinition(
+      name: 'write_file',
+      description: 'تحديث ملف موجود داخل مساحة العمل مع التحقق من المسار والحجم.',
+      example: '{"name":"write_file","arguments":{"path":"index.html","content":"..."}}',
+    ),
+    AgentToolDefinition(
+      name: 'execute_python',
+      description: 'تنفيذ Python محلي مقيّد للحساب والطباعة والحلقات المحدودة؛ لا يدعم الاستيراد أو فتح الملفات أو الوصول إلى النظام.',
+      example: '{"name":"execute_python","arguments":{"code":"for i in range(1, 4):\\n    print(i)"}}',
+    ),
+  ];
 
-  void registerTools() {
-    // The registry is initialized lazily and contains only runtime-backed tools.
+  List<AgentToolDefinition> get definitions =>
+      List<AgentToolDefinition>.unmodifiable(_definitions);
+
+  List<String> getAvailableTools() =>
+      List<String>.unmodifiable(_definitions.map((tool) => tool.name));
+
+  bool supports(String name) =>
+      _definitions.any((tool) => tool.name == name);
+
+  AgentToolDefinition? definitionFor(String name) {
+    for (final definition in _definitions) {
+      if (definition.name == name) return definition;
+    }
+    return null;
   }
 
-  List<String> getAvailableTools() => List.unmodifiable(_tools.keys);
-
-  Future<String> executeTool(String name, Map<String, dynamic> arguments) async {
-    final handler = _tools[name];
-    if (handler == null) throw UnsupportedError('Tool is not implemented: $name');
-    return handler(arguments);
-  }
+  /// Text inserted into the model system prompt from the same definitions
+  /// used by runtime validation.
+  String get promptCatalog => _definitions
+      .map((tool) => '- ${tool.name}: ${tool.description}\\n  مثال: ${tool.example}')
+      .join('\\n');
 }
