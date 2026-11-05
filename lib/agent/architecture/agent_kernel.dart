@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import '../../services/agent_memory_service.dart';
 import '../../services/model_service.dart';
 import '../../services/planner_service.dart';
 import 'agent_timeline_event.dart';
@@ -345,6 +346,7 @@ $previous
       final output = (await _models.processInput(
         stepPrompt,
         conversationId: conversationId,
+        persistTurn: false,
       )).trim();
 
       if (_cancellationRequested || _isCancelledOutput(output) ||
@@ -392,7 +394,7 @@ $previous
         .map((entry) =>
             '${entry.key + 1}. ${entry.value['action']}\n${entry.value['result']}')
         .join('\n\n');
-    return _models.processInput(
+    final finalOutput = await _models.processInput(
       '''
 المهمة الأصلية: $prompt
 
@@ -404,7 +406,20 @@ $evidence
 ميّز بين ما تم تنفيذه فعلياً وما لم يكتمل أو لم يمكن التحقق منه.
 ''',
       conversationId: conversationId,
+      persistTurn: false,
     );
+    final normalizedFinal = finalOutput.trim();
+    if (!_cancellationRequested &&
+        !_isCancelledOutput(normalizedFinal) &&
+        !_isIncompleteOutput(normalizedFinal) &&
+        !_isFailureOutput(normalizedFinal)) {
+      await AgentMemoryService.instance.saveTurn(
+        prompt,
+        normalizedFinal,
+        conversationId: conversationId,
+      );
+    }
+    return normalizedFinal;
   }
 
   Future<bool> cancel() async {

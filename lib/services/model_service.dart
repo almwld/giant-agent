@@ -160,7 +160,11 @@ class ModelService {
 
   /// Serializes requests because llama.cpp owns one mutable native context.
   /// Concurrent calls can interleave prompts, cancellation and tool execution.
-  Future<String> processInput(String input, {String conversationId = 'global'}) {
+  Future<String> processInput(
+    String input, {
+    String conversationId = 'global',
+    bool persistTurn = true,
+  }) {
     return _withRuntimeLock(() async {
       final context = await AgentMemoryService.instance.buildContext(
         input,
@@ -169,11 +173,13 @@ class ModelService {
       final response = await _processInput(
         context.isEmpty ? input : '$context\n\nطلب المستخدم: $input',
       );
-      await AgentMemoryService.instance.saveTurn(
-        input,
-        response,
-        conversationId: conversationId,
-      );
+      if (persistTurn) {
+        await AgentMemoryService.instance.saveTurn(
+          input,
+          response,
+          conversationId: conversationId,
+        );
+      }
       return response;
     });
   }
