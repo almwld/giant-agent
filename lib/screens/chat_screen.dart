@@ -898,8 +898,11 @@ class _ChatScreenState extends State<ChatScreen> {
       localeId: arabic.isNotEmpty ? arabic.first.localeId : null,
       listenFor: const Duration(seconds: 60),
       pauseFor: const Duration(seconds: 5),
-      partialResults: true,
-      cancelOnError: true,
+      listenOptions: SpeechListenOptions(
+        partialResults: true,
+        cancelOnError: true,
+        listenMode: ListenMode.dictation,
+      ),
       onResult: (result) {
         if (!mounted || result.recognizedWords.isEmpty) return;
         setState(() {

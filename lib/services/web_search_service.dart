@@ -15,9 +15,9 @@ class WebSearchService {
         .replaceAll('&lt;', '<')
         .replaceAll('&gt;', '>')
         .replaceAll('&nbsp;', ' ')
-        .replaceAll(RegExp(r'&#(\d+);'), (m) =>
+        .replaceAllMapped(RegExp(r'&#(\d+);'), (m) =>
             String.fromCharCode(int.tryParse(m.group(1) ?? '') ?? 32))
-        .replaceAll(RegExp(r'&#x([0-9a-fA-F]+);'), (m) =>
+        .replaceAllMapped(RegExp(r'&#x([0-9a-fA-F]+);'), (m) =>
             String.fromCharCode(int.tryParse(m.group(1) ?? '', radix: 16) ?? 32));
     return text.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
