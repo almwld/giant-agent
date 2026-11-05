@@ -246,6 +246,18 @@ class TaskManager {
     return executeNextStep();
   }
 
+  bool _isInterruptedResult(String output) =>
+      output.startsWith('تم إيقاف') ||
+      output.startsWith('وصل الوكيل إلى الحد الآمن') ||
+      output.startsWith('أوقف الوكيل تكرار استدعاء الأداة') ||
+      output.contains('[تم إيقاف التوليد]');
+
+  bool _isFailureResult(String output) =>
+      output.startsWith('ERROR:') ||
+      output.startsWith('تعذر تشغيل النموذج المحلي:') ||
+      output.startsWith('تعذر تحليل استدعاء الأداة أو تنفيذه:') ||
+      output.startsWith('⚠️ استورد نموذج');
+
   Future<Map<String, dynamic>> executeNextStep() async {
     await _ensureLoaded();
     if (_executing) throw StateError('يوجد تنفيذ مهمة جارٍ بالفعل.');
@@ -270,6 +282,31 @@ class TaskManager {
         task['description'] as String,
         conversationId: task['conversation_id']?.toString() ?? 'global',
       );
+      if (_isInterruptedResult(result)) {
+        step['status'] = 'pending';
+        step['result'] = result;
+        task['status'] = 'paused';
+        task['recovery_note'] = 'توقف التنفيذ قبل اكتمال المهمة؛ يمكن استئنافها.';
+        task['updated_at'] = DateTime.now().toIso8601String();
+        await _persist();
+        return {
+          'status': 'paused',
+          'step': step['step'],
+          'action': step['action'],
+          'result': result,
+          'remaining': 1,
+          'task_summary': _copyTask(task),
+        };
+      }
+      if (_isFailureResult(result)) {
+        step['status'] = 'failed';
+        step['error'] = result;
+        task['status'] = 'failed';
+        task['error'] = result;
+        task['updated_at'] = DateTime.now().toIso8601String();
+        await _persist();
+        return {'status': 'failed', 'error': result, 'task_summary': _copyTask(task)};
+      }
       step['status'] = 'completed';
       step['result'] = result;
       task['status'] = 'completed';
