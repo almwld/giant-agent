@@ -51,7 +51,7 @@ The Flutter `ModelService` and the kernel/service facades use a factory singleto
 6. **External service boundaries:** web search returns snippets; GitHub is read-only; cloud is upload-only. UI labels and agent prompts must continue to communicate those limits.
 7. **Android storage permissions:** removed broad `READ_EXTERNAL_STORAGE`, `WRITE_EXTERNAL_STORAGE`, `MANAGE_EXTERNAL_STORAGE`, and `requestLegacyExternalStorage` declarations. Model import and file attachments use Storage Access Framework/content URIs and app-private copies; still verify these flows on supported Android versions.
 8. **Automated verification coverage:** tests now cover timeline serialization, planner templates, and the canonical tool registry. Add focused tests for kernel lifecycle/cancellation, memory session isolation, native tool path validation, and provider failure behavior. Verify HomeScreen and NuclearScreen resume/cancel dialogs on-device after process death, including multiple paused tasks and failed resumes. Unit tests verify `TaskManager` restores interrupted task/step states and transitions through running, paused, and completed. Chat and the Home/Nuclear task entry points now use the manager; Home/Nuclear now query paused tasks by conversation and offer resume/cancel; process-death behavior still needs device verification.
-9. **CI analyzer gate:** the latest preceding run failed because three conversation actions were unused. The actions have now been restored to the overflow menu; the new run must confirm the analyzer and subsequent build stages.
+9. **CI gate:** the earlier analyzer and memory-fixture failures were corrected. On commit `69842836f0f93a1a26acd1cf8602c3b74dcd9cc2`, Flutter analysis and the complete unit-test step both passed; the four APK builds and artifact checks were still running at the time of this audit refresh.
 
 ## 4. Completion gates
 
@@ -88,3 +88,13 @@ Complete and stabilize the current subsystem before expanding the feature surfac
 - CI run `41977233732` on commit `492d6c09dc45fcf8c20ef012fc60afaf97bc7a27` completed successfully: Flutter analysis, unit tests, universal APK, arm64-v8a, armeabi-v7a, x86_64, checksum verification, and all five artifact uploads passed.
 - Subsequent task-lifecycle/recovery integration commits are newer than that green baseline and remain subject to their own CI run and device verification.
 - Centralized completed/interrupted/failed result classification in `TaskManager`; ChatScreen and the Home/Nuclear execution path now use the same task outcome contract. Added tests for all three classifications.
+
+
+## 7. Follow-up verification — 2026-11-05
+
+- The legacy-store reference audit searched the repository for constructor calls to `MemoryService`, `LongTermMemory`, and `ConversationMemory`. Each search returned only its own class definition. They are not referenced by the active app code at this revision. The files are intentionally retained for now: their separate SQLite databases may contain user data, and no migration/retirement path has been implemented.
+- The active `AgentMemoryService` remains the only memory implementation used by `ModelService`. Its schema migration now ensures the `facts` table and session index exist for older v1/v2 databases; migration and facts-recovery tests were added.
+- Session-recall tests use matching English tokens for the second session. The prior fixture queried Arabic text while expecting an unrelated Arabic phrase from an English-only turn, so the empty context was correct behavior rather than a session-isolation failure.
+- Workspace dispatch was inspected end-to-end: the model-facing tool catalogue and runtime allow-list both come from `ToolManager`; `ModelService` validates tool names and argument object shape; Android native handlers enforce app-private workspace containment, reject absolute/traversal paths and symbolic links, restrict file extensions, cap file reads/writes at 1 MB, and prevent create-file overwrite. Workspace export also checks canonical paths and excludes symbolic links.
+- Remaining workspace test gap: the Android path policy is currently embedded in `MainActivity`; a dedicated native unit-test seam would improve automated traversal/symlink coverage. Do not weaken or duplicate the native policy merely to make it testable.
+- Latest observed CI run for commit `69842836f0f93a1a26acd1cf8602c3b74dcd9cc2` passed parser checks, Flutter analysis, and Flutter unit tests; universal APK packaging was in progress. Full CI and on-device lifecycle verification remain completion gates.
