@@ -7,6 +7,25 @@ import 'package:giant_agent_x/agent/task_manager.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test('classifies task outcomes without treating interruption as completion', () {
+    expect(
+      TaskManager.classifyResult('تم إيقاف تنفيذ الوكيل بناءً على طلب المستخدم.'),
+      TaskExecutionOutcome.interrupted,
+    );
+    expect(
+      TaskManager.classifyResult('وصل الوكيل إلى الحد الآمن دون إنهاء المهمة.'),
+      TaskExecutionOutcome.interrupted,
+    );
+    expect(
+      TaskManager.classifyResult('ERROR: تعذر تشغيل النموذج.'),
+      TaskExecutionOutcome.failed,
+    );
+    expect(
+      TaskManager.classifyResult('اكتملت المهمة والنتيجة جاهزة.'),
+      TaskExecutionOutcome.completed,
+    );
+  });
+
   test('recovers interrupted task and running step as paused and pending', () async {
     SharedPreferences.setMockInitialValues({
       'giant_agent.tasks.v1': jsonEncode([
