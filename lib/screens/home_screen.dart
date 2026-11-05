@@ -84,7 +84,7 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       await TaskManager().createTask(text, conversationId: 'home');
       final execution = await TaskManager().executeNextStep();
-      response = execution['status'] == 'completed'
+      response = {'completed', 'paused'}.contains(execution['status'])
           ? execution['result']?.toString() ?? ''
           : 'تعذر إكمال الطلب: ${execution['error'] ?? execution['status']}';
     } catch (error) {
