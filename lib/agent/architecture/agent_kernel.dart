@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import '../../services/model_service.dart';
+import 'agent_timeline_event.dart';
 
 /// Lifecycle states exposed by the agent orchestration layer.
 enum AgentKernelState {
@@ -24,21 +25,6 @@ class AgentRequest {
   final String conversationId;
 }
 
-/// Structured lifecycle event for workflow UI, diagnostics and future observers.
-class AgentKernelEvent {
-  const AgentKernelEvent({
-    required this.requestId,
-    required this.state,
-    required this.timestamp,
-    this.message,
-  });
-
-  final String requestId;
-  final AgentKernelState state;
-  final DateTime timestamp;
-  final String? message;
-}
-
 /// Result envelope keeps the runtime output separate from execution metadata.
 class AgentResponse {
   const AgentResponse({
@@ -52,85 +38,194 @@ class AgentResponse {
   final DateTime completedAt;
 }
 
-/// Central orchestration kernel for the local-first AI architecture.
+/// Central orchestration boundary for the local-first agent.
 ///
-/// The kernel coordinates request lifecycle and readiness while delegating
-/// inference, memory retrieval and bounded tool execution to ModelService.
-/// It deliberately does not invent a planner or cloud fallback: the active
-/// GGUF model remains the source of generated responses.
+/// The kernel owns request admission, runtime readiness, lifecycle events and
+/// cancellation. ModelService remains responsible for local inference, memory
+/// retrieval and bounded tool execution.
 class AgentKernel {
   AgentKernel._();
 
   static final AgentKernel instance = AgentKernel._();
 
   final ModelService _models = ModelService();
-  final StreamController<AgentKernelEvent> _events =
-      StreamController<AgentKernelEvent>.broadcast();
+  final StreamController<AgentTimelineEvent> _events =
+      StreamController<AgentTimelineEvent>.broadcast();
 
   AgentKernelState _state = AgentKernelState.idle;
   String? _activeRequestId;
+  Future<void>? _initialization;
+  int _eventSequence = 0;
 
   AgentKernelState get state => _state;
   String? get activeRequestId => _activeRequestId;
-  Stream<AgentKernelEvent> get events => _events.stream;
-  bool get isExecuting => _state == AgentKernelState.executing ||
+  Stream<AgentTimelineEvent> get events => _events.stream;
+
+  bool get isExecuting =>
+      _activeRequestId != null ||
+      _state == AgentKernelState.executing ||
       _state == AgentKernelState.cancelling;
 
-  void _publish(AgentKernelState state, String requestId, [String? message]) {
-    _state = state;
-    _events.add(AgentKernelEvent(
+  void _emit({
+    required String requestId,
+    required String type,
+    required String title,
+    required String status,
+    String? details,
+  }) {
+    _events.add(AgentTimelineEvent(
+      id: 'kernel_${requestId}_${++_eventSequence}',
       requestId: requestId,
-      state: state,
+      type: type,
+      title: title,
+      status: status,
       timestamp: DateTime.now(),
-      message: message,
+      details: details,
     ));
   }
 
-  Future<void> initialize() async {
-    if (_state == AgentKernelState.initializing) return;
-    _publish(AgentKernelState.initializing, 'runtime');
+  /// Concurrent callers share one initialization future instead of racing
+  /// model discovery/loading against one another.
+  Future<void> initialize() {
+    final inFlight = _initialization;
+    if (inFlight != null) return inFlight;
+
+    late final Future<void> shared;
+    shared = _initialize().whenComplete(() {
+      if (identical(_initialization, shared)) _initialization = null;
+    });
+    _initialization = shared;
+    return shared;
+  }
+
+  Future<void> _initialize() async {
+    _state = AgentKernelState.initializing;
+    _emit(
+      requestId: 'runtime',
+      type: 'runtime_initializing',
+      title: 'تهيئة محرك الوكيل',
+      status: 'running',
+    );
     try {
       await _models.init();
-      _publish(AgentKernelState.idle, 'runtime');
+      _state = AgentKernelState.idle;
+      _emit(
+        requestId: 'runtime',
+        type: 'runtime_ready',
+        title: 'محرك الوكيل جاهز',
+        status: 'completed',
+        details: 'اكتملت تهيئة مكتبة النماذج المحلية.',
+      );
     } catch (error) {
-      _publish(AgentKernelState.failed, 'runtime', error.toString());
+      _state = AgentKernelState.failed;
+      _emit(
+        requestId: 'runtime',
+        type: 'runtime_initialization_failed',
+        title: 'تعذرت تهيئة محرك الوكيل',
+        status: 'failed',
+        details: error.toString(),
+      );
       rethrow;
+    } finally {
+      if (_state == AgentKernelState.failed) _state = AgentKernelState.idle;
     }
   }
 
   Future<AgentResponse> execute(AgentRequest request) async {
     final prompt = request.prompt.trim();
     if (prompt.isEmpty) {
-      throw ArgumentError.value(request.prompt, 'prompt', 'Task must not be empty.');
+      throw ArgumentError.value(
+        request.prompt,
+        'prompt',
+        'Task must not be empty.',
+      );
     }
     if (isExecuting) {
       throw StateError('An agent request is already executing.');
     }
-    if (!_models.hasActiveModel()) {
-      throw StateError('Load a local GGUF model before starting an agent task.');
-    }
 
+    // Reserve the execution slot before the first await so two requests cannot
+    // both pass admission while native model readiness is being checked.
     _activeRequestId = request.id;
-    _publish(AgentKernelState.executing, request.id);
+    _emit(
+      requestId: request.id,
+      type: 'request_received',
+      title: 'تم استلام الطلب',
+      status: 'completed',
+    );
+
     try {
+      if (!_models.hasActiveModel()) {
+        throw StateError('Load a local GGUF model before starting an agent task.');
+      }
+
+      final nativeModelLoaded = await _models.isModelLoaded();
+      if (!nativeModelLoaded) {
+        throw StateError(
+          'The selected GGUF model is not loaded in the native runtime.',
+        );
+      }
+
+      _emit(
+        requestId: request.id,
+        type: 'model_ready',
+        title: 'تم التحقق من جاهزية النموذج المحلي',
+        status: 'completed',
+      );
+
+      _state = AgentKernelState.executing;
+      _emit(
+        requestId: request.id,
+        type: 'execution_started',
+        title: 'بدأ تنفيذ الطلب',
+        status: 'running',
+      );
+
       final output = await _models.processInput(
         prompt,
         conversationId: request.conversationId,
       );
-      _publish(AgentKernelState.idle, request.id);
+      final normalizedOutput = output.trim();
+      if (normalizedOutput.isEmpty ||
+          normalizedOutput.startsWith('ERROR:') ||
+          normalizedOutput.startsWith('تعذر تشغيل النموذج المحلي:') ||
+          normalizedOutput.startsWith('تعذر تحليل استدعاء الأداة أو تنفيذه:') ||
+          normalizedOutput.startsWith('⚠️ استورد نموذج')) {
+        throw StateError(
+          normalizedOutput.isEmpty
+              ? 'The local model returned an empty response.'
+              : normalizedOutput,
+        );
+      }
+
+      _state = AgentKernelState.idle;
+      _emit(
+        requestId: request.id,
+        type: 'execution_completed',
+        title: 'اكتمل تنفيذ الطلب',
+        status: 'completed',
+        details: 'استُلمت إجابة من مسار التنفيذ المحلي.',
+      );
       return AgentResponse(
         requestId: request.id,
         output: output,
         completedAt: DateTime.now(),
       );
     } catch (error) {
-      _publish(AgentKernelState.failed, request.id, error.toString());
+      _state = AgentKernelState.failed;
+      _emit(
+        requestId: request.id,
+        type: 'execution_failed',
+        title: 'تعذر إكمال الطلب',
+        status: 'failed',
+        details: error.toString(),
+      );
       rethrow;
     } finally {
       _activeRequestId = null;
-      if (_state == AgentKernelState.failed) {
-        // Keep the failure event observable, then return the kernel to idle
-        // so a later request can be accepted.
+      if (_state == AgentKernelState.failed ||
+          _state == AgentKernelState.executing ||
+          _state == AgentKernelState.cancelling) {
         _state = AgentKernelState.idle;
       }
     }
@@ -139,16 +234,31 @@ class AgentKernel {
   Future<bool> cancel() async {
     if (!isExecuting) return false;
     final requestId = _activeRequestId ?? 'runtime';
-    _publish(AgentKernelState.cancelling, requestId);
+    _state = AgentKernelState.cancelling;
+    _emit(
+      requestId: requestId,
+      type: 'cancellation_requested',
+      title: 'طلب إيقاف التنفيذ',
+      status: 'running',
+    );
+
     final accepted = await _models.cancelGeneration();
-    if (!accepted) {
-      _publish(AgentKernelState.executing, requestId,
-          'Cancellation was not accepted by the native runtime.');
-    }
+    _emit(
+      requestId: requestId,
+      type: accepted ? 'cancellation_accepted' : 'cancellation_rejected',
+      title: accepted ? 'تم قبول طلب الإيقاف' : 'لم يقبل المحرك طلب الإيقاف',
+      status: accepted ? 'completed' : 'failed',
+      details: accepted
+          ? 'سيوقف المحرك التوليد عند نقطة الإلغاء الآمنة.'
+          : 'لم يؤكد المحرك الأصلي قبول الإلغاء.',
+    );
+    if (!accepted) _state = AgentKernelState.executing;
     return accepted;
   }
 
-  Future<Map<String, dynamic>> exportWorkspace() => _models.exportWorkspace();
+  Future<Map<String, dynamic>> exportWorkspace() =>
+      _models.exportWorkspace();
 
-  Future<List<String>> listWorkspaceFiles() => _models.listWorkspaceFiles();
+  Future<List<String>> listWorkspaceFiles() =>
+      _models.listWorkspaceFiles();
 }
