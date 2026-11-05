@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/agent_activity_indicators.dart';
 
 /// Execution history view backed by the same event list used by the chat
 /// timeline. Events are published by ChatScreen as the native agent streams.
@@ -19,8 +20,9 @@ class AgentWorkflowScreen extends StatelessWidget {
   Color _statusColor(String status) {
     switch (status.toLowerCase()) {
       case 'running':
-      case 'pending':
         return const Color(0xFF38BDF8);
+      case 'pending':
+        return const Color(0xFF64748B);
       case 'failed':
       case 'error':
         return const Color(0xFFF87171);
@@ -35,8 +37,9 @@ class AgentWorkflowScreen extends StatelessWidget {
   String _statusLabel(String status) {
     switch (status.toLowerCase()) {
       case 'running':
-      case 'pending':
         return 'قيد التنفيذ';
+      case 'pending':
+        return 'بانتظار التنفيذ';
       case 'failed':
       case 'error':
         return 'فشل';
@@ -102,9 +105,15 @@ class AgentWorkflowScreen extends StatelessWidget {
                 child: ExpansionTile(
                   iconColor: Colors.white70,
                   collapsedIconColor: Colors.white54,
-                  title: Text(title,
-                      style: const TextStyle(
-                          color: Colors.white, fontWeight: FontWeight.w600)),
+                  title: status.toLowerCase() == 'running'
+                      ? AgentShimmerText(
+                          title,
+                          maxLines: 2,
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                        )
+                      : Text(title,
+                          style: const TextStyle(
+                              color: Colors.white, fontWeight: FontWeight.w600)),
                   subtitle: Padding(
                     padding: const EdgeInsets.only(top: 5),
                     child: Row(
@@ -117,6 +126,13 @@ class AgentWorkflowScreen extends StatelessWidget {
                                     color: Colors.white54, fontSize: 11)),
                           ),
                           const SizedBox(width: 9),
+                        ],
+                        if (status.toLowerCase() == 'running') ...[
+                          const AgentPulseDot(size: 8),
+                          const SizedBox(width: 7),
+                        ] else if (status.toLowerCase() == 'pending') ...[
+                          const Icon(Icons.schedule_rounded, color: Color(0xFF64748B), size: 13),
+                          const SizedBox(width: 7),
                         ],
                         Text(_statusLabel(status),
                             style: TextStyle(color: color, fontSize: 11)),
