@@ -607,13 +607,13 @@ class _ChatScreenState extends State<ChatScreen> {
     final prior = _messages.length > 1 ? _messages.sublist(0, _messages.length - 1) : <Map<String, dynamic>>[];
     final recent = prior.length > 5 ? prior.sublist(prior.length - 5) : prior;
     if (recent.isEmpty) return currentPrompt;
-    final buffer = StringBuffer('سياق الجلسة الحالية فقط (آخر خمس رسائل، الأقدم أولاً):\\n');
+    final buffer = StringBuffer('سياق الجلسة الحالية فقط (آخر خمس رسائل، الأقدم أولاً):\n');
     for (final message in recent) {
       final raw = message['content']?.toString() ?? '';
       final clipped = raw.length > 1800 ? '${raw.substring(0, 1800)}…' : raw;
       buffer.writeln('${message['isUser'] == true ? 'المستخدم' : 'المساعد'}: $clipped');
     }
-    buffer.writeln('\\nالطلب الحالي:');
+    buffer.writeln('\nالطلب الحالي:');
     buffer.write(currentPrompt);
     return buffer.toString();
   }
@@ -670,7 +670,7 @@ class _ChatScreenState extends State<ChatScreen> {
         : (lastTool['output'] ?? lastTool['content'] ?? lastTool['file_name'] ?? '').toString();
     final toolContext = rawToolResult.isEmpty
         ? ''
-        : '\\n\\nآخر نتيجة أداة محفوظة قبل الانقطاع:\\n${(rawToolResult.length > 1800 ? rawToolResult.substring(0, 1800) : rawToolResult)}';
+        : '\n\nآخر نتيجة أداة محفوظة قبل الانقطاع:\n${(rawToolResult.length > 1800 ? rawToolResult.substring(0, 1800) : rawToolResult)}';
 
     setState(() => _isLoading = true);
     try {
@@ -796,10 +796,10 @@ class _ChatScreenState extends State<ChatScreen> {
       final analysis = await FileUploadService.instance.processFile(file);
       final document = analysis['extracted_text']?.toString() ?? await file.readAsString();
       final boundedDocument = document.length > 40000
-          ? '${document.substring(0, 40000)}\\n[تم اقتطاع بقية الملف لحماية نافذة السياق]'
+          ? '${document.substring(0, 40000)}\n[تم اقتطاع بقية الملف لحماية نافذة السياق]'
           : document;
-      final attachmentMessage = 'ملف مرفق: ${analysis['filename']}\\n'
-          'النوع: ${analysis['extension']} • الحجم: ${analysis['size_bytes']} بايت\\n'
+      final attachmentMessage = 'ملف مرفق: ${analysis['filename']}\n'
+          'النوع: ${analysis['extension']} • الحجم: ${analysis['size_bytes']} بايت\n'
           'البيانات الأولية: ${jsonEncode(analysis)}';
       setState(() {
         _messages.add({
@@ -812,9 +812,9 @@ class _ChatScreenState extends State<ChatScreen> {
       await _saveMessage(attachmentMessage, true);
       final response = await _generateWithStages(
         'حلّل محتوى الملف المرفق اعتماداً على النص الفعلي التالي. '
-        'اذكر حدود التحليل ولا تخترع بيانات غير موجودة.\\n'
-        'تحليل الملف: ${jsonEncode(analysis)}\\n'
-        'محتوى الملف:\\n$boundedDocument',
+        'اذكر حدود التحليل ولا تخترع بيانات غير موجودة.\n'
+        'تحليل الملف: ${jsonEncode(analysis)}\n'
+        'محتوى الملف:\n$boundedDocument',
       );
       if (!mounted) return;
       setState(() {
@@ -1198,10 +1198,10 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     final content = _messages.map((message) {
       final role = message['isUser'] == true ? 'أنت' : 'Giant Agent';
-      return '$role:\\n${message['content']}';
-    }).join('\\n\\n');
+      return '$role:\n${message['content']}';
+    }).join('\n\n');
     try {
-      await Share.share('محادثة Giant Agent\\n\\n$content', subject: 'محادثة Giant Agent');
+      await Share.share('محادثة Giant Agent\n\n$content', subject: 'محادثة Giant Agent');
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
