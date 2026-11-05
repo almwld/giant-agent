@@ -148,7 +148,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (index >= 0) { _agentSteps[index] = step; } else { _agentSteps.add(step); }
       _thinkingStage = step['title']?.toString() ?? '';
     });
-    AgentWorkflowScreen.publish(_agentSteps);
+    AgentWorkflowScreen.publish(_agentSteps, finalOutput: _latestAssistantOutput);
     _scrollToBottom();
   }
 
@@ -316,6 +316,13 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() => _sessions = rows.map((row) => ChatSession.fromMap(row)).toList());
   }
 
+  String get _latestAssistantOutput {
+    for (final message in _messages.reversed) {
+      if (message['isUser'] != true) return message['content']?.toString() ?? '';
+    }
+    return '';
+  }
+
   Future<void> _loadHistory() async {
     final messages = await _db?.query('messages', where: 'session_id = ?', whereArgs: [_currentSessionId], orderBy: 'timestamp ASC');
     final events = await _db?.query('agent_events', where: 'session_id = ?', whereArgs: [_currentSessionId], orderBy: 'timestamp ASC');
@@ -332,7 +339,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ..clear()
         ..addAll((events ?? []).map((row) => Map<String, dynamic>.from(jsonDecode(row['event_json'] as String) as Map)));
     });
-    AgentWorkflowScreen.publish(_agentSteps);
+    AgentWorkflowScreen.publish(_agentSteps, finalOutput: _latestAssistantOutput);
     _scrollToBottom();
   }
 
@@ -382,7 +389,7 @@ class _ChatScreenState extends State<ChatScreen> {
     await _pruneOldSessions();
     if (!mounted) return;
     setState(() { _messages.clear(); _agentSteps.clear(); _streamingResponse = ''; });
-    AgentWorkflowScreen.publish(_agentSteps);
+    AgentWorkflowScreen.publish(_agentSteps, finalOutput: _latestAssistantOutput);
     await _loadSessions();
     _scrollToBottom();
   }
@@ -467,7 +474,7 @@ class _ChatScreenState extends State<ChatScreen> {
               await _db?.delete('agent_events', where: 'session_id = ?', whereArgs: [_currentSessionId]);
               await AgentMemoryService.instance.deleteConversationMemory(_currentSessionId);
               setState(() { _messages.clear(); _agentSteps.clear(); });
-              AgentWorkflowScreen.publish(_agentSteps);
+              AgentWorkflowScreen.publish(_agentSteps, finalOutput: _latestAssistantOutput);
               Navigator.pop(ctx);
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('تم مسح المحادثات')),
@@ -1696,11 +1703,11 @@ class _ChatScreenState extends State<ChatScreen> {
             icon: const Icon(Icons.ios_share_rounded, color: Color(0xFF71717A), size: 20),
           ),
           IconButton(
-            tooltip: 'تنفيذ الوكيل',
+            tooltip: 'مساحة عمل الجلسة — سير الوكيل ومخرجاته',
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const AgentWorkflowScreen()),
             ),
-            icon: const Icon(Icons.description_outlined, color: Color(0xFF71717A), size: 20),
+            icon: const Icon(Icons.account_tree_rounded, color: Color(0xFF38BDF8), size: 21),
           ),
           PopupMenuButton<String>(
             tooltip: 'المزيد',
