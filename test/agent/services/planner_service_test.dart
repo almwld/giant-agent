@@ -12,6 +12,14 @@ void main() {
       expect(planner.requiresPlan('أنشئ تطبيقاً لإدارة المهام'), isTrue);
       expect(planner.requiresPlan('Build a website and then review its files'), isTrue);
     });
+    test('recognizes integrated kernel, memory and recovery work', () {
+      const request = 'أكمل إغلاق فجوات التكامل في النواة والذاكرة والتخطيط والاستعادة، ثم تحقق من دورة عمل الوكيل على الجهاز';
+      expect(planner.requiresPlan(request), isTrue);
+      final plan = planner.createPlan(request);
+      expect(plan.length, 5);
+      expect(plan.first['action'], contains('فحص بنية المشروع'));
+      expect(plan.last['action'], contains('التحقق من دورة العمل'));
+    });
     test('creates deterministic inspectable software steps', () {
       final plan = planner.createPlan('أنشئ تطبيقاً لإدارة المهام');
       expect(plan.length, 4);
