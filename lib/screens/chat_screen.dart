@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path_provider/path_provider.dart';
 import '../services/model_service.dart';
+import '../services/agent_service.dart';
 import '../services/file_upload_service.dart';
 import '../services/agent_memory_service.dart';
 import '../services/image_recognition_service.dart';
@@ -38,6 +39,7 @@ class _ChatScreenState extends State<ChatScreen> {
   static const EventChannel _agentEvents = EventChannel('giant_agent_stream');
   static const MethodChannel _fileReceiver = MethodChannel('file_receiver');
   StreamSubscription<dynamic>? _agentEventSubscription;
+  StreamSubscription<dynamic>? _kernelEventSubscription;
   final List<Map<String, dynamic>> _agentSteps = [];
   String _streamingResponse = '';
   String _toolStreamBuffer = '';
@@ -147,7 +149,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _insideToolCall = false;
     if (mounted) setState(() { _streamingResponse = ''; _thinkingStage = 'بانتظار أحداث المحرك المحلي...'; });
     try {
-      return await _modelService.processInput(prompt, conversationId: _currentSessionId);
+      return await AgentService.instance.runTask(prompt, conversationId: _currentSessionId);
     } finally {
       final tail = _flushVisibleAnswerBuffer();
       if (mounted) setState(() {
@@ -168,6 +170,19 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     _initDatabase();
+    _kernelEventSubscription = AgentService.instance.events.listen(
+      (event) => _handleAgentEvent(event.toMap()),
+      onError: (Object error) {
+        if (!mounted) return;
+        _handleAgentEvent({
+          'id': 'kernel_stream_error_${DateTime.now().microsecondsSinceEpoch}',
+          'type': 'orchestration_error',
+          'title': 'تعذر استقبال أحداث التنسيق',
+          'status': 'failed',
+          'details': error.toString(),
+        });
+      },
+    );
     _agentEventSubscription = _agentEvents.receiveBroadcastStream().listen(
       _handleAgentEvent,
       onError: (Object error) {
@@ -507,7 +522,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _init() async {
-    await _modelService.init();
+    await AgentService.instance.initialize();
     if (!mounted) return;
     setState(() {
       _models = _modelService.getModels();
@@ -667,8 +682,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _sendMessage() async {
     final text = _controller.text.trim();
-    if (text.isEmpty) return;
-    
+    if (text.isEmpty || _isLoading) return;
+
     setState(() {
       _messages.add({
         'isUser': true,
@@ -679,21 +694,43 @@ class _ChatScreenState extends State<ChatScreen> {
       _isLoading = true;
     });
     await _saveMessage(text, true);
-    final current = await _db?.query('sessions', columns: ['title'], where: 'id = ?', whereArgs: [_currentSessionId], limit: 1);
-    if (current != null && current.isNotEmpty && current.first['title'] == 'جلسة جديدة') {
+    final current = await _db?.query('sessions',
+        columns: ['title'],
+        where: 'id = ?',
+        whereArgs: [_currentSessionId],
+        limit: 1);
+    if (current != null &&
+        current.isNotEmpty &&
+        current.first['title'] == 'جلسة جديدة') {
       final title = text.length > 36 ? '${text.substring(0, 36)}…' : text;
-      await _db?.update('sessions', {'title': title, 'updated_at': DateTime.now().millisecondsSinceEpoch}, where: 'id = ?', whereArgs: [_currentSessionId]);
+      await _db?.update(
+        'sessions',
+        {
+          'title': title,
+          'updated_at': DateTime.now().millisecondsSinceEpoch,
+        },
+        where: 'id = ?',
+        whereArgs: [_currentSessionId],
+      );
       await _loadSessions();
     }
+
     final taskPrefs = await SharedPreferences.getInstance();
     await taskPrefs.setString('giant_pending_task', text);
     await taskPrefs.setString('giant_pending_session_id', _currentSessionId);
     _scrollToBottom();
 
-    final response = await _generateWithStages(_contextualPrompt(text));
-    await taskPrefs.remove('giant_pending_task');
-    await taskPrefs.remove('giant_pending_session_id');
+    String response;
+    try {
+      response = await _generateWithStages(_contextualPrompt(text));
+    } catch (error) {
+      response = 'تعذر إكمال الطلب: $error';
+    } finally {
+      await taskPrefs.remove('giant_pending_task');
+      await taskPrefs.remove('giant_pending_session_id');
+    }
 
+    if (!mounted) return;
     setState(() {
       _streamingResponse = '';
       _messages.add({
@@ -836,6 +873,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void dispose() {
     _agentEventSubscription?.cancel();
+    _kernelEventSubscription?.cancel();
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
