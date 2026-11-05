@@ -8,6 +8,12 @@ import '../services/agent_service.dart';
 /// Persistent task lifecycle backed by the real local agent runtime.
 /// Task history survives process restarts; completion is recorded only after
 /// the agent returns its final result.
+enum TaskExecutionOutcome {
+  completed,
+  interrupted,
+  failed,
+}
+
 class TaskManager {
   TaskManager._internal();
   static final TaskManager _instance = TaskManager._internal();
@@ -246,17 +252,23 @@ class TaskManager {
     return executeNextStep();
   }
 
-  bool _isInterruptedResult(String output) =>
-      output.startsWith('تم إيقاف') ||
-      output.startsWith('وصل الوكيل إلى الحد الآمن') ||
-      output.startsWith('أوقف الوكيل تكرار استدعاء الأداة') ||
-      output.contains('[تم إيقاف التوليد]');
-
-  bool _isFailureResult(String output) =>
-      output.startsWith('ERROR:') ||
-      output.startsWith('تعذر تشغيل النموذج المحلي:') ||
-      output.startsWith('تعذر تحليل استدعاء الأداة أو تنفيذه:') ||
-      output.startsWith('⚠️ استورد نموذج');
+  static TaskExecutionOutcome classifyResult(String output) {
+    if (output.startsWith('تم إيقاف') ||
+        output.startsWith('وصل الوكيل إلى الحد الآمن') ||
+        output.startsWith('أوقف الوكيل تكرار استدعاء الأداة') ||
+        output.contains('[تم إيقاف التوليد]')) {
+      return TaskExecutionOutcome.interrupted;
+    }
+    if (output.isEmpty ||
+        output.startsWith('ERROR:') ||
+        output.startsWith('تعذر تشغيل النموذج المحلي:') ||
+        output.startsWith('تعذر تحليل استدعاء الأداة أو تنفيذه:') ||
+        output.startsWith('تعذر إكمال الطلب:') ||
+        output.startsWith('⚠️ استورد نموذج')) {
+      return TaskExecutionOutcome.failed;
+    }
+    return TaskExecutionOutcome.completed;
+  }
 
   Future<Map<String, dynamic>> executeNextStep() async {
     await _ensureLoaded();
@@ -282,7 +294,8 @@ class TaskManager {
         task['description'] as String,
         conversationId: task['conversation_id']?.toString() ?? 'global',
       );
-      if (_isInterruptedResult(result)) {
+      final outcome = classifyResult(result);
+      if (outcome == TaskExecutionOutcome.interrupted) {
         step['status'] = 'pending';
         step['result'] = result;
         task['status'] = 'paused';
@@ -298,7 +311,7 @@ class TaskManager {
           'task_summary': _copyTask(task),
         };
       }
-      if (_isFailureResult(result)) {
+      if (outcome == TaskExecutionOutcome.failed) {
         step['status'] = 'failed';
         step['error'] = result;
         task['status'] = 'failed';
