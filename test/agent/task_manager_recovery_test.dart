@@ -59,5 +59,13 @@ void main() {
     expect(completed['status'], 'completed');
     expect(completed['result'], 'النتيجة النهائية');
     expect((completed['steps'] as List).single['status'], 'completed');
+
+    final homeTask = await manager.createTask(
+      'مهمة الشاشة الرئيسية',
+      conversationId: 'home',
+    );
+    final homeTasks = await manager.getTasksForConversation('home');
+    expect(homeTasks.single['id'], homeTask['id']);
+    expect(homeTasks.single['conversation_id'], 'home');
   });
 }
