@@ -244,6 +244,14 @@ class TaskManager {
       return {'status': task['status'], 'task_summary': _copyTask(task)};
     }
     _currentTask = taskId;
+    final step = _firstStep(task);
+    final checkpoint = (step['result'] ??
+            step['checkpoint_note'] ??
+            task['recovery_note'] ??
+            '')
+        .toString()
+        .trim();
+    if (checkpoint.isNotEmpty) task['resume_context'] = checkpoint;
     task['status'] = 'pending';
     task.remove('error');
     task.remove('recovery_note');
@@ -290,14 +298,28 @@ class TaskManager {
     step['status'] = 'running';
     try {
       await _persist();
+      final originalPrompt = task['description'] as String;
+      final checkpoint = task['resume_context']?.toString().trim() ?? '';
+      final executionPrompt = checkpoint.isEmpty
+          ? originalPrompt
+          : '''
+المهمة الأصلية:
+$originalPrompt
+
+نقطة الاستعادة المحفوظة:
+$checkpoint
+
+تابع من حالة العمل الحالية. لا تكرر العمليات التي تظهر نتائجها مكتملة؛ افحص الحالة أولاً، ثم نفّذ ما تبقى فقط. لا تعلن اكتمال المهمة قبل التحقق من النتيجة.
+''';
       final result = await _agent.runTask(
-        task['description'] as String,
+        executionPrompt,
         conversationId: task['conversation_id']?.toString() ?? 'global',
       );
       final outcome = classifyResult(result);
       if (outcome == TaskExecutionOutcome.interrupted) {
         step['status'] = 'pending';
         step['result'] = result;
+        task['resume_context'] = result;
         task['status'] = 'paused';
         task['recovery_note'] = 'توقف التنفيذ قبل اكتمال المهمة؛ يمكن استئنافها.';
         task['updated_at'] = DateTime.now().toIso8601String();
@@ -326,6 +348,8 @@ class TaskManager {
       task['completed_at'] = DateTime.now().toIso8601String();
       task['updated_at'] = task['completed_at'];
       task['result'] = result;
+      task.remove('resume_context');
+      task.remove('recovery_note');
       await _persist();
       return {
         'status': 'completed',
