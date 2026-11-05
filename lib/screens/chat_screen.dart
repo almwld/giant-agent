@@ -1165,78 +1165,147 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+
+  Widget _composerIconButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onPressed,
+    Color foreground = const Color(0xFFA1A1AA),
+    Color background = const Color(0xFF2A2A2E),
+    bool prominent = false,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: background,
+        borderRadius: BorderRadius.circular(prominent ? 20 : 13),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(prominent ? 20 : 13),
+          onTap: onPressed,
+          child: SizedBox(
+            width: prominent ? 40 : 40,
+            height: 40,
+            child: Icon(icon, color: foreground, size: prominent ? 21 : 20),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _composerPillButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onPressed,
+  }) {
+    return Material(
+      color: const Color(0xFF2A2A2E),
+      borderRadius: BorderRadius.circular(13),
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(13),
+        child: Container(
+          height: 40,
+          padding: const EdgeInsets.symmetric(horizontal: 11),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: const Color(0xFFA1A1AA), size: 17),
+              const SizedBox(width: 7),
+              Text(
+                label,
+                style: const TextStyle(color: Color(0xFFA1A1AA), fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF121212),
+        automaticallyImplyLeading: false,
+        toolbarHeight: 62,
+        backgroundColor: const Color(0xFF111111),
         foregroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
-        title: const Text('Giant Agent X', style: TextStyle(color: Colors.white)),
-        centerTitle: true,
-        actions: [
-          if (_isLoading)
-            IconButton(
-              icon: const Icon(Icons.stop_circle_outlined, color: Colors.redAccent),
-              tooltip: 'إيقاف الوكيل',
-              onPressed: _cancelAgent,
-            ),
-          PopupMenuButton<String>(
+        elevation: 0,
+        leadingWidth: 54,
+        leading: Builder(
+          builder: (context) => IconButton(
             tooltip: 'القائمة',
-            icon: const Icon(Icons.more_vert, color: Colors.white),
-            color: const Color(0xFF242424),
-            elevation: 10,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-              side: const BorderSide(color: Colors.white12),
-            ),
-            offset: const Offset(0, 8),
-            constraints: const BoxConstraints(minWidth: 220),
-            onSelected: (value) {
-              switch (value) {
-                case 'new':
-                  _newConversation();
-                  break;
-                case 'export':
-                  _exportWorkspace();
-                  break;
-                case 'refresh':
-                  _refreshModels();
-                  break;
-                case 'history':
-                  _clearHistory();
-                  break;
-                case 'workflow':
-                  Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const AgentWorkflowScreen()),
-                  );
-                  break;
-                case 'desktop':
-                  Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => AgentWorkspaceScreen(steps: List<Map<String, dynamic>>.from(_agentSteps))),
-                  );
-                  break;
-                case 'settings':
-                  Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const SettingsScreen()),
-                  );
-                  break;
-              }
-            },
-            itemBuilder: (context) => [
-              _menuItem('new', Icons.add_comment_outlined, 'محادثة جديدة'),
-              _menuItem('workflow', Icons.account_tree_outlined, 'تنفيذ الوكيل'),
-              _menuItem('desktop', Icons.desktop_windows_outlined, 'سطح المكتب'),
-              _menuItem('export', Icons.archive_outlined, 'تصدير مساحة العمل'),
-              const PopupMenuDivider(height: 8),
-              _menuItem('refresh', Icons.refresh, 'تحديث النماذج'),
-              _menuItem('history', Icons.history, 'مسح سجل المحادثات'),
-              const PopupMenuDivider(height: 8),
-              _menuItem('settings', Icons.settings_outlined, 'الإعدادات'),
+            onPressed: () => Scaffold.of(context).openDrawer(),
+            icon: const Icon(Icons.menu_rounded, size: 25),
+          ),
+        ),
+        titleSpacing: 0,
+        title: PopupMenuButton<String>(
+          tooltip: 'إصدار الوكيل',
+          offset: const Offset(0, 42),
+          color: const Color(0xFF242428),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          onSelected: (value) {
+            if (value == 'workflow') {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const AgentWorkflowScreen()),
+              );
+            } else if (value == 'settings') {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const SettingsScreen()),
+              );
+            }
+          },
+          itemBuilder: (_) => const [
+            PopupMenuItem(value: 'workflow', child: Text('سير تنفيذ الوكيل')),
+            PopupMenuItem(value: 'settings', child: Text('الإعدادات')),
+          ],
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF71717A), size: 19),
+              SizedBox(width: 5),
+              Text('2.0', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700)),
             ],
           ),
-          const SizedBox(width: 6),
+        ),
+        actions: [
+          IconButton(
+            tooltip: 'محادثة جديدة',
+            onPressed: _newConversation,
+            icon: const Icon(Icons.auto_awesome, color: Colors.white, size: 19),
+            style: IconButton.styleFrom(
+              backgroundColor: const Color(0xFF2563EB),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              fixedSize: const Size(36, 36),
+            ),
+          ),
+          IconButton(
+            tooltip: 'تصدير مساحة العمل',
+            onPressed: _exportWorkspace,
+            icon: const Icon(Icons.ios_share_rounded, color: Color(0xFF71717A), size: 20),
+          ),
+          IconButton(
+            tooltip: 'تنفيذ الوكيل',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AgentWorkflowScreen()),
+            ),
+            icon: const Icon(Icons.description_outlined, color: Color(0xFF71717A), size: 20),
+          ),
+          IconButton(
+            tooltip: 'سطح المكتب',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => AgentWorkspaceScreen(
+                  steps: List<Map<String, dynamic>>.from(_agentSteps),
+                ),
+              ),
+            ),
+            icon: const Icon(Icons.more_horiz_rounded, color: Color(0xFF71717A), size: 22),
+          ),
+          const SizedBox(width: 8),
         ],
       ),
       drawer: Drawer(
@@ -1375,31 +1444,6 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       body: Column(
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            color: _modelService.hasActiveModel() ? const Color(0xFF18352F) : const Color(0xFF382B18),
-            child: Row(
-              children: [
-                Icon(
-                  _modelService.hasActiveModel() ? Icons.check_circle : Icons.warning,
-                  size: 18,
-                  color: _modelService.hasActiveModel() ? Colors.green : Colors.orange,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    _modelService.hasActiveModel() 
-                        ? 'النموذج: ${_modelService.getActiveModelName()}' 
-                        : 'لا يوجد نموذج — افتح القائمة ثم اختر استيراد نموذج',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: _modelService.hasActiveModel() ? Colors.green.shade200 : Colors.orange.shade200,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
           Expanded(
             child: ListView.builder(
               controller: _scrollController,
@@ -1462,83 +1506,170 @@ class _ChatScreenState extends State<ChatScreen> {
               decoration: BoxDecoration(color: const Color(0xFF1E1E1E), borderRadius: BorderRadius.circular(14)),
               child: SelectableText(_streamingResponse, style: const TextStyle(color: Colors.white, fontSize: 14)),
             ),
-          if (_isLoading)
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
-                  child: Row(
-                    children: [
-                      const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 190, maxHeight: 250),
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF222226),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: const Color(0xFF303036), width: 0.7),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (_isLoading || !_modelService.hasActiveModel())
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: _isLoading
+                                  ? const Color(0xFF2563EB)
+                                  : const Color(0xFFF59E0B),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _isLoading
+                                  ? (_thinkingStage.isEmpty ? 'يعمل الوكيل...' : _thinkingStage)
+                                  : 'لا يوجد نموذج نشط — استورد نموذج GGUF من القائمة',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Color(0xFFA1A1AA),
+                                fontSize: 11,
+                              ),
+                            ),
+                          ),
+                          if (_isLoading)
+                            const SizedBox(
+                              width: 13,
+                              height: 13,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 1.7,
+                                color: Color(0xFF2563EB),
+                              ),
+                            ),
+                        ],
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          _thinkingStage.isEmpty ? 'يعالج النموذج طلبك...' : _thinkingStage,
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                  Expanded(
+                    child: TextField(
+                      controller: _controller,
+                      enabled: true,
+                      minLines: 3,
+                      maxLines: null,
+                      textAlign: TextAlign.start,
+                      textDirection: TextDirection.rtl,
+                      keyboardType: TextInputType.multiline,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        height: 1.55,
+                      ),
+                      decoration: const InputDecoration(
+                        hintText: 'أرسل رسالة إلى Giant Agent...',
+                        hintStyle: TextStyle(
+                          color: Color(0xFF71717A),
+                          fontSize: 15,
+                        ),
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        isDense: true,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                      onSubmitted: (_) => _sendMessage(),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    textDirection: TextDirection.ltr,
+                    children: [
+                      _composerIconButton(
+                        icon: _isLoading ? Icons.stop_rounded : Icons.arrow_upward_rounded,
+                        tooltip: _isLoading ? 'إيقاف الوكيل' : 'إرسال الرسالة',
+                        background: _isLoading ? Colors.white : const Color(0xFF2563EB),
+                        foreground: _isLoading ? const Color(0xFF18181B) : Colors.white,
+                        onPressed: _isLoading ? _cancelAgent : _sendMessage,
+                        prominent: true,
+                      ),
+                      const SizedBox(width: 8),
+                      _composerIconButton(
+                        icon: Icons.mic_none_rounded,
+                        tooltip: 'التسجيل الصوتي غير مفعّل بعد',
+                        onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('التسجيل الصوتي غير مفعّل في هذا الإصدار.'),
+                            behavior: SnackBarBehavior.floating,
+                          ),
                         ),
                       ),
-                      const Text('Giant AI', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                      const Spacer(),
+                      _composerPillButton(
+                        icon: Icons.cloud_outlined,
+                        label: 'السحابة',
+                        onPressed: _exportWorkspace,
+                      ),
+                      const SizedBox(width: 7),
+                      _composerIconButton(
+                        icon: Icons.account_tree_outlined,
+                        tooltip: 'سير تنفيذ الوكيل',
+                        onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const AgentWorkflowScreen()),
+                        ),
+                      ),
+                      const SizedBox(width: 7),
+                      PopupMenuButton<String>(
+                        tooltip: 'إضافة مرفق أو إجراء',
+                        color: const Color(0xFF2A2A2E),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        onSelected: (value) {
+                          switch (value) {
+                            case 'file':
+                              _pickFile();
+                              break;
+                            case 'image':
+                              _pickImage();
+                              break;
+                            case 'model':
+                              _importModel();
+                              break;
+                            case 'new':
+                              _newConversation();
+                              break;
+                          }
+                        },
+                        itemBuilder: (_) => const [
+                          PopupMenuItem(value: 'file', child: Text('إرفاق ملف')),
+                          PopupMenuItem(value: 'image', child: Text('إرفاق صورة')),
+                          PopupMenuItem(value: 'model', child: Text('استيراد نموذج')),
+                          PopupMenuDivider(),
+                          PopupMenuItem(value: 'new', child: Text('محادثة جديدة')),
+                        ],
+                        child: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF2A2A2E),
+                            borderRadius: BorderRadius.circular(13),
+                          ),
+                          child: const Icon(Icons.add_rounded, color: Colors.white, size: 22),
+                        ),
+                      ),
                     ],
                   ),
-                ),
-                const LinearProgressIndicator(),
-              ],
-            ),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1E1E1E),
-              border: const Border(top: BorderSide(color: Colors.white12)),
-            ),
-            child: Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.attach_file),
-                  onPressed: _pickFile,
-                  tooltip: 'رفع ملف',
-                ),
-                IconButton(
-                  icon: const Icon(Icons.image),
-                  onPressed: _pickImage,
-                  tooltip: 'رفع صورة',
-                ),
-                Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    enabled: true,
-                    style: const TextStyle(color: Colors.white, fontSize: 14),
-                    decoration: InputDecoration(
-                      hintStyle: const TextStyle(color: Color(0xFF9CA3AF)),
-                      hintText: 'اكتب رسالتك...',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(30),
-                        borderSide: BorderSide.none,
-                      ),
-                      filled: true,
-                      fillColor: const Color(0xFF2A2A2A),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                    ),
-                    onSubmitted: (_) => _sendMessage(),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                GestureDetector(
-                  onTap: _sendMessage,
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: const BoxDecoration(
-                      color: Colors.deepPurple,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.send, color: Colors.white, size: 20),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
