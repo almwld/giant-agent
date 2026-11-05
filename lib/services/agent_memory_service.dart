@@ -177,6 +177,12 @@ class AgentMemoryService {
     });
   }
 
+  /// Injects an in-memory database for deterministic unit tests.
+  void useDatabaseForTesting(Database database) {
+    _db = database;
+    _opening = null;
+  }
+
   Future<void> close() async {
     await _db?.close();
     _db = null;
