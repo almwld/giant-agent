@@ -25,7 +25,7 @@ void main() {
       expect(plan.length, 5);
       expect(plan.first['step'], 1);
       expect(plan.first['status'], 'pending');
-      expect(plan.map((item) => item['step']).toList(), [1, 2, 3, 4]);
+      expect(plan.map((item) => item['step']).toList(), [1, 2, 3, 4, 5]);
     });
     test('rejects empty requests', () {
       expect(() => planner.createPlan('  '), throwsArgumentError);
