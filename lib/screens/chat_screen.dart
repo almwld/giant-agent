@@ -23,6 +23,7 @@ import '../services/openrouter_service.dart';
 import '../services/github_repository_service.dart';
 import '../services/cloud_storage_service.dart';
 import '../services/web_search_service.dart';
+import '../agent/task_manager.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -166,6 +167,51 @@ class _ChatScreenState extends State<ChatScreen> {
       });
     }
   }
+  bool _isInterruptedTaskOutput(String output) =>
+      output.startsWith('تم إيقاف') ||
+      output.startsWith('وصل الوكيل إلى الحد الآمن') ||
+      output.startsWith('أوقف الوكيل تكرار استدعاء الأداة') ||
+      output.contains('[تم إيقاف التوليد]');
+
+  bool _isFailedTaskOutput(String output) =>
+      output.startsWith('تعذر تشغيل النموذج المحلي:') ||
+      output.startsWith('تعذر تحليل استدعاء الأداة أو تنفيذه:') ||
+      output.startsWith('ERROR:') ||
+      output.startsWith('تعذر إكمال الطلب:');
+
+  Future<String> _runTrackedTask(
+    String prompt, {
+    String? taskId,
+    String? description,
+  }) async {
+    final manager = TaskManager();
+    final tracked = taskId == null
+        ? await manager.createTask(
+            description ?? prompt,
+            conversationId: _currentSessionId,
+          )
+        : null;
+    final activeTaskId = taskId ?? tracked!['id'].toString();
+    await manager.markRunning(activeTaskId);
+    try {
+      final output = await _generateWithStages(prompt);
+      if (_isInterruptedTaskOutput(output)) {
+        await manager.markInterrupted(
+          activeTaskId,
+          'توقف التنفيذ قبل اكتمال المهمة؛ يمكن استئنافها من سياق الجلسة.',
+        );
+      } else if (_isFailedTaskOutput(output)) {
+        await manager.markFailed(activeTaskId, output);
+      } else {
+        await manager.markCompleted(activeTaskId, output);
+      }
+      return output;
+    } catch (error) {
+      await manager.markFailed(activeTaskId, error.toString());
+      rethrow;
+    }
+  }
+
   List<Map<String, dynamic>> _models = [];
   Map<String, dynamic> _activeModel = {};
   Database? _db;
@@ -634,6 +680,15 @@ class _ChatScreenState extends State<ChatScreen> {
     final pendingSession = prefs.getString('giant_pending_session_id');
     if (pending == null || pending.trim().isEmpty || !mounted) return;
     if (pendingSession != null && pendingSession != _currentSessionId) return;
+    var taskId = prefs.getString('giant_pending_task_id');
+    if (taskId == null || taskId.isEmpty) {
+      final tracked = await TaskManager().createTask(
+        pending,
+        conversationId: _currentSessionId,
+      );
+      taskId = tracked['id'].toString();
+      await prefs.setString('giant_pending_task_id', taskId);
+    }
 
     final shortId = _currentSessionId.length > 4
         ? _currentSessionId.substring(_currentSessionId.length - 4)
@@ -665,8 +720,10 @@ class _ChatScreenState extends State<ChatScreen> {
     );
     if (!mounted) return;
     if (shouldResume != true) {
+      await TaskManager().markCancelled(taskId);
       await prefs.remove('giant_pending_task');
       await prefs.remove('giant_pending_session_id');
+      await prefs.remove('giant_pending_task_id');
       return;
     }
 
@@ -684,9 +741,13 @@ class _ChatScreenState extends State<ChatScreen> {
 
     setState(() => _isLoading = true);
     try {
-      final response = await _generateWithStages('${_contextualPrompt(pending)}$toolContext');
+      final response = await _runTrackedTask(
+        '${_contextualPrompt(pending)}$toolContext',
+        taskId: taskId,
+      );
       await prefs.remove('giant_pending_task');
       await prefs.remove('giant_pending_session_id');
+      await prefs.remove('giant_pending_task_id');
       if (!mounted) return;
       setState(() {
         _streamingResponse = '';
@@ -736,12 +797,19 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     final taskPrefs = await SharedPreferences.getInstance();
+    String? taskId;
     await taskPrefs.setString('giant_pending_task', text);
     await taskPrefs.setString('giant_pending_session_id', _currentSessionId);
     _scrollToBottom();
 
     String response;
     try {
+      final trackedTask = await TaskManager().createTask(
+        text,
+        conversationId: _currentSessionId,
+      );
+      taskId = trackedTask['id'].toString();
+      await taskPrefs.setString('giant_pending_task_id', taskId);
       var enrichedPrompt = _contextualPrompt(text);
       if (_webSearchEnabled) {
         if (mounted) setState(() => _thinkingStage = 'يبحث على الويب عن مصادر حديثة...');
@@ -762,12 +830,14 @@ class _ChatScreenState extends State<ChatScreen> {
           enrichedPrompt += '\n\nتعذر جلب سياق مستودع GitHub: ' + error.toString();
         }
       }
-      response = await _generateWithStages(enrichedPrompt);
+      response = await _runTrackedTask(enrichedPrompt, taskId: taskId);
     } catch (error) {
       response = 'تعذر إكمال الطلب: $error';
+      if (taskId != null) await TaskManager().markFailed(taskId, response);
     } finally {
       await taskPrefs.remove('giant_pending_task');
       await taskPrefs.remove('giant_pending_session_id');
+      await taskPrefs.remove('giant_pending_task_id');
     }
 
     if (!mounted) return;
@@ -820,7 +890,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _isLoading = true;
       });
       await _saveMessage(attachmentMessage, true);
-      final response = await _generateWithStages(
+      final response = await _runTrackedTask(
         'حلّل محتوى الملف المرفق اعتماداً على النص الفعلي التالي. '
         'اذكر حدود التحليل ولا تخترع بيانات غير موجودة.\n'
         'تحليل الملف: ${jsonEncode(analysis)}\n'
