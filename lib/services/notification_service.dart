@@ -36,6 +36,14 @@ class NotificationService {
         'جرّب استخدام أدوات الوكيل المحلية لإنجاز مهامك.',
       );
 
+  Future<void> cancelAll() async {
+    try {
+      await _channel.invokeMethod<void>('cancelAll');
+    } catch (_) {
+      // Notification cancellation is best-effort on unsupported platforms.
+    }
+  }
+
   Future<bool> showNotification(Object? title, Object? body, {int id = 1}) async {
     try {
       if (!await areNotificationsEnabled()) return false;
