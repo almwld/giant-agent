@@ -1,209 +1,402 @@
-import 'packagefltter/material.dart'
-import '../services/agent_service.dart'
+import 'dart:io';
+import 'package:flutter/material.dart';
+import '../services/agent_service.dart';
+import '../services/file_upload_service.dart';
+import '../services/model_service.dart';
+import '../widgets/status_bar.dart';
+import '../widgets/chat_bubble.dart';
+import '../widgets/quick_actions.dart';
+import '../widgets/thinking_indicator.dart';
+import '../widgets/model_selector.dart';
 
-class clearcreen extends tateflidget {
-  const clearcreen({sper.key})
+class NuclearScreen extends StatefulWidget {
+  const NuclearScreen({super.key});
 
-  override
-  tateclearcreen createtate()  _clearcreentate()
+  @override
+  State<NuclearScreen> createState() => _NuclearScreenState();
 }
 
-class _clearcreentate extends tateclearcreen {
-  final extditingontroller _controller  extditingontroller()
-  final istaptring, dynamic _messages  ]
-  final crollontroller _scrollontroller  crollontroller()
-  final gentervice _agent  gentervice()
-  bool _isoading  false
+class _NuclearScreenState extends State<NuclearScreen> {
+  final TextEditingController _controller = TextEditingController();
+  final List<Map<String, dynamic>> _messages = [];
+  final ScrollController _scrollController = ScrollController();
+  final AgentService _agent = AgentService();
+  bool _isLoading = false;
+  String _thinkingMessage = 'جاري التفكير';
+  int _processedFiles = 0;
 
-  override
-  void inittate() {
-    sper.inittate()
-    _addelcomeessage()
+  @override
+  void initState() {
+    super.initState();
+    _initServices();
+    _addWelcomeMessage();
+    _loadStats();
   }
 
-  void _addelcomeessage() {
+  Future<void> _initServices() async {
+    await FileUploadService.initDB();
+    await ModelService.getAvailableModels();
+  }
+
+  Future<void> _loadStats() async {
+    final history = await FileUploadService.getHistory();
+    setState(() {
+      _processedFiles = history.length;
+    });
+  }
+
+  void _addWelcomeMessage() {
+    final activeModel = ModelService.getActiveModel();
     _messages.add({
-      'isser' false,
-      'content' '''
- **   -    ** 
+      'isUser': false,
+      'content': '''
+☢️ **GIANT AGENT X** ☢️
 
- **    !**
+**أقوى وكيل ذكاء اصطناعي في العالم!**
 
- ** **
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
- ` ` -    
- ` ]` -  
- ` ]` -  
- ` ]` -  
- `` -   
- `` - 
- `` -   
- `` -  
+🧠 **النموذج النشط**: ${activeModel['name']} v${activeModel['version']}
 
- ** !**      .
+💥 **القدرات الخارقة:**
+
+| الميزة | الوصف |
+|--------|-------|
+| 🧠 نماذج متعددة | دعم TFLite مع تبديل فوري |
+| 📁 رفع ملفات | TXT, JSON, CSV, TFLite |
+| 🌐 إنشاء مواقع | HTML كامل مع تصميم عصري |
+| 💻 أكواد برمجية | Dart, Python, JavaScript |
+| 📊 تحليل نصوص | إحصائيات وتحليل مشاعر |
+| 🔢 عمليات حسابية | جمع، طرح، ضرب، قسمة |
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚡ **الأوامر السريعة:**
+
+• `النماذج` - عرض النماذج المتاحة
+• `تبديل نموذج [الاسم]` - تبديل النموذج
+• `رفع ملف` - تعليمات رفع الملفات
+• `تاريخ الملفات` - عرض الملفات المرفوعة
+• `أنشئ موقعاً` - إنشاء HTML
+• `اكتب كود` - إنشاء كود
+• `قاعدة بيانات` - إحصائيات القاعدة
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔥 **ابدأ الآن!** اكتب أمراً أو استخدم الأزرار السريعة أدناه.
 ''',
-      'time' ateime.now(),
-    })
+      'intent': 'welcome',
+      'time': DateTime.now(),
+    });
   }
 
-  trevoid _sendessage() async {
-    final text  _controller.text.trim()
-    if (text.ismpty) retrn
+  Future<void> _uploadFile() async {
+    final file = await FileUploadService.pickFile();
+    if (file == null) return;
 
-    settate(() {
-      _messages.add({'isser' tre, 'content' text, 'time' ateime.now()})
-      _controller.clear()
-      _isoading  tre
-    })
-    _scrolloottom()
+    setState(() {
+      _isLoading = true;
+      _thinkingMessage = 'جاري معالجة الملف';
+      _messages.add({
+        'isUser': true,
+        'content': '📁 **رفع ملف**: ${file.path.split('/').last}',
+        'time': DateTime.now(),
+      });
+    });
+    _scrollToBottom();
 
-    final response  await _agent.process(text)
+    String response;
+    final ext = file.path.split('.').last.toLowerCase();
 
-    settate(() {
-      _messages.add({'isser' false, 'content' response, 'time' ateime.now()})
-      _isoading  false
-    })
-    _scrolloottom()
-  }
+    try {
+      if (ext == 'txt') {
+        final analysis = await FileUploadService.processTextFile(file);
+        response = '''
+✅ **تمت معالجة الملف النصي بنجاح!**
 
-  void _scrolloottom() {
-    tre.delayed(const ration(milliseconds ), () {
-      if (_scrollontroller.haslients) {
-        _scrollontroller.animateo(
-          _scrollontroller.position.maxcrollxtent,
-          dration const ration(milliseconds ),
-          crve rves.easet,
-        )
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📁 **الملف**: ${analysis['filename']}
+📊 **الأسطر**: ${analysis['lines']}
+📝 **الكلمات**: ${analysis['words']}
+📏 **الحجم**: ${(analysis['size'] / 1024).toStringAsFixed(2)} KB
+
+💾 **تم حفظ الملف في قاعدة البيانات العملاقة**
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+''';
+      } else if (ext == 'json') {
+        final analysis = await FileUploadService.processJsonFile(file);
+        response = '''
+✅ **تمت معالجة ملف JSON بنجاح!**
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📁 **الملف**: ${analysis['filename']}
+🔑 **عدد المفاتيح**: ${analysis['keys']}
+📏 **الحجم**: ${(analysis['size'] / 1024).toStringAsFixed(2)} KB
+
+💾 **تم حفظ البيانات في قاعدة البيانات**
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+''';
+      } else if (ext == 'csv') {
+        final analysis = await FileUploadService.processCsvFile(file);
+        response = '''
+✅ **تمت معالجة ملف CSV بنجاح!**
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📁 **الملف**: ${analysis['filename']}
+📊 **الصفوف**: ${analysis['rows']}
+📐 **الأعمدة**: ${analysis['columns']}
+📏 **الحجم**: ${(analysis['size'] / 1024).toStringAsFixed(2)} KB
+
+💾 **تم حفظ الجدول في قاعدة البيانات**
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+''';
+      } else if (ext == 'tflite') {
+        final added = await ModelService.addCustomModel(file.path);
+        if (added) {
+          response = '''
+✅ **تم إضافة النموذج بنجاح!**
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🧠 **الملف**: ${file.path.split('/').last}
+📊 **النوع**: TensorFlow Lite Model
+💾 **الحجم**: ${(await file.length() / 1024 / 1024).toStringAsFixed(2)} MB
+
+💡 **لعرض النماذج**: اكتب "النماذج"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+''';
+        } else {
+          response = '❌ فشل إضافة النموذج';
+        }
+      } else {
+        response = '''
+❌ **نوع الملف غير مدعوم**
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📂 **الأنواع المدعومة**:
+• TXT - ملفات نصية
+• JSON - بيانات منظمة
+• CSV - جداول بيانات
+• TFLite - نماذج ذكاء اصطناعي
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+''';
       }
-    })
+      await _loadStats();
+    } catch (e) {
+      response = '❌ **خطأ في معالجة الملف**: $e';
+    }
+
+    setState(() {
+      _messages.add({
+        'isUser': false,
+        'content': response,
+        'intent': 'file_upload',
+        'confidence': 0.95,
+        'time': DateTime.now(),
+      });
+      _isLoading = false;
+    });
+    _scrollToBottom();
   }
 
-  void _rnllgents() {
-    _controller.text  ' '
-    _sendessage()
+  Future<void> _sendMessage() async {
+    final text = _controller.text.trim();
+    if (text.isEmpty) return;
+
+    setState(() {
+      _messages.add({
+        'isUser': true,
+        'content': text,
+        'time': DateTime.now(),
+      });
+      _controller.clear();
+      _isLoading = true;
+      _thinkingMessage = '🧠 جاري التفكير العميق';
+    });
+    _scrollToBottom();
+
+    final response = await _agent.process(text);
+
+    setState(() {
+      _messages.add({
+        'isUser': false,
+        'content': response,
+        'intent': 'response',
+        'confidence': 0.92,
+        'time': DateTime.now(),
+      });
+      _isLoading = false;
+    });
+    _scrollToBottom();
   }
 
-  void _rnnalyst() {
-    _controller.text  '  '
-    _sendessage()
+  void _scrollToBottom() {
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
-  void _rnoder() {
-    _controller.text  '  '
-    _sendessage()
+  void _showModels() async {
+    final models = await ModelService.getAvailableModels();
+    String content = '🧠 **النماذج المتاحة**\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n';
+    for (var model in models) {
+      content += '''
+📦 **${model['name']}**
+   • الإصدار: ${model['version']}
+   • الحجم: ${model['size']}
+   • النوع: ${model['type']}
+   • الحالة: ${model['status'] == 'active' ? '✅ نشط' : '📦 متاح'}
+
+''';
+    }
+    content += '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n';
+    content += '💡 **لتبديل النموذج**: اكتب "تبديل نموذج [الاسم]"';
+
+    setState(() {
+      _messages.add({
+        'isUser': false,
+        'content': content,
+        'intent': 'models',
+        'confidence': 0.99,
+        'time': DateTime.now(),
+      });
+    });
+    _scrollToBottom();
   }
 
-  void _rnreator() {
-    _controller.text  ' '
-    _sendessage()
-  }
-
-  void _showtats() {
-    _controller.text  ''
-    _sendessage()
-  }
-
-  override
-  idget bild(ildontext context) {
-    retrn caffold(
-      appar ppar(
-        title const ext('   '),
-        centeritle tre,
-        actions 
-          contton(
-            icon const con(cons.analytics),
-            onressed _showtats,
-            tooltip '',
-          ),
-        ],
-      ),
-      body olmn(
-        children 
-          //   
-          ontainer(
-            height ,
-            padding const dgensets.symmetric(horizontal , vertical ),
-            child istiew(
-              scrollirection xis.horizontal,
-              children 
-                _bildicktton('', '', _rnllgents, olors.deeprple),
-                _bildicktton('', '', _rnnalyst, olors.ble),
-                _bildicktton('', '', _rnoder, olors.green),
-                _bildicktton('', '', _rnreator, olors.orange),
-                _bildicktton('', '', _showtats, olors.teal),
+  @override
+  Widget build(BuildContext context) {
+    final activeModel = ModelService.getActiveModel();
+    
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(100),
+        child: Column(
+          children: [
+            AppBar(
+              title: const Text('💀 GIANT AGENT X'),
+              centerTitle: true,
+              backgroundColor: Colors.deepPurple,
+              elevation: 0,
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.model_training),
+                  onPressed: _showModels,
+                  tooltip: 'النماذج المتاحة',
+                ),
               ],
             ),
+            ModelSelector(
+              onModelChanged: () {
+                setState(() {});
+                _addWelcomeMessage();
+              },
+            ),
+          ],
+        ),
+      ),
+      body: Column(
+        children: [
+          StatusBar(
+            modelName: activeModel['name'],
+            processedFiles: _processedFiles,
+            speed: 'MAX',
           ),
-          xpanded(
-            child istiew.bilder(
-              controller _scrollontroller,
-              padding const dgensets.all(),
-              itemont _messages.length,
-              itemilder (context, index) {
-                final msg  _messagesindex]
-                final isser  msg'isser'] as bool
-                retrn lign(
-                  alignment isser  lignment.centeright  lignment.centereft,
-                  child ontainer(
-                    margin const dgensets.only(bottom ),
-                    padding const dgensets.all(),
-                    constraints oxonstraints(
-                      maxidth ediaery.of(context).size.width * .,
-                    ),
-                    decoration oxecoration(
-                      color isser  olors.deeprple  olors.grey.shade,
-                      borderadis orderadis.circlar(),
-                    ),
-                    child electableext(
-                      msg'content'],
-                      style const exttyle(color olors.white, fontize ),
-                    ),
-                  ),
-                )
+          Expanded(
+            child: ListView.builder(
+              controller: _scrollController,
+              padding: const EdgeInsets.all(12),
+              itemCount: _messages.length,
+              itemBuilder: (context, index) {
+                final msg = _messages[index];
+                return ChatBubble(
+                  isUser: msg['isUser'],
+                  message: msg['content'],
+                  time: msg['time'],
+                  intent: msg['intent'],
+                  confidence: msg['confidence'],
+                );
               },
             ),
           ),
-          if (_isoading)
-            const adding(
-              padding dgensets.all(),
-              child inearrogressndicator(),
+          if (_isLoading)
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: ThinkingIndicator(message: _thinkingMessage),
             ),
-          ontainer(
-            padding const dgensets.all(),
-            decoration oxecoration(
-              color olors.grey.shade,
-              border order(top orderide(color olors.deeprple)),
+          QuickActions(onTap: (cmd) {
+            _controller.text = cmd;
+            _sendMessage();
+          }),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade900,
+              border: Border(top: BorderSide(color: Colors.deepPurple.shade700)),
             ),
-            child ow(
-              children 
-                xpanded(
-                  child extield(
-                    controller _controller,
-                    style const exttyle(color olors.white),
-                    decoration nptecoration(
-                      hintext ' ...',
-                      hinttyle exttyle(color olors.grey.shade),
-                      border tlinenptorder(
-                        borderadis orderadis.circlar(),
-                        borderide orderide.none,
-                      ),
-                      filled tre,
-                      fillolor olors.grey.shade,
-                      contentadding const dgensets.symmetric(horizontal , vertical ),
+            child: Row(
+              children: [
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.deepPurple.shade600, Colors.deepPurple.shade800],
                     ),
-                    onbmitted (_)  _sendessage(),
+                    shape: BoxShape.circle,
+                  ),
+                  child: IconButton(
+                    icon: const Icon(Icons.attach_file, color: Colors.white),
+                    onPressed: _uploadFile,
+                    tooltip: 'رفع ملف',
                   ),
                 ),
-                const izedox(width ),
-                estreetector(
-                  onap _sendessage,
-                  child ontainer(
-                    padding const dgensets.all(),
-                    decoration const oxecoration(
-                      color olors.deeprple,
-                      shape oxhape.circle,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade800,
+                      borderRadius: BorderRadius.circular(30),
                     ),
-                    child const con(cons.send, color olors.white, size ),
+                    child: TextField(
+                      controller: _controller,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        hintText: 'اكتب أمراً أو ارفع ملف...',
+                        hintStyle: TextStyle(color: Colors.grey.shade500),
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                      ),
+                      onSubmitted: (_) => _sendMessage(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.deepPurple, Colors.deepPurple.shade700],
+                    ),
+                    shape: BoxShape.circle,
+                  ),
+                  child: IconButton(
+                    icon: const Icon(Icons.send, color: Colors.white),
+                    onPressed: _sendMessage,
+                    tooltip: 'إرسال',
                   ),
                 ),
               ],
@@ -211,37 +404,6 @@ class _clearcreentate extends tateclearcreen {
           ),
         ],
       ),
-    )
-  }
-
-  idget _bildicktton(tring icon, tring label, oidallback onap, olor color) {
-    retrn adding(
-      padding const dgensets.symmetric(horizontal ),
-      child aterial(
-        elevation ,
-        borderadis orderadis.circlar(),
-        child nkell(
-          onap onap,
-          borderadis orderadis.circlar(),
-          child ontainer(
-            padding const dgensets.symmetric(horizontal , vertical ),
-            decoration oxecoration(
-              gradient inearradient(
-                colors color.withpacity(.), color.withpacity(.)],
-              ),
-              borderadis orderadis.circlar(),
-              border order.all(color color.withpacity(.)),
-            ),
-            child ow(
-              children 
-                ext(icon, style const exttyle(fontize )),
-                const izedox(width ),
-                ext(label, style exttyle(fontize , color color)),
-              ],
-            ),
-          ),
-        ),
-      ),
-    )
+    );
   }
 }
