@@ -201,10 +201,10 @@ class AgentKernel {
       _state = AgentKernelState.idle;
       _emit(
         requestId: request.id,
-        type: 'execution_completed',
-        title: 'اكتمل تنفيذ الطلب',
+        type: 'response_generated',
+        title: 'اكتمل توليد الإجابة',
         status: 'completed',
-        details: 'استُلمت إجابة من مسار التنفيذ المحلي.',
+        details: 'اكتمل التوليد المحلي؛ وتُعرض نتائج الأدوات الفعلية كأحداث مستقلة.',
       );
       return AgentResponse(
         requestId: request.id,
