@@ -11,8 +11,10 @@ class ModelSelector extends StatefulWidget {
 }
 
 class _ModelSelectorState extends State<ModelSelector> {
-  List<Map<String, dynamic>> _models = [];
-  String _activeModelId = 'default';
+  final ModelService _modelsService = ModelService();
+  List<Map<String, dynamic>> _models = const [];
+  String? _activeModelId;
+  bool _loading = true;
 
   @override
   void initState() {
@@ -21,12 +23,32 @@ class _ModelSelectorState extends State<ModelSelector> {
   }
 
   Future<void> _loadModels() async {
-    final models = await ModelService.getAvailableModels();
-    final active = ModelService.getActiveModel();
-    setState(() {
-      _models = models;
-      _activeModelId = active['id'];
-    });
+    try {
+      await _modelsService.refreshModels();
+      final models = _modelsService.getModels();
+      final active = _modelsService.getActiveModel();
+      if (!mounted) return;
+      setState(() {
+        _models = models;
+        final activeId = active['id']?.toString();
+        _activeModelId = models.any((model) => model['id'] == activeId)
+            ? activeId
+            : null;
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _selectModel(String? modelId) async {
+    if (modelId == null) return;
+    final switched = await _modelsService.switchModel(modelId);
+    if (!mounted) return;
+    if (switched) {
+      setState(() => _activeModelId = modelId);
+      widget.onModelChanged();
+    }
   }
 
   @override
@@ -37,36 +59,48 @@ class _ModelSelectorState extends State<ModelSelector> {
         children: [
           const Icon(Icons.model_training, size: 18, color: Colors.white70),
           const SizedBox(width: 8),
-          const Text('النموذج:', style: TextStyle(fontSize: 12, color: Colors.white70)),
+          const Text(
+            'النموذج:',
+            style: TextStyle(fontSize: 12, color: Colors.white70),
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: DropdownButton<String>(
               value: _activeModelId,
+              hint: Text(
+                _loading ? 'جارٍ تحميل النماذج...' : 'لا يوجد نموذج محمّل',
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
+              ),
               dropdownColor: Colors.grey.shade800,
-              underline: Container(),
+              underline: const SizedBox.shrink(),
               style: const TextStyle(color: Colors.white, fontSize: 12),
               isExpanded: true,
               items: _models.map((model) {
+                final id = model['id']?.toString() ?? '';
+                final name = model['name']?.toString() ?? id;
+                final size = model['size']?.toString() ?? '';
+                final isLoaded = model['isLoaded'] == true;
                 return DropdownMenuItem<String>(
-                  value: model['id'],
+                  value: id,
                   child: Row(
                     children: [
-                      Icon(Icons.check_circle, size: 14, color: model['status'] == 'active' ? Colors.green : Colors.grey),
+                      Icon(
+                        Icons.check_circle,
+                        size: 14,
+                        color: isLoaded ? Colors.green : Colors.grey,
+                      ),
                       const SizedBox(width: 8),
-                      Text(model['name']),
-                      const SizedBox(width: 8),
-                      Text('(${model['size']})', style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                      Expanded(child: Text(name, overflow: TextOverflow.ellipsis)),
+                      if (size.isNotEmpty)
+                        Text(
+                          size,
+                          style: const TextStyle(fontSize: 10, color: Colors.grey),
+                        ),
                     ],
                   ),
                 );
               }).toList(),
-              onChanged: (value) async {
-                if (value != null) {
-                  await ModelService.switchModel(value);
-                  _activeModelId = value;
-                  widget.onModelChanged();
-                }
-              },
+              onChanged: _selectModel,
             ),
           ),
         ],
