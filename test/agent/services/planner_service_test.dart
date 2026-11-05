@@ -22,7 +22,7 @@ void main() {
     });
     test('creates deterministic inspectable software steps', () {
       final plan = planner.createPlan('أنشئ تطبيقاً لإدارة المهام');
-      expect(plan.length, 4);
+      expect(plan.length, 5);
       expect(plan.first['step'], 1);
       expect(plan.first['status'], 'pending');
       expect(plan.map((item) => item['step']).toList(), [1, 2, 3, 4]);
