@@ -148,7 +148,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (index >= 0) { _agentSteps[index] = step; } else { _agentSteps.add(step); }
       _thinkingStage = step['title']?.toString() ?? '';
     });
-    AgentWorkflowScreen.publish(_agentSteps, finalOutput: _latestAssistantOutput);
+    AgentWorkflowScreen.publish(_agentSteps, finalOutputText: _latestAssistantOutput);
     _scrollToBottom();
   }
 
