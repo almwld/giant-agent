@@ -19,6 +19,7 @@ class _ConnectionStatusState extends State<ConnectionStatus> {
   
   Future<void> _checkConnection() async {
     final result = await Connectivity().checkConnectivity();
+    if (!mounted) return;
     setState(() => _connectionStatus = result);
   }
   
