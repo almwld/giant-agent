@@ -1924,8 +1924,8 @@ class _ChatScreenState extends State<ChatScreen> {
                         background: _isListening ? const Color(0xFF2563EB) : const Color(0xFF2A2A2E),
                         onPressed: _toggleVoiceInput,
                       ),
-                      const Spacer(),
-                      Flexible(
+                      const SizedBox(width: 8),
+                      Expanded(
                         child: SingleChildScrollView(
                           scrollDirection: Axis.horizontal,
                           child: Row(
