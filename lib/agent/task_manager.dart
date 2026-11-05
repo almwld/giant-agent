@@ -373,6 +373,19 @@ class TaskManager {
   List<Map<String, dynamic>> getTasks() =>
       _tasks.map(_copyTask).toList(growable: false);
 
+  Future<List<Map<String, dynamic>>> getTasksForConversation(
+    String conversationId, {
+    String? status,
+  }) async {
+    await _ensureLoaded();
+    return _tasks
+        .where((task) =>
+            task['conversation_id']?.toString() == conversationId &&
+            (status == null || task['status'] == status))
+        .map(_copyTask)
+        .toList(growable: false);
+  }
+
   Future<void> clearTasks() async {
     await _ensureLoaded();
     if (_executing) throw StateError('لا يمكن مسح المهام أثناء التنفيذ.');
