@@ -50,7 +50,7 @@ class ModelDownloader {
       await for (final chunk in response.stream) {
         sink.add(chunk);
         downloaded += chunk.length;
-        onProgress((downloaded / total).clamp(0.0, 1.0));
+        onProgress((downloaded / total).clamp(0.0, 1.0).toDouble());
       }
       await sink.flush();
       await sink.close();
