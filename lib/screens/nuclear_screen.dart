@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import '../services/agent_service.dart';
 import '../services/file_upload_service.dart';
@@ -20,187 +19,148 @@ class _NuclearScreenState extends State<NuclearScreen> {
   final TextEditingController _controller = TextEditingController();
   final List<Map<String, dynamic>> _messages = [];
   final ScrollController _scrollController = ScrollController();
-  final AgentService _agent = AgentService();
+  final AgentService _agent = AgentService.instance;
+  final ModelService _models = ModelService();
+  final FileUploadService _files = FileUploadService.instance;
+
   bool _isLoading = false;
-  String _thinkingMessage = 'جاري التفكير';
+  String _thinkingMessage = 'جاري تنفيذ المهمة';
   int _processedFiles = 0;
 
   @override
   void initState() {
     super.initState();
-    _initServices();
-    _addWelcomeMessage();
-    _loadStats();
+    _initialize();
   }
 
-  Future<void> _initServices() async {
-    await FileUploadService.initDB();
-    await ModelService.getAvailableModels();
-  }
-
-  Future<void> _loadStats() async {
-    final history = await FileUploadService.getHistory();
-    setState(() {
-      _processedFiles = history.length;
-    });
+  Future<void> _initialize() async {
+    try {
+      await _files.init();
+      await _models.refreshModels();
+      final history = await _files.getHistory();
+      if (!mounted) return;
+      setState(() {
+        _processedFiles = history.length;
+        _addWelcomeMessage();
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _addWelcomeMessage();
+        _messages.add({
+          'isUser': false,
+          'content': 'تعذر تهيئة خدمات الملفات أو النماذج: $error',
+          'time': DateTime.now(),
+        });
+      });
+    }
   }
 
   void _addWelcomeMessage() {
-    final activeModel = ModelService.getActiveModel();
+    final activeModel = _models.getActiveModel();
     _messages.add({
       'isUser': false,
       'content': '''
-☢️ **GIANT AGENT X** ☢️
+**GIANT AGENT**
 
-**أقوى وكيل ذكاء اصطناعي في العالم!**
+النموذج المحلي: ${activeModel['name']}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+يمكنك تنفيذ المهام من خلال المحرك المحلي، أو اختيار ملف لتحليله وحفظه في سجل الملفات.
 
-🧠 **النموذج النشط**: ${activeModel['name']} v${activeModel['version']}
-
-💥 **القدرات الخارقة:**
-
-| الميزة | الوصف |
-|--------|-------|
-| 🧠 نماذج متعددة | دعم TFLite مع تبديل فوري |
-| 📁 رفع ملفات | TXT, JSON, CSV, TFLite |
-| 🌐 إنشاء مواقع | HTML كامل مع تصميم عصري |
-| 💻 أكواد برمجية | Dart, Python, JavaScript |
-| 📊 تحليل نصوص | إحصائيات وتحليل مشاعر |
-| 🔢 عمليات حسابية | جمع، طرح، ضرب، قسمة |
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-⚡ **الأوامر السريعة:**
-
-• `النماذج` - عرض النماذج المتاحة
-• `تبديل نموذج [الاسم]` - تبديل النموذج
-• `رفع ملف` - تعليمات رفع الملفات
-• `تاريخ الملفات` - عرض الملفات المرفوعة
-• `أنشئ موقعاً` - إنشاء HTML
-• `اكتب كود` - إنشاء كود
-• `قاعدة بيانات` - إحصائيات القاعدة
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-🔥 **ابدأ الآن!** اكتب أمراً أو استخدم الأزرار السريعة أدناه.
+الأدوات المتاحة تعتمد على النموذج المحلي وواجهات التنفيذ المفعّلة.
 ''',
-      'intent': 'welcome',
       'time': DateTime.now(),
     });
   }
 
   Future<void> _uploadFile() async {
-    final file = await FileUploadService.pickFile();
-    if (file == null) return;
+    if (_isLoading) return;
+    try {
+      final file = await _files.pickFile();
+      if (file == null) return;
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = true;
+        _thinkingMessage = 'جارٍ تحليل الملف';
+        _messages.add({
+          'isUser': true,
+          'content': 'ملف: ${file.uri.pathSegments.last}',
+          'time': DateTime.now(),
+        });
+      });
+
+      final result = await _files.processFile(file);
+      final extracted = result['extracted_text']?.toString() ?? '';
+      final summary = StringBuffer()
+        ..writeln('تمت معالجة الملف وحفظه في السجل.')
+        ..writeln('الاسم: ${result['filename']}')
+        ..writeln('النوع: ${result['extension']}')
+        ..writeln('الحجم: ${result['size_bytes']} بايت')
+        ..writeln('الأسطر: ${result['lines']}')
+        ..writeln('الكلمات: ${result['words']}')
+        ..writeln('الأحرف المستخرجة: ${result['characters']}');
+
+      if (extracted.isNotEmpty) {
+        summary
+          ..writeln()
+          ..writeln('مقتطف من المحتوى:')
+          ..writeln(extracted.length > 1800 ? extracted.substring(0, 1800) : extracted);
+      }
+
+      final history = await _files.getHistory();
+      if (!mounted) return;
+      setState(() {
+        _processedFiles = history.length;
+        _messages.add({
+          'isUser': false,
+          'content': summary.toString(),
+          'time': DateTime.now(),
+        });
+        _isLoading = false;
+      });
+      _scrollToBottom();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _messages.add({
+          'isUser': false,
+          'content': 'تعذرت معالجة الملف: $error',
+          'time': DateTime.now(),
+        });
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _sendMessage() async {
+    final prompt = _controller.text.trim();
+    if (prompt.isEmpty || _isLoading) return;
 
     setState(() {
-      _isLoading = true;
-      _thinkingMessage = 'جاري معالجة الملف';
       _messages.add({
         'isUser': true,
-        'content': '📁 **رفع ملف**: ${file.path.split('/').last}',
+        'content': prompt,
         'time': DateTime.now(),
       });
+      _controller.clear();
+      _isLoading = true;
+      _thinkingMessage = 'جارٍ تنفيذ الطلب عبر النموذج المحلي';
     });
     _scrollToBottom();
 
     String response;
-    final ext = file.path.split('.').last.toLowerCase();
-
     try {
-      if (ext == 'txt') {
-        final analysis = await FileUploadService.processTextFile(file);
-        response = '''
-✅ **تمت معالجة الملف النصي بنجاح!**
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-📁 **الملف**: ${analysis['filename']}
-📊 **الأسطر**: ${analysis['lines']}
-📝 **الكلمات**: ${analysis['words']}
-📏 **الحجم**: ${(analysis['size'] / 1024).toStringAsFixed(2)} KB
-
-💾 **تم حفظ الملف في قاعدة البيانات العملاقة**
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-''';
-      } else if (ext == 'json') {
-        final analysis = await FileUploadService.processJsonFile(file);
-        response = '''
-✅ **تمت معالجة ملف JSON بنجاح!**
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-📁 **الملف**: ${analysis['filename']}
-🔑 **عدد المفاتيح**: ${analysis['keys']}
-📏 **الحجم**: ${(analysis['size'] / 1024).toStringAsFixed(2)} KB
-
-💾 **تم حفظ البيانات في قاعدة البيانات**
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-''';
-      } else if (ext == 'csv') {
-        final analysis = await FileUploadService.processCsvFile(file);
-        response = '''
-✅ **تمت معالجة ملف CSV بنجاح!**
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-📁 **الملف**: ${analysis['filename']}
-📊 **الصفوف**: ${analysis['rows']}
-📐 **الأعمدة**: ${analysis['columns']}
-📏 **الحجم**: ${(analysis['size'] / 1024).toStringAsFixed(2)} KB
-
-💾 **تم حفظ الجدول في قاعدة البيانات**
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-''';
-      } else if (ext == 'tflite') {
-        final added = await ModelService.addCustomModel(file.path);
-        if (added) {
-          response = '''
-✅ **تم إضافة النموذج بنجاح!**
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-🧠 **الملف**: ${file.path.split('/').last}
-📊 **النوع**: TensorFlow Lite Model
-💾 **الحجم**: ${(await file.length() / 1024 / 1024).toStringAsFixed(2)} MB
-
-💡 **لعرض النماذج**: اكتب "النماذج"
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-''';
-        } else {
-          response = '❌ فشل إضافة النموذج';
-        }
-      } else {
-        response = '''
-❌ **نوع الملف غير مدعوم**
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-📂 **الأنواع المدعومة**:
-• TXT - ملفات نصية
-• JSON - بيانات منظمة
-• CSV - جداول بيانات
-• TFLite - نماذج ذكاء اصطناعي
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-''';
-      }
-      await _loadStats();
-    } catch (e) {
-      response = '❌ **خطأ في معالجة الملف**: $e';
+      response = await _agent.runTask(prompt);
+    } catch (error) {
+      response = 'تعذر إكمال الطلب: $error';
     }
 
+    if (!mounted) return;
     setState(() {
       _messages.add({
         'isUser': false,
         'content': response,
-        'intent': 'file_upload',
-        'confidence': 0.95,
         'time': DateTime.now(),
       });
       _isLoading = false;
@@ -208,115 +168,73 @@ class _NuclearScreenState extends State<NuclearScreen> {
     _scrollToBottom();
   }
 
-  Future<void> _sendMessage() async {
-    final text = _controller.text.trim();
-    if (text.isEmpty) return;
-
-    setState(() {
-      _messages.add({
-        'isUser': true,
-        'content': text,
-        'time': DateTime.now(),
-      });
-      _controller.clear();
-      _isLoading = true;
-      _thinkingMessage = '🧠 جاري التفكير العميق';
-    });
-    _scrollToBottom();
-
-    final response = await _agent.process(text);
-
+  Future<void> _showModels() async {
+    await _models.refreshModels();
+    if (!mounted) return;
+    final models = _models.getModels();
+    final active = _models.getActiveModel();
+    final lines = models.map((model) {
+      final marker = model['id'] == active['id'] ? '✓' : '•';
+      return '$marker ${model['name']} — ${model['size']}';
+    }).join('\n');
     setState(() {
       _messages.add({
         'isUser': false,
-        'content': response,
-        'intent': 'response',
-        'confidence': 0.92,
+        'content': lines.isEmpty ? 'لم يتم العثور على نماذج GGUF.' : 'النماذج المحلية:\n$lines',
         'time': DateTime.now(),
       });
-      _isLoading = false;
     });
     _scrollToBottom();
   }
 
   void _scrollToBottom() {
     Future.delayed(const Duration(milliseconds: 100), () {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      }
+      if (!mounted || !_scrollController.hasClients) return;
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
     });
   }
 
-  void _showModels() async {
-    final models = await ModelService.getAvailableModels();
-    String content = '🧠 **النماذج المتاحة**\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n';
-    for (var model in models) {
-      content += '''
-📦 **${model['name']}**
-   • الإصدار: ${model['version']}
-   • الحجم: ${model['size']}
-   • النوع: ${model['type']}
-   • الحالة: ${model['status'] == 'active' ? '✅ نشط' : '📦 متاح'}
-
-''';
-    }
-    content += '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n';
-    content += '💡 **لتبديل النموذج**: اكتب "تبديل نموذج [الاسم]"';
-
-    setState(() {
-      _messages.add({
-        'isUser': false,
-        'content': content,
-        'intent': 'models',
-        'confidence': 0.99,
-        'time': DateTime.now(),
-      });
-    });
-    _scrollToBottom();
+  @override
+  void dispose() {
+    _controller.dispose();
+    _scrollController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final activeModel = ModelService.getActiveModel();
-    
+    final activeModel = _models.getActiveModel();
     return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(100),
-        child: Column(
-          children: [
-            AppBar(
-              title: const Text('💀 GIANT AGENT X'),
-              centerTitle: true,
-              backgroundColor: Colors.deepPurple,
-              elevation: 0,
-              actions: [
-                IconButton(
-                  icon: const Icon(Icons.model_training),
-                  onPressed: _showModels,
-                  tooltip: 'النماذج المتاحة',
-                ),
-              ],
-            ),
-            ModelSelector(
-              onModelChanged: () {
-                setState(() {});
-                _addWelcomeMessage();
-              },
-            ),
-          ],
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      appBar: AppBar(
+        title: const Text('Giant Agent'),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.model_training),
+            onPressed: _showModels,
+            tooltip: 'النماذج المتاحة',
+          ),
+        ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(48),
+          child: ModelSelector(
+            onModelChanged: () {
+              if (mounted) setState(() {});
+            },
+          ),
         ),
       ),
       body: Column(
         children: [
           StatusBar(
-            modelName: activeModel['name'],
+            modelName: activeModel['name']?.toString() ?? 'لا يوجد',
             processedFiles: _processedFiles,
-            speed: 'MAX',
+            speed: _models.isBusy ? 'BUSY' : 'READY',
           ),
           Expanded(
             child: ListView.builder(
@@ -324,13 +242,11 @@ class _NuclearScreenState extends State<NuclearScreen> {
               padding: const EdgeInsets.all(12),
               itemCount: _messages.length,
               itemBuilder: (context, index) {
-                final msg = _messages[index];
+                final message = _messages[index];
                 return ChatBubble(
-                  isUser: msg['isUser'],
-                  message: msg['content'],
-                  time: msg['time'],
-                  intent: msg['intent'],
-                  confidence: msg['confidence'],
+                  isUser: message['isUser'] as bool,
+                  message: message['content'] as String,
+                  time: message['time'] as DateTime,
                 );
               },
             ),
@@ -340,66 +256,40 @@ class _NuclearScreenState extends State<NuclearScreen> {
               padding: const EdgeInsets.all(8),
               child: ThinkingIndicator(message: _thinkingMessage),
             ),
-          QuickActions(onTap: (cmd) {
-            _controller.text = cmd;
-            _sendMessage();
-          }),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade900,
-              border: Border(top: BorderSide(color: Colors.deepPurple.shade700)),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Colors.deepPurple.shade600, Colors.deepPurple.shade800],
-                    ),
-                    shape: BoxShape.circle,
+          QuickActions(
+            onTap: (command) {
+              _controller.text = command;
+              _sendMessage();
+            },
+          ),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  IconButton(
+                    onPressed: _isLoading ? null : _uploadFile,
+                    icon: const Icon(Icons.attach_file),
+                    tooltip: 'تحليل ملف',
                   ),
-                  child: IconButton(
-                    icon: const Icon(Icons.attach_file, color: Colors.white),
-                    onPressed: _uploadFile,
-                    tooltip: 'رفع ملف',
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade800,
-                      borderRadius: BorderRadius.circular(30),
-                    ),
+                  Expanded(
                     child: TextField(
                       controller: _controller,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        hintText: 'اكتب أمراً أو ارفع ملف...',
-                        hintStyle: TextStyle(color: Colors.grey.shade500),
-                        border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                      decoration: const InputDecoration(
+                        hintText: 'اكتب مهمة أو سؤالاً...',
+                        border: OutlineInputBorder(),
                       ),
                       onSubmitted: (_) => _sendMessage(),
                     ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Colors.deepPurple, Colors.deepPurple.shade700],
-                    ),
-                    shape: BoxShape.circle,
+                  const SizedBox(width: 8),
+                  IconButton.filled(
+                    onPressed: _isLoading ? null : _sendMessage,
+                    icon: const Icon(Icons.send),
                   ),
-                  child: IconButton(
-                    icon: const Icon(Icons.send, color: Colors.white),
-                    onPressed: _sendMessage,
-                    tooltip: 'إرسال',
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
