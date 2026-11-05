@@ -1,4 +1,5 @@
 import '../agent/architecture/agent_kernel.dart';
+import '../agent/architecture/agent_timeline_event.dart';
 import 'model_service.dart';
 
 /// Public facade for task execution. All requests pass through AgentKernel,
@@ -35,5 +36,5 @@ class AgentService {
   ModelService get modelService => _models;
 
   /// Lifecycle stream for workflow timelines and diagnostics.
-  Stream<AgentKernelEvent> get events => _kernel.events;
+  Stream<AgentTimelineEvent> get events => _kernel.events;
 }
