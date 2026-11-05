@@ -17,49 +17,53 @@ class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _controller = TextEditingController();
   final List<Map<String, dynamic>> _messages = [];
   final ScrollController _scrollController = ScrollController();
-  final AgentService _agent = AgentService();
+  final AgentService _agent = AgentService.instance;
   bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
     _loadMessages();
-    _addWelcomeMessage();
   }
 
   Future<void> _loadMessages() async {
-    final messages = await DatabaseService.getMessages();
-    setState(() {
-      _messages.clear();
-      _messages.addAll(messages);
-    });
+    try {
+      final stored = await DatabaseService.getMessages();
+      if (!mounted) return;
+      setState(() {
+        _messages
+          ..clear()
+          ..addAll(stored.map((row) => {
+                'isUser': row['isUser'] == 1,
+                'content': row['text']?.toString() ?? '',
+                'time': DateTime.fromMillisecondsSinceEpoch(
+                  (row['timestamp'] as int?) ?? 0,
+                ),
+              }));
+        if (_messages.isEmpty) _addWelcomeMessage();
+      });
+      _scrollToBottom();
+    } catch (error) {
+      if (!mounted) return;
+      setState(_addWelcomeMessage);
+    }
   }
 
   void _addWelcomeMessage() {
     _messages.add({
       'isUser': false,
       'content': '''
-🧠 **مرحباً بك في Giant Agent!**
+**مرحباً بك في Giant Agent**
 
-أنا الوكيل العملاق للذكاء الاصطناعي
+وكيل محلي يعتمد على نموذج GGUF والأدوات المتاحة داخل التطبيق.
 
-🚀 **ماذا يمكنني أن أفعل؟**
-• 🌐 إنشاء مواقع HTML
-• 💻 كتابة أكواد برمجية
-• 📊 تحليل النصوص والإحصائيات
-• 🔢 العمليات الحسابية
-• ⏰ تذكيرات ذكية
-• 📝 قوائم مهام
+يمكنك طلب:
+- إنشاء ملفات ومحتوى برمجي.
+- قراءة الملفات وتحديثها داخل مساحة العمل.
+- تنفيذ Python ضمن البيئة المحلية المقيّدة.
+- تحليل الأسئلة والمهام متعددة الخطوات.
 
-**جرب هذه الأوامر:**
-• "أنشئ موقعاً عن الذكاء الاصطناعي"
-• "اكتب كود Python"
-• "حلل هذا النص"
-• "5+3×2"
-• "ذكرني بموعد"
-• "قائمة مهام: شراء، دراسة"
-
-**ماذا تريد أن نفعل اليوم؟** 🚀
+ابدأ بكتابة المهمة التي تريد تنفيذها.
 ''',
       'time': DateTime.now(),
     });
@@ -67,7 +71,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _sendMessage() async {
     final text = _controller.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty || _isLoading) return;
 
     setState(() {
       _messages.add({'isUser': true, 'content': text, 'time': DateTime.now()});
@@ -77,31 +81,36 @@ class _HomeScreenState extends State<HomeScreen> {
     _scrollToBottom();
 
     await DatabaseService.saveMessage(text, true);
-    final response = await _agent.process(text);
+    String response;
+    try {
+      response = await _agent.runTask(text);
+    } catch (error) {
+      response = 'تعذر إكمال الطلب: $error';
+    }
 
+    if (!mounted) return;
     setState(() {
       _messages.add({'isUser': false, 'content': response, 'time': DateTime.now()});
       _isLoading = false;
     });
-    _scrollToBottom();
-
     await DatabaseService.saveMessage(response, false);
+    _scrollToBottom();
   }
 
   void _scrollToBottom() {
     Future.delayed(const Duration(milliseconds: 100), () {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      }
+      if (!mounted || !_scrollController.hasClients) return;
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
     });
   }
 
   Future<void> _clearChat() async {
     await DatabaseService.clearMessages();
+    if (!mounted) return;
     setState(() {
       _messages.clear();
       _addWelcomeMessage();
@@ -109,53 +118,54 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _shareChat() async {
-    final content = await DatabaseService.exportChat();
-    await Share.share(content, sharePositionOrigin: Rect.zero);
+    final content = await DatabaseService.exportToText();
+    await Share.share(content);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _scrollController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('🧠 Giant Agent'),
+        title: const Text('Giant Agent'),
         centerTitle: true,
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const SettingsScreen()),
-              );
-            },
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+            ),
           ),
-          IconButton(
-            icon: const Icon(Icons.share),
-            onPressed: _shareChat,
-          ),
-          IconButton(
-            icon: const Icon(Icons.delete_outline),
-            onPressed: _clearChat,
-          ),
+          IconButton(icon: const Icon(Icons.share), onPressed: _shareChat),
+          IconButton(icon: const Icon(Icons.delete_outline), onPressed: _clearChat),
         ],
       ),
       body: Column(
         children: [
-          QuickActions(onTap: (text) {
-            _controller.text = text;
-            _sendMessage();
-          }),
+          QuickActions(
+            onTap: (text) {
+              _controller.text = text;
+              _sendMessage();
+            },
+          ),
           Expanded(
             child: ListView.builder(
               controller: _scrollController,
               padding: const EdgeInsets.all(12),
               itemCount: _messages.length,
               itemBuilder: (context, index) {
-                final msg = _messages[index];
+                final message = _messages[index];
                 return MessageBubble(
-                  isUser: msg['isUser'],
-                  content: msg['content'],
-                  time: msg['time'],
+                  isUser: message['isUser'] as bool,
+                  content: message['content'] as String,
+                  time: message['time'] as DateTime,
                 );
               },
             ),
@@ -165,45 +175,29 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: EdgeInsets.all(8),
               child: LinearProgressIndicator(),
             ),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1E1E1E),
-              border: Border(top: BorderSide(color: Colors.grey.shade800)),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      hintText: 'اكتب أمراً أو سؤالاً...',
-                      hintStyle: TextStyle(color: Colors.grey.shade500),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(30),
-                        borderSide: BorderSide.none,
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _controller,
+                      decoration: const InputDecoration(
+                        hintText: 'اكتب مهمة أو سؤالاً...',
+                        border: OutlineInputBorder(),
                       ),
-                      filled: true,
-                      fillColor: const Color(0xFF2D2D2D),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      onSubmitted: (_) => _sendMessage(),
                     ),
-                    onSubmitted: (_) => _sendMessage(),
                   ),
-                ),
-                const SizedBox(width: 8),
-                GestureDetector(
-                  onTap: _sendMessage,
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF6C63FF),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.send, color: Colors.white, size: 20),
+                  const SizedBox(width: 8),
+                  IconButton.filled(
+                    onPressed: _isLoading ? null : _sendMessage,
+                    icon: const Icon(Icons.send),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
