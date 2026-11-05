@@ -104,8 +104,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
     setState(() => _isLoading = true);
     String output;
+    var continueRecovery = false;
     try {
       final result = await manager.resumeTask(taskId);
+      continueRecovery = result['status'] == 'completed';
       output = result['result']?.toString() ??
           result['error']?.toString() ??
           'حالة المهمة: ${result['status']}';
@@ -120,11 +122,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
     await DatabaseService.saveMessage(output, false);
     _scrollToBottom();
-    if (!output.startsWith('تم إيقاف') &&
-        !output.startsWith('وصل الوكيل إلى الحد الآمن') &&
-        !output.startsWith('أوقف الوكيل تكرار استدعاء الأداة')) {
-      await _resumePausedTask();
-    }
+    if (continueRecovery) await _resumePausedTask();
   }
 
   Future<void> _sendMessage() async {
