@@ -1631,6 +1631,32 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  Widget _drawerActionTile({
+    required IconData icon,
+    required String title,
+    String? subtitle,
+    Color iconColor = const Color(0xFF38BDF8),
+    Color titleColor = const Color(0xFFE5EDF5),
+    required VoidCallback onTap,
+  }) {
+    return ListTile(
+      dense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 1),
+      leading: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: iconColor.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(11),
+        ),
+        child: Icon(icon, color: iconColor, size: 19),
+      ),
+      title: Text(title, style: TextStyle(color: titleColor, fontSize: 13, fontWeight: FontWeight.w600)),
+      subtitle: subtitle == null ? null : Text(subtitle, style: const TextStyle(color: Color(0xFF8294A8), fontSize: 10)),
+      onTap: onTap,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1765,7 +1791,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ],
       ),
       drawer: Drawer(
-        width:  min(340, MediaQuery.of(context).size.width * 0.88),
+        width: 340,
         backgroundColor: const Color(0xFF111827),
         child: SafeArea(
           child: Column(
