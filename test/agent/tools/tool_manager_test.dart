@@ -21,7 +21,7 @@ void main() {
       expect(catalogue, contains('write_file'));
       expect(catalogue, contains('execute_python'));
       expect(catalogue, contains('\n'));
-      expect(catalogue, isNot(contains(r'\\n  مثال:')));
+      expect(catalogue, isNot(contains(r'\n  مثال:')));
     });
   });
 }
