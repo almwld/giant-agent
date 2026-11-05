@@ -39,5 +39,25 @@ void main() {
       preferences.getString('giant_agent.tasks.v1')!,
     ) as List;
     expect((persisted.single as Map)['status'], 'paused');
+
+    await manager.markRunning('task-recovery-1');
+    expect(manager.getTasks().single['status'], 'running');
+
+    await manager.markInterrupted(
+      'task-recovery-1',
+      'توقف اختباري قبل الاكتمال.',
+    );
+    expect(manager.getTasks().single['status'], 'paused');
+    expect(
+      (manager.getTasks().single['steps'] as List).single['status'],
+      'pending',
+    );
+
+    await manager.markRunning('task-recovery-1');
+    await manager.markCompleted('task-recovery-1', 'النتيجة النهائية');
+    final completed = manager.getTasks().single;
+    expect(completed['status'], 'completed');
+    expect(completed['result'], 'النتيجة النهائية');
+    expect((completed['steps'] as List).single['status'], 'completed');
   });
 }
