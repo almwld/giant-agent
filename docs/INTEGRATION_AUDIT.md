@@ -50,7 +50,7 @@ The Flutter `ModelService` and the kernel/service facades use a factory singleto
 5. **Python isolation boundary:** the Python runner itself states it is defense-in-depth, not an OS sandbox. Keep execution restricted and never claim process/container isolation.
 6. **External service boundaries:** web search returns snippets; GitHub is read-only; cloud is upload-only. UI labels and agent prompts must continue to communicate those limits.
 7. **Android storage permissions:** removed broad `READ_EXTERNAL_STORAGE`, `WRITE_EXTERNAL_STORAGE`, `MANAGE_EXTERNAL_STORAGE`, and `requestLegacyExternalStorage` declarations. Model import and file attachments use Storage Access Framework/content URIs and app-private copies; still verify these flows on supported Android versions.
-8. **Automated verification coverage:** tests now cover timeline serialization, planner templates, and the canonical tool registry. Add focused tests for kernel lifecycle/cancellation, memory session isolation, task recovery, native tool path validation, and provider failure behavior.
+8. **Automated verification coverage:** tests now cover timeline serialization, planner templates, and the canonical tool registry. Add focused tests for kernel lifecycle/cancellation, memory session isolation, native tool path validation, and provider failure behavior. A recovery test now verifies that interrupted task and step states are restored as paused/pending.
 9. **CI analyzer gate:** the latest preceding run failed because three conversation actions were unused. The actions have now been restored to the overflow menu; the new run must confirm the analyzer and subsequent build stages.
 
 ## 4. Completion gates
@@ -77,5 +77,6 @@ Complete and stabilize the current subsystem before expanding the feature surfac
 - Restored the overflow-menu actions for conversation history, conversation sharing, and agent information; kept destructive history clearing as a separate action.
 - Added the canonical tool registry and made the model prompt catalogue and runtime allow-list derive from it.
 - Added registry tests for supported tools and prompt formatting.
+- Added a persistent-task recovery test for interrupted process state.
 - Removed broad external-storage permissions after confirming model import and attachment flows use document/content pickers and app-private storage.
 - CI run `41976790710` on commit `54716a43ad1801c01bb492fa0c43b53a97e2789b`: Flutter analysis and unit tests passed; universal APK build was still running at the time of this note. This is not a full CI success or device verification.
