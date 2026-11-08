@@ -162,7 +162,8 @@ class AgentKernel {
       requestId: request.id,
       type: 'request_received',
       title: 'تم استلام الطلب',
-      status: 'completed',
+      // Receipt is not execution; only a real completed operation is green.
+      status: 'pending',
     );
 
     try {
