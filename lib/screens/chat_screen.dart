@@ -349,7 +349,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final dir = await getApplicationDocumentsDirectory();
     _db = await openDatabase(
       '${dir.path}/conversations.db',
-      version: 5,
+      version: 6,
       onCreate: (db, version) async {
         await db.execute('''CREATE TABLE sessions (
           id TEXT PRIMARY KEY, title TEXT NOT NULL,
@@ -382,11 +382,6 @@ class _ChatScreenState extends State<ChatScreen> {
         await db.execute('''
           CREATE TRIGGER agent_execution_logs_no_update
           BEFORE UPDATE ON agent_execution_logs
-          BEGIN SELECT RAISE(ABORT, 'agent_execution_logs is append-only'); END
-        ''');
-        await db.execute('''
-          CREATE TRIGGER agent_execution_logs_no_delete
-          BEFORE DELETE ON agent_execution_logs
           BEGIN SELECT RAISE(ABORT, 'agent_execution_logs is append-only'); END
         ''');
       },
@@ -437,11 +432,9 @@ class _ChatScreenState extends State<ChatScreen> {
             BEFORE UPDATE ON agent_execution_logs
             BEGIN SELECT RAISE(ABORT, 'agent_execution_logs is append-only'); END
           ''');
-          await db.execute('''
-            CREATE TRIGGER agent_execution_logs_no_delete
-            BEFORE DELETE ON agent_execution_logs
-            BEGIN SELECT RAISE(ABORT, 'agent_execution_logs is append-only'); END
-          ''');
+        }
+        if (oldVersion < 6) {
+          await db.execute('DROP TRIGGER IF EXISTS agent_execution_logs_no_delete');
         }
       },
     );
@@ -674,6 +667,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (id == _currentSessionId) continue;
       await _db?.delete('messages', where: 'session_id = ?', whereArgs: [id]);
       await _db?.delete('agent_events', where: 'session_id = ?', whereArgs: [id]);
+      await _db?.delete('agent_execution_logs', where: 'session_id = ?', whereArgs: [id]);
       await _db?.delete('sessions', where: 'id = ?', whereArgs: [id]);
     }
   }
@@ -771,6 +765,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (confirmed != true) return;
     await _db?.delete('messages');
     await _db?.delete('agent_events');
+    await _db?.delete('agent_execution_logs');
     await AgentMemoryService.instance.clearConversationMemory();
     await _db?.delete('sessions');
     await _createNewSession();
@@ -788,6 +783,7 @@ class _ChatScreenState extends State<ChatScreen> {
             onPressed: () async {
               await _db?.delete('messages', where: 'session_id = ?', whereArgs: [_currentSessionId]);
               await _db?.delete('agent_events', where: 'session_id = ?', whereArgs: [_currentSessionId]);
+              await _db?.delete('agent_execution_logs', where: 'session_id = ?', whereArgs: [_currentSessionId]);
               await AgentMemoryService.instance.deleteConversationMemory(_currentSessionId);
               setState(() { _messages.clear(); _agentSteps.clear(); });
               AgentWorkflowScreen.publish(_agentSteps, finalOutputText: _latestAssistantOutput);
