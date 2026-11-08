@@ -202,7 +202,7 @@ class ModelService {
         input,
         conversationId: conversationId,
       );
-      final prompt = context.isEmpty ? input : '$context\\n\\nرسالة المستخدم: $input';
+      final prompt = context.isEmpty ? input : '$context\n\nرسالة المستخدم: $input';
       final response = await _generateText(
         _boundPrompt(prompt),
         maxTokens: 768,
