@@ -666,7 +666,7 @@ class _ChatScreenState extends State<ChatScreen> {
     // and conversation instead of covering them with a modal overlay.
     Navigator.of(context).push<void>(MaterialPageRoute(
       builder: (terminalContext) => Scaffold(
-        backgroundColor: const Color(0xFF050A0F),
+        backgroundColor: const GiantPalette.background,
         body: SafeArea(
           child: Column(
             children: [
@@ -1509,19 +1509,19 @@ class _ChatScreenState extends State<ChatScreen> {
                   ],
                 ),
               ),
-              const Divider(height: 1, color: Color(0xFF303036)),
+              const Divider(height: 1, color: GiantPalette.border),
               Expanded(
                 child: _sessions.isEmpty
                     ? const Center(child: Text('لا توجد محادثات محفوظة', style: TextStyle(color: GiantPalette.muted)))
                     : ListView.separated(
                         itemCount: _sessions.length,
-                        separatorBuilder: (_, __) => const Divider(height: 1, indent: 60, color: Color(0xFF29292F)),
+                        separatorBuilder: (_, __) => const Divider(height: 1, indent: 60, color: GiantPalette.border),
                         itemBuilder: (context, index) {
                           final session = _sessions[index];
                           final active = session.id == _currentSessionId;
                           return ListTile(
                             leading: CircleAvatar(
-                              backgroundColor: active ? const Color(0xFF1D4ED8) : const Color(0xFF29292F),
+                              backgroundColor: active ? const GiantPalette.primary : const GiantPalette.border,
                               child: Icon(active ? Icons.chat : Icons.chat_bubble_outline, color: Colors.white, size: 18),
                             ),
                             title: Text(session.title, maxLines: 1, overflow: TextOverflow.ellipsis,
@@ -1721,7 +1721,7 @@ class _ChatScreenState extends State<ChatScreen> {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF101820),
+      backgroundColor: const GiantPalette.background,
       builder: (context) => DraggableScrollableSheet(
         expand: false,
         initialChildSize: .72,
@@ -1758,7 +1758,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _buildAgentTimeline(List<Map<String, dynamic>> steps, String requestId) {
     if (steps.isEmpty) return const SizedBox.shrink();
     final expanded = !_collapsedTimelineIds.contains(requestId);
-    const cardColor = Color(0xFF1E1E1E);
+    const cardColor = GiantPalette.surface;
     const mutedColor = Color(0xFF9CA3AF);
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 12),
@@ -1795,13 +1795,13 @@ class _ChatScreenState extends State<ChatScreen> {
                   IconButton(
                     tooltip: 'فتح الطرفية',
                     visualDensity: VisualDensity.compact,
-                    icon: const Icon(Icons.terminal, color: Color(0xFF0D8274), size: 20),
+                    icon: const Icon(Icons.terminal, color: GiantPalette.primary, size: 20),
                     onPressed: _showTerminal,
                   ),
                   IconButton(
                     tooltip: 'فتح مساحة عمل الوكيل',
                     visualDensity: VisualDensity.compact,
-                    icon: const Icon(Icons.computer_outlined, color: Color(0xFF0D8274), size: 19),
+                    icon: const Icon(Icons.computer_outlined, color: GiantPalette.primary, size: 19),
                     onPressed: () => Navigator.of(context).push(MaterialPageRoute(
                       builder: (_) => AgentWorkspaceScreen(steps: List<Map<String, dynamic>>.from(steps)),
                     )),
@@ -1828,7 +1828,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       final icon = _agentStepIcon(type);
                       final color = failed
                           ? const Color(0xFFEF6A6A)
-                          : (running ? const Color(0xFF0D8274) : mutedColor);
+                          : (running ? const GiantPalette.primary : mutedColor);
                       final title = step['title']?.toString() ?? 'حدث من الوكيل';
                       final subtitle = step['subtitle']?.toString();
                       final opensTerminal = _opensTerminalFromStep(step);
@@ -1867,7 +1867,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                   borderRadius: BorderRadius.circular(5),
                                 ),
                                 alignment: Alignment.center,
-                                child: Icon(icon, size: 13, color: isTool ? const Color(0xFF0D8274) : mutedColor),
+                                child: Icon(icon, size: 13, color: isTool ? const GiantPalette.primary : mutedColor),
                               ),
                               const SizedBox(width: 10),
                               Expanded(
@@ -2285,7 +2285,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           return Container(
                             margin: const EdgeInsets.only(bottom: 4),
                             decoration: BoxDecoration(
-                              color: selected ? const Color(0xFF1E3A50) : Colors.transparent,
+                              color: selected ? const GiantPalette.primary.withOpacity(.18) : Colors.transparent,
                               borderRadius: BorderRadius.circular(12),
                               border: selected ? Border.all(color: GiantPalette.primaryLight.withOpacity(0.25)) : null,
                             ),
@@ -2319,7 +2319,7 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 16),
-                child: Divider(color: Color(0xFF263445), height: 18),
+                child: Divider(color: GiantPalette.border, height: 18),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 7),
@@ -2364,7 +2364,7 @@ class _ChatScreenState extends State<ChatScreen> {
         decoration: BoxDecoration(
           color: const Color(0xFF18181B),
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: const Color(0xFF27272A), width: 0.7),
+          border: Border.all(color: const GiantPalette.border, width: 0.7),
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(24),
@@ -2397,7 +2397,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       maxWidth: MediaQuery.of(context).size.width * 0.8,
                     ),
                     decoration: BoxDecoration(
-                      color: isUser ? const Color(0xFF0D8274) : const Color(0xFF1E1E1E),
+                      color: isUser ? const GiantPalette.primary : const GiantPalette.surface,
                       borderRadius: BorderRadius.only(
                         topLeft: const Radius.circular(16),
                         topRight: const Radius.circular(16),
@@ -2474,7 +2474,7 @@ class _ChatScreenState extends State<ChatScreen> {
               margin: const EdgeInsets.fromLTRB(16, 6, 16, 10),
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: const Color(0xFF1E1E1E),
+                color: const GiantPalette.surface,
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: GiantPalette.primaryLight.withOpacity(.12)),
               ),
@@ -2494,9 +2494,9 @@ class _ChatScreenState extends State<ChatScreen> {
               constraints: const BoxConstraints(minHeight: 96, maxHeight: 136),
               padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
               decoration: BoxDecoration(
-                color: const Color(0xFF222226),
+                color: const GiantPalette.elevated,
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: const Color(0xFF303036), width: 0.7),
+                border: Border.all(color: const GiantPalette.border, width: 0.7),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2512,7 +2512,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             decoration: BoxDecoration(
                               color: _isLoading
                                   ? GiantPalette.primary
-                                  : const Color(0xFFF59E0B),
+                                  : const GiantPalette.warning,
                               shape: BoxShape.circle,
                             ),
                           ),
@@ -2604,14 +2604,14 @@ class _ChatScreenState extends State<ChatScreen> {
                       _composerIconButton(
                         icon: Icons.key_rounded,
                         tooltip: _openRouterEnabled ? 'إعدادات OpenRouter — متصل' : 'إدخال مفتاح OpenRouter',
-                        foreground: _openRouterEnabled ? const Color(0xFF4ADE80) : GiantPalette.muted,
+                        foreground: _openRouterEnabled ? const GiantPalette.success : GiantPalette.muted,
                         onPressed: _openOpenRouterDialog,
                       ),
                       const SizedBox(width: 6),
                       _composerIconButton(
                         icon: Icons.code_rounded,
                         tooltip: _includeGithubContext ? 'مستودع GitHub متصل — إدارة الاتصال' : 'ربط مستودع GitHub',
-                        foreground: _includeGithubContext ? const Color(0xFF4ADE80) : GiantPalette.muted,
+                        foreground: _includeGithubContext ? const GiantPalette.success : GiantPalette.muted,
                         onPressed: _toggleGitHubContext,
                       ),
                       const SizedBox(width: 6),
