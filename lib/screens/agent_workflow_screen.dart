@@ -23,7 +23,7 @@ class AgentWorkflowScreen extends StatelessWidget {
       case 'running':
         return GiantPalette.primaryLight;
       case 'pending':
-        return const Color(0xFF64748B);
+        return const GiantPalette.muted;
       case 'failed':
       case 'error':
         return const Color(0xFFF87171);
@@ -169,7 +169,7 @@ class AgentWorkflowScreen extends StatelessWidget {
                           const AgentPulseDot(size: 8),
                           const SizedBox(width: 7),
                         ] else if (status.toLowerCase() == 'pending') ...[
-                          const Icon(Icons.schedule_rounded, color: Color(0xFF64748B), size: 13),
+                          const Icon(Icons.schedule_rounded, color: GiantPalette.muted, size: 13),
                           const SizedBox(width: 7),
                         ],
                         Text(_statusLabel(status),
@@ -240,7 +240,7 @@ class AgentWorkflowScreen extends StatelessWidget {
           _metric('إجمالي الأحداث', rows.length.toString(), Colors.white70),
           _metric('مكتمل', completed.toString(), GiantPalette.success),
           _metric('قيد التنفيذ', active.toString(), GiantPalette.primaryLight),
-          _metric('بانتظار التنفيذ', pending.toString(), const Color(0xFF64748B)),
+          _metric('بانتظار التنفيذ', pending.toString(), const GiantPalette.muted),
           _metric('أخطاء', failed.toString(), const Color(0xFFF87171)),
         ]),
       ]),
