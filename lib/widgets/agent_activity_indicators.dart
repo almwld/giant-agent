@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 /// Shared, low-cost activity indicators for the agent UI.
@@ -49,9 +50,9 @@ class _AgentPulseDotState extends State<AgentPulseDot>
       );
 }
 
-/// Three blue dots pulse in sequence while the model is thinking.
+/// Four cyan dots orbit one another in a rotating diamond while the agent thinks.
 class AgentThinkingDots extends StatefulWidget {
-  const AgentThinkingDots({super.key, this.dotSize = 6});
+  const AgentThinkingDots({super.key, this.dotSize = 5.5});
   final double dotSize;
 
   @override
@@ -62,7 +63,7 @@ class _AgentThinkingDotsState extends State<AgentThinkingDots>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1050),
+    duration: const Duration(milliseconds: 1250),
   )..repeat();
 
   @override
@@ -73,33 +74,45 @@ class _AgentThinkingDotsState extends State<AgentThinkingDots>
 
   @override
   Widget build(BuildContext context) => SizedBox(
-        width: 34,
-        height: 18,
+        width: 26,
+        height: 26,
         child: AnimatedBuilder(
           animation: _controller,
-          builder: (context, child) => Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: List.generate(3, (index) {
-              final phase = (_controller.value - index * .18) % 1.0;
-              final wave =
-                  (1 - (phase - .32).abs() / .32).clamp(0.0, 1.0).toDouble();
-              return Transform.scale(
-                scale: .65 + wave * .55,
-                child: Container(
-                  width: widget.dotSize,
-                  height: widget.dotSize,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF38BDF8)
-                        .withOpacity(.42 + wave * .58),
-                    shape: BoxShape.circle,
+          builder: (context, child) {
+            final rotation = _controller.value * 2 * math.pi;
+            const orbitRadius = 8.0;
+            return Stack(
+              alignment: Alignment.center,
+              children: List.generate(4, (index) {
+                final angle = rotation + index * math.pi / 2;
+                final emphasis = (1 + math.sin(angle + math.pi / 2)) / 2;
+                return Transform.translate(
+                  offset: Offset(
+                    orbitRadius * math.cos(angle),
+                    orbitRadius * math.sin(angle),
                   ),
-                ),
-              );
-            }),
-          ),
+                  child: Container(
+                    width: widget.dotSize,
+                    height: widget.dotSize,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF38BDF8)
+                          .withOpacity(.58 + emphasis * .42),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF38BDF8)
+                              .withOpacity(.12 + emphasis * .2),
+                          blurRadius: 2 + emphasis * 3,
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }),
+            );
+          },
         ),
       );
-
 }
 
 /// Moving highlight for text that is still being produced.
