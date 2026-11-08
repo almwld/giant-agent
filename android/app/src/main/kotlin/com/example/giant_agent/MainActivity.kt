@@ -322,13 +322,18 @@ class MainActivity: FlutterActivity() {
                             }
                             val answer = llamaBridge.nativeGenerateStreaming(prompt, tokens, temp, tokenCallback)
                             terminalStatus = when {
-                                answer.startsWith("ERROR:") -> "failed"
-                                answer.startsWith("تم إيقاف") || answer.contains("[تم إيقاف التوليد]") -> "interrupted"
+                                answer.startsWith("TIMEOUT:") || answer.startsWith("ERROR:") -> "failed"
+                                answer.startsWith("CANCELLED:") || answer.startsWith("تم إيقاف") || answer.contains("[تم إيقاف التوليد]") -> "interrupted"
                                 else -> "completed"
+                            }
+                            val terminalTitle = when (terminalStatus) {
+                                "completed" -> "اكتمل توليد الإجابة"
+                                "interrupted" -> "تم إيقاف المهمة بواسطة المستخدم"
+                                else -> if (answer.startsWith("TIMEOUT:")) "تم إيقاف النموذج بسبب عدم الاستجابة" else "تعذر إكمال الاستدلال المحلي"
                             }
                             emitAgentEvent(
                                 "${requestId}_inference",
-                                if (terminalStatus == "completed") "اكتمل توليد الإجابة" else if (terminalStatus == "interrupted") "توقف التوليد" else "تعذر إكمال الاستدلال المحلي",
+                                terminalTitle,
                                 terminalStatus,
                                 if (terminalStatus == "failed") answer else null,
                                 requestId
