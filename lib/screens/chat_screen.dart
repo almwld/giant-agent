@@ -10,7 +10,6 @@ import 'agent_workspace_screen.dart';
 import 'package:flutter/services.dart';
 import 'package:xterm/xterm.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:cross_file/cross_file.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'settings_screen.dart';
 import '../models/chat_session.dart';
@@ -95,7 +94,7 @@ class _ChatScreenState extends State<ChatScreen> {
       final type = step['type']?.toString();
       if (type == 'tool_start') {
         _terminal.write('\r\n\x1B[33m>>> Python execution started\x1B[0m\r\n');
-        final code = step['content']?.toString() ?? '';
+        final code = step['content']?.toString() ?? step['command']?.toString() ?? '';
         if (code.isNotEmpty) _terminal.write('\x1B[90m$code\x1B[0m\r\n');
       } else if (type == 'tool_output') {
         final output = step['output']?.toString() ?? '';
@@ -834,6 +833,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final title = step['title']?.toString().toLowerCase() ?? '';
     final toolName = step['tool_name']?.toString().toLowerCase() ?? '';
     return toolName == 'execute_python' ||
+        toolName == 'gain_terminal' ||
         type == 'terminal' ||
         type == 'terminal_run' ||
         type == 'terminal_output' ||
