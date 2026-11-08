@@ -115,6 +115,93 @@ class _AgentThinkingDotsState extends State<AgentThinkingDots>
       );
 }
 
+
+/// Shimmers only the newest streamed segment; previous generated text settles.
+class AgentStreamingText extends StatefulWidget {
+  const AgentStreamingText(
+    this.text, {
+    super.key,
+    required this.shimmerFrom,
+    required this.style,
+    this.maxLines,
+    this.selectable = false,
+  });
+
+  final String text;
+  final int shimmerFrom;
+  final TextStyle style;
+  final int? maxLines;
+  final bool selectable;
+
+  @override
+  State<AgentStreamingText> createState() => _AgentStreamingTextState();
+}
+
+class _AgentStreamingTextState extends State<AgentStreamingText>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1650),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+        builder: (context, constraints) => AnimatedBuilder(
+          animation: _controller,
+          builder: (context, child) {
+            final split = widget.shimmerFrom.clamp(0, widget.text.length);
+            final prefix = widget.text.substring(0, split);
+            final newest = widget.text.substring(split);
+            final position = -1.5 + _controller.value * 3;
+            final shader = LinearGradient(
+              begin: Alignment(position - .45, 0),
+              end: Alignment(position + .45, 0),
+              colors: const [
+                Color(0xFF9CA3AF),
+                Color(0xFFFFFFFF),
+                Color(0xFF38BDF8),
+                Color(0xFF9CA3AF),
+              ],
+              stops: const [0, .42, .58, 1],
+            ).createShader(Rect.fromLTWH(
+              0,
+              0,
+              constraints.maxWidth.isFinite ? constraints.maxWidth : 600,
+              (widget.style.fontSize ?? 14) * 2.2,
+            ));
+            final spans = TextSpan(
+              children: [
+                if (prefix.isNotEmpty)
+                  TextSpan(text: prefix, style: widget.style),
+                if (newest.isNotEmpty)
+                  TextSpan(
+                    text: newest,
+                    style: widget.style.copyWith(
+                      foreground: Paint()..shader = shader,
+                    ),
+                  ),
+              ],
+            );
+            return widget.selectable
+                ? SelectableText.rich(spans, maxLines: widget.maxLines)
+                : Text.rich(
+                    spans,
+                    maxLines: widget.maxLines,
+                    overflow: widget.maxLines == null
+                        ? TextOverflow.visible
+                        : TextOverflow.ellipsis,
+                  );
+          },
+        ),
+      );
+}
+
 /// Moving highlight for text that is still being produced.
 class AgentShimmerText extends StatefulWidget {
   const AgentShimmerText(
