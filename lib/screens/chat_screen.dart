@@ -2480,11 +2480,22 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
               child: Directionality(
                 textDirection: _contentDirection(_streamingResponse),
-                child: AgentStreamingText(
-                  _streamingResponse,
-                  shimmerFrom: _streamingShimmerStart,
-                  selectable: true,
-                  style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.55),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: AgentStreamingText(
+                        _streamingResponse,
+                        shimmerFrom: _streamingShimmerStart,
+                        selectable: true,
+                        style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.55),
+                      ),
+                    ),
+                    const Padding(
+                      padding: EdgeInsetsDirectional.only(start: 8, bottom: 4),
+                      child: AgentThinkingDots(dotSize: 4.5),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -2506,17 +2517,18 @@ class _ChatScreenState extends State<ChatScreen> {
                       padding: const EdgeInsets.only(bottom: 8),
                       child: Row(
                         children: [
-                          Container(
-                            width: 8,
-                            height: 8,
-                            decoration: BoxDecoration(
-                              color: _isLoading
-                                  ? GiantPalette.primary
-                                  : GiantPalette.warning,
-                              shape: BoxShape.circle,
+                          if (_isLoading)
+                            const AgentThinkingDots(dotSize: 4.2)
+                          else
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: const BoxDecoration(
+                                color: GiantPalette.warning,
+                                shape: BoxShape.circle,
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 9),
                           Expanded(
                             child: Text(
                               _isLoading
