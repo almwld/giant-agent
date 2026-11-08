@@ -51,7 +51,7 @@ class _AgentPulseDotState extends State<AgentPulseDot>
       );
 }
 
-/// Four teal dots orbit one another in a rotating diamond while the agent thinks.
+/// Four teal dots continuously trade places through a rotating, breathing orbit.
 class AgentThinkingDots extends StatefulWidget {
   const AgentThinkingDots({super.key, this.dotSize = 5.5});
   final double dotSize;
@@ -64,7 +64,7 @@ class _AgentThinkingDotsState extends State<AgentThinkingDots>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1250),
+    duration: const Duration(milliseconds: 1900),
   )..repeat();
 
   @override
@@ -75,37 +75,48 @@ class _AgentThinkingDotsState extends State<AgentThinkingDots>
 
   @override
   Widget build(BuildContext context) => SizedBox(
-        width: 26,
-        height: 26,
+        width: 28,
+        height: 28,
         child: AnimatedBuilder(
           animation: _controller,
           builder: (context, child) {
-            final rotation = _controller.value * 2 * math.pi;
-            const orbitRadius = 8.0;
+            final phase = _controller.value * 2 * math.pi;
             return Stack(
               alignment: Alignment.center,
               children: List.generate(4, (index) {
-                final angle = rotation + index * math.pi / 2;
-                final emphasis = (1 + math.sin(angle + math.pi / 2)) / 2;
+                final baseAngle = index * math.pi / 2;
+                // Each dot speeds inward and outward at a different moment,
+                // so they exchange places instead of behaving like a rigid
+                // four-point diamond.
+                final angle = phase + baseAngle +
+                    .34 * math.sin(phase * 2 - baseAngle);
+                final radius = 7.2 + 2.1 * math.sin(phase * 2 + baseAngle);
+                final emphasis =
+                    (1 + math.sin(phase * 2 - baseAngle + math.pi / 2)) / 2;
+                final scale = .72 + emphasis * .48;
                 return Transform.translate(
                   offset: Offset(
-                    orbitRadius * math.cos(angle),
-                    orbitRadius * math.sin(angle),
+                    radius * math.cos(angle),
+                    radius * math.sin(angle),
                   ),
-                  child: Container(
-                    width: widget.dotSize,
-                    height: widget.dotSize,
-                    decoration: BoxDecoration(
-                      color: GiantPalette.primaryLight
-                          .withOpacity(.58 + emphasis * .42),
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: GiantPalette.primaryLight
-                              .withOpacity(.12 + emphasis * .2),
-                          blurRadius: 2 + emphasis * 3,
-                        ),
-                      ],
+                  child: Transform.scale(
+                    scale: scale,
+                    child: Container(
+                      width: widget.dotSize,
+                      height: widget.dotSize,
+                      decoration: BoxDecoration(
+                        color: GiantPalette.primaryLight
+                            .withOpacity(.52 + emphasis * .48),
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: GiantPalette.primaryLight
+                                .withOpacity(.10 + emphasis * .24),
+                            blurRadius: 2 + emphasis * 4,
+                            spreadRadius: emphasis * .35,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 );
@@ -115,7 +126,6 @@ class _AgentThinkingDotsState extends State<AgentThinkingDots>
         ),
       );
 }
-
 
 /// Shimmers only the newest streamed segment; previous generated text settles.
 class AgentStreamingText extends StatefulWidget {
