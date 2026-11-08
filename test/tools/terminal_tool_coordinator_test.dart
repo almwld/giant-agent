@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:giant_agent/tools/gain_terminal_tool.dart';
-import 'package:giant_agent/tools/terminal_tool_coordinator.dart';
+import 'package:giant_agent_x/tools/gain_terminal_tool.dart';
+import 'package:giant_agent_x/tools/terminal_tool_coordinator.dart';
 
 void main() {
   group('TerminalToolCoordinator', () {
