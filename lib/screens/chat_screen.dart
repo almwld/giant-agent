@@ -208,7 +208,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _thinkingStage = 'جاري التفكير';
     });
     try {
-      return await AgentService.instance.runTask(prompt, conversationId: _currentSessionId);
+      return await AgentService.instance.runTask(prompt, conversationId: _currentSessionId, requestId: _activeAgentRequestId.isEmpty ? null : _activeAgentRequestId);
     } finally {
       final tail = _flushVisibleAnswerBuffer();
       if (mounted) setState(() {
