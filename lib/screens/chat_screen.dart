@@ -666,7 +666,7 @@ class _ChatScreenState extends State<ChatScreen> {
     // and conversation instead of covering them with a modal overlay.
     Navigator.of(context).push<void>(MaterialPageRoute(
       builder: (terminalContext) => Scaffold(
-        backgroundColor: const GiantPalette.background,
+        backgroundColor: GiantPalette.background,
         body: SafeArea(
           child: Column(
             children: [
@@ -1521,7 +1521,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           final active = session.id == _currentSessionId;
                           return ListTile(
                             leading: CircleAvatar(
-                              backgroundColor: active ? const GiantPalette.primary : const GiantPalette.border,
+                              backgroundColor: active ? GiantPalette.primary : GiantPalette.border,
                               child: Icon(active ? Icons.chat : Icons.chat_bubble_outline, color: Colors.white, size: 18),
                             ),
                             title: Text(session.title, maxLines: 1, overflow: TextOverflow.ellipsis,
@@ -1721,7 +1721,7 @@ class _ChatScreenState extends State<ChatScreen> {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const GiantPalette.background,
+      backgroundColor: GiantPalette.background,
       builder: (context) => DraggableScrollableSheet(
         expand: false,
         initialChildSize: .72,
@@ -1828,7 +1828,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       final icon = _agentStepIcon(type);
                       final color = failed
                           ? const Color(0xFFEF6A6A)
-                          : (running ? const GiantPalette.primary : mutedColor);
+                          : (running ? GiantPalette.primary : mutedColor);
                       final title = step['title']?.toString() ?? 'حدث من الوكيل';
                       final subtitle = step['subtitle']?.toString();
                       final opensTerminal = _opensTerminalFromStep(step);
@@ -1867,7 +1867,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                   borderRadius: BorderRadius.circular(5),
                                 ),
                                 alignment: Alignment.center,
-                                child: Icon(icon, size: 13, color: isTool ? const GiantPalette.primary : mutedColor),
+                                child: Icon(icon, size: 13, color: isTool ? GiantPalette.primary : mutedColor),
                               ),
                               const SizedBox(width: 10),
                               Expanded(
@@ -2285,7 +2285,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           return Container(
                             margin: const EdgeInsets.only(bottom: 4),
                             decoration: BoxDecoration(
-                              color: selected ? const GiantPalette.primary.withOpacity(.18) : Colors.transparent,
+                              color: selected ? GiantPalette.primary.withOpacity(.18) : Colors.transparent,
                               borderRadius: BorderRadius.circular(12),
                               border: selected ? Border.all(color: GiantPalette.primaryLight.withOpacity(0.25)) : null,
                             ),
@@ -2364,7 +2364,7 @@ class _ChatScreenState extends State<ChatScreen> {
         decoration: BoxDecoration(
           color: const Color(0xFF18181B),
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: const GiantPalette.border, width: 0.7),
+          border: Border.all(color: GiantPalette.border, width: 0.7),
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(24),
@@ -2397,7 +2397,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       maxWidth: MediaQuery.of(context).size.width * 0.8,
                     ),
                     decoration: BoxDecoration(
-                      color: isUser ? const GiantPalette.primary : const GiantPalette.surface,
+                      color: isUser ? GiantPalette.primary : GiantPalette.surface,
                       borderRadius: BorderRadius.only(
                         topLeft: const Radius.circular(16),
                         topRight: const Radius.circular(16),
@@ -2474,7 +2474,7 @@ class _ChatScreenState extends State<ChatScreen> {
               margin: const EdgeInsets.fromLTRB(16, 6, 16, 10),
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: const GiantPalette.surface,
+                color: GiantPalette.surface,
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: GiantPalette.primaryLight.withOpacity(.12)),
               ),
@@ -2494,9 +2494,9 @@ class _ChatScreenState extends State<ChatScreen> {
               constraints: const BoxConstraints(minHeight: 96, maxHeight: 136),
               padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
               decoration: BoxDecoration(
-                color: const GiantPalette.elevated,
+                color: GiantPalette.elevated,
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: const GiantPalette.border, width: 0.7),
+                border: Border.all(color: GiantPalette.border, width: 0.7),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2512,7 +2512,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             decoration: BoxDecoration(
                               color: _isLoading
                                   ? GiantPalette.primary
-                                  : const GiantPalette.warning,
+                                  : GiantPalette.warning,
                               shape: BoxShape.circle,
                             ),
                           ),
@@ -2604,14 +2604,14 @@ class _ChatScreenState extends State<ChatScreen> {
                       _composerIconButton(
                         icon: Icons.key_rounded,
                         tooltip: _openRouterEnabled ? 'إعدادات OpenRouter — متصل' : 'إدخال مفتاح OpenRouter',
-                        foreground: _openRouterEnabled ? const GiantPalette.success : GiantPalette.muted,
+                        foreground: _openRouterEnabled ? GiantPalette.success : GiantPalette.muted,
                         onPressed: _openOpenRouterDialog,
                       ),
                       const SizedBox(width: 6),
                       _composerIconButton(
                         icon: Icons.code_rounded,
                         tooltip: _includeGithubContext ? 'مستودع GitHub متصل — إدارة الاتصال' : 'ربط مستودع GitHub',
-                        foreground: _includeGithubContext ? const GiantPalette.success : GiantPalette.muted,
+                        foreground: _includeGithubContext ? GiantPalette.success : GiantPalette.muted,
                         onPressed: _toggleGitHubContext,
                       ),
                       const SizedBox(width: 6),
