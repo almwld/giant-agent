@@ -198,7 +198,6 @@ class AgentWorkflowScreen extends StatelessWidget {
                         event['session_id'] != null ||
                         event['timestamp'] != null)
                       ExpansionTile(
-                        dense: true,
                         title: const Text(
                           'تفاصيل متقدمة',
                           style: TextStyle(color: Colors.white54, fontSize: 11),
