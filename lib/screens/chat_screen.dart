@@ -919,7 +919,7 @@ class _ChatScreenState extends State<ChatScreen> {
       final tracked = await TaskManager().createTask(prompt, conversationId: _currentSessionId);
       return _runTrackedTask(enrichedPrompt, taskId: tracked['id'].toString());
     }
-    return _modelService.processInput(enrichedPrompt, conversationId: _currentSessionId);
+    return _modelService.processChat(enrichedPrompt, conversationId: _currentSessionId);
   }
 
   Future<void> _setAgentMode(bool enabled) async {
