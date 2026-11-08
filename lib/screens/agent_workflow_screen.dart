@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../widgets/agent_activity_indicators.dart';
+import '../theme/giant_palette.dart';
 
 /// Execution history view backed by the same event list used by the chat
 /// timeline. Events are published by ChatScreen as the native agent streams.
@@ -20,7 +21,7 @@ class AgentWorkflowScreen extends StatelessWidget {
   Color _statusColor(String status) {
     switch (status.toLowerCase()) {
       case 'running':
-        return const Color(0xFF38BDF8);
+        return GiantPalette.primaryLight;
       case 'pending':
         return const Color(0xFF64748B);
       case 'failed':
@@ -30,7 +31,7 @@ class AgentWorkflowScreen extends StatelessWidget {
       case 'cancelled':
         return const Color(0xFFFBBF24);
       default:
-        return const Color(0xFF34D399);
+        return GiantPalette.success;
     }
   }
 
@@ -83,9 +84,9 @@ class AgentWorkflowScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF101820),
+      backgroundColor: GiantPalette.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF17212B),
+        backgroundColor: GiantPalette.surface,
         foregroundColor: Colors.white,
         title: const Text('مساحة عمل الجلسة'),
       ),
@@ -126,7 +127,7 @@ class AgentWorkflowScreen extends StatelessWidget {
               return Container(
                 margin: const EdgeInsets.only(bottom: 9),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1B2835),
+                  color: GiantPalette.surface,
                   borderRadius: BorderRadius.circular(13),
                   border: Border.all(color: color.withOpacity(.28)),
                 ),
@@ -231,14 +232,14 @@ class AgentWorkflowScreen extends StatelessWidget {
     final pending = rows.where((e) => (e['status'] ?? '').toString().toLowerCase() == 'pending').length;
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: const Color(0xFF1B2835), borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFF38BDF8).withOpacity(.25))),
+      decoration: BoxDecoration(color: GiantPalette.surface, borderRadius: BorderRadius.circular(14), border: Border.all(color: GiantPalette.primaryLight.withOpacity(.25))),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text('ملخص الجلسة', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)),
         const SizedBox(height: 10),
         Wrap(spacing: 16, runSpacing: 8, children: [
           _metric('إجمالي الأحداث', rows.length.toString(), Colors.white70),
-          _metric('مكتمل', completed.toString(), const Color(0xFF34D399)),
-          _metric('قيد التنفيذ', active.toString(), const Color(0xFF38BDF8)),
+          _metric('مكتمل', completed.toString(), GiantPalette.success),
+          _metric('قيد التنفيذ', active.toString(), GiantPalette.primaryLight),
           _metric('بانتظار التنفيذ', pending.toString(), const Color(0xFF64748B)),
           _metric('أخطاء', failed.toString(), const Color(0xFFF87171)),
         ]),
@@ -255,9 +256,9 @@ class AgentWorkflowScreen extends StatelessWidget {
   Widget _finalOutputCard(String output) => Container(
     margin: const EdgeInsets.only(top: 12),
     padding: const EdgeInsets.all(14),
-    decoration: BoxDecoration(color: const Color(0xFF12352F), borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFF34D399).withOpacity(.45))),
+    decoration: BoxDecoration(color: GiantPalette.successSurface, borderRadius: BorderRadius.circular(14), border: Border.all(color: GiantPalette.success.withOpacity(.45))),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Row(children: [Icon(Icons.task_alt, color: Color(0xFF34D399), size: 19), SizedBox(width: 8), Text('المخرج النهائي للجلسة', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700))]),
+      const Row(children: [Icon(Icons.task_alt, color: GiantPalette.success, size: 19), SizedBox(width: 8), Text('المخرج النهائي للجلسة', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700))]),
       const SizedBox(height: 10),
       SelectableText(output, style: const TextStyle(color: Colors.white, height: 1.55, fontSize: 13)),
     ]),
@@ -270,7 +271,7 @@ class AgentWorkflowScreen extends StatelessWidget {
           children: [
             Text(label,
                 style: const TextStyle(
-                    color: Color(0xFF5EEAD4),
+                    color: GiantPalette.primaryLight,
                     fontSize: 11,
                     fontWeight: FontWeight.w600)),
             const SizedBox(height: 5),
@@ -278,7 +279,7 @@ class AgentWorkflowScreen extends StatelessWidget {
               width: double.infinity,
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: const Color(0xFF101820),
+                color: GiantPalette.background,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: SelectableText(value,
