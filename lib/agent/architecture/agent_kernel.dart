@@ -1,12 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:collection';
 
 import '../../services/agent_memory_service.dart';
 import '../../services/model_service.dart';
 import '../../services/openrouter_service.dart';
 import '../../services/planner_service.dart';
 import 'agent_timeline_event.dart';
+import 'fifo_task_queue.dart';
 
 /// Lifecycle states exposed by the agent orchestration layer.
 enum AgentKernelState {
@@ -43,12 +43,6 @@ class AgentResponse {
   final DateTime completedAt;
 }
 
-class _QueuedAgentRequest {
-  _QueuedAgentRequest(this.request);
-  final AgentRequest request;
-  final Completer<AgentResponse> completer = Completer<AgentResponse>();
-}
-
 /// Central orchestration boundary for the local-first agent.
 ///
 /// The kernel owns request admission, runtime readiness, lifecycle events and
@@ -69,16 +63,15 @@ class AgentKernel {
   Future<void>? _initialization;
   int _eventSequence = 0;
   bool _cancellationRequested = false;
-  final Queue<_QueuedAgentRequest> _requestQueue = Queue<_QueuedAgentRequest>();
-  bool _drainingQueue = false;
-  int get queuedRequestCount => _requestQueue.length;
+  final FifoTaskQueue _requestQueue = FifoTaskQueue();
+  int get queuedRequestCount => _requestQueue.pendingCount;
 
   AgentKernelState get state => _state;
   String? get activeRequestId => _activeRequestId;
   Stream<AgentTimelineEvent> get events => _events.stream;
 
   bool get isExecuting =>
-      _activeRequestId != null || _drainingQueue || _requestQueue.isNotEmpty ||
+      _activeRequestId != null || _requestQueue.isRunning || _requestQueue.pendingCount > 0 ||
       _state == AgentKernelState.executing || _state == AgentKernelState.cancelling;
 
   void _emit({
@@ -150,47 +143,22 @@ class AgentKernel {
     }
   }
 
-  /// FIFO admission: callers receive their own completion Future.
+  /// FIFO admission: each caller receives the result of its own request.
   Future<AgentResponse> execute(AgentRequest request) {
     if (request.prompt.trim().isEmpty) {
       return Future<AgentResponse>.error(ArgumentError.value(
         request.prompt, 'prompt', 'Task must not be empty.',
       ));
     }
-    final queued = _QueuedAgentRequest(request);
-    _requestQueue.addLast(queued);
+    final hadActiveRequest = _activeRequestId != null || _requestQueue.isRunning;
     _emit(
       requestId: request.id,
       type: 'request_queued',
-      title: _activeRequestId == null ? 'تمت إضافة الطلب إلى قائمة التنفيذ' : 'الطلب في قائمة الانتظار',
+      title: hadActiveRequest ? 'الطلب في قائمة الانتظار' : 'تمت إضافة الطلب إلى قائمة التنفيذ',
       status: 'pending',
-      details: 'الموضع في قائمة الانتظار: ' + _requestQueue.length.toString(),
+      details: 'موضع الطلب: ${_requestQueue.pendingCount + 1}.',
     );
-    if (!_drainingQueue) {
-      _drainingQueue = true;
-      unawaited(_drainQueue());
-    }
-    return queued.completer.future;
-  }
-
-  Future<void> _drainQueue() async {
-    try {
-      while (_requestQueue.isNotEmpty) {
-        final queued = _requestQueue.removeFirst();
-        try {
-          final response = await _executeAdmitted(queued.request);
-          if (!queued.completer.isCompleted) queued.completer.complete(response);
-        } catch (error, stackTrace) {
-          if (!queued.completer.isCompleted) queued.completer.completeError(error, stackTrace);
-        }
-      }
-    } finally {
-      _drainingQueue = false;
-      if (_requestQueue.isNotEmpty) {
-        _drainingQueue = true;
-        unawaited(_drainQueue());
-      }
-    }
+    return _requestQueue.enqueue(() => _executeAdmitted(request));
   }
 
   Future<AgentResponse> _executeAdmitted(AgentRequest request) async {
