@@ -55,6 +55,7 @@ class _ChatScreenState extends State<ChatScreen> {
   static const String _toolCallOpen = '<tool_call>';
   static const String _toolCallClose = '</tool_call>';
   final Terminal _terminal = Terminal(maxLines: 5000);
+  bool _terminalHasActivity = false;
   final SpeechToText _speech = SpeechToText();
   bool _isListening = false;
   bool _webSearchEnabled = false;
@@ -117,6 +118,7 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
     if (step['tool_name'] == 'execute_python') {
+      _terminalHasActivity = true;
       final type = step['type']?.toString();
       if (type == 'tool_start') {
         _terminal.write('\r\n\x1B[33m>>> Python execution started\x1B[0m\r\n');
@@ -587,6 +589,10 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _showTerminal({Map<String, dynamic>? step}) {
+    if (step == null && !_terminalHasActivity) {
+      _terminal.write('\x1B[2J\x1B[H');
+      _terminal.write('\x1B[32mroot@giant-agent\x1B[0m:\x1B[34m~\x1B[0m# Waiting for commands...\r\n');
+    }
     if (step != null) {
       _terminal.write('\x1B[2J\x1B[H');
       final title = step['title']?.toString() ?? 'Agent execution';
@@ -623,7 +629,14 @@ class _ChatScreenState extends State<ChatScreen> {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                 )),
-                IconButton(onPressed: () => _terminal.write('\x1B[2J\x1B[H'), icon: const Icon(Icons.delete_sweep, color: Colors.white70)),
+                IconButton(
+                  onPressed: () {
+                    _terminal.write('\x1B[2J\x1B[H');
+                    _terminalHasActivity = false;
+                    _terminal.write('\x1B[32mroot@giant-agent\x1B[0m:\x1B[34m~\x1B[0m# Waiting for commands...\r\n');
+                  },
+                  icon: const Icon(Icons.delete_sweep, color: Colors.white70),
+                ),
                 IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close, color: Colors.white70)),
               ]),
             ),
@@ -680,8 +693,8 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(stopped
-            ? 'تم إرسال طلب إيقاف التوليد.'
-            : 'تم تسجيل طلب الإيقاف؛ ستتوقف دورة الوكيل بعد الأداة الحالية.')),
+            ? 'تم إرسال طلب الإيقاف؛ ستُسجّل المهمة بأنها أوقفت بواسطة المستخدم.'
+            : 'سيتوقف الوكيل بعد الأداة الحالية، وستُسجّل المهمة بأنها أوقفت بواسطة المستخدم.')),
       );
     } catch (e) {
       if (!mounted) return;
