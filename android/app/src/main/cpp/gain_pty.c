@@ -442,12 +442,11 @@ Java_com_example_giant_1agent_GainPtyBridge_nativeStartPty(JNIEnv *env, jobject 
         }
     }
 
+    // Root shells are intentionally not exposed by Gain. Zion's original
+    // bridge required a separate explicit RootAccessManager approval flow;
+    // that UI/authorization contract is not part of this port.
+    if (strncmp(configured_shell, "root:", 5) == 0) return 0;
     int root_mode = 0;
-    if (strncmp(configured_shell, "root:", 5) == 0) {
-        root_mode = 1;
-        memmove(configured_shell, configured_shell + 5,
-                strlen(configured_shell + 5) + 1);
-    }
 
     if (root_mode && (!is_allowed_shell(configured_shell) ||
         strncmp(configured_shell, "kali:", 5) == 0 ||
