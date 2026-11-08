@@ -46,6 +46,7 @@ class _ChatScreenState extends State<ChatScreen> {
   static const MethodChannel _fileReceiver = MethodChannel('file_receiver');
   StreamSubscription<dynamic>? _agentEventSubscription;
   StreamSubscription<dynamic>? _kernelEventSubscription;
+  StreamSubscription<Map<String, dynamic>>? _toolEventSubscription;
   final List<Map<String, dynamic>> _agentSteps = [];
   String _activeAgentRequestId = '';
   final Set<String> _collapsedTimelineIds = <String>{};
@@ -115,6 +116,14 @@ class _ChatScreenState extends State<ChatScreen> {
   void _handleAgentEvent(dynamic event) {
     if (!mounted || event is! Map) return;
     final step = Map<String, dynamic>.from(event);
+    final incomingTitle = step['title']?.toString() ?? '';
+    if (step['type'] == 'agent_status' &&
+        (incomingTitle.contains('استدلال النموذج المحلي') ||
+         incomingTitle.contains('توليد الإجابة') ||
+         incomingTitle.contains('الاستدلال المحلي'))) {
+      if (mounted && _isLoading) setState(() => _thinkingStage = 'جاري التفكير');
+      return;
+    }
     if (step['type'] == 'shared_file') {
       final path = step['path']?.toString();
       if (path != null && path.isNotEmpty) _processSharedFilePath(path);
@@ -184,7 +193,7 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {
       final index = _agentSteps.indexWhere((item) => item['id'] == id);
       if (index >= 0) { _agentSteps[index] = step; } else { _agentSteps.add(step); }
-      _thinkingStage = step['title']?.toString() ?? '';
+      _thinkingStage = step['type'] == 'stream_token' ? 'جاري كتابة الإجابة' : (step['title']?.toString() ?? '');
     });
     AgentWorkflowScreen.publish(_agentSteps, finalOutputText: _latestAssistantOutput);
     _scrollToBottom();
@@ -196,7 +205,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (mounted) setState(() {
       _streamingResponse = '';
       _streamingShimmerStart = 0;
-      _thinkingStage = 'بانتظار أحداث المحرك المحلي...';
+      _thinkingStage = 'جاري التفكير';
     });
     try {
       return await AgentService.instance.runTask(prompt, conversationId: _currentSessionId);
@@ -292,6 +301,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     _initDatabase();
+    _toolEventSubscription = _modelService.toolEvents.listen(_handleAgentEvent);
     _kernelEventSubscription = AgentService.instance.events.listen(
       (event) => _handleAgentEvent(event.toMap()),
       onError: (Object error) {
@@ -1660,6 +1670,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _agentEventSubscription?.cancel();
     _kernelEventSubscription?.cancel();
+    _toolEventSubscription?.cancel();
     _speech.stop();
     _controller.dispose();
     _scrollController.dispose();
@@ -1761,12 +1772,8 @@ class _ChatScreenState extends State<ChatScreen> {
     const cardColor = GiantPalette.surface;
     const mutedColor = Color(0xFF9CA3AF);
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-      decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(.045)),
-      ),
+      margin: const EdgeInsets.fromLTRB(8, 3, 8, 6),
+      decoration: const BoxDecoration(),
       child: Column(
         children: [
           InkWell(
@@ -1775,7 +1782,7 @@ class _ChatScreenState extends State<ChatScreen> {
               if (expanded) { _collapsedTimelineIds.add(requestId); } else { _collapsedTimelineIds.remove(requestId); }
             }),
             child: Padding(
-              padding: const EdgeInsetsDirectional.fromSTEB(14, 13, 12, 13),
+              padding: const EdgeInsetsDirectional.fromSTEB(4, 5, 4, 5),
               child: Row(
                 children: [
                   const Icon(Icons.account_tree_outlined, color: mutedColor, size: 18),
@@ -1784,11 +1791,11 @@ class _ChatScreenState extends State<ChatScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('سجل تنفيذ الوكيل',
-                          style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                        const Text('أحداث التنفيذ',
+                          style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600)),
                         const SizedBox(height: 3),
-                        Text('${steps.length} أحداث من المحرك',
-                          style: const TextStyle(color: mutedColor, fontSize: 10)),
+                        Text('${steps.length} أحداث',
+                          style: const TextStyle(color: mutedColor, fontSize: 9)),
                       ],
                     ),
                   ),
@@ -1856,7 +1863,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       return InkWell(
                         onTap: hasPreview ? () => _showAgentStep(step) : null,
                         child: Padding(
-                          padding: const EdgeInsetsDirectional.fromSTEB(12, 7, 12, 7),
+                          padding: const EdgeInsetsDirectional.fromSTEB(4, 3, 4, 3),
                           child: Row(
                             children: [
                               Container(
@@ -1886,7 +1893,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
                                           color: failed ? const Color(0xFFFF9292) : Colors.white,
-                                          fontSize: 12,
+                                          fontSize: 10.5,
                                           fontWeight: FontWeight.w500,
                                         )),
                                     if (subtitle != null && subtitle.isNotEmpty && !subtitle.contains('الجلسة #'))
@@ -1903,7 +1910,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                             : running
                                                 ? GiantPalette.primaryLight
                                                 : mutedColor,
-                                        fontSize: 9,
+                                        fontSize: 8,
                                       )),
                                   ],
                                 ),
@@ -2428,6 +2435,55 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                   ),
                     ),
+                    if (isUser && _isLoading && requestId == _activeAgentRequestId &&
+                        _streamingResponse.isEmpty)
+                      Padding(
+                        padding: const EdgeInsetsDirectional.only(end: 8, bottom: 5),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const AgentThinkingDots(dotSize: 3.8),
+                            const SizedBox(width: 5),
+                            const Text('جاري التفكير',
+                              style: TextStyle(color: GiantPalette.muted, fontSize: 10)),
+                          ],
+                        ),
+                      ),
+                    if (isUser && _isLoading && requestId == _activeAgentRequestId &&
+                        _streamingResponse.isNotEmpty)
+                      Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: Container(
+                          constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * .82),
+                          margin: const EdgeInsetsDirectional.only(start: 2, bottom: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: GiantPalette.surface,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(mainAxisSize: MainAxisSize.min, children: [
+                                const AgentThinkingDots(dotSize: 3.5),
+                                const SizedBox(width: 6),
+                                const Text('جاري الكتابة',
+                                  style: TextStyle(color: GiantPalette.muted, fontSize: 9)),
+                              ]),
+                              const SizedBox(height: 5),
+                              Directionality(
+                                textDirection: _contentDirection(_streamingResponse),
+                                child: AgentStreamingText(
+                                  _streamingResponse,
+                                  shimmerFrom: _streamingShimmerStart,
+                                  selectable: true,
+                                  style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.5),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     Padding(
                       padding: const EdgeInsetsDirectional.only(start: 8, end: 8, bottom: 10),
                       child: Row(
@@ -2466,35 +2522,6 @@ class _ChatScreenState extends State<ChatScreen> {
               },
             ),
           ),
-          // The composer owns the single live status indicator. This area is
-          // reserved for actual streamed answer text, never a second spinner/status.
-          if (_isLoading && _streamingResponse.isNotEmpty)
-            Container(
-              width: double.infinity,
-              margin: const EdgeInsets.fromLTRB(16, 6, 16, 10),
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: GiantPalette.surface,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: GiantPalette.primaryLight.withOpacity(.12)),
-              ),
-              child: Directionality(
-                textDirection: _contentDirection(_streamingResponse),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Expanded(
-                      child: AgentStreamingText(
-                        _streamingResponse,
-                        shimmerFrom: _streamingShimmerStart,
-                        selectable: true,
-                        style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.55),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
             child: Container(
@@ -2508,39 +2535,6 @@ class _ChatScreenState extends State<ChatScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (_isLoading || !_modelService.hasActiveModel())
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Row(
-                        children: [
-                          if (_isLoading)
-                            const AgentThinkingDots(dotSize: 4.2)
-                          else
-                            Container(
-                              width: 8,
-                              height: 8,
-                              decoration: const BoxDecoration(
-                                color: GiantPalette.warning,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                          const SizedBox(width: 9),
-                          Expanded(
-                            child: Text(
-                              _isLoading
-                                  ? (_thinkingStage.isEmpty ? 'يعمل الوكيل...' : _thinkingStage)
-                                  : (_openRouterEnabled ? 'OpenRouter متصل وجاهز للاستدلال' : 'لا يوجد نموذج نشط — استورد نموذج GGUF من القائمة'),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: GiantPalette.muted,
-                                fontSize: 11,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
                   Expanded(
                     child: TextField(
                       controller: _controller,
