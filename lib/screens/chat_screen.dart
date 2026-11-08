@@ -2491,10 +2491,6 @@ class _ChatScreenState extends State<ChatScreen> {
                         style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.55),
                       ),
                     ),
-                    const Padding(
-                      padding: EdgeInsetsDirectional.only(start: 8, bottom: 4),
-                      child: AgentThinkingDots(dotSize: 4.5),
-                    ),
                   ],
                 ),
               ),
