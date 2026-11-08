@@ -741,7 +741,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _cancelAgent() async {
     try {
-      final stopped = await AgentService.instance.cancel();
+      final stopped = _agentModeEnabled
+          ? await AgentService.instance.cancel()
+          : await _modelService.cancelGeneration();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(stopped
