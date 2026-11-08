@@ -42,7 +42,6 @@ class _ChatScreenState extends State<ChatScreen> {
   
   bool _isLoading = false;
   int _pendingChatRequests = 0;
-  String _thinkingStage = '';
   static const EventChannel _agentEvents = EventChannel('giant_agent_stream');
   static const MethodChannel _fileReceiver = MethodChannel('file_receiver');
   StreamSubscription<dynamic>? _agentEventSubscription;
@@ -122,7 +121,6 @@ class _ChatScreenState extends State<ChatScreen> {
         (incomingTitle.contains('استدلال النموذج المحلي') ||
          incomingTitle.contains('توليد الإجابة') ||
          incomingTitle.contains('الاستدلال المحلي'))) {
-      if (mounted && _isLoading) setState(() => _thinkingStage = 'جاري التفكير');
       return;
     }
     if (step['type'] == 'shared_file') {
@@ -170,7 +168,6 @@ class _ChatScreenState extends State<ChatScreen> {
       _insideToolCall = false;
       _streamingResponse = '';
       _streamingShimmerStart = 0;
-      _thinkingStage = 'جاري التفكير';
     } else if (const {
       'response_generated',
       'execution_failed',
@@ -211,7 +208,6 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {
       final index = _agentSteps.indexWhere((item) => item['id'] == id);
       if (index >= 0) { _agentSteps[index] = step; } else { _agentSteps.add(step); }
-      _thinkingStage = step['type'] == 'stream_token' ? 'جاري كتابة الإجابة' : (step['title']?.toString() ?? '');
     });
     AgentWorkflowScreen.publish(_agentSteps, finalOutputText: _latestAssistantOutput);
     _scrollToBottom();
@@ -234,7 +230,6 @@ class _ChatScreenState extends State<ChatScreen> {
             _streamingShimmerStart = _streamingResponse.length;
             _streamingResponse += tail;
           }
-          _thinkingStage = '';
           if (_activeAgentRequestId == requestId) _activeAgentRequestId = '';
         });
       }
@@ -1060,7 +1055,6 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<String> _executeChatPrompt(String prompt, {String? requestId}) async {
     var enrichedPrompt = _contextualPrompt(prompt);
     if (_webSearchEnabled) {
-      if (mounted) setState(() => _thinkingStage = 'يبحث على الويب عن مصادر حديثة...');
       try {
         final results = await WebSearchService.instance.search(prompt, limit: 5);
         enrichedPrompt += '\n\nنتائج البحث المباشر على الويب (استخدم المصادر التي تدعم الإجابة وأدرج روابطها):\n'
@@ -1071,7 +1065,6 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     }
     if (_includeGithubContext) {
-      if (mounted) setState(() => _thinkingStage = 'يقرأ سياق مستودع GitHub...');
       try {
         enrichedPrompt += '\n\n' + await GitHubRepositoryService.instance.buildContext();
       } catch (error) {
@@ -1132,7 +1125,6 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         _messages.add({'isUser': false, 'content': response, 'time': DateTime.now()});
         _isLoading = false;
-        _thinkingStage = '';
       });
       await _saveMessage(response, false);
       _scrollToBottom();
@@ -1142,7 +1134,6 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         _messages.add({'isUser': false, 'content': response, 'time': DateTime.now()});
         _isLoading = false;
-        _thinkingStage = '';
       });
       await _saveMessage(response, false);
     }
@@ -1910,7 +1901,6 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _buildAgentTimeline(List<Map<String, dynamic>> steps, String requestId) {
     if (steps.isEmpty) return const SizedBox.shrink();
     final expanded = !_collapsedTimelineIds.contains(requestId);
-    const cardColor = GiantPalette.surface;
     const mutedColor = Color(0xFF9CA3AF);
     return Container(
       margin: const EdgeInsets.fromLTRB(8, 3, 8, 6),
