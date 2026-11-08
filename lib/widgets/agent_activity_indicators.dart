@@ -155,7 +155,7 @@ class _AgentStreamingTextState extends State<AgentStreamingText>
         builder: (context, constraints) => AnimatedBuilder(
           animation: _controller,
           builder: (context, child) {
-            final split = widget.shimmerFrom.clamp(0, widget.text.length);
+            final split = widget.shimmerFrom.clamp(0, widget.text.length).toInt();
             final prefix = widget.text.substring(0, split);
             final newest = widget.text.substring(split);
             final position = -1.5 + _controller.value * 3;
