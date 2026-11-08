@@ -2175,6 +2175,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       ],
                     ),
                   ),
+                    ),
                     if (messageEvents.isNotEmpty)
                       Align(
                         alignment: isUser ? AlignmentDirectional.centerEnd : AlignmentDirectional.centerStart,
