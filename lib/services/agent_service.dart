@@ -22,13 +22,8 @@ class AgentService {
       prompt: prompt,
       conversationId: conversationId,
     );
-    _models.beginAgentRequest(request.id);
-    try {
-      final response = await _kernel.execute(request);
-      return response.output;
-    } finally {
-      _models.endAgentRequest(request.id);
-    }
+    final response = await _kernel.execute(request);
+    return response.output;
   }
 
   Future<bool> cancel() => _kernel.cancel();
