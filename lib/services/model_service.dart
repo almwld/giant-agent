@@ -168,6 +168,8 @@ class ModelService {
 <tool_call>{"name":"write_file","arguments":{"path":"index.html","content":"<!doctype html>..."}}</tool_call>
 أو:
 <tool_call>{"name":"execute_python","arguments":{"code":"for i in range(1, 11):\n    print(i)"}}</tool_call>
+أو:
+<tool_call>{"name":"gain_terminal","arguments":{"command":"pwd && ls","timeout_seconds":30}}</tool_call>
 لا تدّع نجاح أي عملية قبل استلام نتيجتها. لا تطلب أدوات إذا لم تكن لازمة.
 لا تعرض التفكير الداخلي التفصيلي.
 

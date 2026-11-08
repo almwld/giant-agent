@@ -31,7 +31,7 @@ class TerminalToolCoordinator {
     if (normalized.isEmpty || normalized.length > 2000 || normalized.contains('\u0000')) {
       throw ArgumentError.value(command, 'command', 'Command must be 1..2000 characters and contain no NUL byte.');
     }
-    final timeout = Duration(seconds: timeoutSeconds.clamp(1, 900));
+    final timeout = Duration(seconds: timeoutSeconds.clamp(1, 900).toInt());
     _emit('approval_requested', 'موافقة مطلوبة لتنفيذ أمر طرفية', 'running', command: normalized);
     final approved = await _requestApproval(normalized);
     if (!approved) {
