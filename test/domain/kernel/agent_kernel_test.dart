@@ -102,6 +102,52 @@ void main() {
     }
   });
 
+  test('restores queued requests from SQLite after a process restart', () async {
+    final directory = await _tempDirectory();
+    final path = '${directory.path}/kernel.db';
+    final firstProcessStore = await _store(path);
+    await firstProcessStore.enqueue(
+      id: 'persisted-one',
+      prompt: 'first',
+      conversationId: 'restart-test',
+    );
+    await firstProcessStore.enqueue(
+      id: 'persisted-two',
+      prompt: 'second',
+      conversationId: 'restart-test',
+    );
+    await firstProcessStore.close();
+
+    final executionOrder = <String>[];
+    final allRestored = Completer<void>();
+    final restartedKernel = AgentKernel(
+      store: await _store(path),
+      executor: (request) async {
+        executionOrder.add(request.id);
+        if (executionOrder.length == 2 && !allRestored.isCompleted) {
+          allRestored.complete();
+        }
+        return 'restored-${request.id}';
+      },
+    );
+
+    try {
+      await restartedKernel.initialize();
+      await allRestored.future.timeout(const Duration(seconds: 5));
+      expect(executionOrder, ['persisted-one', 'persisted-two']);
+      expect((await restartedKernel.request('persisted-one'))?.status, 'completed');
+      expect((await restartedKernel.request('persisted-two'))?.status, 'completed');
+      expect(
+        (await restartedKernel.eventsFor('persisted-two'))
+            .map((event) => event.type),
+        ['request_queued', 'request_started', 'request_completed'],
+      );
+    } finally {
+      await restartedKernel.dispose();
+      await directory.delete(recursive: true);
+    }
+  });
+
   test('marks an interrupted running request for reconciliation and never replays it', () async {
     final directory = await _tempDirectory();
     final path = '${directory.path}/kernel.db';
