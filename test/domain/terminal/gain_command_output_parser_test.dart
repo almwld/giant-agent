@@ -6,7 +6,7 @@ void main() {
   test('parses a completion marker split across stream chunks', () {
     final parser = GainCommandOutputParser(marker: marker);
     parser.add('command output\r\n__GAIN');
-    parser.add('DONE_nonce_');
+    parser.add('_DONE_nonce_');
     parser.add('127__prompt> ');
     expect(parser.exitCode, 127);
     expect(parser.isComplete, isTrue);
