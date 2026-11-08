@@ -268,6 +268,7 @@ class TaskManager {
       return TaskExecutionOutcome.interrupted;
     }
     if (output.isEmpty ||
+        output.startsWith('استغرق النموذج وقتاً طويلاً دون إصدار رموز جديدة') ||
         output.startsWith('ERROR:') ||
         output.startsWith('تعذر تشغيل النموذج المحلي:') ||
         output.startsWith('تعذر تحليل استدعاء الأداة أو تنفيذه:') ||
