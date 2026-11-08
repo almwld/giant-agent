@@ -62,6 +62,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _webSearchEnabled = false;
   bool _includeGithubContext = false;
   bool _openRouterEnabled = false;
+  bool _agentModeEnabled = true;
 
   // Keep tool-call JSON out of the user-facing answer stream. The actual
   // invocation and result are represented by structured native tool events.
@@ -360,6 +361,8 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       },
     );
+    final modePrefs = await SharedPreferences.getInstance();
+    _agentModeEnabled = modePrefs.getBool('giant_agent_mode_enabled') ?? true;
     await _ensureCurrentSession();
     await _loadSessions();
     await _loadHistory();
@@ -443,6 +446,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final events = await _db?.query('agent_events', where: 'session_id = ?', whereArgs: [_currentSessionId], orderBy: 'timestamp ASC');
     if (!mounted) return;
     final restoredMessages = (messages ?? []).map((msg) => {
+      'dbId': msg['id'],
       'isUser': msg['isUser'] == 1,
       'content': msg['content'] as String,
       'time': DateTime.fromMillisecondsSinceEpoch(msg['timestamp'] as int),
@@ -561,13 +565,22 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _saveMessage(String content, bool isUser, {String? requestId}) async {
     if (!_sessionReady || _currentSessionId.isEmpty) return;
     final now = DateTime.now().millisecondsSinceEpoch;
-    await _db?.insert('messages', {
+    final insertedId = await _db?.insert('messages', {
       'session_id': _currentSessionId,
       'content': content,
       'isUser': isUser ? 1 : 0,
       'timestamp': now,
       'request_id': requestId,
     });
+    if (insertedId != null) {
+      for (final message in _messages.reversed) {
+        if (message['dbId'] == null && message['isUser'] == isUser &&
+            message['content']?.toString() == content) {
+          message['dbId'] = insertedId;
+          break;
+        }
+      }
+    }
     await _db?.update('sessions', {'updated_at': now},
       where: 'id = ?', whereArgs: [_currentSessionId]);
     await _loadSessions();
@@ -880,6 +893,142 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+
+  Future<String> _executeChatPrompt(String prompt) async {
+    var enrichedPrompt = _contextualPrompt(prompt);
+    if (_webSearchEnabled) {
+      if (mounted) setState(() => _thinkingStage = 'يبحث على الويب عن مصادر حديثة...');
+      try {
+        final results = await WebSearchService.instance.search(prompt, limit: 5);
+        enrichedPrompt += '\n\nنتائج البحث المباشر على الويب (استخدم المصادر التي تدعم الإجابة وأدرج روابطها):\n'
+            + WebSearchService.instance.formatForPrompt(results);
+      } catch (error) {
+        enrichedPrompt += '\n\nتعذر إجراء البحث على الويب: ' + error.toString()
+            + '. وضّح أن البحث لم ينجح ولا تخترع نتائج.';
+      }
+    }
+    if (_includeGithubContext) {
+      if (mounted) setState(() => _thinkingStage = 'يقرأ سياق مستودع GitHub...');
+      try {
+        enrichedPrompt += '\n\n' + await GitHubRepositoryService.instance.buildContext();
+      } catch (error) {
+        enrichedPrompt += '\n\nتعذر جلب سياق مستودع GitHub: ' + error.toString();
+      }
+    }
+    if (_agentModeEnabled) {
+      final tracked = await TaskManager().createTask(prompt, conversationId: _currentSessionId);
+      return _runTrackedTask(enrichedPrompt, taskId: tracked['id'].toString());
+    }
+    return _modelService.processInput(enrichedPrompt, conversationId: _currentSessionId);
+  }
+
+  Future<void> _setAgentMode(bool enabled) async {
+    if (_isLoading) return;
+    setState(() => _agentModeEnabled = enabled);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('giant_agent_mode_enabled', enabled);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(enabled
+          ? 'تم تفعيل وضع الوكيل: التخطيط والأدوات وسجل التنفيذ.'
+          : 'تم تفعيل الدردشة العادية: استدلال مباشر دون مسار تنسيق الوكيل.'),
+    ));
+  }
+
+  Future<void> _runExistingUserMessage(int index, {String? editedText}) async {
+    if (_isLoading || index < 0 || index >= _messages.length) return;
+    final user = _messages[index];
+    if (user['isUser'] != true) return;
+    final prompt = (editedText ?? user['content']?.toString() ?? '').trim();
+    if (prompt.isEmpty) return;
+    final previousRequestId = user['requestId']?.toString() ?? '';
+    final oldDbId = user['dbId'];
+    final requestId = DateTime.now().microsecondsSinceEpoch.toString();
+    _activeAgentRequestId = requestId;
+    if (oldDbId is int) {
+      await _db?.delete('messages', where: 'session_id = ? AND id > ?',
+          whereArgs: [_currentSessionId, oldDbId]);
+      await _db?.update('messages', {
+        'content': prompt,
+        'request_id': requestId,
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+      }, where: 'id = ? AND session_id = ?', whereArgs: [oldDbId, _currentSessionId]);
+    }
+    setState(() {
+      user['content'] = prompt;
+      user['requestId'] = requestId;
+      _messages.removeRange(index + 1, _messages.length);
+      _agentSteps.removeWhere((event) => event['request_id']?.toString() == previousRequestId);
+      _streamingResponse = '';
+      _streamingShimmerStart = 0;
+      _isLoading = true;
+    });
+    try {
+      final response = await _executeChatPrompt(prompt);
+      if (!mounted) return;
+      setState(() {
+        _messages.add({'isUser': false, 'content': response, 'time': DateTime.now()});
+        _isLoading = false;
+        _thinkingStage = '';
+      });
+      await _saveMessage(response, false);
+      _scrollToBottom();
+    } catch (error) {
+      if (!mounted) return;
+      final response = 'تعذر إكمال الطلب: $error';
+      setState(() {
+        _messages.add({'isUser': false, 'content': response, 'time': DateTime.now()});
+        _isLoading = false;
+        _thinkingStage = '';
+      });
+      await _saveMessage(response, false);
+    }
+  }
+
+  Future<void> _editUserMessage(int index) async {
+    if (index < 0 || index >= _messages.length || _isLoading) return;
+    final editor = TextEditingController(text: _messages[index]['content']?.toString() ?? '');
+    final edited = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFF202024),
+        title: const Text('تعديل رسالتك', style: TextStyle(color: Colors.white)),
+        content: TextField(
+          controller: editor,
+          autofocus: true,
+          minLines: 2,
+          maxLines: 7,
+          style: const TextStyle(color: Colors.white),
+          decoration: const InputDecoration(hintText: 'عدّل نص الرسالة'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('إلغاء')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, editor.text), child: const Text('حفظ وإعادة الإرسال')),
+        ],
+      ),
+    );
+    editor.dispose();
+    if (edited == null || !mounted) return;
+    await _runExistingUserMessage(index, editedText: edited);
+  }
+
+  Future<void> _regenerateAssistantMessage(int index) async {
+    if (_isLoading || index < 0 || index >= _messages.length || _messages[index]['isUser'] == true) return;
+    var userIndex = index - 1;
+    while (userIndex >= 0 && _messages[userIndex]['isUser'] != true) {
+      userIndex--;
+    }
+    if (userIndex < 0) return;
+    await _runExistingUserMessage(userIndex);
+  }
+
+  Future<void> _copyMessage(String content) async {
+    await Clipboard.setData(ClipboardData(text: content));
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('تم نسخ النص.')),
+    );
+  }
+
   Future<void> _sendMessage() async {
     final text = _controller.text.trim();
     if (text.isEmpty || _isLoading) return;
@@ -926,33 +1075,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
     String response;
     try {
-      final trackedTask = await TaskManager().createTask(
-        text,
-        conversationId: _currentSessionId,
-      );
-      taskId = trackedTask['id'].toString();
-      await taskPrefs.setString('giant_pending_task_id', taskId);
-      var enrichedPrompt = _contextualPrompt(text);
-      if (_webSearchEnabled) {
-        if (mounted) setState(() => _thinkingStage = 'يبحث على الويب عن مصادر حديثة...');
-        try {
-          final results = await WebSearchService.instance.search(text, limit: 5);
-          enrichedPrompt += '\n\nنتائج البحث المباشر على الويب (استخدم المصادر التي تدعم الإجابة وأدرج روابطها):\n'
-              + WebSearchService.instance.formatForPrompt(results);
-        } catch (error) {
-          enrichedPrompt += '\n\nتعذر إجراء البحث على الويب: ' + error.toString()
-              + '. وضّح أن البحث لم ينجح ولا تخترع نتائج.';
-        }
-      }
-      if (_includeGithubContext) {
-        if (mounted) setState(() => _thinkingStage = 'يقرأ سياق مستودع GitHub...');
-        try {
-          enrichedPrompt += '\n\n' + await GitHubRepositoryService.instance.buildContext();
-        } catch (error) {
-          enrichedPrompt += '\n\nتعذر جلب سياق مستودع GitHub: ' + error.toString();
-        }
-      }
-      response = await _runTrackedTask(enrichedPrompt, taskId: taskId);
+      response = await _executeChatPrompt(text);
     } catch (error) {
       response = 'تعذر إكمال الطلب: $error';
       if (taskId != null) await TaskManager().markFailed(taskId, response);
@@ -1824,6 +1947,23 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
 
+  Widget _messageActionButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback? onPressed,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: IconButton(
+        visualDensity: VisualDensity.compact,
+        constraints: const BoxConstraints.tightFor(width: 34, height: 30),
+        padding: EdgeInsets.zero,
+        onPressed: onPressed,
+        icon: Icon(icon, size: 16, color: const Color(0xFF8B8B95)),
+      ),
+    );
+  }
+
   Widget _composerIconButton({
     required IconData icon,
     required String tooltip,
@@ -2278,6 +2418,31 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                   ),
                     ),
+                    Padding(
+                      padding: const EdgeInsetsDirectional.only(start: 8, end: 8, bottom: 10),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _messageActionButton(
+                            icon: Icons.copy_rounded,
+                            tooltip: 'نسخ الرسالة',
+                            onPressed: () => _copyMessage(msg['content']?.toString() ?? ''),
+                          ),
+                          if (isUser)
+                            _messageActionButton(
+                              icon: Icons.edit_outlined,
+                              tooltip: 'تعديل الرسالة',
+                              onPressed: _isLoading ? null : () => _editUserMessage(index),
+                            )
+                          else
+                            _messageActionButton(
+                              icon: Icons.refresh_rounded,
+                              tooltip: 'إعادة توليد الإجابة',
+                              onPressed: _isLoading ? null : () => _regenerateAssistantMessage(index),
+                            ),
+                        ],
+                      ),
+                    ),
                     if (messageEvents.isNotEmpty)
                       Align(
                         alignment: isUser ? AlignmentDirectional.centerEnd : AlignmentDirectional.centerStart,
@@ -2444,6 +2609,12 @@ class _ChatScreenState extends State<ChatScreen> {
                         icon: Icons.cloud_outlined,
                         label: 'السحابة',
                         onPressed: _openCloudDialog,
+                      ),
+                      const SizedBox(width: 6),
+                      _composerPillButton(
+                        icon: _agentModeEnabled ? Icons.smart_toy_rounded : Icons.chat_bubble_outline_rounded,
+                        label: _agentModeEnabled ? 'وكيل' : 'عادي',
+                        onPressed: () => _setAgentMode(!_agentModeEnabled),
                       ),
                       const SizedBox(width: 6),
                       _composerIconButton(
