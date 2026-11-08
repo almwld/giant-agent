@@ -168,14 +168,16 @@ class _AgentWorkspaceScreenState extends State<AgentWorkspaceScreen> {
           IconButton(
             tooltip: 'تحديث قائمة الملفات',
             onPressed: _loading ? null : _refreshFiles,
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(Icons.refresh, size: 18),
+            style: IconButton.styleFrom(fixedSize: const Size(32, 32), padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
           ),
           IconButton(
             tooltip: 'حفظ وتشغيل',
             onPressed: _saving || _selectedPath == null ? null : _saveAndRun,
+            style: IconButton.styleFrom(fixedSize: const Size(32, 32), padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
             icon: _saving
                 ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.play_arrow_rounded, color: GiantPalette.primaryLight),
+                : const Icon(Icons.play_arrow_rounded, color: GiantPalette.primaryLight, size: 18),
           ),
         ],
       ),
