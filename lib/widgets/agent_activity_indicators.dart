@@ -51,7 +51,7 @@ class _AgentPulseDotState extends State<AgentPulseDot>
       );
 }
 
-/// Four cyan dots orbit one another in a rotating diamond while the agent thinks.
+/// Four teal dots orbit one another in a rotating diamond while the agent thinks.
 class AgentThinkingDots extends StatefulWidget {
   const AgentThinkingDots({super.key, this.dotSize = 5.5});
   final double dotSize;
@@ -164,10 +164,10 @@ class _AgentStreamingTextState extends State<AgentStreamingText>
               begin: Alignment(position - .45, 0),
               end: Alignment(position + .45, 0),
               colors: const [
-                Color(0xFF9CA3AF),
-                Color(0xFFFFFFFF),
-                Color(0xFF38BDF8),
-                Color(0xFF9CA3AF),
+                GiantPalette.muted,
+                GiantPalette.text,
+                GiantPalette.primaryLight,
+                GiantPalette.muted,
               ],
               stops: const [0, .42, .58, 1],
             ).createShader(Rect.fromLTWH(
