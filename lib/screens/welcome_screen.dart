@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../theme/giant_palette.dart';
 import 'chat_screen.dart';
 
@@ -120,15 +121,3 @@ class _WelcomeScreenState extends State<WelcomeScreen>
   }
 }
 
-class _GiantMark extends StatelessWidget {
-  const _GiantMark();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Icon(
-      Icons.auto_awesome_rounded,
-      size: 58,
-      color: GiantPalette.primaryLight,
-    );
-  }
-}
