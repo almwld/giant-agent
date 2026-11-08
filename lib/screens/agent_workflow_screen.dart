@@ -54,6 +54,32 @@ class AgentWorkflowScreen extends StatelessWidget {
     }
   }
 
+  IconData _eventIcon(String type, String tool, String title) {
+    final value = '$type $tool $title'.toLowerCase();
+    if (value.contains('python') || value.contains('terminal') ||
+        value.contains('tool') || value.contains('أداة') ||
+        value.contains('طرفية')) {
+      return Icons.terminal_rounded;
+    }
+    if (value.contains('file') || value.contains('ملف')) {
+      return Icons.description_outlined;
+    }
+    if (value.contains('think') || value.contains('inference') ||
+        value.contains('استدلال') || value.contains('تحليل') ||
+        value.contains('خطة') || value.contains('plan')) {
+      return Icons.psychology_alt_rounded;
+    }
+    if (value.contains('fail') || value.contains('error') ||
+        value.contains('خطأ') || value.contains('تعذر')) {
+      return Icons.error_outline_rounded;
+    }
+    if (value.contains('complete') || value.contains('finished') ||
+        value.contains('مكتمل') || value.contains('اكتمل')) {
+      return Icons.check_circle_outline_rounded;
+    }
+    return Icons.account_tree_outlined;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -95,6 +121,8 @@ class AgentWorkflowScreen extends StatelessWidget {
                   event['subtitle']?.toString() ??
                   '';
               final tool = event['tool_name']?.toString() ?? '';
+              final eventType = event['type']?.toString() ?? '';
+              final icon = _eventIcon(eventType, tool, title);
               return Container(
                 margin: const EdgeInsets.only(bottom: 9),
                 decoration: BoxDecoration(
@@ -105,6 +133,15 @@ class AgentWorkflowScreen extends StatelessWidget {
                 child: ExpansionTile(
                   iconColor: Colors.white70,
                   collapsedIconColor: Colors.white54,
+                  leading: Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(icon, color: color, size: 18),
+                  ),
                   title: status.toLowerCase() == 'running'
                       ? AgentShimmerText(
                           title,
@@ -149,7 +186,32 @@ class AgentWorkflowScreen extends StatelessWidget {
                       _detailBlock('الأمر', event['command'].toString()),
                     if (event['output'] != null && details != event['output'].toString())
                       _detailBlock('المخرجات', event['output'].toString()),
-                    ...event.entries.where((entry) => !{'id','title','status','tool_name','type','details','content','file_name','command','output','subtitle'}.contains(entry.key)).map((entry) => _detailBlock(entry.key, entry.value is String ? entry.value as String : entry.value.toString())),
+                    ...event.entries.where((entry) => !{
+                      'id','title','status','tool_name','type','details','content',
+                      'file_name','command','output','subtitle','request_id',
+                      'session_id','timestamp'
+                    }.contains(entry.key)).map((entry) => _detailBlock(
+                      entry.key,
+                      entry.value is String ? entry.value as String : entry.value.toString(),
+                    )),
+                    if (event['request_id'] != null ||
+                        event['session_id'] != null ||
+                        event['timestamp'] != null)
+                      ExpansionTile(
+                        dense: true,
+                        title: const Text(
+                          'تفاصيل متقدمة',
+                          style: TextStyle(color: Colors.white54, fontSize: 11),
+                        ),
+                        children: [
+                          if (event['request_id'] != null)
+                            _detailBlock('معرّف الطلب', event['request_id'].toString()),
+                          if (event['session_id'] != null)
+                            _detailBlock('معرّف الجلسة', event['session_id'].toString()),
+                          if (event['timestamp'] != null)
+                            _detailBlock('الوقت', event['timestamp'].toString()),
+                        ],
+                      ),
                   ],
                 ),
               );
