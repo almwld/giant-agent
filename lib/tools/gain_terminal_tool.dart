@@ -123,7 +123,7 @@ class GainTerminalTool {
       // Capture the exit status immediately after the submitted command.
       // The marker includes a unique execution token and may span stream chunks.
       final script =
-          '$normalized\n__gain_status=\$?; printf \'\\n${marker}%s__\\n\' "\$__gain_status"\n';
+          '$normalized\n__gain_status=\$?; printf \'\\n$marker%s__\\n\' "\$__gain_status"\n';
       await _client.write(script);
 
       final exitCode = await Future.any<int>([
