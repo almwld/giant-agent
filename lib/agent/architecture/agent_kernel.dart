@@ -303,30 +303,13 @@ class AgentKernel {
       output.startsWith('⚠️ اختر نموذج') ||
       output.startsWith('⚠️ استورد نموذج');
 
-  Future<String> _processSelectedModel(
-    String prompt, {
-    required String conversationId,
-    bool persistTurn = true,
-  }) async {
-    if (await OpenRouterService.instance.isEnabled()) {
-      // Remote providers currently expose text completion only. Native tools
-      // remain available when the local GGUF runtime is selected.
-      return OpenRouterService.instance.generate(prompt);
-    }
-    return _models.processInput(
-      prompt,
-      conversationId: conversationId,
-      persistTurn: persistTurn,
-    );
-  }
-
   Future<String> _executePlannedRequest(
     String prompt, {
     required String requestId,
     required String conversationId,
   }) async {
     if (!_planner.requiresPlan(prompt)) {
-      return _processSelectedModel(prompt, conversationId: conversationId);
+      return _models.processInput(prompt, conversationId: conversationId);
     }
 
     final plan = _planner.createPlan(prompt);
@@ -379,7 +362,7 @@ $previous
 أعد نتيجة هذه الخطوة بوضوح، واذكر ما تعذر تنفيذه.
 ''';
 
-      final output = (await _processSelectedModel(
+      final output = (await _models.processInput(
         stepPrompt,
         conversationId: conversationId,
         persistTurn: false,
@@ -441,7 +424,7 @@ $previous
         .map((entry) =>
             '${entry.key + 1}. ${entry.value['action']}\n${entry.value['result']}')
         .join('\n\n');
-    final finalOutput = await _processSelectedModel(
+    final finalOutput = await _models.processInput(
       '''
 المهمة الأصلية: $prompt
 
