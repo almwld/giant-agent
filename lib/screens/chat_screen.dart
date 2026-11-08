@@ -41,6 +41,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final ModelService _modelService = ModelService();
   
   bool _isLoading = false;
+  int _pendingChatRequests = 0;
   String _thinkingStage = '';
   static const EventChannel _agentEvents = EventChannel('giant_agent_stream');
   static const MethodChannel _fileReceiver = MethodChannel('file_receiver');
@@ -161,6 +162,23 @@ class _ChatScreenState extends State<ChatScreen> {
       _scrollToBottom();
       return;
     }
+    final lifecycleType = step['type']?.toString() ?? '';
+    final lifecycleRequestId = step['request_id']?.toString() ?? '';
+    if (lifecycleType == 'execution_started' && lifecycleRequestId.isNotEmpty) {
+      _activeAgentRequestId = lifecycleRequestId;
+      _toolStreamBuffer = '';
+      _insideToolCall = false;
+      _streamingResponse = '';
+      _streamingShimmerStart = 0;
+      _thinkingStage = 'جاري التفكير';
+    } else if (const {
+      'response_generated',
+      'execution_failed',
+      'execution_interrupted',
+      'execution_incomplete',
+    }.contains(lifecycleType) && lifecycleRequestId == _activeAgentRequestId) {
+      _activeAgentRequestId = '';
+    }
     step.putIfAbsent('session_id', () => _currentSessionId);
     if (_activeAgentRequestId.isNotEmpty) {
       step.putIfAbsent('request_id', () => _activeAgentRequestId);
@@ -199,25 +217,27 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollToBottom();
   }
 
-  Future<String> _generateWithStages(String prompt) async {
-    _toolStreamBuffer = '';
-    _insideToolCall = false;
-    if (mounted) setState(() {
-      _streamingResponse = '';
-      _streamingShimmerStart = 0;
-      _thinkingStage = 'جاري التفكير';
-    });
+  Future<String> _generateWithStages(String prompt, {String? requestId}) async {
     try {
-      return await AgentService.instance.runTask(prompt, conversationId: _currentSessionId, requestId: _activeAgentRequestId.isEmpty ? null : _activeAgentRequestId);
+      return await AgentService.instance.runTask(
+        prompt,
+        conversationId: _currentSessionId,
+        requestId: requestId,
+      );
     } finally {
-      final tail = _flushVisibleAnswerBuffer();
-      if (mounted) setState(() {
-        if (tail.isNotEmpty) {
-          _streamingShimmerStart = _streamingResponse.length;
-          _streamingResponse += tail;
-        }
-        _thinkingStage = '';
-      });
+      final ownsStream = _activeAgentRequestId.isEmpty ||
+          _activeAgentRequestId == requestId;
+      if (ownsStream) {
+        final tail = _flushVisibleAnswerBuffer();
+        if (mounted) setState(() {
+          if (tail.isNotEmpty) {
+            _streamingShimmerStart = _streamingResponse.length;
+            _streamingResponse += tail;
+          }
+          _thinkingStage = '';
+          if (_activeAgentRequestId == requestId) _activeAgentRequestId = '';
+        });
+      }
     }
   }
   TextDirection _contentDirection(String value) {
@@ -260,6 +280,7 @@ class _ChatScreenState extends State<ChatScreen> {
     String prompt, {
     String? taskId,
     String? description,
+    String? requestId,
   }) async {
     final manager = TaskManager();
     final tracked = taskId == null
@@ -271,7 +292,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final activeTaskId = taskId ?? tracked!['id'].toString();
     await manager.markRunning(activeTaskId);
     try {
-      final output = await _generateWithStages(prompt);
+      final output = await _generateWithStages(prompt, requestId: requestId);
       if (_isInterruptedTaskOutput(output)) {
         await manager.markInterrupted(
           activeTaskId,
@@ -1040,7 +1061,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
 
-  Future<String> _executeChatPrompt(String prompt) async {
+  Future<String> _executeChatPrompt(String prompt, {String? requestId}) async {
     var enrichedPrompt = _contextualPrompt(prompt);
     if (_webSearchEnabled) {
       if (mounted) setState(() => _thinkingStage = 'يبحث على الويب عن مصادر حديثة...');
@@ -1063,7 +1084,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     if (_agentModeEnabled) {
       final tracked = await TaskManager().createTask(prompt, conversationId: _currentSessionId);
-      return _runTrackedTask(enrichedPrompt, taskId: tracked['id'].toString());
+      return _runTrackedTask(enrichedPrompt, taskId: tracked['id'].toString(), requestId: requestId);
     }
     return _modelService.processChat(enrichedPrompt, conversationId: _currentSessionId);
   }
@@ -1177,25 +1198,27 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _sendMessage() async {
     final text = _controller.text.trim();
-    if (text.isEmpty || _isLoading) return;
+    if (text.isEmpty || (_isLoading && !_agentModeEnabled)) return;
 
     final requestId = DateTime.now().microsecondsSinceEpoch.toString();
-    _activeAgentRequestId = requestId;
+    final sessionId = _currentSessionId;
     setState(() {
+      _pendingChatRequests++;
+      _isLoading = true;
       _messages.add({
         'isUser': true,
         'content': text,
         'time': DateTime.now(),
         'requestId': requestId,
+        'queued': _agentModeEnabled && AgentService.instance.isRunning,
       });
       _controller.clear();
-      _isLoading = true;
     });
     await _saveMessage(text, true, requestId: requestId);
     final current = await _db?.query('sessions',
         columns: ['title'],
         where: 'id = ?',
-        whereArgs: [_currentSessionId],
+        whereArgs: [sessionId],
         limit: 1);
     if (current != null &&
         current.isNotEmpty &&
@@ -1208,42 +1231,31 @@ class _ChatScreenState extends State<ChatScreen> {
           'updated_at': DateTime.now().millisecondsSinceEpoch,
         },
         where: 'id = ?',
-        whereArgs: [_currentSessionId],
+        whereArgs: [sessionId],
       );
       await _loadSessions();
-    }
-
-    final taskPrefs = await SharedPreferences.getInstance();
-    if (_agentModeEnabled) {
-      await taskPrefs.setString('giant_pending_task', text);
-      await taskPrefs.setString('giant_pending_session_id', _currentSessionId);
     }
     _scrollToBottom();
 
     String response;
     try {
-      response = await _executeChatPrompt(text);
+      response = await _executeChatPrompt(text, requestId: requestId);
     } catch (error) {
       response = 'تعذر إكمال الطلب: $error';
-    } finally {
-      if (_agentModeEnabled) {
-        await taskPrefs.remove('giant_pending_task');
-        await taskPrefs.remove('giant_pending_session_id');
-        await taskPrefs.remove('giant_pending_task_id');
-      }
     }
 
     if (!mounted) return;
     setState(() {
-      _streamingResponse = '';
       _messages.add({
         'isUser': false,
         'content': response,
         'time': DateTime.now(),
+        'requestId': requestId,
       });
-      _isLoading = false;
+      _pendingChatRequests = (_pendingChatRequests - 1).clamp(0, 1 << 30);
+      _isLoading = _pendingChatRequests > 0;
     });
-    await _saveMessage(response, false);
+    await _saveMessage(response, false, requestId: requestId);
     _scrollToBottom();
   }
 
@@ -2694,6 +2706,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         isDense: true,
                         contentPadding: EdgeInsets.zero,
                       ),
+                      onChanged: (_) { if (mounted) setState(() {}); },
                       onSubmitted: (_) => _sendMessage(),
                     ),
                   ),
@@ -2702,11 +2715,18 @@ class _ChatScreenState extends State<ChatScreen> {
                     textDirection: TextDirection.ltr,
                     children: [
                       _composerIconButton(
-                        icon: _isLoading ? Icons.stop_rounded : Icons.arrow_upward_rounded,
-                        tooltip: _isLoading ? 'إيقاف الوكيل' : 'إرسال الرسالة',
-                        background: _isLoading ? Colors.white : GiantPalette.primary,
-                        foreground: _isLoading ? const Color(0xFF18181B) : Colors.white,
-                        onPressed: _isLoading ? _cancelAgent : _sendMessage,
+                        icon: _isLoading && _controller.text.trim().isEmpty
+                            ? Icons.stop_rounded
+                            : Icons.arrow_upward_rounded,
+                        tooltip: _isLoading && _controller.text.trim().isEmpty
+                            ? 'إيقاف الوكيل'
+                            : (_isLoading ? 'إضافة الطلب إلى قائمة الانتظار' : 'إرسال الرسالة'),
+                        background: _isLoading && _controller.text.trim().isEmpty
+                            ? Colors.white : GiantPalette.primary,
+                        foreground: _isLoading && _controller.text.trim().isEmpty
+                            ? const Color(0xFF18181B) : Colors.white,
+                        onPressed: _isLoading && _controller.text.trim().isEmpty
+                            ? _cancelAgent : _sendMessage,
                         prominent: true,
                       ),
                       const SizedBox(width: 8),
