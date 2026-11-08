@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 
 import '../domain/terminal/gain_pty_client.dart';
+import '../domain/terminal/gain_command_output_parser.dart';
 
 class GainCommandResult {
   const GainCommandResult({
@@ -75,9 +76,7 @@ class GainTerminalTool {
     ).join();
     final token = '${nonce}_${++_sequence}';
     final marker = '__GAIN_DONE_${token}_';
-    final matcher = RegExp('${RegExp.escape(marker)}(-?\\d+)__');
-    final buffer = StringBuffer();
-    var scanTail = '';
+    final parser = GainCommandOutputParser(marker: marker);
     final completed = Completer<int>();
     final sessionLost = Completer<void>();
     StreamSubscription<String>? outputSubscription;
@@ -85,21 +84,9 @@ class GainTerminalTool {
 
     // Attach listeners before starting/writing, so no early output is lost.
     outputSubscription = _client.output.listen((chunk) {
-      // Keep a bounded rolling scan window so a marker arriving after a very
-      // large command output is still detected, even after output truncation.
-      final scan = scanTail + chunk;
-      if (!completed.isCompleted) {
-        final match = matcher.firstMatch(scan);
-        if (match != null) {
-          completed.complete(int.tryParse(match.group(1) ?? '') ?? 126);
-        }
-      }
-      final keep = marker.length + 24;
-      scanTail = scan.length <= keep ? scan : scan.substring(scan.length - keep);
-
-      if (buffer.length < 1024 * 1024) {
-        final remaining = 1024 * 1024 - buffer.length;
-        buffer.write(chunk.length <= remaining ? chunk : chunk.substring(0, remaining));
+      parser.add(chunk);
+      if (!completed.isCompleted && parser.exitCode != null) {
+        completed.complete(parser.exitCode!);
       }
     }, onError: (Object error, StackTrace stack) {
       if (!sessionLost.isCompleted) sessionLost.complete();
@@ -133,9 +120,7 @@ class GainTerminalTool {
         sessionLost.future.then((_) => -1),
       ]).timeout(effectiveTimeout);
 
-      final raw = buffer.toString();
-      final match = matcher.firstMatch(raw);
-      final output = match == null ? raw : raw.substring(0, match.start);
+      final output = parser.output;
       final lost = exitCode < 0;
       return GainCommandResult(
         command: normalized,
@@ -158,7 +143,7 @@ class GainTerminalTool {
       }
       return GainCommandResult(
         command: normalized,
-        output: buffer.toString(),
+        output: parser.output,
         exitCode: 124,
         duration: DateTime.now().difference(startedAt),
         timedOut: true,
