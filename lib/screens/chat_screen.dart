@@ -994,7 +994,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final edited = await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        backgroundColor: const GiantPalette.surface,
+        backgroundColor: GiantPalette.surface,
         title: const Text('تعديل رسالتك', style: TextStyle(color: Colors.white)),
         content: TextField(
           controller: editor,
@@ -1274,7 +1274,7 @@ class _ChatScreenState extends State<ChatScreen> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, updateDialog) => AlertDialog(
-          backgroundColor: const GiantPalette.surface,
+          backgroundColor: GiantPalette.surface,
           title: const Text('ربط مزوّد الذكاء الاصطناعي', style: TextStyle(color: Colors.white)),
           content: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -1344,7 +1344,7 @@ class _ChatScreenState extends State<ChatScreen> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, updateDialog) => AlertDialog(
-          backgroundColor: const GiantPalette.surface,
+          backgroundColor: GiantPalette.surface,
           title: const Text('ربط مستودع GitHub', style: TextStyle(color: Colors.white)),
           content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
             const Text('المستودعات العامة لا تحتاج رمزاً. للمستودعات الخاصة أدخل Personal Access Token. الربط الحالي للقراءة والسياق فقط.',
@@ -1413,7 +1413,7 @@ class _ChatScreenState extends State<ChatScreen> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, updateDialog) => AlertDialog(
-          backgroundColor: const GiantPalette.surface,
+          backgroundColor: GiantPalette.surface,
           title: const Text('اتصال السحابة', style: TextStyle(color: Colors.white)),
           content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
             const Text('يدعم Nextcloud وأي خادم WebDAV. استخدم كلمة مرور تطبيق مخصصة.',
@@ -1589,7 +1589,7 @@ class _ChatScreenState extends State<ChatScreen> {
     showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        backgroundColor: const GiantPalette.surface,
+        backgroundColor: GiantPalette.surface,
         title: const Text('Giant Agent X', style: TextStyle(color: Colors.white)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1901,7 +1901,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                         color: failed
                                             ? const Color(0xFFFF9292)
                                             : running
-                                                ? const GiantPalette.primaryLight
+                                                ? GiantPalette.primaryLight
                                                 : mutedColor,
                                         fontSize: 9,
                                       )),
@@ -1964,7 +1964,7 @@ class _ChatScreenState extends State<ChatScreen> {
         constraints: const BoxConstraints.tightFor(width: 34, height: 30),
         padding: EdgeInsets.zero,
         onPressed: onPressed,
-        icon: Icon(icon, size: 16, color: const GiantPalette.muted),
+        icon: Icon(icon, size: 16, color: GiantPalette.muted),
       ),
     );
   }
@@ -1973,8 +1973,8 @@ class _ChatScreenState extends State<ChatScreen> {
     required IconData icon,
     required String tooltip,
     required VoidCallback onPressed,
-    Color foreground = const GiantPalette.muted,
-    Color background = const GiantPalette.border,
+    Color foreground = GiantPalette.muted,
+    Color background = GiantPalette.border,
     bool prominent = false,
   }) {
     return Tooltip(
@@ -2001,7 +2001,7 @@ class _ChatScreenState extends State<ChatScreen> {
     required VoidCallback onPressed,
   }) {
     return Material(
-      color: const GiantPalette.border,
+      color: GiantPalette.border,
       borderRadius: BorderRadius.circular(13),
       child: InkWell(
         onTap: onPressed,
@@ -2012,7 +2012,7 @@ class _ChatScreenState extends State<ChatScreen> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, color: const GiantPalette.muted, size: 15),
+              Icon(icon, color: GiantPalette.muted, size: 15),
               const SizedBox(width: 7),
               Text(
                 label,
@@ -2029,8 +2029,8 @@ class _ChatScreenState extends State<ChatScreen> {
     required IconData icon,
     required String title,
     String? subtitle,
-    Color iconColor = const GiantPalette.primaryLight,
-    Color titleColor = const GiantPalette.text,
+    Color iconColor = GiantPalette.primaryLight,
+    Color titleColor = GiantPalette.text,
     required VoidCallback onTap,
   }) {
     return ListTile(
@@ -2054,11 +2054,11 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const GiantPalette.background,
+      backgroundColor: GiantPalette.background,
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        toolbarHeight: 56,
-        backgroundColor: const GiantPalette.background,
+        toolbarHeight: 54,
+        backgroundColor: GiantPalette.background,
         foregroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
@@ -2067,14 +2067,15 @@ class _ChatScreenState extends State<ChatScreen> {
           builder: (context) => IconButton(
             tooltip: 'القائمة',
             onPressed: () => Scaffold.of(context).openDrawer(),
-            icon: const Icon(Icons.menu_rounded, size: 21),
+            icon: const Icon(Icons.menu_rounded, size: 19),
+            style: IconButton.styleFrom(fixedSize: const Size(34, 34), padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
           ),
         ),
         titleSpacing: 0,
         title: PopupMenuButton<String>(
           tooltip: 'إصدار الوكيل',
           offset: const Offset(0, 42),
-          color: const GiantPalette.elevated,
+          color: GiantPalette.elevated,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           onSelected: (value) {
             if (value == 'github') {
@@ -2115,27 +2116,31 @@ class _ChatScreenState extends State<ChatScreen> {
             onPressed: _newConversation,
             icon: const Icon(Icons.auto_awesome, color: Colors.white, size: 17),
             style: IconButton.styleFrom(
-              backgroundColor: const GiantPalette.primary,
+              backgroundColor: GiantPalette.primary,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              fixedSize: const Size(32, 32),
+              fixedSize: const Size(30, 30), padding: EdgeInsets.zero, visualDensity: VisualDensity.compact,
             ),
           ),
           IconButton(
             tooltip: 'تصدير مساحة العمل',
             onPressed: _exportWorkspace,
-            icon: const Icon(Icons.ios_share_rounded, color: GiantPalette.muted, size: 17),
+            icon: const Icon(Icons.ios_share_rounded, color: GiantPalette.muted, size: 16),
+            style: IconButton.styleFrom(fixedSize: const Size(32, 32), padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
           ),
           IconButton(
             tooltip: 'مساحة عمل الجلسة — سير الوكيل ومخرجاته',
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const AgentWorkflowScreen()),
             ),
-            icon: const Icon(Icons.account_tree_rounded, color: GiantPalette.primaryLight, size: 18),
+            icon: const Icon(Icons.account_tree_rounded, color: GiantPalette.primaryLight, size: 17),
+            style: IconButton.styleFrom(fixedSize: const Size(32, 32), padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
           ),
           PopupMenuButton<String>(
             tooltip: 'المزيد',
-            icon: const Icon(Icons.more_horiz_rounded, color: GiantPalette.muted, size: 19),
-            color: const GiantPalette.elevated,
+            icon: const Icon(Icons.more_horiz_rounded, color: GiantPalette.muted, size: 18),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+            color: GiantPalette.elevated,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
             onSelected: (value) {
               switch (value) {
@@ -2194,14 +2199,14 @@ class _ChatScreenState extends State<ChatScreen> {
               PopupMenuItem(value: 'settings', child: Text('الإعدادات')),
             ],
           ),
-          const SizedBox(width: 5),
+          const SizedBox(width: 4),
         ],
       ),
       drawer: Drawer(
         width: MediaQuery.of(context).size.width < 386
             ? MediaQuery.of(context).size.width * 0.88
             : 340,
-        backgroundColor: const GiantPalette.surface,
+        backgroundColor: GiantPalette.surface,
         child: SafeArea(
           child: ListView(
             padding: EdgeInsets.zero,
@@ -2222,9 +2227,9 @@ class _ChatScreenState extends State<ChatScreen> {
                       width: 52,
                       height: 52,
                       decoration: BoxDecoration(
-                        color: const GiantPalette.primaryLight.withOpacity(0.12),
+                        color: GiantPalette.primaryLight.withOpacity(0.12),
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: const GiantPalette.primaryLight.withOpacity(0.35)),
+                        border: Border.all(color: GiantPalette.primaryLight.withOpacity(0.35)),
                       ),
                       child: const Icon(Icons.bolt_rounded, color: GiantPalette.primaryLight, size: 30),
                     ),
@@ -2282,13 +2287,13 @@ class _ChatScreenState extends State<ChatScreen> {
                             decoration: BoxDecoration(
                               color: selected ? const Color(0xFF1E3A50) : Colors.transparent,
                               borderRadius: BorderRadius.circular(12),
-                              border: selected ? Border.all(color: const GiantPalette.primaryLight.withOpacity(0.25)) : null,
+                              border: selected ? Border.all(color: GiantPalette.primaryLight.withOpacity(0.25)) : null,
                             ),
                             child: ListTile(
                               dense: true,
                               visualDensity: const VisualDensity(vertical: -2),
                               leading: Icon(selected ? Icons.chat_rounded : Icons.chat_bubble_outline_rounded,
-                                  size: 19, color: selected ? const GiantPalette.primaryLight : const Color(0xFF8294A8)),
+                                  size: 19, color: selected ? GiantPalette.primaryLight : const Color(0xFF8294A8)),
                               title: Text(session.title, maxLines: 1, overflow: TextOverflow.ellipsis,
                                   style: TextStyle(color: selected ? Colors.white : const Color(0xFFD5DEE8), fontSize: 12, fontWeight: selected ? FontWeight.w600 : FontWeight.normal)),
                               subtitle: Text(session.updatedAt.toLocal().toString().substring(0, 16),
@@ -2471,7 +2476,7 @@ class _ChatScreenState extends State<ChatScreen> {
               decoration: BoxDecoration(
                 color: const Color(0xFF1E1E1E),
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const GiantPalette.primaryLight.withOpacity(.12)),
+                border: Border.all(color: GiantPalette.primaryLight.withOpacity(.12)),
               ),
               child: Directionality(
                 textDirection: _contentDirection(_streamingResponse),
@@ -2506,7 +2511,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             height: 8,
                             decoration: BoxDecoration(
                               color: _isLoading
-                                  ? const GiantPalette.primary
+                                  ? GiantPalette.primary
                                   : const Color(0xFFF59E0B),
                               shape: BoxShape.circle,
                             ),
@@ -2564,7 +2569,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       _composerIconButton(
                         icon: _isLoading ? Icons.stop_rounded : Icons.arrow_upward_rounded,
                         tooltip: _isLoading ? 'إيقاف الوكيل' : 'إرسال الرسالة',
-                        background: _isLoading ? Colors.white : const GiantPalette.primary,
+                        background: _isLoading ? Colors.white : GiantPalette.primary,
                         foreground: _isLoading ? const Color(0xFF18181B) : Colors.white,
                         onPressed: _isLoading ? _cancelAgent : _sendMessage,
                         prominent: true,
@@ -2573,8 +2578,8 @@ class _ChatScreenState extends State<ChatScreen> {
                       _composerIconButton(
                         icon: _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
                         tooltip: _isListening ? 'إيقاف الإدخال الصوتي' : 'الإملاء الصوتي',
-                        foreground: _isListening ? Colors.white : const GiantPalette.muted,
-                        background: _isListening ? const GiantPalette.primary : const GiantPalette.border,
+                        foreground: _isListening ? Colors.white : GiantPalette.muted,
+                        background: _isListening ? GiantPalette.primary : GiantPalette.border,
                         onPressed: _toggleVoiceInput,
                       ),
                       const SizedBox(width: 8),
@@ -2587,8 +2592,8 @@ class _ChatScreenState extends State<ChatScreen> {
                       _composerIconButton(
                         icon: Icons.public_rounded,
                         tooltip: _webSearchEnabled ? 'إيقاف البحث المباشر' : 'تفعيل البحث التفاعلي على الويب',
-                        foreground: _webSearchEnabled ? Colors.white : const GiantPalette.muted,
-                        background: _webSearchEnabled ? const GiantPalette.primary : const GiantPalette.border,
+                        foreground: _webSearchEnabled ? Colors.white : GiantPalette.muted,
+                        background: _webSearchEnabled ? GiantPalette.primary : GiantPalette.border,
                         onPressed: () {
                           setState(() => _webSearchEnabled = !_webSearchEnabled);
                           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -2599,14 +2604,14 @@ class _ChatScreenState extends State<ChatScreen> {
                       _composerIconButton(
                         icon: Icons.key_rounded,
                         tooltip: _openRouterEnabled ? 'إعدادات OpenRouter — متصل' : 'إدخال مفتاح OpenRouter',
-                        foreground: _openRouterEnabled ? const Color(0xFF4ADE80) : const GiantPalette.muted,
+                        foreground: _openRouterEnabled ? const Color(0xFF4ADE80) : GiantPalette.muted,
                         onPressed: _openOpenRouterDialog,
                       ),
                       const SizedBox(width: 6),
                       _composerIconButton(
                         icon: Icons.code_rounded,
                         tooltip: _includeGithubContext ? 'مستودع GitHub متصل — إدارة الاتصال' : 'ربط مستودع GitHub',
-                        foreground: _includeGithubContext ? const Color(0xFF4ADE80) : const GiantPalette.muted,
+                        foreground: _includeGithubContext ? const Color(0xFF4ADE80) : GiantPalette.muted,
                         onPressed: _toggleGitHubContext,
                       ),
                       const SizedBox(width: 6),
@@ -2632,7 +2637,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       const SizedBox(width: 7),
                       PopupMenuButton<String>(
                         tooltip: 'إضافة مرفق أو إجراء',
-                        color: const GiantPalette.border,
+                        color: GiantPalette.border,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
                         ),
@@ -2676,7 +2681,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           width: 40,
                           height: 40,
                           decoration: BoxDecoration(
-                            color: const GiantPalette.border,
+                            color: GiantPalette.border,
                             borderRadius: BorderRadius.circular(13),
                           ),
                           child: const Icon(Icons.add_rounded, color: Colors.white, size: 22),
