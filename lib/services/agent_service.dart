@@ -16,9 +16,9 @@ class AgentService {
 
   Future<void> initialize() => _kernel.initialize();
 
-  Future<String> runTask(String prompt, {String conversationId = 'global'}) async {
+  Future<String> runTask(String prompt, {String conversationId = 'global', String? requestId}) async {
     final request = AgentRequest(
-      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      id: requestId ?? DateTime.now().microsecondsSinceEpoch.toString(),
       prompt: prompt,
       conversationId: conversationId,
     );
