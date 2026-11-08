@@ -2198,8 +2198,9 @@ class _ChatScreenState extends State<ChatScreen> {
             : 340,
         backgroundColor: const Color(0xFF111827),
         child: SafeArea(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+          child: ListView(
+            padding: EdgeInsets.zero,
+            children: [
             children: [
               Container(
                 padding: const EdgeInsets.fromLTRB(22, 24, 22, 22),
@@ -2262,8 +2263,8 @@ class _ChatScreenState extends State<ChatScreen> {
                   ],
                 ),
               ),
-              Expanded(
-                flex: 3,
+              SizedBox(
+                height: 260,
                 child: _sessions.isEmpty
                     ? const Center(child: Text('لا توجد جلسات سابقة', style: TextStyle(color: Color(0xFF64748B), fontSize: 12)))
                     : ListView.builder(
@@ -2320,8 +2321,8 @@ class _ChatScreenState extends State<ChatScreen> {
                   ],
                 ),
               ),
-              Expanded(
-                flex: 2,
+              SizedBox(
+                height: 190,
                 child: ListView.builder(
                   padding: const EdgeInsets.symmetric(horizontal: 10),
                   itemCount: _models.length,
