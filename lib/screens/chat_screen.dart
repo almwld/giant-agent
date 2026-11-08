@@ -49,6 +49,7 @@ class _ChatScreenState extends State<ChatScreen> {
   String _activeAgentRequestId = '';
   final Set<String> _collapsedTimelineIds = <String>{};
   String _streamingResponse = '';
+  int _streamingShimmerStart = 0;
   String _toolStreamBuffer = '';
   bool _insideToolCall = false;
   static const String _toolCallOpen = '<tool_call>';
@@ -132,7 +133,10 @@ class _ChatScreenState extends State<ChatScreen> {
     if (step['type'] == 'stream_token') {
       final token = step['text']?.toString() ?? '';
       final visible = _visibleAnswerDelta(token);
-      if (visible.isNotEmpty) setState(() => _streamingResponse += visible);
+      if (visible.isNotEmpty) setState(() {
+        _streamingShimmerStart = _streamingResponse.length;
+        _streamingResponse += visible;
+      });
       _scrollToBottom();
       return;
     }
@@ -178,13 +182,20 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<String> _generateWithStages(String prompt) async {
     _toolStreamBuffer = '';
     _insideToolCall = false;
-    if (mounted) setState(() { _streamingResponse = ''; _thinkingStage = 'بانتظار أحداث المحرك المحلي...'; });
+    if (mounted) setState(() {
+      _streamingResponse = '';
+      _streamingShimmerStart = 0;
+      _thinkingStage = 'بانتظار أحداث المحرك المحلي...';
+    });
     try {
       return await AgentService.instance.runTask(prompt, conversationId: _currentSessionId);
     } finally {
       final tail = _flushVisibleAnswerBuffer();
       if (mounted) setState(() {
-        if (tail.isNotEmpty) _streamingResponse += tail;
+        if (tail.isNotEmpty) {
+          _streamingShimmerStart = _streamingResponse.length;
+          _streamingResponse += tail;
+        }
         _thinkingStage = '';
       });
     }
@@ -2227,8 +2238,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 border: Border.all(color: const Color(0xFF38BDF8).withOpacity(.12)),
               ),
               child: _streamingResponse.isNotEmpty
-                  ? AgentShimmerText(
+                  ? AgentStreamingText(
                       _streamingResponse,
+                      shimmerFrom: _streamingShimmerStart,
                       selectable: true,
                       style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.55),
                     )
