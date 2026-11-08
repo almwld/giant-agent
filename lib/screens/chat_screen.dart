@@ -1085,29 +1085,33 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _openOpenRouterDialog() async {
     final keyController = TextEditingController(text: await OpenRouterService.instance.getApiKey() ?? '');
     final modelController = TextEditingController(text: await OpenRouterService.instance.getModel());
+    final endpointController = TextEditingController(text: await OpenRouterService.instance.getBaseUrl());
     var enabled = await OpenRouterService.instance.isEnabled();
     var busy = false;
     var error = '';
-    if (!mounted) { keyController.dispose(); modelController.dispose(); return; }
+    if (!mounted) { keyController.dispose(); modelController.dispose(); endpointController.dispose(); return; }
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, updateDialog) => AlertDialog(
           backgroundColor: const Color(0xFF202024),
-          title: const Text('ربط OpenRouter', style: TextStyle(color: Colors.white)),
+          title: const Text('ربط مزوّد الذكاء الاصطناعي', style: TextStyle(color: Colors.white)),
           content: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              const Text('يُحفظ مفتاح API مشفراً على الجهاز ولا يُضاف إلى المحادثات.',
+              const Text('أدخل مفتاح أي مزوّد يدعم واجهة OpenAI-compatible مع عنوان API الخاص به. يُحفظ المفتاح مشفراً على الجهاز.',
                 style: TextStyle(color: Color(0xFFA1A1AA), fontSize: 12)),
               const SizedBox(height: 12),
               TextField(controller: keyController, obscureText: true, autocorrect: false,
-                decoration: const InputDecoration(labelText: 'OpenRouter API Key', hintText: 'sk-or-...', border: OutlineInputBorder())),
+                decoration: const InputDecoration(labelText: 'API Key', hintText: 'أدخل مفتاح المزوّد', border: OutlineInputBorder())),
+              const SizedBox(height: 10),
+              TextField(controller: endpointController, keyboardType: TextInputType.url, autocorrect: false,
+                decoration: const InputDecoration(labelText: 'API Base URL', hintText: 'https://api.example.com/v1', border: OutlineInputBorder())),
               const SizedBox(height: 10),
               TextField(controller: modelController,
                 decoration: const InputDecoration(labelText: 'معرّف النموذج', hintText: 'openai/gpt-4o-mini', border: OutlineInputBorder())),
               SwitchListTile(contentPadding: EdgeInsets.zero, value: enabled,
                 onChanged: (v) => updateDialog(() => enabled = v),
-                title: const Text('استخدام OpenRouter للاستدلال')),
+                title: const Text('استخدام المزوّد الخارجي للاستدلال')),
               if (error.isNotEmpty) Text(error, style: const TextStyle(color: Colors.redAccent, fontSize: 12)),
               if (busy) const LinearProgressIndicator(),
             ]),
@@ -1118,7 +1122,7 @@ class _ChatScreenState extends State<ChatScreen> {
               if (mounted) setState(() => _openRouterEnabled = false);
               if (dialogContext.mounted) Navigator.pop(dialogContext);
               if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('تم فصل OpenRouter وحذف المفتاح.')));
+                const SnackBar(content: Text('تم فصل المزوّد وحذف بياناته.')));
             }, child: const Text('فصل وحذف المفتاح')),
             TextButton(onPressed: busy ? null : () => Navigator.pop(dialogContext), child: const Text('إلغاء')),
             FilledButton(onPressed: busy ? null : () async {
@@ -1126,14 +1130,15 @@ class _ChatScreenState extends State<ChatScreen> {
               try {
                 if (keyController.text.trim().isNotEmpty) {
                   await OpenRouterService.instance.configure(
-                    apiKey: keyController.text, model: modelController.text, enable: enabled);
+                    apiKey: keyController.text, model: modelController.text,
+                    baseUrl: endpointController.text, enable: enabled);
                 } else {
                   await OpenRouterService.instance.setEnabled(enabled);
                 }
                 if (mounted) setState(() => _openRouterEnabled = enabled);
                 if (dialogContext.mounted) Navigator.pop(dialogContext);
                 if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                  content: Text(enabled ? 'تم تفعيل OpenRouter: ' + modelController.text.trim() : 'تم تعطيل OpenRouter.')));
+                  content: Text(enabled ? 'تم تفعيل المزوّد: ' + modelController.text.trim() : 'تم تعطيل المزوّد.')));
               } catch (e) { updateDialog(() { busy = false; error = e.toString(); }); }
             }, child: const Text('حفظ')),
           ],
@@ -1142,6 +1147,7 @@ class _ChatScreenState extends State<ChatScreen> {
     );
     keyController.dispose();
     modelController.dispose();
+    endpointController.dispose();
   }
 
   Future<void> _openGitHubDialog() async {
