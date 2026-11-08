@@ -1100,6 +1100,9 @@ class _ChatScreenState extends State<ChatScreen> {
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               const Text('أدخل مفتاح أي مزوّد يدعم واجهة OpenAI-compatible مع عنوان API الخاص به. يُحفظ المفتاح مشفراً على الجهاز.',
                 style: TextStyle(color: Color(0xFFA1A1AA), fontSize: 12)),
+              const SizedBox(height: 6),
+              const Text('أمثلة للعناوين: OpenRouter: https://openrouter.ai/api/v1  •  Gemini: https://generativelanguage.googleapis.com/v1beta/openai',
+                style: TextStyle(color: Color(0xFF93C5FD), fontSize: 11)),
               const SizedBox(height: 12),
               TextField(controller: keyController, obscureText: true, autocorrect: false,
                 decoration: const InputDecoration(labelText: 'API Key', hintText: 'أدخل مفتاح المزوّد', border: OutlineInputBorder())),
