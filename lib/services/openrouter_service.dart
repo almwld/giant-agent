@@ -29,10 +29,11 @@ class OpenRouterService {
     final key = apiKey.trim();
     final modelId = model.trim();
 
-    // Do not hard-code OpenRouter's current key prefix: key formats can evolve,
-    // and copied keys may use a newer prefix. Validate presence and whitespace.
-    if (key.isEmpty || key.contains(RegExp(r'\s'))) {
-      throw ArgumentError('أدخل مفتاح OpenRouter دون مسافات أو أسطر فارغة.');
+    // Accept any non-empty API key string. Do not enforce provider prefixes,
+    // character sets, or key-specific formatting in the client. The endpoint
+    // will validate the credential and return the authoritative error.
+    if (key.isEmpty) {
+      throw ArgumentError('أدخل مفتاح API أولاً.');
     }
     if (modelId.isEmpty ||
         !RegExp(r'^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.:+-]+$')
