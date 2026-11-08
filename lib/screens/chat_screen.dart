@@ -382,6 +382,11 @@ class _ChatScreenState extends State<ChatScreen> {
       'time': DateTime.fromMillisecondsSinceEpoch(msg['timestamp'] as int),
       'requestId': msg['request_id']?.toString() ?? '',
     }).toList();
+    for (final message in restoredMessages) {
+      if (message['isUser'] == true && (message['requestId']?.toString() ?? '').isEmpty) {
+        message['requestId'] = 'legacy_${(message['time'] as DateTime).microsecondsSinceEpoch}';
+      }
+    }
     final restoredEvents = <Map<String, dynamic>>[];
     for (final row in events ?? []) {
       final event = Map<String, dynamic>.from(jsonDecode(row['event_json'] as String) as Map);
@@ -919,15 +924,18 @@ class _ChatScreenState extends State<ChatScreen> {
       final attachmentMessage = 'ملف مرفق: ${analysis['filename']}\n'
           'النوع: ${analysis['extension']} • الحجم: ${analysis['size_bytes']} بايت\n'
           'البيانات الأولية: ${jsonEncode(analysis)}';
+      final requestId = DateTime.now().microsecondsSinceEpoch.toString();
+      _activeAgentRequestId = requestId;
       setState(() {
         _messages.add({
           'isUser': true,
           'content': attachmentMessage,
           'time': DateTime.now(),
+          'requestId': requestId,
         });
         _isLoading = true;
       });
-      await _saveMessage(attachmentMessage, true);
+      await _saveMessage(attachmentMessage, true, requestId: requestId);
       final analysisPrompt =
           'حلّل محتوى الملف المرفق اعتماداً على النص الفعلي التالي. '
           'اذكر حدود التحليل ولا تخترع بيانات غير موجودة.\n'
@@ -971,15 +979,18 @@ class _ChatScreenState extends State<ChatScreen> {
     final picker = ImagePicker();
     final image = await picker.pickImage(source: ImageSource.gallery);
     if (image == null || !mounted) return;
+    final requestId = DateTime.now().microsecondsSinceEpoch.toString();
+    _activeAgentRequestId = requestId;
     setState(() {
       _messages.add({
         'isUser': true,
         'content': 'صورة مرفقة: ${image.name}',
         'time': DateTime.now(),
+        'requestId': requestId,
       });
       _isLoading = true;
     });
-    await _saveMessage('صورة مرفقة: ${image.name}', true);
+    await _saveMessage('صورة مرفقة: ${image.name}', true, requestId: requestId);
     String response;
     try {
       // The current bundled GGUF model is text-only. Report this capability
