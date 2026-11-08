@@ -1780,9 +1780,9 @@ class _ChatScreenState extends State<ChatScreen> {
           borderRadius: BorderRadius.circular(prominent ? 20 : 13),
           onTap: onPressed,
           child: SizedBox(
-            width: prominent ? 40 : 40,
-            height: 40,
-            child: Icon(icon, color: foreground, size: prominent ? 21 : 20),
+            width: 32,
+            height: 32,
+            child: Icon(icon, color: foreground, size: prominent ? 18 : 17),
           ),
         ),
       ),
@@ -1801,16 +1801,16 @@ class _ChatScreenState extends State<ChatScreen> {
         onTap: onPressed,
         borderRadius: BorderRadius.circular(13),
         child: Container(
-          height: 40,
-          padding: const EdgeInsets.symmetric(horizontal: 11),
+          height: 32,
+          padding: const EdgeInsets.symmetric(horizontal: 9),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, color: const Color(0xFFA1A1AA), size: 17),
+              Icon(icon, color: const Color(0xFFA1A1AA), size: 15),
               const SizedBox(width: 7),
               Text(
                 label,
-                style: const TextStyle(color: Color(0xFFA1A1AA), fontSize: 12),
+                style: const TextStyle(color: Color(0xFFA1A1AA), fontSize: 11),
               ),
             ],
           ),
@@ -2265,8 +2265,8 @@ class _ChatScreenState extends State<ChatScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
             child: Container(
-              constraints: const BoxConstraints(minHeight: 190, maxHeight: 250),
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+              constraints: const BoxConstraints(minHeight: 96, maxHeight: 136),
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
               decoration: BoxDecoration(
                 color: const Color(0xFF222226),
                 borderRadius: BorderRadius.circular(20),
@@ -2311,21 +2311,21 @@ class _ChatScreenState extends State<ChatScreen> {
                     child: TextField(
                       controller: _controller,
                       enabled: true,
-                      minLines: 3,
-                      maxLines: null,
+                      minLines: 1,
+                      maxLines: 4,
                       textAlign: TextAlign.start,
                       textDirection: TextDirection.rtl,
                       keyboardType: TextInputType.multiline,
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 15,
-                        height: 1.55,
+                        fontSize: 14,
+                        height: 1.35,
                       ),
                       decoration: const InputDecoration(
                         hintText: 'أرسل رسالة إلى Giant Agent...',
                         hintStyle: TextStyle(
                           color: Color(0xFF71717A),
-                          fontSize: 15,
+                          fontSize: 14,
                         ),
                         border: InputBorder.none,
                         enabledBorder: InputBorder.none,
@@ -2336,7 +2336,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       onSubmitted: (_) => _sendMessage(),
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 6),
                   Row(
                     textDirection: TextDirection.ltr,
                     children: [
