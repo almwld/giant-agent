@@ -139,6 +139,22 @@ class _ChatScreenState extends State<ChatScreen> {
     step.putIfAbsent('session_id', () => _currentSessionId);
     if (_activeAgentRequestId.isNotEmpty) {
       step.putIfAbsent('request_id', () => _activeAgentRequestId);
+
+      // Native inference can run more than once inside one planned request.
+      // Keep one evolving inference row beneath the user's message instead
+      // of showing duplicate "local inference" entries for internal passes.
+      final nativeTitle = step['title']?.toString() ?? '';
+      if (step['type'] == 'agent_status' &&
+          (nativeTitle.contains('استدلال النموذج المحلي') ||
+           nativeTitle.contains('توليد الإجابة') ||
+           nativeTitle.contains('توقف التوليد') ||
+           nativeTitle.contains('الاستدلال المحلي'))) {
+        step['id'] = 'native_inference_$_activeAgentRequestId';
+        step['request_id'] = _activeAgentRequestId;
+      } else if (step['type'] == 'task_finished') {
+        step['id'] = 'native_finished_$_activeAgentRequestId';
+        step['request_id'] = _activeAgentRequestId;
+      }
     }
     final eventType = step['type']?.toString();
     if (eventType == 'file_created' || eventType == 'file_updated') {
