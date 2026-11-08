@@ -178,9 +178,10 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerateStreaming(JNIEnv * env, jobject, j
 
     // Enforce the real tokenizer budget here, not a character-count estimate.
     // Preserve the system/instruction prefix and the newest user/session context.
-    const size_t outputReserve = static_cast<size_t>(
-        std::clamp(static_cast<int>(maxTokens), 128, 1024));
-    const size_t promptBudget = std::max<size_t>(128, nCtx - outputReserve - 64);
+    const size_t outputReserve = std::min<size_t>(
+        static_cast<size_t>(std::clamp(static_cast<int>(maxTokens), 128, 1024)),
+        static_cast<size_t>(nCtx / 3));
+    const size_t promptBudget = static_cast<size_t>(nCtx) - outputReserve - 64;
     if (tokens.size() > promptBudget) {
         const std::string trimMarker =
             "\\n[Older conversation context trimmed; recent turns retained]\\n";
