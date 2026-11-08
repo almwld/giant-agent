@@ -191,6 +191,32 @@ class ModelService {
     });
   }
 
+  /// Direct conversational path: no AgentKernel orchestration and no tool loop.
+  /// The local model (or configured OpenAI-compatible provider) answers normally.
+  Future<String> processChat(
+    String input, {
+    String conversationId = 'global',
+  }) {
+    return _withRuntimeLock(() async {
+      final context = await AgentMemoryService.instance.buildContext(
+        input,
+        conversationId: conversationId,
+      );
+      final prompt = context.isEmpty ? input : '$context\\n\\nرسالة المستخدم: $input';
+      final response = await _generateText(
+        _boundPrompt(prompt),
+        maxTokens: 768,
+        temperature: .35,
+      );
+      await AgentMemoryService.instance.saveTurn(
+        input,
+        response,
+        conversationId: conversationId,
+      );
+      return response.trim();
+    });
+  }
+
   static const int _maxPromptCharacters = 9000;
 
   String _boundPrompt(String prompt) {
