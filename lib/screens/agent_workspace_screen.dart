@@ -265,7 +265,7 @@ class _AgentWorkspaceScreenState extends State<AgentWorkspaceScreen> {
                   color: GiantPalette.surface,
                   padding: const EdgeInsets.symmetric(horizontal: 10),
                   child: Row(children: [
-                    Icon(Icons.circle, size: 7, color: isHtml ? Colors.greenAccent : Colors.orangeAccent),
+                    Icon(Icons.circle, size: 7, color: isHtml ? GiantPalette.primaryLight : Colors.orangeAccent),
                     const SizedBox(width: 7),
                     Text(isHtml ? 'WebView • Preview #$_previewVersion' : 'Code only • Flutter requires export/build',
                         style: const TextStyle(color: Colors.white54, fontSize: 10)),
