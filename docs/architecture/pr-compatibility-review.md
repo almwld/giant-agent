@@ -53,3 +53,12 @@ These are live snapshots from the review; GitHub state may change.
 - Do not add xterm again.
 - Do not claim Android background survival, PTY reliability or production readiness without real-device tests.
 - Do not auto-replay shell commands after process death unless their execution state is proven and their effects are idempotent.
+
+## Gain terminal harness integration status
+
+- The existing local-model `ModelService` tool dispatcher now recognizes `gain_terminal` and routes it through `TerminalToolCoordinator` to `GainTerminalTool`.
+- Every invocation requests a one-time approval for the exact normalized command. The approval dialog displays the command verbatim; denial returns without starting PTY execution. No blanket or remembered approval is stored.
+- Approval, command-start, command-result and command-error events are emitted as structured Timeline events. The existing chat event store persists them by session and event ID.
+- The coordinator bounds commands to 2,000 characters, clamps execution timeouts to 1–900 seconds, and caps Timeline output at 12,000 characters. Native execution remains `/system/bin/sh` under the app UID; root remains disabled.
+- The founder reports that the critical PTY smoke test has passed on a physical Android device. This repository update does not independently reproduce that device run.
+- **Still pending:** the SQLite `AgentKernel` FIFO is not yet the admission/execution wrapper around `ModelService.processInput`; durable request admission, restart reconciliation and shell execution are therefore not yet one unified runtime path. DSH/provider-independent orchestration, watchdog/background recovery and device regression automation also remain separate follow-up work.
