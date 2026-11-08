@@ -313,19 +313,40 @@ class MainActivity: FlutterActivity() {
                         // the persisted timeline; reusing "request"/"inference" overwrote
                         // earlier cycles in the same conversation.
                         val requestId = "native_${System.nanoTime()}"
-                        emitAgentEvent("${requestId}_request", "تم استلام الطلب وتجهيز النموذج المحلي", "completed", requestId = requestId)
+                        var terminalStatus = "completed"
+                        emitAgentEvent("${requestId}_request", "تم استلام الطلب وتجهيز النموذج المحلي", "pending", requestId = requestId)
                         emitAgentEvent("${requestId}_inference", "استدلال النموذج المحلي جارٍ", "running", requestId = requestId)
                         try {
                             val tokenCallback = object : TokenCallback {
                                 override fun onToken(token: String) { emitAgentToken(token) }
                             }
                             val answer = llamaBridge.nativeGenerateStreaming(prompt, tokens, temp, tokenCallback)
-                            emitAgentEvent("${requestId}_inference", "اكتمل توليد الإجابة", "completed", requestId = requestId)
+                            terminalStatus = when {
+                                answer.startsWith("ERROR:") -> "failed"
+                                answer.startsWith("تم إيقاف") || answer.contains("[تم إيقاف التوليد]") -> "interrupted"
+                                else -> "completed"
+                            }
+                            emitAgentEvent(
+                                "${requestId}_inference",
+                                if (terminalStatus == "completed") "اكتمل توليد الإجابة" else if (terminalStatus == "interrupted") "توقف التوليد" else "تعذر إكمال الاستدلال المحلي",
+                                terminalStatus,
+                                if (terminalStatus == "failed") answer else null,
+                                requestId
+                            )
                             runOnUiThread { result.success(answer) }
                         } catch (t: Throwable) {
+                            terminalStatus = "failed"
                             val message = t.message ?: "native inference failed"
                             emitAgentEvent("${requestId}_inference", "تعذر إكمال الاستدلال المحلي", "failed", message, requestId)
                             runOnUiThread { result.error("INFERENCE_FAILED", message, null) }
+                        } finally {
+                            emitAgentEvent(
+                                "${requestId}_finished",
+                                if (terminalStatus == "completed") "انتهى تنفيذ الطلب" else if (terminalStatus == "interrupted") "توقف تنفيذ الطلب" else "انتهى الطلب بخطأ",
+                                terminalStatus,
+                                requestId = requestId,
+                                eventType = "task_finished"
+                            )
                         }
                     }
                 }
@@ -375,13 +396,14 @@ class MainActivity: FlutterActivity() {
         title: String,
         status: String,
         details: String? = null,
-        requestId: String? = null
+        requestId: String? = null,
+        eventType: String = "agent_status"
     ) {
         runOnUiThread {
             agentEventSink?.success(mapOf(
                 "id" to id,
                 "request_id" to requestId,
-                "type" to "agent_status",
+                "type" to eventType,
                 "title" to title,
                 "status" to status,
                 "details" to details
