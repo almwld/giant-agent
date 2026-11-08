@@ -106,7 +106,12 @@ class GainPtyBridge private constructor(
                 return@synchronized 0
             }
 
-            val selectedShell = shell?.trim()?.takeIf { it.isNotEmpty() } ?: "/system/bin/sh"
+            val requestedShell = shell?.trim().orEmpty()
+            if (requestedShell.startsWith("root:")) {
+                android.util.Log.w(TAG, "Root shell mode is disabled until an explicit approval flow is implemented")
+                return@synchronized 0
+            }
+            val selectedShell = requestedShell.ifEmpty { "/system/bin/sh" }
             val handle = nativeStartPty(rows, cols, selectedShell)
             if (handle <= 0) {
                 android.util.Log.e(TAG, "nativeStartPty failed for shell=$selectedShell")
