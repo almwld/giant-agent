@@ -328,7 +328,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final dir = await getApplicationDocumentsDirectory();
     _db = await openDatabase(
       '${dir.path}/conversations.db',
-      version: 4,
+      version: 5,
       onCreate: (db, version) async {
         await db.execute('''CREATE TABLE sessions (
           id TEXT PRIMARY KEY, title TEXT NOT NULL,
@@ -343,6 +343,31 @@ class _ChatScreenState extends State<ChatScreen> {
           event_key TEXT NOT NULL, event_json TEXT NOT NULL, timestamp INTEGER NOT NULL,
           UNIQUE(session_id, event_key)
         )''');
+        await db.execute('''
+          CREATE TABLE agent_execution_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            request_id TEXT NOT NULL,
+            step_id TEXT NOT NULL,
+            sequence_number INTEGER NOT NULL,
+            event_type TEXT NOT NULL,
+            content TEXT,
+            status TEXT,
+            timestamp INTEGER NOT NULL,
+            UNIQUE(session_id, request_id, sequence_number),
+            FOREIGN KEY (session_id) REFERENCES sessions(id)
+          )
+        ''');
+        await db.execute('''
+          CREATE TRIGGER agent_execution_logs_no_update
+          BEFORE UPDATE ON agent_execution_logs
+          BEGIN SELECT RAISE(ABORT, 'agent_execution_logs is append-only'); END
+        ''');
+        await db.execute('''
+          CREATE TRIGGER agent_execution_logs_no_delete
+          BEFORE DELETE ON agent_execution_logs
+          BEGIN SELECT RAISE(ABORT, 'agent_execution_logs is append-only'); END
+        ''');
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -369,6 +394,33 @@ class _ChatScreenState extends State<ChatScreen> {
         }
         if (oldVersion < 4) {
           await db.execute('ALTER TABLE messages ADD COLUMN request_id TEXT');
+        }
+        if (oldVersion < 5) {
+          await db.execute('''
+            CREATE TABLE agent_execution_logs (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              session_id TEXT NOT NULL,
+              request_id TEXT NOT NULL,
+              step_id TEXT NOT NULL,
+              sequence_number INTEGER NOT NULL,
+              event_type TEXT NOT NULL,
+              content TEXT,
+              status TEXT,
+              timestamp INTEGER NOT NULL,
+              UNIQUE(session_id, request_id, sequence_number),
+              FOREIGN KEY (session_id) REFERENCES sessions(id)
+            )
+          ''');
+          await db.execute('''
+            CREATE TRIGGER agent_execution_logs_no_update
+            BEFORE UPDATE ON agent_execution_logs
+            BEGIN SELECT RAISE(ABORT, 'agent_execution_logs is append-only'); END
+          ''');
+          await db.execute('''
+            CREATE TRIGGER agent_execution_logs_no_delete
+            BEFORE DELETE ON agent_execution_logs
+            BEGIN SELECT RAISE(ABORT, 'agent_execution_logs is append-only'); END
+          ''');
         }
       },
     );
@@ -496,14 +548,42 @@ class _ChatScreenState extends State<ChatScreen> {
     if (!_sessionReady || _db == null || event['type'] == 'stream_token') return;
     final eventKey = event['id']?.toString();
     if (eventKey == null || eventKey.isEmpty) return;
+    final requestId = event['request_id']?.toString();
+    if (requestId == null || requestId.isEmpty) return;
+
+    // Immutable execution history: every lifecycle transition is inserted,
+    // even when the UI projection below updates an existing event key.
+    final eventTimestamp = DateTime.now().millisecondsSinceEpoch;
+    final eventPayload = jsonEncode(event);
+    final stepId = event['step_id']?.toString() ?? eventKey;
+    await _db!.transaction((txn) async {
+      final rows = await txn.rawQuery(
+        'SELECT COUNT(*) AS count FROM agent_execution_logs WHERE session_id = ? AND request_id = ?',
+        [_currentSessionId, requestId],
+      );
+      final sequence = (rows.first['count'] as int? ?? 0) + 1;
+      await txn.insert('agent_execution_logs', {
+        'session_id': _currentSessionId,
+        'request_id': requestId,
+        'step_id': stepId,
+        'sequence_number': sequence,
+        'event_type': event['type']?.toString() ?? 'unknown',
+        'content': eventPayload,
+        'status': event['status']?.toString() ?? 'pending',
+        'timestamp': eventTimestamp,
+      });
+    });
+
+    // Mutable projection used by the live Timeline UI. The audit log above
+    // remains append-only and records every version of this event.
     final existing = await _db!.query('agent_events',
       columns: ['id'], where: 'session_id = ? AND event_key = ?',
       whereArgs: [_currentSessionId, eventKey], limit: 1);
     final values = {
       'session_id': _currentSessionId,
       'event_key': eventKey,
-      'event_json': jsonEncode(event),
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
+      'event_json': eventPayload,
+      'timestamp': eventTimestamp,
     };
     if (existing.isEmpty) {
       await _db!.insert('agent_events', values);
