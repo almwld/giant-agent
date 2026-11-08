@@ -2205,7 +2205,6 @@ class _ChatScreenState extends State<ChatScreen> {
           child: ListView(
             padding: EdgeInsets.zero,
             children: [
-            children: [
               Container(
                 padding: const EdgeInsets.fromLTRB(22, 24, 22, 22),
                 decoration: const BoxDecoration(
