@@ -195,12 +195,12 @@ class _AgentWorkspaceScreenState extends State<AgentWorkspaceScreen> {
                       final path = _files[index];
                       final selected = path == _selectedPath;
                       return ActionChip(
-                        backgroundColor: selected ? Colors.teal.withOpacity(.25) : GiantPalette.elevated,
+                        backgroundColor: selected ? GiantPalette.primary.withOpacity(.18) : GiantPalette.elevated,
                         side: BorderSide(color: selected ? GiantPalette.primaryLight : Colors.white12),
                         avatar: Icon(Icons.insert_drive_file_outlined, size: 16,
                             color: selected ? GiantPalette.primaryLight : Colors.white60),
                         label: Text(path, style: TextStyle(fontSize: 11,
-                            color: selected ? Colors.tealAccent : Colors.white70)),
+                            color: selected ? GiantPalette.primaryLight : Colors.white70)),
                         onPressed: () => _openFile(path),
                       );
                     },
@@ -285,7 +285,7 @@ class _AgentWorkspaceScreenState extends State<AgentWorkspaceScreen> {
             }),
           ),
           if (_loading)
-            const LinearProgressIndicator(minHeight: 2, color: Colors.tealAccent, backgroundColor: Colors.transparent),
+            const LinearProgressIndicator(minHeight: 2, color: GiantPalette.primaryLight, backgroundColor: Colors.transparent),
         ],
       ),
     );
@@ -298,7 +298,7 @@ class _AgentWorkspaceScreenState extends State<AgentWorkspaceScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 12),
       color: const Color(0xFF1B2936),
       child: Row(children: [
-        Icon(icon, color: Colors.tealAccent, size: 16),
+        Icon(icon, color: GiantPalette.primaryLight, size: 16),
         const SizedBox(width: 8),
         Text(title, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
         const Spacer(),
