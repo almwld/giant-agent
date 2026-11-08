@@ -6,7 +6,7 @@ class GainCommandOutputParser {
     required String marker,
     this.maxOutputCharacters = 1024 * 1024,
   })  : _marker = marker,
-        _matcher = RegExp('${RegExp.escape(marker)}(-?\\\\d+)__') {
+        _matcher = RegExp('\${RegExp.escape(marker)}(-?\\d+)__') {
     if (marker.isEmpty) throw ArgumentError.value(marker, 'marker');
     if (maxOutputCharacters < 0) {
       throw ArgumentError.value(maxOutputCharacters, 'maxOutputCharacters');
@@ -28,12 +28,10 @@ class GainCommandOutputParser {
 
   void add(String chunk) {
     if (chunk.isEmpty || isComplete) return;
-
     final scanStart = _receivedCharacters - _scanTail.length;
     final scan = _scanTail + chunk;
     final match = _matcher.firstMatch(scan);
     final markerOffset = match == null ? null : scanStart + match.start;
-
     if (markerOffset != null) {
       _appendCaptured(chunk, markerOffset - _receivedCharacters);
       if (markerOffset < _capturedCharacters) {
@@ -45,7 +43,6 @@ class GainCommandOutputParser {
       _receivedCharacters += chunk.length;
       return;
     }
-
     _appendCaptured(chunk, chunk.length);
     _receivedCharacters += chunk.length;
     final keep = _marker.length + 24;
