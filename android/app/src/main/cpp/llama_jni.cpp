@@ -184,7 +184,7 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerateStreaming(JNIEnv * env, jobject, j
     const size_t promptBudget = static_cast<size_t>(nCtx) - outputReserve - 64;
     if (tokens.size() > promptBudget) {
         const std::string trimMarker =
-            "\\n[Older conversation context trimmed; recent turns retained]\\n";
+            "\n[Older conversation context trimmed; recent turns retained]\n";
         std::vector<llama_token> markerTokens(128);
         int32_t markerCount = llama_tokenize(
             vocab, trimMarker.c_str(), static_cast<int32_t>(trimMarker.size()),
