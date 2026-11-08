@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import '../theme/giant_palette.dart';
 
 /// Shared, low-cost activity indicators for the agent UI.
 class AgentPulseDot extends StatefulWidget {
@@ -35,10 +36,10 @@ class _AgentPulseDotState extends State<AgentPulseDot>
               height: widget.size,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: const Color(0xFF38BDF8),
+                color: GiantPalette.primaryLight,
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF38BDF8).withOpacity(.16 + value * .28),
+                    color: GiantPalette.primaryLight.withOpacity(.16 + value * .28),
                     blurRadius: 4 + value * 5,
                     spreadRadius: value,
                   ),
@@ -95,12 +96,12 @@ class _AgentThinkingDotsState extends State<AgentThinkingDots>
                     width: widget.dotSize,
                     height: widget.dotSize,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF38BDF8)
+                      color: GiantPalette.primaryLight
                           .withOpacity(.58 + emphasis * .42),
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF38BDF8)
+                          color: GiantPalette.primaryLight
                               .withOpacity(.12 + emphasis * .2),
                           blurRadius: 2 + emphasis * 3,
                         ),
