@@ -80,8 +80,12 @@ class _WelcomeScreenState extends State<WelcomeScreen>
                       ),
                     ],
                   ),
-                  child: const Center(
-                    child: _GiantMark(),
+                  child: Center(
+                    child: SvgPicture.asset(
+                      'assets/branding/giant_mark.svg',
+                      width: 64,
+                      height: 64,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 30),
