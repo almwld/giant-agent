@@ -53,6 +53,9 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Lint architecture Markdown
+        run: npx --yes markdownlint-cli2@0.17.2 --config .markdownlint-cli2.jsonc "docs/architecture/*.md"
+
       - name: Analyze runtime foundation and Gain PTY
         run: flutter analyze lib/domain/kernel lib/domain/terminal lib/tools/gain_terminal_tool.dart
 
