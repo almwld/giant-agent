@@ -23,13 +23,13 @@ class ModelService {
     final gate = Completer<void>();
     final previous = _requestTail;
     _requestTail = gate.future;
-    await previous;
-    _isLoading = true;
     try {
+      await previous;
+      _isLoading = true;
       return await operation();
     } finally {
       _isLoading = false;
-      gate.complete();
+      if (!gate.isCompleted) gate.complete();
     }
   }
 
