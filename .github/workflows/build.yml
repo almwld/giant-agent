@@ -62,6 +62,9 @@ jobs:
       - name: Test durable kernel FIFO and recovery
         run: flutter test test/domain/kernel/agent_kernel_test.dart
 
+      - name: Test Gain PTY output protocol
+        run: flutter test test/domain/terminal/gain_command_output_parser_test.dart
+
       - name: Build universal release APK
         run: |
           flutter build apk --release
