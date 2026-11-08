@@ -1744,7 +1744,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   )
                 : const SizedBox(width: double.infinity),
           ),
-          if (_timelineExpanded)
+          if (expanded)
             const SizedBox(height: 7),
         ],
       ),
