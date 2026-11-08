@@ -17,6 +17,29 @@ class ModelService {
   bool _isLoading = false;
   bool _cancelRequested = false;
   Future<void> _requestTail = Future<void>.value();
+  final StreamController<Map<String, dynamic>> _toolEvents = StreamController<Map<String, dynamic>>.broadcast();
+  String _activeRequestId = '';
+  int _toolEventSequence = 0;
+
+  Stream<Map<String, dynamic>> get toolEvents => _toolEvents.stream;
+  void beginAgentRequest(String requestId) => _activeRequestId = requestId;
+  void endAgentRequest(String requestId) { if (_activeRequestId == requestId) _activeRequestId = ''; }
+
+  void _emitToolEvent(String type, String title, {String? toolName, String? path, String? content, String? output, String? details, String? status}) {
+    _toolEvents.add({
+      'id': 'tool_${_activeRequestId}_${++_toolEventSequence}',
+      'request_id': _activeRequestId,
+      'type': type,
+      'title': title,
+      'tool_name': toolName,
+      'file_name': path,
+      'content': content,
+      'output': output,
+      'details': details,
+      'status': status ?? 'completed',
+      'timestamp': DateTime.now().toIso8601String(),
+    }..removeWhere((key, value) => value == null || value == ''));
+  }
 
   /// One FIFO lock protects every operation that touches the mutable JNI model.
   Future<T> _withRuntimeLock<T>(Future<T> Function() operation) async {
@@ -151,17 +174,67 @@ class ModelService {
     if (args is! Map<String, dynamic>) {
       throw const FormatException('Tool arguments must be an object.');
     }
+    final path = args['path']?.toString() ?? '';
+    final content = args['content']?.toString() ?? '';
+    _emitToolEvent('tool_start', _toolStartTitle(name), toolName: name, path: path,
+        content: name == 'execute_python' ? args['code']?.toString() : null, status: 'running');
+    try {
+      late final Map<String, dynamic> result;
+      switch (name) {
+        case 'create_file':
+          result = await createFile(path: path, content: content);
+          break;
+        case 'read_file':
+          result = await readFile(path: path);
+          break;
+        case 'write_file':
+          result = await writeFile(path: path, content: content);
+          break;
+        case 'execute_python':
+          result = await executePython(code: args['code']?.toString() ?? '');
+          break;
+        default:
+          throw FormatException('Unsupported tool: $name');
+      }
+      final ok = result['ok'] == true;
+      final output = (result['output'] ?? result['path'] ?? result['error'] ?? result).toString();
+      if (ok && name == 'create_file') {
+        _emitToolEvent('file_created', 'تم إنشاء الملف', toolName: name, path: path,
+            output: output, details: 'أنشأ المحرك الملف داخل مساحة العمل فعلياً.');
+      } else if (ok && name == 'write_file') {
+        _emitToolEvent('file_updated', 'تم تحديث الملف', toolName: name, path: path,
+            output: output, details: 'حُفظت التغييرات في مساحة العمل فعلياً.');
+      }
+      _emitToolEvent(ok ? 'tool_output' : 'tool_error',
+          ok ? _toolCompleteTitle(name) : 'فشل تنفيذ الأداة',
+          toolName: name, path: path, output: output,
+          details: ok ? null : result['error']?.toString(),
+          status: ok ? 'completed' : 'failed');
+      return result;
+    } catch (error) {
+      _emitToolEvent('tool_error', 'فشل تنفيذ الأداة', toolName: name,
+          path: path, output: error.toString(), status: 'failed');
+      rethrow;
+    }
+  }
+
+  String _toolStartTitle(String name) {
     switch (name) {
-      case 'create_file':
-        return createFile(path: args['path']?.toString() ?? '', content: args['content']?.toString() ?? '');
-      case 'read_file':
-        return readFile(path: args['path']?.toString() ?? '');
-      case 'write_file':
-        return writeFile(path: args['path']?.toString() ?? '', content: args['content']?.toString() ?? '');
-      case 'execute_python':
-        return executePython(code: args['code']?.toString() ?? '');
-      default:
-        throw FormatException('Unsupported tool: $name');
+      case 'create_file': return 'ينشئ ملفاً في مساحة العمل';
+      case 'write_file': return 'يحدّث ملفاً موجوداً';
+      case 'read_file': return 'يقرأ ملفاً من مساحة العمل';
+      case 'execute_python': return 'يشغّل كود Python';
+      default: return 'ينفّذ أداة';
+    }
+  }
+
+  String _toolCompleteTitle(String name) {
+    switch (name) {
+      case 'create_file': return 'اكتمل إنشاء الملف';
+      case 'write_file': return 'اكتمل تحديث الملف';
+      case 'read_file': return 'اكتملت قراءة الملف';
+      case 'execute_python': return 'اكتمل تنفيذ Python';
+      default: return 'اكتمل تنفيذ الأداة';
     }
   }
 
