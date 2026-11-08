@@ -52,6 +52,7 @@ class _ChatScreenState extends State<ChatScreen> {
   int _streamingShimmerStart = 0;
   String _toolStreamBuffer = '';
   bool _insideToolCall = false;
+  final Set<String> _seenStreamTokenEventIds = <String>{};
   static const String _toolCallOpen = '<tool_call>';
   static const String _toolCallClose = '</tool_call>';
   final Terminal _terminal = Terminal(maxLines: 5000);
@@ -133,6 +134,13 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     }
     if (step['type'] == 'stream_token') {
+      // Native token callbacks are deltas. Ignore a replayed event id so a
+      // reconnect/re-delivery cannot append the same chunk twice.
+      final tokenEventId = step['id']?.toString() ?? '';
+      if (tokenEventId.isNotEmpty && !_seenStreamTokenEventIds.add(tokenEventId)) return;
+      if (_seenStreamTokenEventIds.length > 4096) {
+        _seenStreamTokenEventIds.remove(_seenStreamTokenEventIds.first);
+      }
       final token = step['text']?.toString() ?? '';
       final visible = _visibleAnswerDelta(token);
       if (visible.isNotEmpty) setState(() {
