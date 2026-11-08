@@ -158,15 +158,17 @@ class AgentKernel {
     // both pass admission while native model readiness is being checked.
     _activeRequestId = request.id;
     _cancellationRequested = false;
-    _emit(
-      requestId: request.id,
-      type: 'request_received',
-      title: 'تم استلام الطلب',
-      // Receipt is not execution; only a real completed operation is green.
-      status: 'pending',
-    );
 
     try {
+      // Start the protected section immediately after reserving the slot so
+      // every subsequent operation is covered by the release in finally.
+      _emit(
+        requestId: request.id,
+        type: 'request_received',
+        title: 'تم استلام الطلب',
+        // Receipt is not execution; only a real completed operation is green.
+        status: 'pending',
+      );
       final openRouterEnabled = await OpenRouterService.instance.isEnabled();
       if (!openRouterEnabled) {
         if (!_models.hasActiveModel()) {
