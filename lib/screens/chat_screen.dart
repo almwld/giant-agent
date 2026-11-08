@@ -155,6 +155,8 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    _modelService.requestTerminalApproval = _requestTerminalApproval;
+    _modelService.onAgentEvent = _handleAgentEvent;
     _initDatabase();
     _agentEventSubscription = _agentEvents.receiveBroadcastStream().listen(
       _handleAgentEvent,
@@ -450,6 +452,40 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  Future<bool> _requestTerminalApproval(String command) async {
+    if (!mounted) return false;
+    final approved = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('السماح بتنفيذ أمر طرفية؟'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('سيُنفذ النص التالي حرفياً داخل Android shell بصلاحيات التطبيق الحالية. لا توجد صلاحيات root. لا توافق إلا إذا كنت تفهم الأمر ومصدره.'),
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(10)),
+                  child: SelectableText(command, style: const TextStyle(color: Colors.greenAccent, fontFamily: 'monospace', fontSize: 12)),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('رفض')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('تنفيذ هذا الأمر مرة واحدة')),
+        ],
+      ),
+    );
+    return approved == true && mounted;
+  }
   Future<void> _init() async {
     await _modelService.init();
     if (!mounted) return;
@@ -743,6 +779,8 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void dispose() {
     _agentEventSubscription?.cancel();
+    _modelService.requestTerminalApproval = null;
+    _modelService.onAgentEvent = null;
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();

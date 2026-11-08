@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import '../services/llama_service.dart';
+import '../tools/gain_terminal_tool.dart';
+import '../tools/terminal_tool_coordinator.dart';
 
 class ModelService {
   static final ModelService _instance = ModelService._internal();
@@ -12,6 +14,9 @@ class ModelService {
   String _activeModelId = '';
   bool _isLoading = false;
   bool _cancelRequested = false;
+  Future<bool> Function(String command)? requestTerminalApproval;
+  void Function(Map<String, dynamic> event)? onAgentEvent;
+  final GainTerminalTool _gainTerminal = GainTerminalTool();
 
   Future<void> init() => scanModels();
   Future<void> scanModels() async {
@@ -125,6 +130,20 @@ class ModelService {
         return writeFile(path: args['path']?.toString() ?? '', content: args['content']?.toString() ?? '');
       case 'execute_python':
         return executePython(code: args['code']?.toString() ?? '');
+      case 'gain_terminal':
+        final approval = requestTerminalApproval;
+        if (approval == null) {
+          return <String, dynamic>{'ok': false, 'denied': true, 'error': 'Terminal approval UI is unavailable.'};
+        }
+        final coordinator = TerminalToolCoordinator(
+          requestApproval: approval,
+          execute: (command, timeout) => _gainTerminal.execute(command, timeout: timeout),
+          onEvent: onAgentEvent,
+        );
+        return coordinator.execute(
+          command: args['command']?.toString() ?? '',
+          timeoutSeconds: args['timeout_seconds'] is int ? args['timeout_seconds'] as int : 60,
+        );
       default:
         throw FormatException('Unsupported tool: $name');
     }
@@ -139,6 +158,7 @@ class ModelService {
 2) read_file: arguments path. تقرأ ملفاً موجوداً داخل مساحة العمل.
 3) write_file: arguments path و content. تحدّث ملفاً موجوداً داخل مساحة العمل مع الحفاظ على حدود المسارات والحجم.
 4) execute_python: arguments code. يشغّل سكربت Python محلياً ضمن مفسر مقيّد؛ يدعم الحسابات والطباعة والحلقات المحدودة. لا يدعم الاستيراد أو الوصول إلى النظام أو السمات أو فتح الملفات. تعامل مع الملفات عبر أداتي create_file و read_file فقط؛ لا يملك Python صلاحية فتح الملفات.
+5) gain_terminal: arguments command و timeout_seconds (اختياري 1..900). ينفذ أمراً في Android /system/bin/sh داخل صلاحيات التطبيق الحالية فقط. يجب انتظار موافقة المستخدم الصريحة على نص الأمر المطابق تماماً قبل التنفيذ؛ لا تعِد صياغة الأمر أو تخفِ أجزاءه. لا يوجد root أو صلاحيات مرتفعة.
 عندما يطلب المستخدم إنشاء واجهة ويب أو نموذج تفاعلي أو تطبيق بسيط، أنشئ ملفاً واحداً باسم index.html باستخدام create_file، واجعل HTML وCSS وJavaScript مكتملة ومضمّنة داخل الملف نفسه حتى تعمل مباشرة في معاينة WebView المحلية دون اتصال. لا تعتمد على CDN أو ملفات خارجية أو خدمات شبكة. صمّم واجهة متجاوبة مع الهاتف، وأضف تفاعلات JavaScript المطلوبة. إذا طلب المستخدم مشروع Flutter أصلياً، أنشئ ملفات Dart المناسبة ولا تدّع أن WebView تستطيع تشغيلها؛ فهي تعرض الكود فقط.
 عند الحاجة لاستخدام أداة أخرج استدعاءً واحداً فقط:
 <tool_call>{"name":"create_file","arguments":{"path":"src/main.dart","content":"..."}}</tool_call>
