@@ -23,7 +23,7 @@ class AgentWorkflowScreen extends StatelessWidget {
       case 'running':
         return GiantPalette.primaryLight;
       case 'pending':
-        return const GiantPalette.muted;
+        return GiantPalette.muted;
       case 'failed':
       case 'error':
         return const Color(0xFFF87171);
@@ -240,7 +240,7 @@ class AgentWorkflowScreen extends StatelessWidget {
           _metric('إجمالي الأحداث', rows.length.toString(), Colors.white70),
           _metric('مكتمل', completed.toString(), GiantPalette.success),
           _metric('قيد التنفيذ', active.toString(), GiantPalette.primaryLight),
-          _metric('بانتظار التنفيذ', pending.toString(), const GiantPalette.muted),
+          _metric('بانتظار التنفيذ', pending.toString(), GiantPalette.muted),
           _metric('أخطاء', failed.toString(), const Color(0xFFF87171)),
         ]),
       ]),
