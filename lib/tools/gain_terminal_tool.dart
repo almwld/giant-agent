@@ -101,6 +101,8 @@ class GainTerminalTool {
         final remaining = 1024 * 1024 - buffer.length;
         buffer.write(chunk.length <= remaining ? chunk : chunk.substring(0, remaining));
       }
+    }, onError: (Object error, StackTrace stack) {
+      if (!sessionLost.isCompleted) sessionLost.complete();
     });
     closedSubscription = _client.onSessionClosed.listen((_) {
       if (!completed.isCompleted && !sessionLost.isCompleted) {
@@ -145,7 +147,15 @@ class GainTerminalTool {
     } on TimeoutException {
       try {
         await _client.interrupt();
-      } catch (_) {}
+        // Give SIGINT a short grace window. If the command does not return
+        // its sentinel, stop the PTY before admitting the next queued command.
+        await Future.any<void>([
+          completed.future.then((_) {}),
+          sessionLost.future,
+        ]).timeout(const Duration(milliseconds: 750));
+      } catch (_) {
+        await _client.stop();
+      }
       return GainCommandResult(
         command: normalized,
         output: buffer.toString(),
