@@ -34,13 +34,13 @@ These are live snapshots from the review; GitHub state may change.
 2. PR #3's `AgentKernel` delegates execution to existing `ModelService` / `PlannerService`; it is not yet the provider-independent DSH Harness described by v2. Reuse lifecycle/event vocabulary and carefully selected cancellation behavior, not the whole implementation.
 3. PR #1's `ReActAgentProvider` is a useful source for strict structured action parsing, argument validation, bounded tool calls and duplicate-action prevention. Its conversation database does not implement the kernel event journal.
 4. Neither PR provides Zion PTY. Zion's current native PTY implementation is integrated into a very large `MainActivity.kt`, a JNI C implementation, and a Dart adapter. Copying the entire Zion `MainActivity` or its full terminal feature would import unrelated app-specific features, Termux/Kali setup, package identity assumptions and permissions.
-5. The safe port is to extract only the PTY lifecycle and native process bridge into `GainPtyBridge.kt` plus a renamed native C source, and expose a separate `GainTerminalTool` in Dart. The channel names, JNI symbols, package path, app-private paths, runtime bootstrap assumptions and error/event contracts must be adapted to Giant Agent. Zion OS itself must remain untouched.
+5. The first Gain port now extracts the native PTY engine into `gain_pty.c`, adds `GainPtyBridge.kt`, and provides `GainPtyClient` / `GainTerminalTool`. JNI symbols, package path, app-private paths, channels and environment labels are adapted to Giant Agent. Zion OS itself remains untouched. The port intentionally omits Zion-only Termux/Kali bootstrap, root-access UI and package-manager integrations.
 6. The current Giant Agent main branch has no `lib/agent/architecture/AgentKernel` or durable kernel queue. It has a legacy `ToolManager` with simulated handlers; those handlers must not be promoted to production tools just because a registry entry exists.
 
 ## Implementation order
 
 - **Phase 1:** implement SQLite-backed request admission, append-only event journal, recovery reconciliation and deterministic FIFO tests. A request left in `running` after process death must become `interrupted/needs_reconciliation`, not be blindly replayed.
-- **Phase 2:** port Zion PTY into isolated Gain bridge files. Keep one process-owned PTY session; subscribe before command writes; use execution-correlated sentinels robust to chunk boundaries; expose cancellation, timeout, exit code and session-loss distinctly.
+- **Phase 2 (initial port committed):** validate Gain PTY compilation and Dart contracts; then add integration tests. Keep one process-owned PTY session; subscribe before command writes; use execution-correlated sentinels robust to chunk boundaries; expose cancellation, timeout, exit code and session-loss distinctly. Physical-device execution remains required.
 - **Phase 3:** add GainTerminalTool to the v2 tool contracts and connect it to the DSH Harness.
 - **Phase 4:** connect the existing xterm package to durable timeline projections and live PTY output.
 - **Phase 5:** approval policy, bounded output artifacts, watchdog and device verification.
