@@ -1068,9 +1068,10 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     final taskPrefs = await SharedPreferences.getInstance();
-    String? taskId;
-    await taskPrefs.setString('giant_pending_task', text);
-    await taskPrefs.setString('giant_pending_session_id', _currentSessionId);
+    if (_agentModeEnabled) {
+      await taskPrefs.setString('giant_pending_task', text);
+      await taskPrefs.setString('giant_pending_session_id', _currentSessionId);
+    }
     _scrollToBottom();
 
     String response;
@@ -1078,11 +1079,12 @@ class _ChatScreenState extends State<ChatScreen> {
       response = await _executeChatPrompt(text);
     } catch (error) {
       response = 'تعذر إكمال الطلب: $error';
-      if (taskId != null) await TaskManager().markFailed(taskId, response);
     } finally {
-      await taskPrefs.remove('giant_pending_task');
-      await taskPrefs.remove('giant_pending_session_id');
-      await taskPrefs.remove('giant_pending_task_id');
+      if (_agentModeEnabled) {
+        await taskPrefs.remove('giant_pending_task');
+        await taskPrefs.remove('giant_pending_session_id');
+        await taskPrefs.remove('giant_pending_task_id');
+      }
     }
 
     if (!mounted) return;
