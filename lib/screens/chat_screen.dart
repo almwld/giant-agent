@@ -2292,8 +2292,6 @@ class _ChatScreenState extends State<ChatScreen> {
                               ),
                             ),
                           ),
-                          if (_isLoading)
-                            const AgentPulseDot(size: 9),
                         ],
                       ),
                     ),
