@@ -11,15 +11,15 @@
         android:translateY="18.36">
         <path
             android:fillColor="#FFFFFF"
-            android:pathData="M54,4 L104,54 L54,104 L4,54 Z"/>
+            android:pathData="M54,4 C57,4 60,5 62,8 L100,46 C104,50 104,58 100,62 L62,100 C58,104 50,104 46,100 L8,62 C4,58 4,50 8,46 L46,8 C48,5 51,4 54,4 Z"/>
         <path
             android:fillColor="#0A8F83"
-            android:pathData="M54,18 L90,54 L54,90 L18,54 Z"/>
+            android:pathData="M54,18 C56,18 58,19 60,21 L87,48 C90,51 90,57 87,60 L60,87 C57,90 51,90 48,87 L21,60 C18,57 18,51 21,48 L48,21 C50,19 52,18 54,18 Z"/>
         <path
             android:fillColor="#FFFFFF"
-            android:pathData="M54,34 L74,54 L54,74 L34,54 Z"/>
+            android:pathData="M54,34 C56,34 57,35 59,37 L73,51 C75,53 75,55 73,57 L59,71 C56,74 52,74 49,71 L35,57 C33,55 33,53 35,51 L49,37 C50,35 52,34 54,34 Z"/>
         <path
             android:fillColor="#35B8AA"
-            android:pathData="M54,44 L64,54 L54,64 L44,54 Z"/>
+            android:pathData="M54,44 C56,44 57,45 58,46 L63,51 C65,53 65,55 63,57 L58,62 C56,64 52,64 50,62 L45,57 C43,55 43,53 45,51 L50,46 C51,45 52,44 54,44 Z"/>
     </group>
 </vector>
