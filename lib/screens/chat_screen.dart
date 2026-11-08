@@ -46,6 +46,8 @@ class _ChatScreenState extends State<ChatScreen> {
   StreamSubscription<dynamic>? _agentEventSubscription;
   StreamSubscription<dynamic>? _kernelEventSubscription;
   final List<Map<String, dynamic>> _agentSteps = [];
+  String _activeAgentRequestId = '';
+  final Set<String> _collapsedTimelineIds = <String>{};
   String _streamingResponse = '';
   String _toolStreamBuffer = '';
   bool _insideToolCall = false;
@@ -135,6 +137,9 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
     step.putIfAbsent('session_id', () => _currentSessionId);
+    if (_activeAgentRequestId.isNotEmpty) {
+      step.putIfAbsent('request_id', () => _activeAgentRequestId);
+    }
     final eventType = step['type']?.toString();
     if (eventType == 'file_created' || eventType == 'file_updated') {
       final path = step['file_name']?.toString();
@@ -245,7 +250,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final dir = await getApplicationDocumentsDirectory();
     _db = await openDatabase(
       '${dir.path}/conversations.db',
-      version: 3,
+      version: 4,
       onCreate: (db, version) async {
         await db.execute('''CREATE TABLE sessions (
           id TEXT PRIMARY KEY, title TEXT NOT NULL,
@@ -253,7 +258,7 @@ class _ChatScreenState extends State<ChatScreen> {
         )''');
         await db.execute('''CREATE TABLE messages (
           id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL,
-          content TEXT, isUser INTEGER, timestamp INTEGER
+          content TEXT, isUser INTEGER, timestamp INTEGER, request_id TEXT
         )''');
         await db.execute('''CREATE TABLE agent_events (
           id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL,
@@ -283,6 +288,9 @@ class _ChatScreenState extends State<ChatScreen> {
             await db.update('agent_events', {'event_key': 'legacy_${row['id']}'}, where: 'id = ?', whereArgs: [row['id']]);
           }
           await db.execute('CREATE UNIQUE INDEX agent_events_session_key ON agent_events(session_id, event_key)');
+        }
+        if (oldVersion < 4) {
+          await db.execute('ALTER TABLE messages ADD COLUMN request_id TEXT');
         }
       },
     );
@@ -368,17 +376,31 @@ class _ChatScreenState extends State<ChatScreen> {
     final messages = await _db?.query('messages', where: 'session_id = ?', whereArgs: [_currentSessionId], orderBy: 'timestamp ASC');
     final events = await _db?.query('agent_events', where: 'session_id = ?', whereArgs: [_currentSessionId], orderBy: 'timestamp ASC');
     if (!mounted) return;
+    final restoredMessages = (messages ?? []).map((msg) => {
+      'isUser': msg['isUser'] == 1,
+      'content': msg['content'] as String,
+      'time': DateTime.fromMillisecondsSinceEpoch(msg['timestamp'] as int),
+      'requestId': msg['request_id']?.toString() ?? '',
+    }).toList();
+    final restoredEvents = <Map<String, dynamic>>[];
+    for (final row in events ?? []) {
+      final event = Map<String, dynamic>.from(jsonDecode(row['event_json'] as String) as Map);
+      if ((event['request_id']?.toString() ?? '').isEmpty) {
+        final eventTime = row['timestamp'] as int;
+        for (final message in restoredMessages.reversed) {
+          final time = (message['time'] as DateTime).millisecondsSinceEpoch;
+          if (message['isUser'] == true && time <= eventTime) {
+            final legacyRequestId = message['requestId']?.toString() ?? '';
+            if (legacyRequestId.isNotEmpty) event['request_id'] = legacyRequestId;
+            break;
+          }
+        }
+      }
+      restoredEvents.add(event);
+    }
     setState(() {
-      _messages
-        ..clear()
-        ..addAll((messages ?? []).map((msg) => {
-          'isUser': msg['isUser'] == 1,
-          'content': msg['content'] as String,
-          'time': DateTime.fromMillisecondsSinceEpoch(msg['timestamp'] as int),
-        }));
-      _agentSteps
-        ..clear()
-        ..addAll((events ?? []).map((row) => Map<String, dynamic>.from(jsonDecode(row['event_json'] as String) as Map)));
+      _messages..clear()..addAll(restoredMessages);
+      _agentSteps..clear()..addAll(restoredEvents);
     });
     AgentWorkflowScreen.publish(_agentSteps, finalOutputText: _latestAssistantOutput);
     _scrollToBottom();
@@ -465,7 +487,7 @@ class _ChatScreenState extends State<ChatScreen> {
     await _loadSessions();
   }
 
-  Future<void> _saveMessage(String content, bool isUser) async {
+  Future<void> _saveMessage(String content, bool isUser, {String? requestId}) async {
     if (!_sessionReady || _currentSessionId.isEmpty) return;
     final now = DateTime.now().millisecondsSinceEpoch;
     await _db?.insert('messages', {
@@ -473,6 +495,7 @@ class _ChatScreenState extends State<ChatScreen> {
       'content': content,
       'isUser': isUser ? 1 : 0,
       'timestamp': now,
+      'request_id': requestId,
     });
     await _db?.update('sessions', {'updated_at': now},
       where: 'id = ?', whereArgs: [_currentSessionId]);
@@ -777,16 +800,19 @@ class _ChatScreenState extends State<ChatScreen> {
     final text = _controller.text.trim();
     if (text.isEmpty || _isLoading) return;
 
+    final requestId = DateTime.now().microsecondsSinceEpoch.toString();
+    _activeAgentRequestId = requestId;
     setState(() {
       _messages.add({
         'isUser': true,
         'content': text,
         'time': DateTime.now(),
+        'requestId': requestId,
       });
       _controller.clear();
       _isLoading = true;
     });
-    await _saveMessage(text, true);
+    await _saveMessage(text, true, requestId: requestId);
     final current = await _db?.query('sessions',
         columns: ['title'],
         where: 'id = ?',
@@ -1502,10 +1528,9 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  bool _timelineExpanded = true;
-
-  Widget _buildAgentTimeline() {
-    if (_agentSteps.isEmpty) return const SizedBox.shrink();
+  Widget _buildAgentTimeline(List<Map<String, dynamic>> steps, String requestId) {
+    if (steps.isEmpty) return const SizedBox.shrink();
+    final expanded = !_collapsedTimelineIds.contains(requestId);
     const cardColor = Color(0xFF1E1E1E);
     const mutedColor = Color(0xFF9CA3AF);
     return Container(
@@ -1519,7 +1544,9 @@ class _ChatScreenState extends State<ChatScreen> {
         children: [
           InkWell(
             borderRadius: BorderRadius.circular(16),
-            onTap: () => setState(() => _timelineExpanded = !_timelineExpanded),
+            onTap: () => setState(() {
+              if (expanded) { _collapsedTimelineIds.add(requestId); } else { _collapsedTimelineIds.remove(requestId); }
+            }),
             child: Padding(
               padding: const EdgeInsetsDirectional.fromSTEB(14, 13, 12, 13),
               child: Row(
@@ -1533,7 +1560,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         const Text('سجل تنفيذ الوكيل',
                           style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
                         const SizedBox(height: 3),
-                        Text('${_agentSteps.length} أحداث من المحرك',
+                        Text('${steps.length} أحداث من المحرك',
                           style: const TextStyle(color: mutedColor, fontSize: 10)),
                       ],
                     ),
@@ -1549,10 +1576,10 @@ class _ChatScreenState extends State<ChatScreen> {
                     visualDensity: VisualDensity.compact,
                     icon: const Icon(Icons.computer_outlined, color: Color(0xFF0D8274), size: 19),
                     onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => AgentWorkspaceScreen(steps: List<Map<String, dynamic>>.from(_agentSteps)),
+                      builder: (_) => AgentWorkspaceScreen(steps: List<Map<String, dynamic>>.from(steps)),
                     )),
                   ),
-                  Icon(_timelineExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                  Icon(expanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
                     color: mutedColor, size: 20),
                 ],
               ),
@@ -1562,10 +1589,10 @@ class _ChatScreenState extends State<ChatScreen> {
             duration: const Duration(milliseconds: 240),
             curve: Curves.easeInOut,
             alignment: Alignment.topCenter,
-            child: _timelineExpanded
+            child: expanded
                 ? Column(
-                    children: List.generate(_agentSteps.length, (index) {
-                      final step = _agentSteps[index];
+                    children: List.generate(steps.length, (index) {
+                      final step = steps[index];
                       final status = step['status']?.toString() ?? 'completed';
                       final failed = status == 'failed' || status == 'interrupted';
                       final running = status == 'running';
@@ -2098,15 +2125,19 @@ class _ChatScreenState extends State<ChatScreen> {
             child: ListView.builder(
               controller: _scrollController,
               padding: const EdgeInsets.all(16),
-              itemCount: _messages.length + (_agentSteps.isNotEmpty ? 1 : 0),
+              itemCount: _messages.length,
               itemBuilder: (context, index) {
-                if (_agentSteps.isNotEmpty && index == 0) {
-                  return _buildAgentTimeline();
-                }
-                final messageIndex = index - (_agentSteps.isNotEmpty ? 1 : 0);
-                final msg = _messages[messageIndex];
+                final msg = _messages[index];
                 final isUser = msg['isUser'] as bool;
-                return Align(
+                final requestId = msg['requestId']?.toString() ?? '';
+                final messageEvents = isUser && requestId.isNotEmpty
+                    ? _agentSteps.where((event) => event['request_id']?.toString() == requestId).toList()
+                    : <Map<String, dynamic>>[];
+                return Column(
+                  crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Align(
                   alignment: isUser ? AlignmentDirectional.centerEnd : AlignmentDirectional.centerStart,
                   child: Container(
                     margin: const EdgeInsetsDirectional.only(bottom: 12),
@@ -2144,6 +2175,15 @@ class _ChatScreenState extends State<ChatScreen> {
                       ],
                     ),
                   ),
+                    if (messageEvents.isNotEmpty)
+                      Align(
+                        alignment: isUser ? AlignmentDirectional.centerEnd : AlignmentDirectional.centerStart,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * .86),
+                          child: _buildAgentTimeline(messageEvents, requestId),
+                        ),
+                      ),
+                  ],
                 );
               },
             ),
