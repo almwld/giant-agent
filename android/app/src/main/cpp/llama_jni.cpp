@@ -272,14 +272,17 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerateStreaming(JNIEnv * env, jobject, j
         const int32_t count = std::min<int32_t>(kDecodeBatch, nTokens - offset);
         auto batch = llama_batch_get_one(tokens.data() + offset, count);
         const int decodeStatus = llama_decode(g_ctx, batch);
+        if (g_timeout_requested.load(std::memory_order_acquire)) {
+            return env->NewStringUTF("TIMEOUT: لم يصدر النموذج أي رمز جديد خلال 15 ثانية؛ تم إيقاف التوليد.");
+        }
+        if (g_cancel_requested.load(std::memory_order_acquire)) {
+            return env->NewStringUTF("CANCELLED: تم إيقاف المهمة بواسطة المستخدم.");
+        }
         if (decodeStatus != 0) {
             LOGE("Prompt decode failed at token offset %d (status=%d)", offset, decodeStatus);
             return env->NewStringUTF("ERROR: Prompt decode failed; try a shorter message.");
         }
         offset += count;
-        if (g_timeout_requested.load(std::memory_order_acquire)) {
-            return env->NewStringUTF("TIMEOUT: لم يصدر النموذج أي رمز جديد خلال 15 ثانية؛ تم إيقاف التوليد.");
-        }
     }
 
     jobject callbackRef = callback ? env->NewGlobalRef(callback) : nullptr;
