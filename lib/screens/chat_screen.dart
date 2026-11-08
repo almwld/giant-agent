@@ -146,9 +146,8 @@ class _ChatScreenState extends State<ChatScreen> {
     if (_activeAgentRequestId.isNotEmpty) {
       step.putIfAbsent('request_id', () => _activeAgentRequestId);
 
-      // Native inference can run more than once inside one planned request.
-      // Keep one evolving inference row beneath the user's message instead
-      // of showing duplicate "local inference" entries for internal passes.
+      // Collapse all repeated native inference-start/update events into one
+      // stable timeline record for this user request. Later events update it.
       final nativeTitle = step['title']?.toString() ?? '';
       if (step['type'] == 'agent_status' &&
           (nativeTitle.contains('استدلال النموذج المحلي') ||
@@ -202,6 +201,36 @@ class _ChatScreenState extends State<ChatScreen> {
       });
     }
   }
+  TextDirection _contentDirection(String value) {
+    for (final rune in value.runes) {
+      // Resolve direction from the first strong character, not punctuation,
+      // whitespace, or digits. Flutter's bidi algorithm then handles mixed text.
+      if ((rune >= 0x0600 && rune <= 0x06FF) ||
+          (rune >= 0x0750 && rune <= 0x077F) ||
+          (rune >= 0x08A0 && rune <= 0x08FF) ||
+          (rune >= 0xFB50 && rune <= 0xFDFF) ||
+          (rune >= 0xFE70 && rune <= 0xFEFF)) {
+        return TextDirection.rtl;
+      }
+      if ((rune >= 0x0041 && rune <= 0x005A) ||
+          (rune >= 0x0061 && rune <= 0x007A) ||
+          (rune >= 0x00C0 && rune <= 0x02AF)) {
+        return TextDirection.ltr;
+      }
+    }
+    return TextDirection.rtl;
+  }
+
+  bool _isLiveInferenceStatus(Map<String, dynamic> event) {
+    if (event['type'] != 'agent_status' || event['status'] != 'running') {
+      return false;
+    }
+    final title = event['title']?.toString() ?? '';
+    return title.contains('استدلال النموذج المحلي') ||
+        title.contains('توليد الإجابة') ||
+        title.contains('الاستدلال المحلي');
+  }
+
   bool _isInterruptedTaskOutput(String output) =>
       TaskManager.classifyResult(output) == TaskExecutionOutcome.interrupted;
 
@@ -610,42 +639,44 @@ class _ChatScreenState extends State<ChatScreen> {
               ? '\x1B[32m[completed]\x1B[0m\r\n'
               : '\x1B[33m[$status]\x1B[0m\r\n');
     }
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: const Color(0xFF050A0F),
-      builder: (context) => SizedBox(
-        height: MediaQuery.of(context).size.height * .72,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(children: [
-                const Icon(Icons.terminal, color: Colors.greenAccent),
-                const SizedBox(width: 8),
-                Expanded(child: Text(
-                  step == null ? 'Agent Terminal' : (step['title']?.toString() ?? 'نتيجة التنفيذ'),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                )),
-                IconButton(
-                  onPressed: () {
-                    _terminal.write('\x1B[2J\x1B[H');
-                    _terminalHasActivity = false;
-                    _terminal.write('\x1B[32mroot@giant-agent\x1B[0m:\x1B[34m~\x1B[0m# Waiting for commands...\r\n');
-                  },
-                  icon: const Icon(Icons.delete_sweep, color: Colors.white70),
-                ),
-                IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close, color: Colors.white70)),
-              ]),
-            ),
-            const Divider(height: 1, color: Colors.white24),
-            Expanded(child: TerminalView(_terminal, readOnly: true)),
-          ],
+
+    // A dedicated route keeps terminal output separate from the chat composer
+    // and conversation instead of covering them with a modal overlay.
+    Navigator.of(context).push<void>(MaterialPageRoute(
+      builder: (terminalContext) => Scaffold(
+        backgroundColor: const Color(0xFF050A0F),
+        body: SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Row(children: [
+                  const Icon(Icons.terminal, color: Colors.greenAccent),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(
+                    step == null ? 'Agent Terminal' : (step['title']?.toString() ?? 'نتيجة التنفيذ'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  )),
+                  IconButton(
+                    onPressed: () {
+                      _terminal.write('\x1B[2J\x1B[H');
+                      _terminalHasActivity = false;
+                      _terminal.write('\x1B[32mroot@giant-agent\x1B[0m:\x1B[34m~\x1B[0m# Waiting for commands...\r\n');
+                    },
+                    icon: const Icon(Icons.delete_sweep, color: Colors.white70),
+                  ),
+                  IconButton(onPressed: () => Navigator.pop(terminalContext), icon: const Icon(Icons.close, color: Colors.white70)),
+                ]),
+              ),
+              const Divider(height: 1, color: Colors.white24),
+              Expanded(child: TerminalView(_terminal, readOnly: true)),
+            ],
+          ),
         ),
       ),
-    );
+    ));
   }
 
   Future<void> _init() async {
@@ -2191,7 +2222,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 final isUser = msg['isUser'] as bool;
                 final requestId = msg['requestId']?.toString() ?? '';
                 final messageEvents = isUser && requestId.isNotEmpty
-                    ? _agentSteps.where((event) => event['request_id']?.toString() == requestId).toList()
+                    ? _agentSteps.where((event) =>
+                        event['request_id']?.toString() == requestId &&
+                        !_isLiveInferenceStatus(event)).toList()
                     : <Map<String, dynamic>>[];
                 return Column(
                   crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
@@ -2217,11 +2250,12 @@ class _ChatScreenState extends State<ChatScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        SelectableText(
-                          msg['content'],
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
+                        Directionality(
+                          textDirection: _contentDirection(msg['content']?.toString() ?? ''),
+                          child: SelectableText(
+                            msg['content'],
+                            textAlign: TextAlign.start,
+                            style: const TextStyle(color: Colors.white, fontSize: 14),
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -2249,7 +2283,9 @@ class _ChatScreenState extends State<ChatScreen> {
               },
             ),
           ),
-          if (_isLoading)
+          // The composer owns the single live status indicator. This area is
+          // reserved for actual streamed answer text, never a second spinner/status.
+          if (_isLoading && _streamingResponse.isNotEmpty)
             Container(
               width: double.infinity,
               margin: const EdgeInsets.fromLTRB(16, 6, 16, 10),
@@ -2259,30 +2295,15 @@ class _ChatScreenState extends State<ChatScreen> {
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: const Color(0xFF38BDF8).withOpacity(.12)),
               ),
-              child: _streamingResponse.isNotEmpty
-                  ? AgentStreamingText(
-                      _streamingResponse,
-                      shimmerFrom: _streamingShimmerStart,
-                      selectable: true,
-                      style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.55),
-                    )
-                  : Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const AgentPulseDot(size: 8),
-                        const SizedBox(width: 10),
-                        const AgentThinkingDots(),
-                        const SizedBox(width: 10),
-                        Flexible(
-                          child: Text(
-                            _thinkingStage.isEmpty ? 'يفكر في طلبك...' : _thinkingStage,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 11),
-                          ),
-                        ),
-                      ],
-                    ),
+              child: Directionality(
+                textDirection: _contentDirection(_streamingResponse),
+                child: AgentStreamingText(
+                  _streamingResponse,
+                  shimmerFrom: _streamingShimmerStart,
+                  selectable: true,
+                  style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.55),
+                ),
+              ),
             ),
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
