@@ -593,6 +593,7 @@ class _ChatScreenState extends State<ChatScreen> {
       await _saveAgentEvent(recoveryEvent);
       _agentSteps.add(recoveryEvent);
     }
+    if (mounted) setState(() {});
     AgentWorkflowScreen.publish(_agentSteps, finalOutputText: _latestAssistantOutput);
   }
 
