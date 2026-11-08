@@ -1252,7 +1252,7 @@ class _ChatScreenState extends State<ChatScreen> {
         'time': DateTime.now(),
         'requestId': requestId,
       });
-      _pendingChatRequests = (_pendingChatRequests - 1).clamp(0, 1 << 30);
+      if (_pendingChatRequests > 0) _pendingChatRequests--;
       _isLoading = _pendingChatRequests > 0;
     });
     await _saveMessage(response, false, requestId: requestId);
