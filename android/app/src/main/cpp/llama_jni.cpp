@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <chrono>
+#include <thread>
 #include "llama.h"
 
 #define LOG_TAG "ZionLLM"
@@ -20,14 +22,42 @@ llama_sampler * g_sampler = nullptr;
 llama_adapter_lora * g_lora = nullptr;
 std::atomic<bool> g_generation_active{false};
 std::atomic<bool> g_cancel_requested{false};
+std::atomic<bool> g_timeout_requested{false};
+std::atomic<int64_t> g_last_token_ms{0};
 
+int64_t monotonicMillis() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+// A watchdog runs independently of llama.cpp. It can request cancellation
+// even while native inference is occupying the single AI executor.
 struct GenerationStateGuard {
+    std::atomic<bool> stop_watchdog{false};
+    std::thread watchdog;
+
     GenerationStateGuard() {
         g_cancel_requested.store(false, std::memory_order_relaxed);
+        g_timeout_requested.store(false, std::memory_order_relaxed);
+        g_last_token_ms.store(monotonicMillis(), std::memory_order_release);
         g_generation_active.store(true, std::memory_order_release);
+        watchdog = std::thread([this]() {
+            constexpr int64_t kIdleTimeoutMs = 15000;
+            while (!stop_watchdog.load(std::memory_order_acquire)) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(250));
+                if (monotonicMillis() - g_last_token_ms.load(std::memory_order_acquire) >= kIdleTimeoutMs) {
+                    g_timeout_requested.store(true, std::memory_order_release);
+                    g_cancel_requested.store(true, std::memory_order_release);
+                    break;
+                }
+            }
+        });
     }
+
     ~GenerationStateGuard() {
+        stop_watchdog.store(true, std::memory_order_release);
         g_generation_active.store(false, std::memory_order_release);
+        if (watchdog.joinable()) watchdog.join();
         g_cancel_requested.store(false, std::memory_order_relaxed);
     }
 };
@@ -61,7 +91,9 @@ size_t completeUtf8Prefix(const std::string & value) {
 }
 
 void emitToken(JNIEnv * env, jobject callback, jmethodID method, const std::string & bytes) {
-    if (!callback || !method || bytes.empty()) return;
+    if (bytes.empty()) return;
+    g_last_token_ms.store(monotonicMillis(), std::memory_order_release);
+    if (!callback || !method) return;
     jstring piece = env->NewStringUTF(bytes.c_str());
     if (!piece) { if (env->ExceptionCheck()) env->ExceptionClear(); return; }
     env->CallVoidMethod(callback, method, piece);
@@ -245,6 +277,9 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerateStreaming(JNIEnv * env, jobject, j
             return env->NewStringUTF("ERROR: Prompt decode failed; try a shorter message.");
         }
         offset += count;
+        if (g_timeout_requested.load(std::memory_order_acquire)) {
+            return env->NewStringUTF("TIMEOUT: لم يصدر النموذج أي رمز جديد خلال 15 ثانية؛ تم إيقاف التوليد.");
+        }
     }
 
     jobject callbackRef = callback ? env->NewGlobalRef(callback) : nullptr;
@@ -305,6 +340,12 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerateStreaming(JNIEnv * env, jobject, j
     if (callbackClass) env->DeleteLocalRef(callbackClass);
     if (callbackRef) env->DeleteGlobalRef(callbackRef);
     LOGE("Inference finished; generated %zu UTF-8 bytes", output.size());
+    if (g_timeout_requested.load(std::memory_order_acquire)) {
+        return env->NewStringUTF("TIMEOUT: لم يصدر النموذج أي رمز جديد خلال 15 ثانية؛ تم إيقاف التوليد.");
+    }
+    if (g_cancel_requested.load(std::memory_order_acquire)) {
+        return env->NewStringUTF("CANCELLED: تم إيقاف المهمة بواسطة المستخدم.");
+    }
     return env->NewStringUTF(output.c_str());
 }
 
