@@ -429,6 +429,7 @@ class _ChatScreenState extends State<ChatScreen> {
     await _ensureCurrentSession();
     await _loadSessions();
     await _loadHistory();
+    await _recoverInterruptedAgentRequests();
     await _init();
     await _resumePendingTask();
     await _consumeInitialSharedFile();
@@ -542,6 +543,57 @@ class _ChatScreenState extends State<ChatScreen> {
     });
     AgentWorkflowScreen.publish(_agentSteps, finalOutputText: _latestAssistantOutput);
     _scrollToBottom();
+  }
+
+  Future<void> _recoverInterruptedAgentRequests() async {
+    if (_db == null || !_sessionReady) return;
+    final rows = await _db!.query(
+      'agent_execution_logs',
+      where: 'session_id = ?',
+      whereArgs: [_currentSessionId],
+      orderBy: 'request_id ASC, sequence_number ASC',
+    );
+    final grouped = <String, List<Map<String, Object?>>>{};
+    for (final row in rows) {
+      final requestId = row['request_id']?.toString() ?? '';
+      if (requestId.isEmpty) continue;
+      grouped.putIfAbsent(requestId, () => <Map<String, Object?>>[]).add(row);
+    }
+
+    for (final entry in grouped.entries) {
+      final events = entry.value;
+      final types = events.map((row) => row['event_type']?.toString() ?? '').toSet();
+      final alreadyTerminal = types.any((type) => const {
+        'response_generated',
+        'execution_failed',
+        'execution_interrupted',
+        'execution_incomplete',
+        'request_interrupted',
+      }.contains(type));
+      if (alreadyTerminal) continue;
+
+      final didStart = types.contains('execution_started');
+      final wasQueued = types.contains('request_queued');
+      if (!didStart && !wasQueued) continue;
+
+      final requestId = entry.key;
+      final recoveryEvent = <String, dynamic>{
+        'id': 'recovery_${requestId}_${DateTime.now().microsecondsSinceEpoch}',
+        'request_id': requestId,
+        'session_id': _currentSessionId,
+        'type': didStart ? 'execution_interrupted' : 'request_interrupted',
+        'title': didStart
+            ? 'توقف التنفيذ بسبب إغلاق التطبيق'
+            : 'لم يبدأ الطلب قبل إغلاق التطبيق',
+        'status': 'interrupted',
+        'details': didStart
+            ? 'استُعيد سجل التنفيذ. لم يُستأنف تلقائياً لتجنب تكرار آثار الأدوات؛ يمكن مراجعة آخر خطوة ثم استئناف المهمة يدوياً.'
+            : 'كان الطلب في قائمة الانتظار عند إغلاق التطبيق، ولم يبدأ تنفيذه.',
+      };
+      await _saveAgentEvent(recoveryEvent);
+      _agentSteps.add(recoveryEvent);
+    }
+    AgentWorkflowScreen.publish(_agentSteps, finalOutputText: _latestAssistantOutput);
   }
 
   Future<void> _saveAgentEvent(Map<String, dynamic> event) async {
