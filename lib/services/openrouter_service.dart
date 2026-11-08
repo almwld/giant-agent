@@ -13,27 +13,42 @@ class OpenRouterService {
   static const defaultModel = 'openai/gpt-4o-mini';
 
   Future<String?> getApiKey() => _storage.read(key: _keyName);
-  Future<String> getModel() async => await _storage.read(key: _modelName) ?? defaultModel;
+  Future<String> getModel() async =>
+      (await _storage.read(key: _modelName))?.trim().isNotEmpty == true
+          ? (await _storage.read(key: _modelName))!.trim()
+          : defaultModel;
   Future<bool> isEnabled() async =>
       (await _storage.read(key: _enabledName)) == 'true' &&
-      (await getApiKey())?.isNotEmpty == true;
+      (await getApiKey())?.trim().isNotEmpty == true;
 
-  Future<void> configure({required String apiKey, required String model, bool enable = true}) async {
+  Future<void> configure({
+    required String apiKey,
+    required String model,
+    bool enable = true,
+  }) async {
     final key = apiKey.trim();
     final modelId = model.trim();
-    if (!key.startsWith('sk-or-') || key.length < 20) {
-      throw const FormatException('أدخل مفتاح OpenRouter صالحاً.');
+
+    // Do not hard-code OpenRouter's current key prefix: key formats can evolve,
+    // and copied keys may use a newer prefix. Validate presence and whitespace.
+    if (key.isEmpty || key.contains(RegExp(r'\s'))) {
+      throw ArgumentError('أدخل مفتاح OpenRouter دون مسافات أو أسطر فارغة.');
     }
-    if (modelId.isEmpty || !RegExp(r'^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.:-]+$').hasMatch(modelId)) {
-      throw const FormatException('معرّف النموذج يجب أن يكون بصيغة provider/model.');
+    if (modelId.isEmpty ||
+        !RegExp(r'^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.:+-]+$')
+            .hasMatch(modelId)) {
+      throw ArgumentError(
+        'معرّف النموذج غير صحيح. استخدم الصيغة provider/model مثل openai/gpt-4o-mini.',
+      );
     }
+
     await _storage.write(key: _keyName, value: key);
     await _storage.write(key: _modelName, value: modelId);
     await _storage.write(key: _enabledName, value: enable ? 'true' : 'false');
   }
 
   Future<void> setEnabled(bool enabled) async {
-    if (enabled && (await getApiKey())?.isNotEmpty != true) {
+    if (enabled && (await getApiKey())?.trim().isNotEmpty != true) {
       throw StateError('احفظ مفتاح OpenRouter أولاً.');
     }
     await _storage.write(key: _enabledName, value: enabled ? 'true' : 'false');
@@ -45,43 +60,83 @@ class OpenRouterService {
     await _storage.delete(key: _enabledName);
   }
 
-  Future<String> generate(String prompt, {int maxTokens = 768, double temperature = 0.25}) async {
-    final key = await getApiKey();
+  Future<String> generate(
+    String prompt, {
+    int maxTokens = 768,
+    double temperature = 0.25,
+  }) async {
+    final key = (await getApiKey())?.trim();
     if (key == null || key.isEmpty || !await isEnabled()) {
       throw StateError('مزود OpenRouter غير مفعّل أو لا يوجد مفتاح محفوظ.');
     }
-    final response = await http.post(
-      Uri.parse('https://openrouter.ai/api/v1/chat/completions'),
-      headers: {
-        'Authorization': 'Bearer ' + key,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://github.com/almwld/giant-agent',
-        'X-Title': 'Giant Agent',
-      },
-      body: jsonEncode({
-        'model': await getModel(),
-        'messages': [{'role': 'user', 'content': prompt}],
-        'max_tokens': maxTokens,
-        'temperature': temperature,
-      }),
-    ).timeout(const Duration(seconds: 90));
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      var detail = response.body;
-      try {
-        detail = (jsonDecode(response.body) as Map<String, dynamic>)['error']?.toString() ?? detail;
-      } catch (_) {}
-      throw StateError('OpenRouter (' + response.statusCode.toString() + '): ' + detail);
+
+    final response = await http
+        .post(
+          Uri.parse('https://openrouter.ai/api/v1/chat/completions'),
+          headers: {
+            'Authorization': 'Bearer $key',
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://github.com/almwld/giant-agent',
+            'X-Title': 'Giant Agent',
+          },
+          body: jsonEncode({
+            'model': await getModel(),
+            'messages': [
+              {'role': 'user', 'content': prompt}
+            ],
+            'max_tokens': maxTokens,
+            'temperature': temperature,
+          }),
+        )
+        .timeout(const Duration(seconds: 90));
+
+    final dynamic decoded;
+    try {
+      decoded = jsonDecode(response.body);
+    } on FormatException {
+      throw StateError(
+        'استجابة OpenRouter ليست JSON صالحاً (HTTP ${response.statusCode}). '
+        'تحقق من الاتصال وحالة الخدمة ثم أعد المحاولة.',
+      );
     }
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    final choices = data['choices'] as List<dynamic>? ?? const [];
-    if (choices.isEmpty) throw StateError('لم يُرجع OpenRouter أي إجابة.');
-    final message = choices.first['message'] as Map<String, dynamic>? ?? {};
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final detail = decoded is Map
+          ? (decoded['error'] is Map
+              ? decoded['error']['message']?.toString()
+              : decoded['error']?.toString())
+          : null;
+      throw StateError(
+        'OpenRouter (${response.statusCode}): '
+        '${detail?.trim().isNotEmpty == true ? detail : 'تعذر تنفيذ الطلب.'}',
+      );
+    }
+
+    if (decoded is! Map<String, dynamic>) {
+      throw StateError('تنسيق استجابة OpenRouter غير متوقع.');
+    }
+    final choices = decoded['choices'];
+    if (choices is! List || choices.isEmpty) {
+      throw StateError('لم يُرجع OpenRouter أي إجابة.');
+    }
+    final firstChoice = choices.first;
+    if (firstChoice is! Map) {
+      throw StateError('تنسيق اختيار الإجابة من OpenRouter غير صالح.');
+    }
+    final message = firstChoice['message'];
+    if (message is! Map) {
+      throw StateError('استجابة OpenRouter لا تحتوي رسالة صالحة.');
+    }
     final content = message['content'];
-    if (content is String && content.trim().isNotEmpty) return content.trim();
+    if (content is String && content.trim().isNotEmpty) {
+      return content.trim();
+    }
     if (content is List) {
-      final text = content.whereType<Map>()
+      final text = content
+          .whereType<Map>()
           .map((part) => part['text']?.toString() ?? '')
-          .where((part) => part.isNotEmpty).join('\n');
+          .where((part) => part.isNotEmpty)
+          .join('\n');
       if (text.trim().isNotEmpty) return text.trim();
     }
     throw StateError('استجابة OpenRouter لا تحتوي نصاً قابلاً للعرض.');
