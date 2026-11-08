@@ -673,7 +673,7 @@ class _ChatScreenState extends State<ChatScreen> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 child: Row(children: [
-                  const Icon(Icons.terminal, color: Colors.greenAccent),
+                  const Icon(Icons.terminal, color: GiantPalette.primaryLight),
                   const SizedBox(width: 8),
                   Expanded(child: Text(
                     step == null ? 'Agent Terminal' : (step['title']?.toString() ?? 'نتيجة التنفيذ'),
@@ -1282,7 +1282,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 style: TextStyle(color: GiantPalette.muted, fontSize: 12)),
               const SizedBox(height: 6),
               const Text('أمثلة للعناوين: OpenRouter: https://openrouter.ai/api/v1  •  Gemini: https://generativelanguage.googleapis.com/v1beta/openai',
-                style: TextStyle(color: Color(0xFF93C5FD), fontSize: 11)),
+                style: TextStyle(color: GiantPalette.primaryLight, fontSize: 11)),
               const SizedBox(height: 12),
               TextField(controller: keyController, obscureText: true, autocorrect: false,
                 decoration: const InputDecoration(labelText: 'API Key', hintText: 'أدخل مفتاح المزوّد', border: OutlineInputBorder())),
@@ -1494,7 +1494,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 padding: const EdgeInsets.fromLTRB(18, 18, 18, 12),
                 child: Row(
                   children: [
-                    const Icon(Icons.forum_outlined, color: Color(0xFF60A5FA)),
+                    const Icon(Icons.forum_outlined, color: GiantPalette.primaryLight),
                     const SizedBox(width: 10),
                     const Expanded(child: Text('المحادثات السابقة',
                       style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700))),
@@ -1733,13 +1733,13 @@ class _ChatScreenState extends State<ChatScreen> {
             Padding(
               padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
               child: Row(children: [
-                const Icon(Icons.computer, color: Colors.tealAccent),
+                const Icon(Icons.computer, color: GiantPalette.primaryLight),
                 const SizedBox(width: 9),
                 Expanded(child: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16))),
                 IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close, color: Colors.white70)),
               ]),
             ),
-            if (fileName != null) Padding(padding: const EdgeInsets.symmetric(horizontal: 18), child: Text(fileName, style: const TextStyle(color: Colors.tealAccent, fontSize: 12))),
+            if (fileName != null) Padding(padding: const EdgeInsets.symmetric(horizontal: 18), child: Text(fileName, style: const TextStyle(color: GiantPalette.primaryLight, fontSize: 12))),
             if (command != null) Padding(padding: const EdgeInsets.all(18), child: SelectableText('\$ $command', style: const TextStyle(color: Colors.lightGreenAccent, fontFamily: 'monospace'))),
             Expanded(child: SingleChildScrollView(
               controller: controller,
