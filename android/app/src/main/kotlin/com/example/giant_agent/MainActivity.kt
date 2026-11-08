@@ -528,8 +528,12 @@ class MainActivity: FlutterActivity() {
     }
 
     private fun emitAgentToken(token: String) {
+        // Each callback carries only the newly decoded UTF-8 chunk from JNI.
+        // A unique id lets Dart safely discard a replay without suppressing
+        // legitimate adjacent chunks that happen to contain identical text.
+        val eventId = "token_${System.nanoTime()}"
         runOnUiThread {
-            agentEventSink?.success(mapOf("id" to "token", "type" to "stream_token", "text" to token))
+            agentEventSink?.success(mapOf("id" to eventId, "type" to "stream_token", "text" to token))
         }
     }
 
