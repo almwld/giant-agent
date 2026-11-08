@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:collection';
 
 import '../../services/agent_memory_service.dart';
 import '../../services/model_service.dart';
@@ -42,6 +43,12 @@ class AgentResponse {
   final DateTime completedAt;
 }
 
+class _QueuedAgentRequest {
+  _QueuedAgentRequest(this.request);
+  final AgentRequest request;
+  final Completer<AgentResponse> completer = Completer<AgentResponse>();
+}
+
 /// Central orchestration boundary for the local-first agent.
 ///
 /// The kernel owns request admission, runtime readiness, lifecycle events and
@@ -62,15 +69,17 @@ class AgentKernel {
   Future<void>? _initialization;
   int _eventSequence = 0;
   bool _cancellationRequested = false;
+  final Queue<_QueuedAgentRequest> _requestQueue = Queue<_QueuedAgentRequest>();
+  bool _drainingQueue = false;
+  int get queuedRequestCount => _requestQueue.length;
 
   AgentKernelState get state => _state;
   String? get activeRequestId => _activeRequestId;
   Stream<AgentTimelineEvent> get events => _events.stream;
 
   bool get isExecuting =>
-      _activeRequestId != null ||
-      _state == AgentKernelState.executing ||
-      _state == AgentKernelState.cancelling;
+      _activeRequestId != null || _drainingQueue || _requestQueue.isNotEmpty ||
+      _state == AgentKernelState.executing || _state == AgentKernelState.cancelling;
 
   void _emit({
     required String requestId,
@@ -141,7 +150,50 @@ class AgentKernel {
     }
   }
 
-  Future<AgentResponse> execute(AgentRequest request) async {
+  /// FIFO admission: callers receive their own completion Future.
+  Future<AgentResponse> execute(AgentRequest request) {
+    if (request.prompt.trim().isEmpty) {
+      return Future<AgentResponse>.error(ArgumentError.value(
+        request.prompt, 'prompt', 'Task must not be empty.',
+      ));
+    }
+    final queued = _QueuedAgentRequest(request);
+    _requestQueue.addLast(queued);
+    _emit(
+      requestId: request.id,
+      type: 'request_queued',
+      title: _activeRequestId == null ? 'تمت إضافة الطلب إلى قائمة التنفيذ' : 'الطلب في قائمة الانتظار',
+      status: 'pending',
+      details: 'الموضع في قائمة الانتظار: ' + _requestQueue.length.toString(),
+    );
+    if (!_drainingQueue) {
+      _drainingQueue = true;
+      unawaited(_drainQueue());
+    }
+    return queued.completer.future;
+  }
+
+  Future<void> _drainQueue() async {
+    try {
+      while (_requestQueue.isNotEmpty) {
+        final queued = _requestQueue.removeFirst();
+        try {
+          final response = await _executeAdmitted(queued.request);
+          if (!queued.completer.isCompleted) queued.completer.complete(response);
+        } catch (error, stackTrace) {
+          if (!queued.completer.isCompleted) queued.completer.completeError(error, stackTrace);
+        }
+      }
+    } finally {
+      _drainingQueue = false;
+      if (_requestQueue.isNotEmpty) {
+        _drainingQueue = true;
+        unawaited(_drainQueue());
+      }
+    }
+  }
+
+  Future<AgentResponse> _executeAdmitted(AgentRequest request) async {
     final prompt = request.prompt.trim();
     if (prompt.isEmpty) {
       throw ArgumentError.value(
@@ -150,14 +202,9 @@ class AgentKernel {
         'Task must not be empty.',
       );
     }
-    if (isExecuting) {
-      throw StateError('An agent request is already executing.');
-    }
-
-    // Reserve the execution slot before the first await so two requests cannot
-    // both pass admission while native model readiness is being checked.
     _activeRequestId = request.id;
     _cancellationRequested = false;
+    _models.beginAgentRequest(request.id);
 
     try {
       // Start the protected section immediately after reserving the slot so
@@ -272,6 +319,7 @@ class AgentKernel {
       );
       rethrow;
     } finally {
+      _models.endAgentRequest(request.id);
       _activeRequestId = null;
       _cancellationRequested = false;
       if (_state == AgentKernelState.failed ||
