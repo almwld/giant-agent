@@ -130,7 +130,9 @@ void main() {
       final restored = await restarted.getTasksForConversation('home');
       expect(restored.single['id'], homeTask['id']);
       expect(restored.single['status'], 'pending');
+      await restarted.closeForTesting();
     } finally {
+      await manager.closeForTesting();
       await directory.delete(recursive: true);
     }
   });
@@ -147,7 +149,9 @@ void main() {
 
       final restarted = TaskManager.withStore(await _store(path));
       expect(await restarted.getTasksForConversation('global'), isEmpty);
+      await restarted.closeForTesting();
     } finally {
+      await manager.closeForTesting();
       await directory.delete(recursive: true);
     }
   });
