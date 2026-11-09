@@ -31,8 +31,8 @@ class ConversationTile extends StatelessWidget {
       onDismissed: (_) => onDelete(),
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: const Color(0xFF10A37F).withOpacity(0.1),
-          child: const Icon(Icons.chat, color: Color(0xFF10A37F)),
+          backgroundColor: const Color(0xFF0A8F83).withOpacity(0.1),
+          child: const Icon(Icons.chat, color: Color(0xFF0A8F83)),
         ),
         title: Text(
           title,
@@ -58,7 +58,7 @@ class ConversationTile extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF10A37F),
+                  color: const Color(0xFF0A8F83),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
