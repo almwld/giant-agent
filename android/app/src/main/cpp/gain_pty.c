@@ -180,6 +180,7 @@ Java_com_example_giant_1agent_GainPtyBridge_nativeStartPty(
     (void)fcntl(startup_pipe[0], F_SETFD, FD_CLOEXEC);
     (void)fcntl(startup_pipe[1], F_SETFD, FD_CLOEXEC);
 
+    const pid_t parent_pid = getpid();
     const pid_t pid = fork();
     if (pid < 0) {
         close(startup_pipe[0]);
@@ -190,6 +191,11 @@ Java_com_example_giant_1agent_GainPtyBridge_nativeStartPty(
     }
 
     if (pid == 0) {
+        // Arm parent-death handling immediately after fork. The parent may
+        // disappear before the PTY handshake or exec sequence completes.
+        if (prctl(PR_SET_PDEATHSIG, SIGHUP) != 0 || getppid() != parent_pid) {
+            _exit(127);
+        }
         close(startup_pipe[0]);
         close(master);
         const int slave = open(slave_name, O_RDWR | O_NOCTTY);
@@ -202,7 +208,6 @@ Java_com_example_giant_1agent_GainPtyBridge_nativeStartPty(
         close(startup_pipe[1]);
 
         configure_terminal(slave);
-        (void)prctl(PR_SET_PDEATHSIG, SIGHUP);
         (void)setsid();
 #ifdef TIOCSCTTY
         (void)ioctl(slave, TIOCSCTTY, 0);
