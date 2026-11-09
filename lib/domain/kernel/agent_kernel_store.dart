@@ -226,6 +226,9 @@ class AgentKernelStore {
   Future<void> complete(String id, String result) =>
       _finish(id, 'completed', result: result);
 
+  Future<void> interrupt(String id, String result) =>
+      _finish(id, 'interrupted', result: result);
+
   Future<void> fail(String id, Object error) =>
       _finish(id, 'failed', error: error.toString());
 
@@ -254,7 +257,11 @@ class AgentKernelStore {
       await _appendEvent(
         txn,
         id,
-        status == 'completed' ? 'request_completed' : 'request_failed',
+        status == 'completed'
+            ? 'request_completed'
+            : status == 'interrupted'
+                ? 'request_interrupted'
+                : 'request_failed',
         status,
         {if (error != null) 'error': error},
         now,
