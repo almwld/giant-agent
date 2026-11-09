@@ -62,8 +62,13 @@ class AgentKernel {
     final active = _pumpFuture;
     if (active != null) return active;
     late final Future<void> run;
-    run = _pump().whenComplete(() {
+    run = _pump().whenComplete(() async {
       if (identical(_pumpFuture, run)) _pumpFuture = null;
+      // Close the enqueue-vs-drain race: a request may be committed just after
+      // the pump observed an empty queue but before its completion callback.
+      if (_initialized && (await _store.queuedRequests()).isNotEmpty) {
+        unawaited(_schedulePump());
+      }
     });
     _pumpFuture = run;
     return run;
