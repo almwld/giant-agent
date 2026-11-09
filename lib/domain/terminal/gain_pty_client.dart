@@ -155,8 +155,9 @@ class GainPtyClient {
         <String, Object>{'handle': handle, 'input': remaining},
       );
       if (written == null || written <= 0 || written > remaining.length) {
+        await stop();
         throw StateError(
-          'PTY accepted $offset/${bytes.length} bytes; the remaining input was not sent.',
+          'PTY accepted $offset/${bytes.length} bytes; the remaining input was not sent. The session was stopped to avoid a partial command lingering in the shell.',
         );
       }
       // Retry only the unsent suffix. Never resend bytes already accepted by
@@ -164,8 +165,9 @@ class GainPtyClient {
       offset += written;
       attempts++;
       if (offset < bytes.length && attempts >= 3) {
+        await stop();
         throw StateError(
-          'PTY accepted $offset/${bytes.length} bytes after $attempts writes.',
+          'PTY accepted $offset/${bytes.length} bytes after $attempts writes. The session was stopped to avoid a partial command lingering in the shell.',
         );
       }
     }
