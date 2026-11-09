@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - feat/integrated-agent-completion
+      - verify/gain-replay-ci
   pull_request:
     branches:
       - main
