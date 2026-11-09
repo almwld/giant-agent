@@ -108,7 +108,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
                   icon: const Icon(Icons.add_alarm),
                   label: const Text('Add Reminder'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF10A37F),
+                    backgroundColor: const Color(0xFF0A8F83),
                     minimumSize: const Size(double.infinity, 48),
                   ),
                 ),
@@ -129,7 +129,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
                         leading: CircleAvatar(
                           backgroundColor: reminder['is_completed'] == 1
                               ? Colors.green
-                              : const Color(0xFF10A37F),
+                              : const Color(0xFF0A8F83),
                           child: Icon(
                             reminder['is_completed'] == 1 ? Icons.check : Icons.alarm,
                             color: Colors.white,
