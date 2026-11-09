@@ -7,7 +7,6 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import '../services/agent_service.dart';
 import '../services/app_preferences.dart';
-import '../services/model_service.dart';
 
 /// Voice interaction states shown by the assistant UI.
 enum AgentState {
@@ -156,9 +155,11 @@ class AgentController extends ChangeNotifier {
           }
         },
         localeId: selectedLocale,
-        listenMode: stt.ListenMode.dictation,
-        partialResults: true,
-        cancelOnError: true,
+        listenOptions: stt.SpeechListenOptions(
+          listenMode: stt.ListenMode.dictation,
+          partialResults: true,
+          cancelOnError: true,
+        ),
       );
     } catch (error) {
       _setState(AgentState.error, message: 'تعذر بدء الاستماع: $error');
