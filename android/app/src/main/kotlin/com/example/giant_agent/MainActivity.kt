@@ -345,7 +345,7 @@ class MainActivity: FlutterActivity() {
     private fun emitAgentToolError(tool: String, message: String, eventId: String? = null) {
         runOnUiThread {
             agentEventSink?.success(mapOf(
-                "id" to eventId ?: "tool_error_${System.currentTimeMillis()}",
+                "id" to (eventId ?: "tool_error_${System.currentTimeMillis()}"),
                 "type" to "tool_error",
                 "tool_name" to tool,
                 "title" to "تعذر تنفيذ الأداة: $tool",
