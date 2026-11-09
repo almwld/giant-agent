@@ -11,12 +11,12 @@ class CommandGrid extends StatelessWidget {
     final commands = [
       {'icon': Icons.analytics, 'title': 'تحليل بيانات', 'color': Colors.blue},
       {'icon': Icons.code, 'title': 'كود Python', 'color': Colors.green},
-      {'icon': Icons.web, 'title': 'موقع ويب', 'color': Colors.purple},
+      {'icon': Icons.web, 'title': 'موقع ويب', 'color': const Color(0xFF1A73E8)},
       {'icon': Icons.api, 'title': 'إنشاء API', 'color': Colors.orange},
       {'icon': Icons.psychology, 'title': 'تعلم آلة', 'color': Colors.red},
-      {'icon': Icons.auto_awesome, 'title': 'أتمتة', 'color': Colors.teal},
-      {'icon': Icons.description, 'title': 'تحليل نص', 'color': Colors.indigo},
-      {'icon': Icons.calculate, 'title': 'حسابات', 'color': Colors.cyan},
+      {'icon': Icons.auto_awesome, 'title': 'أتمتة', 'color': const Color(0xFF34A99F)},
+      {'icon': Icons.description, 'title': 'تحليل نص', 'color': const Color(0xFF0A8F83)},
+      {'icon': Icons.calculate, 'title': 'حسابات', 'color': const Color(0xFF1A73E8)},
     ];
     
     return GridView.builder(
