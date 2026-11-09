@@ -112,7 +112,9 @@ class GainPtyBridge private constructor(
             // Register before start: a short-lived child must not leave a stale reader.
             val reader = Thread({
                 try {
-                    var idleDelayMs = 8L
+                    // Keep interactive output responsive after an idle shell.
+                    // Exponential backoff made keystrokes appear delayed by up to 400 ms.
+                    val idleDelayMs = 16L
                     while (!Thread.currentThread().isInterrupted) {
                         val data = nativeReadPty(handle) ?: break
                         if (data.isEmpty()) {
@@ -121,10 +123,8 @@ class GainPtyBridge private constructor(
                             } catch (_: InterruptedException) {
                                 break
                             }
-                            idleDelayMs = (idleDelayMs * 2L).coerceAtMost(400L)
                             continue
                         }
-                        idleDelayMs = 8L
                         val event = mapOf<String, Any?>("sessionId" to handle, "data" to data)
                         mainHandler.post { terminalSink?.success(event) }
                     }
