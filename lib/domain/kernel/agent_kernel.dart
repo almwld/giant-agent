@@ -6,6 +6,16 @@ typedef KernelRequestExecutor = Future<String> Function(
   KernelRequestRecord request,
 );
 
+/// Signals a safe interruption. The result is retained, but never reported as
+/// a successful completion and never replayed automatically.
+class KernelRequestInterrupted implements Exception {
+  const KernelRequestInterrupted(this.result);
+  final String result;
+
+  @override
+  String toString() => result;
+}
+
 class AgentKernel {
   AgentKernel({
     required AgentKernelStore store,
@@ -91,6 +101,8 @@ class AgentKernel {
         if (running == null) throw StateError('Queued request disappeared.');
         final result = await _executor(running);
         await _store.complete(request.id, result);
+      } on KernelRequestInterrupted catch (interrupted) {
+        await _store.interrupt(request.id, interrupted.result);
       } catch (error) {
         try {
           await _store.fail(request.id, error);
