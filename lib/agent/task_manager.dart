@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
@@ -451,4 +450,7 @@ $checkpoint
     _currentTask = '';
     await _store.clearTasks();
   }
+
+  /// Closes an injected store in tests; the process singleton remains open.
+  Future<void> closeForTesting() => _store.close();
 }
