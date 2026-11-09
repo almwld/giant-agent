@@ -32,7 +32,7 @@ class FutureMessageBubble extends StatelessWidget {
               ? AppTheme.secondaryGradient
               : LinearGradient(
                   colors: isDark
-                      ? [AppTheme.cosmicPurple.withOpacity(0.2), AppTheme.cyberBlue.withOpacity(0.1)]
+                      ? [AppTheme.darkSurface, AppTheme.darkBackground]
                       : [Colors.grey.shade100, Colors.grey.shade50],
                 ),
           borderRadius: BorderRadius.only(
@@ -49,7 +49,7 @@ class FutureMessageBubble extends StatelessWidget {
                 ),
           boxShadow: [
             BoxShadow(
-              color: (isUser ? AppTheme.neonPink : AppTheme.primaryColor).withOpacity(0.2),
+              color: (isUser ? AppTheme.primaryColor : AppTheme.primaryColor).withOpacity(0.2),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -80,7 +80,7 @@ class FutureMessageBubble extends StatelessWidget {
                   '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}',
                   style: TextStyle(
                     fontSize: 10,
-                    color: isUser ? Colors.white70 : AppTheme.textLightColor,
+                    color: isUser ? Colors.white70 : AppTheme.textLight,
                   ),
                 ),
               ],
