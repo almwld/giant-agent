@@ -120,7 +120,7 @@ class _FileBrowserState extends State<FileBrowser> {
                       return ListTile(
                         leading: Icon(
                           isDirectory ? Icons.folder : (isModel ? Icons.model_training : Icons.insert_drive_file),
-                          color: isDirectory ? Colors.blue : (isModel ? Colors.green : Colors.grey),
+                          color: isDirectory ? const Color(0xFF1A73E8) : (isModel ? const Color(0xFF0A8F83) : Colors.grey),
                         ),
                         title: Text(fileName),
                         trailing: isModel
