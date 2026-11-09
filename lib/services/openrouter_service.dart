@@ -1,4 +1,9 @@
-/// Backward-compatible import for code that used the former OpenRouter service name.
-/// New code should import openai_compatible_provider.dart directly.
-export 'openai_compatible_provider.dart' show OpenAICompatibleProvider;
-typedef OpenRouterService = OpenAICompatibleProvider;
+/// Backward-compatible facade for code using the former OpenRouter service name.
+/// New code should use OpenAICompatibleProvider directly.
+import 'openai_compatible_provider.dart';
+
+class OpenRouterService {
+  OpenRouterService._();
+  static OpenAICompatibleProvider get instance =>
+      OpenAICompatibleProvider.instance;
+}
