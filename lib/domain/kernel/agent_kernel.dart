@@ -27,10 +27,23 @@ class AgentKernel {
   final KernelRequestExecutor _executor;
   final Map<String, Completer<KernelRequestRecord>> _waiters = {};
   Future<void>? _pumpFuture;
+  Future<void>? _initialization;
   bool _initialized = false;
 
-  Future<void> initialize() async {
-    if (_initialized) return;
+  Future<void> initialize() {
+    if (_initialized) return Future<void>.value();
+    final active = _initialization;
+    if (active != null) return active;
+
+    late final Future<void> shared;
+    shared = _initialize().whenComplete(() {
+      if (identical(_initialization, shared)) _initialization = null;
+    });
+    _initialization = shared;
+    return shared;
+  }
+
+  Future<void> _initialize() async {
     await _store.reconcileAfterProcessRestart();
     _initialized = true;
     _schedulePump();
