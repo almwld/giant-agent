@@ -208,7 +208,7 @@ class _AdvancedSettingsScreenState extends State<AdvancedSettingsScreen> {
               icon: const Icon(Icons.save),
               label: const Text('Save All Settings'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF10A37F),
+                backgroundColor: const Color(0xFF0A8F83),
                 minimumSize: const Size(double.infinity, 48),
               ),
             ),
@@ -260,7 +260,7 @@ class _AdvancedSettingsScreenState extends State<AdvancedSettingsScreen> {
                     // Change theme
                   },
                   style: IconButton.styleFrom(
-                    backgroundColor: const Color(0xFF10A37F).withOpacity(0.1),
+                    backgroundColor: const Color(0xFF0A8F83).withOpacity(0.1),
                   ),
                 ),
                 Text(theme['name']),
