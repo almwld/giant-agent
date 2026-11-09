@@ -2,19 +2,19 @@ import 'package:flutter/material.dart';
 
 class AppConfig {
   // الألوان الرئيسية
-  static const Color primaryColor = Color(0xFF10A37F);
-  static const Color secondaryColor = Color(0xFF19C37D);
-  static const Color accentColor = Color(0xFF5436DA);
-  static const Color backgroundColor = Color(0xFFF7F7F8);
+  static const Color primaryColor = Color(0xFF0A8F83);
+  static const Color secondaryColor = Color(0xFF1A73E8);
+  static const Color accentColor = Color(0xFF1A73E8);
+  static const Color backgroundColor = Color(0xFFF4F6F7);
   static const Color surfaceColor = Colors.white;
   static const Color errorColor = Color(0xFFEF4444);
-  static const Color successColor = Color(0xFF10B981);
+  static const Color successColor = Color(0xFF0A8F83);
   static const Color warningColor = Color(0xFFF59E0B);
   
   // الألوان للوضع الداكن
-  static const Color darkPrimaryColor = Color(0xFF10A37F);
-  static const Color darkBackgroundColor = Color(0xFF343541);
-  static const Color darkSurfaceColor = Color(0xFF444654);
+  static const Color darkPrimaryColor = Color(0xFF0A8F83);
+  static const Color darkBackgroundColor = Color(0xFF263238);
+  static const Color darkSurfaceColor = Color(0xFF1E293B);
   
   // الثيمات
   static ThemeData lightTheme = ThemeData(
