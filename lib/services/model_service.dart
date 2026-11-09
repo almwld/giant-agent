@@ -323,7 +323,7 @@ class ModelService {
     _cancelRequested = false;
     input = _boundPrompt(input);
     if (!hasActiveModel() && !await OpenAICompatibleProvider.instance.isEnabled()) {
-      return '⚠️ اختر نموذج GGUF محلياً أو فعّل مزود OpenRouter من شريط الإدخال.';
+      return '⚠️ اختر نموذج GGUF محلياً أو فعّل مزوّد API خارجي متوافقاً مع OpenAI من شريط الإدخال.';
     }
     final toolCatalog = ToolManager().promptCatalog;
     final history = StringBuffer('''أنت Giant Agent، مساعد ذكي متعدد المصادر. أجب بلغة المستخدم.
