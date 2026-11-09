@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - feat/integrated-agent-completion
+      - feat/phase-0-durable-agent-service
   pull_request:
     branches:
       - main
@@ -70,6 +71,9 @@ jobs:
 
       - name: Test durable kernel FIFO and recovery
         run: flutter test test/domain/kernel/agent_kernel_test.dart
+
+      - name: Test AgentService durable execution boundary
+        run: flutter test test/services/agent_service_durable_test.dart
 
       - name: Test Gain PTY output protocol
         run: flutter test test/domain/terminal/gain_command_output_parser_test.dart
