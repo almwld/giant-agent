@@ -74,6 +74,7 @@ class AgentService {
     String prompt, {
     String conversationId = 'global',
   }) async {
+    await initialize();
     final requestId = DateTime.now().microsecondsSinceEpoch.toString();
     final record = await _durableKernel.submit(
       id: requestId,
@@ -109,4 +110,8 @@ class AgentService {
   /// Live execution metadata remains sourced from the existing runtime.
   /// Durable history can be replayed with [eventsFor].
   Stream<AgentTimelineEvent> get events => _executionKernel.events;
+
+  /// Closes the injected durable store in contract tests. The app singleton
+  /// should remain alive for the process lifetime.
+  Future<void> disposeForTesting() => _durableKernel.dispose();
 }
