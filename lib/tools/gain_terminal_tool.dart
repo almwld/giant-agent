@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import '../domain/terminal/gain_pty_client.dart';
 
@@ -32,6 +33,7 @@ class GainTerminalTool {
   final GainPtyClient _client;
   Future<void> _tail = Future<void>.value();
   int _sequence = 0;
+  final Random _random = Random.secure();
 
   Future<GainCommandResult> execute(
     String command, {
@@ -67,11 +69,15 @@ class GainTerminalTool {
       seconds: timeout.inSeconds.clamp(1, 900).toInt(),
     );
     final startedAt = DateTime.now();
-    final token =
-        '${DateTime.now().microsecondsSinceEpoch}_${++_sequence}';
+    final nonce = List<String>.generate(
+      4,
+      (_) => _random.nextInt(0x7fffffff).toRadixString(16),
+    ).join();
+    final token = '${nonce}_${++_sequence}';
     final marker = '__GAIN_DONE_${token}_';
     final matcher = RegExp('${RegExp.escape(marker)}(-?\\d+)__');
     final buffer = StringBuffer();
+    var scanTail = '';
     final completed = Completer<int>();
     final sessionLost = Completer<void>();
     StreamSubscription<String>? outputSubscription;
@@ -79,15 +85,21 @@ class GainTerminalTool {
 
     // Attach listeners before starting/writing, so no early output is lost.
     outputSubscription = _client.output.listen((chunk) {
-      if (buffer.length < 1024 * 1024) {
-        final remaining = 1024 * 1024 - buffer.length;
-        buffer.write(chunk.length <= remaining ? chunk : chunk.substring(0, remaining));
-      }
+      // Keep a bounded rolling scan window so a marker arriving after a very
+      // large command output is still detected, even after output truncation.
+      final scan = scanTail + chunk;
       if (!completed.isCompleted) {
-        final match = matcher.firstMatch(buffer.toString());
+        final match = matcher.firstMatch(scan);
         if (match != null) {
           completed.complete(int.tryParse(match.group(1) ?? '') ?? 126);
         }
+      }
+      final keep = marker.length + 24;
+      scanTail = scan.length <= keep ? scan : scan.substring(scan.length - keep);
+
+      if (buffer.length < 1024 * 1024) {
+        final remaining = 1024 * 1024 - buffer.length;
+        buffer.write(chunk.length <= remaining ? chunk : chunk.substring(0, remaining));
       }
     });
     closedSubscription = _client.onSessionClosed.listen((_) {
