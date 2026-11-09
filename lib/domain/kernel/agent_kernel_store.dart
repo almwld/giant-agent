@@ -78,7 +78,7 @@ class AgentKernelStore {
     await Directory(directory.path).create(recursive: true);
     return openDatabase(
       '${directory.path}/giant_agent_kernel.db',
-      version: 1,
+      version: 2,
       onConfigure: (db) async {
         await db.execute('PRAGMA foreign_keys = ON');
         await db.execute('PRAGMA journal_mode = WAL');
@@ -131,12 +131,105 @@ class AgentKernelStore {
           BEFORE DELETE ON agent_events
           BEGIN SELECT RAISE(ABORT, 'agent_events is append-only'); END
         """);
+        await _createTaskTable(db);
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) await _createTaskTable(db);
       },
     );
   }
 
   Future<Database> get database async =>
       _database ??= await _databaseProvider();
+
+  static Future<void> _createTaskTable(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS agent_tasks (
+        sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+        id TEXT NOT NULL UNIQUE,
+        conversation_id TEXT NOT NULL DEFAULT 'global',
+        status TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_agent_tasks_conversation
+      ON agent_tasks(conversation_id, sequence)
+    ''');
+  }
+
+  /// Returns task snapshots in stable creation order.
+  Future<List<Map<String, dynamic>>> getTasks() async {
+    final rows = await (await database).query(
+      'agent_tasks',
+      orderBy: 'sequence ASC',
+    );
+    return rows.map((row) {
+      final decoded = jsonDecode(row['payload_json']! as String);
+      if (decoded is! Map) {
+        throw const FormatException('Stored agent task is not a JSON object.');
+      }
+      return Map<String, dynamic>.from(decoded);
+    }).toList(growable: false);
+  }
+
+  Future<void> saveTask(Map<String, dynamic> task) async {
+    final id = task['id']?.toString() ?? '';
+    if (id.isEmpty) throw ArgumentError.value(task, 'task', 'Task id is required.');
+    final now = DateTime.now().toUtc().toIso8601String();
+    final createdAt = task['created_at']?.toString() ?? now;
+    final updatedAt = task['updated_at']?.toString() ?? now;
+    final db = await database;
+    final values = <String, Object?>{
+      'id': id,
+      'conversation_id': task['conversation_id']?.toString() ?? 'global',
+      'status': task['status']?.toString() ?? 'pending',
+      'payload_json': jsonEncode(task),
+      'created_at': createdAt,
+      'updated_at': updatedAt,
+    };
+    await db.transaction((txn) async {
+      final changed = await txn.update(
+        'agent_tasks',
+        values,
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      if (changed == 0) await txn.insert('agent_tasks', values);
+    });
+  }
+
+  Future<void> importLegacyTasksIfEmpty(
+    List<Map<String, dynamic>> tasks,
+  ) async {
+    if (tasks.isEmpty) return;
+    final db = await database;
+    await db.transaction((txn) async {
+      final count = Sqflite.firstIntValue(
+            await txn.rawQuery('SELECT COUNT(*) FROM agent_tasks'),
+          ) ??
+          0;
+      if (count != 0) return;
+      for (final task in tasks) {
+        final id = task['id']?.toString() ?? '';
+        if (id.isEmpty) continue;
+        final now = DateTime.now().toUtc().toIso8601String();
+        await txn.insert('agent_tasks', {
+          'id': id,
+          'conversation_id': task['conversation_id']?.toString() ?? 'global',
+          'status': task['status']?.toString() ?? 'pending',
+          'payload_json': jsonEncode(task),
+          'created_at': task['created_at']?.toString() ?? now,
+          'updated_at': task['updated_at']?.toString() ?? now,
+        });
+      }
+    });
+  }
+
+  Future<void> clearTasks() async =>
+      (await database).delete('agent_tasks');
 
   Future<void> enqueue({
     required String id,
