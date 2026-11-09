@@ -31,7 +31,7 @@ class ThemeService {
     const Color(0xFF0A8F83), // تركواز صحّتك
     const Color(0xFF1A73E8), // أزرق صحّتك
     const Color(0xFF34A99F), // تركواز فاتح
-    const Color(0xFFFF9800), // برتقالي
-    const Color(0xFFE91E63), // وردي
+    const Color(0xFF08776E), // تركواز داكن
+    const Color(0xFF263238), // رمادي داكن
   ];
 }
