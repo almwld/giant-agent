@@ -6,6 +6,7 @@ on:
       - main
       - feat/integrated-agent-completion
       - feat/phase-0-durable-agent-service
+      - feat/phase-1-durable-task-manager
   pull_request:
     branches:
       - main
