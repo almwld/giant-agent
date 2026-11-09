@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:flutter/services.dart';
 import '../services/llama_service.dart';
 import 'agent_memory_service.dart';
-import 'openrouter_service.dart';
+import 'openai_compatible_provider.dart';
 import '../tools/tool_manager.dart';
 
 class ModelService {
@@ -305,8 +305,8 @@ class ModelService {
     required int maxTokens,
     required double temperature,
   }) async {
-    if (await OpenRouterService.instance.isEnabled()) {
-      return OpenRouterService.instance.generate(
+    if (await OpenAICompatibleProvider.instance.isEnabled()) {
+      return OpenAICompatibleProvider.instance.generate(
         prompt,
         maxTokens: maxTokens,
         temperature: temperature,
@@ -322,7 +322,7 @@ class ModelService {
   Future<String> _processInput(String input) async {
     _cancelRequested = false;
     input = _boundPrompt(input);
-    if (!hasActiveModel() && !await OpenRouterService.instance.isEnabled()) {
+    if (!hasActiveModel() && !await OpenAICompatibleProvider.instance.isEnabled()) {
       return '⚠️ اختر نموذج GGUF محلياً أو فعّل مزود OpenRouter من شريط الإدخال.';
     }
     final toolCatalog = ToolManager().promptCatalog;
