@@ -34,56 +34,6 @@ class _WelcomeScreenState extends State<WelcomeScreen>
     super.dispose();
   }
 
-  Widget _brandMark() {
-    return SizedBox(
-      width: 104,
-      height: 104,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(28),
-        ),
-        child: Center(
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              Transform.rotate(
-                angle: 0.785398,
-                child: Container(
-                  width: 54,
-                  height: 54,
-                  decoration: BoxDecoration(
-                    border: Border.all(color: AppTheme.primary, width: 8),
-                    borderRadius: BorderRadius.circular(5),
-                  ),
-                ),
-              ),
-              Transform.rotate(
-                angle: 0.785398,
-                child: Container(
-                  width: 25,
-                  height: 25,
-                  decoration: BoxDecoration(
-                    color: AppTheme.secondary,
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                ),
-              ),
-              Container(
-                width: 8,
-                height: 8,
-                decoration: const BoxDecoration(
-                  color: AppTheme.primary,
-                  shape: BoxShape.circle,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -99,7 +49,19 @@ class _WelcomeScreenState extends State<WelcomeScreen>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _brandMark(),
+                Container(
+                  width: 104,
+                  height: 104,
+                  decoration: BoxDecoration(
+                    color: AppTheme.surface,
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                  child: Icon(
+                    Icons.auto_awesome_rounded,
+                    size: 56,
+                    color: AppTheme.primary,
+                  ),
+                ),
                 const SizedBox(height: 28),
                 const Text(
                   'Giant Agent',
@@ -113,7 +75,7 @@ class _WelcomeScreenState extends State<WelcomeScreen>
                 Text(
                   'الوكيل الذكي المحلي',
                   style: TextStyle(
-                    color: Colors.white.withOpacity(.88),
+                    color: Colors.white.withOpacity(.8),
                     fontSize: 15,
                   ),
                 ),
