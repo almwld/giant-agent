@@ -35,6 +35,9 @@ class AgentService {
   final ModelService _models;
   final durable.AgentKernel _durableKernel;
   final bool _initializeExecutionRuntime;
+  Future<void>? _initialization;
+  bool _initialized = false;
+  static int _requestSequence = 0;
 
   static Future<String> _executeWithSharedRuntime(
     KernelRequestRecord request,
@@ -64,10 +67,24 @@ class AgentService {
 
   bool get isRunning => _executionKernel.isExecuting;
 
-  Future<void> initialize() async {
+  Future<void> initialize() {
+    if (_initialized) return Future<void>.value();
+    final active = _initialization;
+    if (active != null) return active;
+
+    late final Future<void> shared;
+    shared = _initialize().whenComplete(() {
+      if (identical(_initialization, shared)) _initialization = null;
+    });
+    _initialization = shared;
+    return shared;
+  }
+
+  Future<void> _initialize() async {
     // The execution runtime must be ready before queued durable work is drained.
     if (_initializeExecutionRuntime) await _executionKernel.initialize();
     await _durableKernel.initialize();
+    _initialized = true;
   }
 
   Future<String> runTask(
@@ -75,7 +92,7 @@ class AgentService {
     String conversationId = 'global',
   }) async {
     await initialize();
-    final requestId = DateTime.now().microsecondsSinceEpoch.toString();
+    final requestId = '${DateTime.now().microsecondsSinceEpoch}_${++_requestSequence}';
     final record = await _durableKernel.submit(
       id: requestId,
       prompt: prompt,
