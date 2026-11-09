@@ -48,6 +48,7 @@ class AppTheme {
     brightness: Brightness.light,
     primaryColor: primary,
     scaffoldBackgroundColor: background,
+    canvasColor: background,
     colorScheme: const ColorScheme.light(
       primary: primary,
       onPrimary: Colors.white,
@@ -60,46 +61,16 @@ class AppTheme {
       error: error,
     ),
     appBarTheme: const AppBarTheme(
-      backgroundColor: surface,
+      backgroundColor: background,
       foregroundColor: text,
       elevation: 0,
-      centerTitle: true,
+      centerTitle: false,
       iconTheme: IconThemeData(color: text),
-      titleTextStyle: TextStyle(
-        color: text,
-        fontSize: 20,
-        fontWeight: FontWeight.w600,
-      ),
     ),
     cardTheme: CardTheme(
       color: surface,
       elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-    ),
-    inputDecorationTheme: InputDecorationTheme(
-      filled: true,
-      fillColor: Color(0xFFF4F6F7),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide.none,
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide.none,
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: const BorderSide(color: primary, width: 1.5),
-      ),
-      hintStyle: const TextStyle(color: textLight),
-    ),
-    chipTheme: ChipThemeData(
-      backgroundColor: background,
-      selectedColor: primary,
-      labelStyle: const TextStyle(color: text),
-      secondaryLabelStyle: const TextStyle(color: Colors.white),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
     ),
   );
 
@@ -108,58 +79,29 @@ class AppTheme {
     brightness: Brightness.dark,
     primaryColor: primary,
     scaffoldBackgroundColor: darkBackground,
+    canvasColor: darkBackground,
     colorScheme: const ColorScheme.dark(
       primary: primaryLight,
       onPrimary: Color(0xFF062F2B),
       primaryContainer: Color(0xFF164B46),
       onPrimaryContainer: Color(0xFFDDF2EF),
       secondary: secondary,
-      onSecondary: Color(0xFF102B4D),
+      onSecondary: Colors.white,
       surface: darkSurface,
       onSurface: darkText,
       error: Color(0xFFFF7777),
     ),
     appBarTheme: const AppBarTheme(
-      backgroundColor: darkSurface,
+      backgroundColor: darkBackground,
       foregroundColor: darkText,
       elevation: 0,
-      centerTitle: true,
+      centerTitle: false,
       iconTheme: IconThemeData(color: darkText),
-      titleTextStyle: TextStyle(
-        color: darkText,
-        fontSize: 20,
-        fontWeight: FontWeight.w600,
-      ),
     ),
     cardTheme: CardTheme(
       color: darkSurface,
       elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-    ),
-    inputDecorationTheme: InputDecorationTheme(
-      filled: true,
-      fillColor: darkSurface,
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide.none,
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide.none,
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: const BorderSide(color: primaryLight, width: 1.5),
-      ),
-      hintStyle: const TextStyle(color: darkTextLight),
-    ),
-    chipTheme: ChipThemeData(
-      backgroundColor: darkSurface,
-      selectedColor: primary,
-      labelStyle: const TextStyle(color: darkText),
-      secondaryLabelStyle: const TextStyle(color: Colors.white),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
     ),
   );
 }
