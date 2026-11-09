@@ -555,7 +555,7 @@ Java_com_example_giant_1agent_GainPtyBridge_nativeStartPty(JNIEnv *env, jobject 
         setenv("PS1", "$ ", 1);
         setenv("GAIN_SHELL_MODE", "android-system", 1);
     } else {
-        setenv("GAIN_SHELL_MODE", "zion-userland", 1);
+        setenv("GAIN_SHELL_MODE", "gain-userland", 1);
     }
 
     // Synchronize PTY startup with the child opening the slave. Without this
