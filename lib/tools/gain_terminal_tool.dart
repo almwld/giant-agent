@@ -64,7 +64,7 @@ class GainTerminalTool {
     }
 
     final effectiveTimeout = Duration(
-      seconds: timeout.inSeconds.clamp(1, 900),
+      seconds: timeout.inSeconds.clamp(1, 900).toInt(),
     );
     final startedAt = DateTime.now();
     final token =
