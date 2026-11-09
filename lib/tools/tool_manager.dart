@@ -42,6 +42,11 @@ class ToolManager {
       description: 'تنفيذ Python محلي مقيّد للحساب والطباعة والحلقات المحدودة؛ لا يدعم الاستيراد أو فتح الملفات أو الوصول إلى النظام.',
       example: '{"name":"execute_python","arguments":{"code":"for i in range(1, 4):\n    print(i)"}}',
     ),
+    AgentToolDefinition(
+      name: 'gain_terminal',
+      description: 'تنفيذ أمر واحد في Android /system/bin/sh بصلاحيات التطبيق فقط. لا يوجد root. يتطلب موافقة المستخدم الصريحة على نص الأمر الحرفي قبل التنفيذ؛ timeout_seconds اختياري من 1 إلى 900.',
+      example: '{"name":"gain_terminal","arguments":{"command":"pwd && ls","timeout_seconds":30}}',
+    ),
   ];
 
   List<AgentToolDefinition> get definitions =>

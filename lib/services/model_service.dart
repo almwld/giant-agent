@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import '../services/llama_service.dart';
+import '../tools/gain_terminal_tool.dart';
+import '../tools/terminal_tool_coordinator.dart';
 import 'agent_memory_service.dart';
 import 'openrouter_service.dart';
 import '../tools/tool_manager.dart';
@@ -16,6 +18,9 @@ class ModelService {
   String _activeModelId = '';
   bool _isLoading = false;
   bool _cancelRequested = false;
+  Future<bool> Function(String command)? requestTerminalApproval;
+  void Function(Map<String, dynamic> event)? onAgentEvent;
+  final GainTerminalTool _gainTerminal = GainTerminalTool();
   Future<void> _requestTail = Future<void>.value();
 
   /// One FIFO lock protects every operation that touches the mutable JNI model.
@@ -160,6 +165,27 @@ class ModelService {
         return writeFile(path: args['path']?.toString() ?? '', content: args['content']?.toString() ?? '');
       case 'execute_python':
         return executePython(code: args['code']?.toString() ?? '');
+      case 'gain_terminal':
+        final approval = requestTerminalApproval;
+        if (approval == null) {
+          return <String, dynamic>{
+            'ok': false,
+            'denied': true,
+            'error': 'Terminal approval UI is unavailable.',
+          };
+        }
+        final coordinator = TerminalToolCoordinator(
+          requestApproval: approval,
+          execute: (command, timeout) =>
+              _gainTerminal.execute(command, timeout: timeout),
+          onEvent: onAgentEvent,
+        );
+        return coordinator.execute(
+          command: args['command']?.toString() ?? '',
+          timeoutSeconds: args['timeout_seconds'] is int
+              ? args['timeout_seconds'] as int
+              : 60,
+        );
       default:
         throw FormatException('Unsupported tool: $name');
     }
@@ -235,6 +261,7 @@ $toolCatalog
 <tool_call>{"name":"tool_name","arguments":{}}</tool_call>
 لا تدّع نجاح أي عملية قبل استلام نتيجة الأداة. إذا كانت النتيجة ok=false فاشرح الفشل ولا تعلن النجاح. لا تطلب أدوات إذا لم تكن لازمة.
 إذا كان الطلب سؤالاً مباشراً أو شرحاً أو مراجعة/تصحيحاً بسيطاً لمقطع كود أرسله المستخدم، فأجب مباشرة في المحادثة دون إنشاء خطة أو استدعاء أدوات. لا تنشئ أو تعدّل ملفات ولا تشغّل أدوات إلا إذا طلب المستخدم ذلك صراحة أو كانت الأداة ضرورية لإنجاز المطلوب.
+أداة gain_terminal تنفذ أوامر Android /system/bin/sh بصلاحيات التطبيق فقط، ولا تملك root. لا تستدعها إلا إذا كانت ضرورية وبعد أن يوافق المستخدم على نص الأمر المطابق حرفياً في نافذة التأكيد.
 لا تعرض التفكير الداخلي التفصيلي.
 
 المستخدم: $input
