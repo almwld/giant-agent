@@ -8,10 +8,11 @@ void main() {
     test('exposes only tools implemented by the runtime', () {
       expect(
         registry.getAvailableTools(),
-        ['create_file', 'read_file', 'write_file', 'execute_python'],
+        ['create_file', 'read_file', 'write_file', 'execute_python', 'gain_terminal'],
       );
       expect(registry.supports('delete_file'), isFalse);
       expect(registry.supports('execute_python'), isTrue);
+      expect(registry.supports('gain_terminal'), isTrue);
     });
 
     test('builds prompt catalogue from the registered definitions', () {
@@ -20,6 +21,7 @@ void main() {
       expect(catalogue, contains('read_file'));
       expect(catalogue, contains('write_file'));
       expect(catalogue, contains('execute_python'));
+      expect(catalogue, contains('gain_terminal'));
       expect(catalogue, contains('\n'));
       expect(catalogue, isNot(contains(r'\n  مثال:')));
     });
