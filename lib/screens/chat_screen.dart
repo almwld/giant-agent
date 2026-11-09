@@ -1120,7 +1120,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _isLoading = true;
     });
     try {
-      final response = await _executeChatPrompt(prompt);
+      final response = await _executeChatPrompt(prompt, requestId: requestId);
       if (!mounted) return;
       setState(() {
         _messages.add({'isUser': false, 'content': response, 'time': DateTime.now()});
@@ -1299,7 +1299,7 @@ class _ChatScreenState extends State<ChatScreen> {
       await taskPrefs.setString('giant_pending_task', analysisPrompt);
       await taskPrefs.setString('giant_pending_session_id', _currentSessionId);
       await taskPrefs.setString('giant_pending_task_id', taskId);
-      final response = await _runTrackedTask(analysisPrompt, taskId: taskId);
+      final response = await _runTrackedTask(analysisPrompt, taskId: taskId, requestId: requestId);
       await taskPrefs.remove('giant_pending_task');
       await taskPrefs.remove('giant_pending_session_id');
       await taskPrefs.remove('giant_pending_task_id');
