@@ -86,10 +86,10 @@ class _StatsScreenState extends State<StatsScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFF10A37F).withOpacity(0.1),
+                color: const Color(0xFF0A8F83).withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(icon, size: 30, color: const Color(0xFF10A37F)),
+              child: Icon(icon, size: 30, color: const Color(0xFF0A8F83)),
             ),
             const SizedBox(width: 20),
             Expanded(
