@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
+import '../core/theme.dart';
 import 'chat_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -55,7 +56,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Color(0xFF0A8F83), Color(0xFF0D7A5F)],
+            colors: [AppTheme.primary, AppTheme.primaryDark],
           ),
         ),
         child: Center(
