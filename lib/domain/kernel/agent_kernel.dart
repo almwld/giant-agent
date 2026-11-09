@@ -38,13 +38,19 @@ class AgentKernel {
     if (normalized.isEmpty) {
       throw ArgumentError.value(prompt, 'prompt', 'Request cannot be empty.');
     }
-    if (_waiters.containsKey(id) || await _store.getRequest(id) != null) {
+    if (_waiters.containsKey(id)) {
       throw StateError('Duplicate request id: $id');
     }
 
+    // Reserve the identifier before the asynchronous persistence lookup. Two
+    // concurrent submissions must not both pass the duplicate check and then
+    // overwrite one another's completion waiter.
     final waiter = Completer<KernelRequestRecord>();
     _waiters[id] = waiter;
     try {
+      if (await _store.getRequest(id) != null) {
+        throw StateError('Duplicate request id: $id');
+      }
       await _store.enqueue(
         id: id,
         prompt: normalized,
@@ -53,7 +59,7 @@ class AgentKernel {
       _schedulePump();
       return await waiter.future;
     } catch (_) {
-      _waiters.remove(id);
+      if (identical(_waiters[id], waiter)) _waiters.remove(id);
       rethrow;
     }
   }
