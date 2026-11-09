@@ -6,7 +6,6 @@ import android.os.Looper
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
-import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 
@@ -15,20 +14,19 @@ import java.util.concurrent.Executors
  *
  * The bridge deliberately owns only the PTY lifecycle. It does not import
  * Zion's Termux bootstrap, Kali installer, root-access UI, package manager,
- * or app-specific services. Event listener cancellation detaches the sink;
+ * or app-specific services. Gain currently exposes only /system/bin/sh.
+ * Event listener cancellation detaches the sink;
  * it never destroys a live shell session.
  */
 class GainPtyBridge private constructor(
     context: Context,
     messenger: BinaryMessenger,
 ) {
-    private val appContext = context.applicationContext
     private val mainHandler = Handler(Looper.getMainLooper())
     private val startExecutor = Executors.newSingleThreadExecutor { task ->
         Thread(task, "gain-pty-start").apply { isDaemon = true }
     }
 
-    private external fun nativeSetPaths(filesDir: String)
     private external fun nativePtyAvailable(): Boolean
     private external fun nativeStartPty(rows: Int, cols: Int, shell: String?): Int
     private external fun nativeReadPty(handle: Int): ByteArray?
@@ -38,9 +36,6 @@ class GainPtyBridge private constructor(
 
     init {
         System.loadLibrary("gain_pty")
-        val runtimeDirectory = File(appContext.filesDir, "gain_terminal")
-        if (!runtimeDirectory.exists()) runtimeDirectory.mkdirs()
-        nativeSetPaths(runtimeDirectory.absolutePath)
         registerChannels(messenger)
     }
 
@@ -97,10 +92,6 @@ class GainPtyBridge private constructor(
 
     private fun startTerminal(rows: Int, cols: Int, shell: String?): Int =
         synchronized(terminalLifecycleLock) {
-            val runtimeDirectory = File(appContext.filesDir, "gain_terminal")
-            if (!runtimeDirectory.exists() && !runtimeDirectory.mkdirs()) return@synchronized 0
-            nativeSetPaths(runtimeDirectory.absolutePath)
-
             if (!nativePtyAvailable()) {
                 android.util.Log.e(TAG, "PTY startup aborted: /dev/ptmx is unavailable")
                 return@synchronized 0
