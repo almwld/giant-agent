@@ -32,7 +32,7 @@ class _AgentWorkspaceScreenState extends State<AgentWorkspaceScreen> {
     super.initState();
     _webView = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(const Color(0xFF0F1720))
+      ..setBackgroundColor(const Color(0xFF263238))
       ..setNavigationDelegate(NavigationDelegate(
         onWebResourceError: (error) {
           if (!mounted || error.isForMainFrame != true) return;
@@ -159,9 +159,9 @@ class _AgentWorkspaceScreenState extends State<AgentWorkspaceScreen> {
     final isHtml = _selectedPath != null &&
         const {'html', 'htm'}.contains(_selectedPath!.split('.').last.toLowerCase());
     return Scaffold(
-      backgroundColor: const Color(0xFF0F1720),
+      backgroundColor: const Color(0xFF263238),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF17212B),
+        backgroundColor: const Color(0xFF1E293B),
         foregroundColor: Colors.white,
         title: const Text('معاينة مساحة العمل'),
         actions: [
@@ -175,7 +175,7 @@ class _AgentWorkspaceScreenState extends State<AgentWorkspaceScreen> {
             onPressed: _saving || _selectedPath == null ? null : _saveAndRun,
             icon: _saving
                 ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.play_arrow_rounded, color: Colors.tealAccent),
+                : const Icon(Icons.play_arrow_rounded, color: const Color(0xFF34A99F)),
           ),
         ],
       ),
@@ -183,7 +183,7 @@ class _AgentWorkspaceScreenState extends State<AgentWorkspaceScreen> {
         children: [
           Container(
             height: 54,
-            color: const Color(0xFF151F29),
+            color: const Color(0xFF263238),
             child: _files.isEmpty
                 ? const Center(child: Text('لا توجد ملفات في مساحة العمل', style: TextStyle(color: Colors.white54)))
                 : ListView.separated(
@@ -195,12 +195,12 @@ class _AgentWorkspaceScreenState extends State<AgentWorkspaceScreen> {
                       final path = _files[index];
                       final selected = path == _selectedPath;
                       return ActionChip(
-                        backgroundColor: selected ? Colors.teal.withOpacity(.25) : const Color(0xFF243342),
-                        side: BorderSide(color: selected ? Colors.tealAccent : Colors.white12),
+                        backgroundColor: selected ? const Color(0xFF0A8F83).withOpacity(.22) : const Color(0xFF1E293B),
+                        side: BorderSide(color: selected ? const Color(0xFF34A99F) : Colors.white12),
                         avatar: Icon(Icons.insert_drive_file_outlined, size: 16,
-                            color: selected ? Colors.tealAccent : Colors.white60),
+                            color: selected ? const Color(0xFF34A99F) : Colors.white60),
                         label: Text(path, style: TextStyle(fontSize: 11,
-                            color: selected ? Colors.tealAccent : Colors.white70)),
+                            color: selected ? const Color(0xFF34A99F) : Colors.white70)),
                         onPressed: () => _openFile(path),
                       );
                     },
@@ -242,7 +242,7 @@ class _AgentWorkspaceScreenState extends State<AgentWorkspaceScreen> {
                   Container(
                     height: 42,
                     padding: const EdgeInsets.symmetric(horizontal: 10),
-                    color: const Color(0xFF17212B),
+                    color: const Color(0xFF1E293B),
                     child: Row(children: [
                       const Expanded(child: Text('يُحفظ التعديل في مساحة العمل المحلية',
                           style: TextStyle(color: Colors.white54, fontSize: 10))),
@@ -260,7 +260,7 @@ class _AgentWorkspaceScreenState extends State<AgentWorkspaceScreen> {
                 Expanded(child: WebViewWidget(controller: _webView)),
                 Container(
                   height: 30,
-                  color: const Color(0xFF17212B),
+                  color: const Color(0xFF1E293B),
                   padding: const EdgeInsets.symmetric(horizontal: 10),
                   child: Row(children: [
                     Icon(Icons.circle, size: 7, color: isHtml ? Colors.greenAccent : Colors.orangeAccent),
@@ -285,7 +285,7 @@ class _AgentWorkspaceScreenState extends State<AgentWorkspaceScreen> {
             }),
           ),
           if (_loading)
-            const LinearProgressIndicator(minHeight: 2, color: Colors.tealAccent, backgroundColor: Colors.transparent),
+            const LinearProgressIndicator(minHeight: 2, color: const Color(0xFF34A99F), backgroundColor: Colors.transparent),
         ],
       ),
     );
@@ -296,9 +296,9 @@ class _AgentWorkspaceScreenState extends State<AgentWorkspaceScreen> {
       width: double.infinity,
       height: 38,
       padding: const EdgeInsets.symmetric(horizontal: 12),
-      color: const Color(0xFF1B2936),
+      color: const Color(0xFF1E293B),
       child: Row(children: [
-        Icon(icon, color: Colors.tealAccent, size: 16),
+        Icon(icon, color: const Color(0xFF34A99F), size: 16),
         const SizedBox(width: 8),
         Text(title, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
         const Spacer(),
