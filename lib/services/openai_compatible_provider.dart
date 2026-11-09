@@ -71,6 +71,97 @@ class OpenAICompatibleProvider {
     await _storage.delete(key: _enabledName);
   }
 
+  /// Builds the standard chat-completions URL without duplicating the path
+  /// when a provider's Base URL already includes it.
+  static Uri chatCompletionsUri(String baseUrl) {
+    final endpoint = baseUrl.trim().replaceFirst(RegExp(r'/+    String prompt, {
+    int maxTokens = 768,
+    double temperature = 0.25,
+  }) async {
+    final key = (await getApiKey())?.trim();
+    if (key == null || key.isEmpty || !await isEnabled()) {
+      throw StateError('المزوّد الخارجي غير مفعّل أو لا يوجد مفتاح محفوظ.');
+    }
+
+    final baseUrl = await getBaseUrl();
+    final response = await http
+        .post(
+          chatCompletionsUri(baseUrl),
+          headers: {
+            'Authorization': 'Bearer $key',
+            'Content-Type': 'application/json',
+            if (baseUrl.contains('openrouter.ai')) ...{
+              'HTTP-Referer': 'https://github.com/almwld/giant-agent',
+              'X-Title': 'Giant Agent',
+            },
+          },
+          body: jsonEncode({
+            'model': await getModel(),
+            'messages': [
+              {'role': 'user', 'content': prompt}
+            ],
+            'max_tokens': maxTokens,
+            'temperature': temperature,
+          }),
+        )
+        .timeout(const Duration(seconds: 90));
+
+    final dynamic decoded;
+    try {
+      decoded = jsonDecode(response.body);
+    } on FormatException {
+      throw StateError(
+        'استجابة المزوّد ليست JSON صالحاً (HTTP ${response.statusCode}). '
+        'تحقق من عنوان API والاتصال ثم أعد المحاولة.',
+      );
+    }
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final detail = decoded is Map
+          ? (decoded['error'] is Map
+              ? decoded['error']['message']?.toString()
+              : decoded['error']?.toString())
+          : null;
+      throw StateError(
+        'API (${response.statusCode}): '
+        '${detail?.trim().isNotEmpty == true ? detail : 'تعذر تنفيذ الطلب.'}',
+      );
+    }
+
+    if (decoded is! Map<String, dynamic>) {
+      throw StateError('تنسيق استجابة المزوّد غير متوقع.');
+    }
+    final choices = decoded['choices'];
+    if (choices is! List || choices.isEmpty) {
+      throw StateError('لم يُرجع المزوّد أي إجابة.');
+    }
+    final firstChoice = choices.first;
+    if (firstChoice is! Map) {
+      throw StateError('تنسيق اختيار الإجابة غير صالح.');
+    }
+    final message = firstChoice['message'];
+    if (message is! Map) {
+      throw StateError('الاستجابة لا تحتوي رسالة صالحة.');
+    }
+    final content = message['content'];
+    if (content is String && content.trim().isNotEmpty) return content.trim();
+    if (content is List) {
+      final text = content
+          .whereType<Map>()
+          .map((part) => part['text']?.toString() ?? '')
+          .where((part) => part.isNotEmpty)
+          .join('\n');
+      if (text.trim().isNotEmpty) return text.trim();
+    }
+    throw StateError('استجابة المزوّد لا تحتوي نصاً قابلاً للعرض.');
+  }
+}
+), '');
+    return Uri.parse(endpoint.endsWith('/chat/completions')
+        ? endpoint
+        : '$endpoint/chat/completions');
+  }
+
   Future<String> generate(
     String prompt, {
     int maxTokens = 768,
