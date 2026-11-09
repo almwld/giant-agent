@@ -62,6 +62,12 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Analyze runtime foundation and Gain PTY
+        run: flutter analyze lib/domain/kernel lib/domain/terminal lib/tools/gain_terminal_tool.dart
+
+      - name: Test durable kernel FIFO and recovery
+        run: flutter test test/domain/kernel/agent_kernel_test.dart
+
       - name: Analyze all Flutter and Dart sources
         run: flutter analyze --no-pub
 
