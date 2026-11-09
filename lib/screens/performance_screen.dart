@@ -60,7 +60,7 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
               title: '📋 قائمة الانتظار',
               value: '${_stats['queue_size'] ?? 0}',
               icon: Icons.queue,
-              color: Colors.purple,
+              color: const Color(0xFF1A73E8),
             ),
             const SizedBox(height: 20),
             ElevatedButton.icon(
