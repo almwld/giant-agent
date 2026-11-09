@@ -3,7 +3,7 @@ import 'dart:convert';
 
 import '../../services/agent_memory_service.dart';
 import '../../services/model_service.dart';
-import '../../services/openrouter_service.dart';
+import '../../services/openai_compatible_provider.dart';
 import '../../services/planner_service.dart';
 import 'agent_timeline_event.dart';
 import 'fifo_task_queue.dart';
@@ -184,11 +184,11 @@ class AgentKernel {
         // Receipt is not execution; only a real completed operation is green.
         status: 'pending',
       );
-      final openRouterEnabled = await OpenRouterService.instance.isEnabled();
+      final openRouterEnabled = await OpenAICompatibleProvider.instance.isEnabled();
       if (!openRouterEnabled) {
         if (!_models.hasActiveModel()) {
           throw StateError(
-            'Load a local GGUF model or configure OpenRouter before starting an agent task.',
+            'Load a local GGUF model or configure an external API provider before starting an agent task.',
           );
         }
 
@@ -204,11 +204,11 @@ class AgentKernel {
         requestId: request.id,
         type: 'model_ready',
         title: openRouterEnabled
-            ? 'تم التحقق من اتصال OpenRouter'
+            ? 'تم التحقق من اتصال external API provider'
             : 'تم التحقق من جاهزية النموذج المحلي',
         status: 'completed',
         details: openRouterEnabled
-            ? 'سيستخدم الوكيل نموذج OpenRouter المحدد.'
+            ? 'سيستخدم الوكيل نموذج external API provider المحدد.'
             : 'سيستخدم الوكيل نموذج GGUF المحلي.',
       );
 
