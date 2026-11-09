@@ -7,6 +7,7 @@ on:
       - feat/integrated-agent-completion
       - feat/phase-0-durable-agent-service
       - feat/phase-1-durable-task-manager
+      - feat/gain-pty-reliability
   pull_request:
     branches:
       - main
@@ -81,6 +82,9 @@ jobs:
 
       - name: Test Gain PTY output protocol
         run: flutter test test/domain/terminal/gain_command_output_parser_test.dart
+
+      - name: Test Gain PTY client partial-write safety
+        run: flutter test test/domain/terminal/gain_pty_client_test.dart
 
       - name: Test approval-bound Gain terminal harness
         run: flutter test test/tools/terminal_tool_coordinator_test.dart
