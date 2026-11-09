@@ -161,3 +161,4 @@ class OpenAICompatibleProvider {
     }
     throw StateError('استجابة المزوّد لا تحتوي نصاً قابلاً للعرض.');
   }
+}
