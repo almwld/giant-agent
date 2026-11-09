@@ -102,6 +102,32 @@ void main() {
     }
   });
 
+  test('rejects concurrent duplicate request ids without losing the first waiter', () async {
+    final directory = await _tempDirectory();
+    final kernel = AgentKernel(
+      store: await _store('${directory.path}/kernel.db'),
+      executor: (request) async => 'completed-${request.id}',
+    );
+    try {
+      final first = kernel.submit(id: 'same-id', prompt: 'first');
+      await expectLater(
+        kernel.submit(id: 'same-id', prompt: 'duplicate'),
+        throwsA(isA<StateError>()),
+      );
+      final result = await first.timeout(const Duration(seconds: 5));
+      expect(result.status, 'completed');
+      expect(result.result, 'completed-same-id');
+      expect((await kernel.eventsFor('same-id')).map((event) => event.type), [
+        'request_queued',
+        'request_started',
+        'request_completed',
+      ]);
+    } finally {
+      await kernel.dispose();
+      await directory.delete(recursive: true);
+    }
+  });
+
   test('restores queued requests from SQLite after a process restart', () async {
     final directory = await _tempDirectory();
     final path = '${directory.path}/kernel.db';
