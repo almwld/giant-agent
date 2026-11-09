@@ -1724,7 +1724,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ? await OpenAICompatibleProvider.instance.getModel()
         : _activeModel['name']?.toString();
     if (!mounted) return;
-    final provider = openRouterEnabled ? 'OpenRouter' : 'محلي (GGUF)';
+    final provider = openRouterEnabled ? 'خارجي (OpenAI-compatible)' : 'محلي (GGUF)';
     final selectedModel = modelName?.isNotEmpty == true
         ? modelName!
         : 'لم يتم تحديد نموذج';
@@ -1749,7 +1749,7 @@ class _ChatScreenState extends State<ChatScreen> {
               style: const TextStyle(color: Colors.white70)),
             const SizedBox(height: 8),
             const Text(
-              'يعمل الوكيل محلياً افتراضياً، ويمكن اختيار OpenRouter كمزود استدلال خارجي.',
+              'يعمل الوكيل محلياً افتراضياً، ويمكن اختيار أي مزوّد متوافق مع OpenAI عبر عنوان API مخصص.',
               style: TextStyle(color: GiantPalette.muted, height: 1.4),
             ),
           ],
@@ -2236,7 +2236,7 @@ class _ChatScreenState extends State<ChatScreen> {
             PopupMenuItem(value: 'workflow', child: Text('سير تنفيذ الوكيل')),
             PopupMenuItem(value: 'github', child: Text('ربط مستودع GitHub')),
             PopupMenuItem(value: 'cloud', child: Text('اتصال السحابة')),
-            PopupMenuItem(value: 'provider', child: Text('مفتاح OpenRouter')),
+            PopupMenuItem(value: 'provider', child: Text('إعداد مزوّد خارجي')),
             PopupMenuItem(value: 'settings', child: Text('الإعدادات')),
           ],
           child: const Row(
@@ -2333,7 +2333,7 @@ class _ChatScreenState extends State<ChatScreen> {
               PopupMenuDivider(),
               PopupMenuItem(value: 'github', child: Text('ربط مستودع GitHub')),
               PopupMenuItem(value: 'cloud', child: Text('اتصال السحابة')),
-              PopupMenuItem(value: 'provider', child: Text('مفتاح OpenRouter')),
+              PopupMenuItem(value: 'provider', child: Text('إعداد مزوّد خارجي')),
               PopupMenuItem(value: 'settings', child: Text('الإعدادات')),
             ],
           ),
@@ -2814,7 +2814,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           PopupMenuDivider(),
                           PopupMenuItem(value: 'github', child: Text('ربط مستودع GitHub')),
                           PopupMenuItem(value: 'cloud', child: Text('اتصال السحابة')),
-                          PopupMenuItem(value: 'provider', child: Text('مفتاح OpenRouter')),
+                          PopupMenuItem(value: 'provider', child: Text('إعداد مزوّد خارجي')),
                           PopupMenuDivider(),
                           PopupMenuItem(value: 'new', child: Text('محادثة جديدة')),
                         ],
