@@ -20,7 +20,7 @@ import 'settings_screen.dart';
 import '../models/chat_session.dart';
 import 'dart:convert';
 import 'package:speech_to_text/speech_to_text.dart';
-import '../services/openrouter_service.dart';
+import '../services/openai_compatible_provider.dart';
 import '../services/github_repository_service.dart';
 import '../services/cloud_storage_service.dart';
 import '../services/web_search_service.dart';
@@ -63,7 +63,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isListening = false;
   bool _webSearchEnabled = false;
   bool _includeGithubContext = false;
-  bool _openRouterEnabled = false;
+  bool _externalProviderEnabled = false;
   bool _agentModeEnabled = true;
 
   // Keep tool-call JSON out of the user-facing answer stream. The actual
@@ -858,12 +858,12 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _init() async {
     await AgentService.instance.initialize();
-    final remoteEnabled = await OpenRouterService.instance.isEnabled();
+    final remoteEnabled = await OpenAICompatibleProvider.instance.isEnabled();
     if (!mounted) return;
     setState(() {
       _models = _modelService.getModels();
       _activeModel = _modelService.getActiveModel();
-      _openRouterEnabled = remoteEnabled;
+      _externalProviderEnabled = remoteEnabled;
     });
   }
 
@@ -1404,11 +1404,11 @@ class _ChatScreenState extends State<ChatScreen> {
     if (mounted) setState(() => _isListening = _speech.isListening);
   }
 
-  Future<void> _openOpenRouterDialog() async {
-    final keyController = TextEditingController(text: await OpenRouterService.instance.getApiKey() ?? '');
-    final modelController = TextEditingController(text: await OpenRouterService.instance.getModel());
-    final endpointController = TextEditingController(text: await OpenRouterService.instance.getBaseUrl());
-    var enabled = await OpenRouterService.instance.isEnabled();
+  Future<void> _openExternalProviderDialog() async {
+    final keyController = TextEditingController(text: await OpenAICompatibleProvider.instance.getApiKey() ?? '');
+    final modelController = TextEditingController(text: await OpenAICompatibleProvider.instance.getModel());
+    final endpointController = TextEditingController(text: await OpenAICompatibleProvider.instance.getBaseUrl());
+    var enabled = await OpenAICompatibleProvider.instance.isEnabled();
     var busy = false;
     var error = '';
     if (!mounted) { keyController.dispose(); modelController.dispose(); endpointController.dispose(); return; }
@@ -1417,13 +1417,13 @@ class _ChatScreenState extends State<ChatScreen> {
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, updateDialog) => AlertDialog(
           backgroundColor: GiantPalette.surface,
-          title: const Text('ربط مزوّد الذكاء الاصطناعي', style: TextStyle(color: Colors.white)),
+          title: const Text('ربط مزوّد نموذج خارجي', style: TextStyle(color: Colors.white)),
           content: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               const Text('أدخل مفتاح أي مزوّد يدعم واجهة OpenAI-compatible مع عنوان API الخاص به. يُحفظ المفتاح مشفراً على الجهاز.',
                 style: TextStyle(color: GiantPalette.muted, fontSize: 12)),
               const SizedBox(height: 6),
-              const Text('أمثلة للعناوين: OpenRouter: https://openrouter.ai/api/v1  •  Gemini: https://generativelanguage.googleapis.com/v1beta/openai',
+              const Text('أمثلة للعناوين: OpenRouter: https://openrouter.ai/api/v1 • Gemini: https://generativelanguage.googleapis.com/v1beta/openai • Groq: https://api.groq.com/openai/v1 • DeepSeek: https://api.deepseek.com/v1',
                 style: TextStyle(color: GiantPalette.primaryLight, fontSize: 11)),
               const SizedBox(height: 12),
               TextField(controller: keyController, obscureText: true, autocorrect: false,
@@ -1436,15 +1436,15 @@ class _ChatScreenState extends State<ChatScreen> {
                 decoration: const InputDecoration(labelText: 'معرّف النموذج', hintText: 'openai/gpt-4o-mini', border: OutlineInputBorder())),
               SwitchListTile(contentPadding: EdgeInsets.zero, value: enabled,
                 onChanged: (v) => updateDialog(() => enabled = v),
-                title: const Text('استخدام المزوّد الخارجي للاستدلال')),
+                title: const Text('استخدام مزوّد النموذج الخارجي للاستدلال')),
               if (error.isNotEmpty) Text(error, style: const TextStyle(color: Colors.redAccent, fontSize: 12)),
               if (busy) const LinearProgressIndicator(),
             ]),
           ),
           actions: [
             TextButton(onPressed: busy ? null : () async {
-              await OpenRouterService.instance.disconnect();
-              if (mounted) setState(() => _openRouterEnabled = false);
+              await OpenAICompatibleProvider.instance.disconnect();
+              if (mounted) setState(() => _externalProviderEnabled = false);
               if (dialogContext.mounted) Navigator.pop(dialogContext);
               if (mounted) ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('تم فصل المزوّد وحذف بياناته.')));
@@ -1454,13 +1454,13 @@ class _ChatScreenState extends State<ChatScreen> {
               updateDialog(() { busy = true; error = ''; });
               try {
                 if (keyController.text.trim().isNotEmpty) {
-                  await OpenRouterService.instance.configure(
+                  await OpenAICompatibleProvider.instance.configure(
                     apiKey: keyController.text, model: modelController.text,
                     baseUrl: endpointController.text, enable: enabled);
                 } else {
-                  await OpenRouterService.instance.setEnabled(enabled);
+                  await OpenAICompatibleProvider.instance.setEnabled(enabled);
                 }
-                if (mounted) setState(() => _openRouterEnabled = enabled);
+                if (mounted) setState(() => _externalProviderEnabled = enabled);
                 if (dialogContext.mounted) Navigator.pop(dialogContext);
                 if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                   content: Text(enabled ? 'تم تفعيل المزوّد: ' + modelController.text.trim() : 'تم تعطيل المزوّد.')));
@@ -1719,9 +1719,9 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _showAgentInformation() async {
-    final openRouterEnabled = await OpenRouterService.instance.isEnabled();
+    final openRouterEnabled = await OpenAICompatibleProvider.instance.isEnabled();
     final modelName = openRouterEnabled
-        ? await OpenRouterService.instance.getModel()
+        ? await OpenAICompatibleProvider.instance.getModel()
         : _activeModel['name']?.toString();
     if (!mounted) return;
     final provider = openRouterEnabled ? 'OpenRouter' : 'محلي (GGUF)';
@@ -2220,8 +2220,8 @@ class _ChatScreenState extends State<ChatScreen> {
               _openGitHubDialog();
             } else if (value == 'cloud') {
               _openCloudDialog();
-            } else if (value == 'openrouter') {
-              _openOpenRouterDialog();
+            } else if (value == 'provider') {
+              _openExternalProviderDialog();
             } else if (value == 'workflow') {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const AgentWorkflowScreen()),
@@ -2236,7 +2236,7 @@ class _ChatScreenState extends State<ChatScreen> {
             PopupMenuItem(value: 'workflow', child: Text('سير تنفيذ الوكيل')),
             PopupMenuItem(value: 'github', child: Text('ربط مستودع GitHub')),
             PopupMenuItem(value: 'cloud', child: Text('اتصال السحابة')),
-            PopupMenuItem(value: 'openrouter', child: Text('مفتاح OpenRouter')),
+            PopupMenuItem(value: 'provider', child: Text('مفتاح OpenRouter')),
             PopupMenuItem(value: 'settings', child: Text('الإعدادات')),
           ],
           child: const Row(
@@ -2312,8 +2312,8 @@ class _ChatScreenState extends State<ChatScreen> {
                 case 'cloud':
                   _openCloudDialog();
                   break;
-                case 'openrouter':
-                  _openOpenRouterDialog();
+                case 'provider':
+                  _openExternalProviderDialog();
                   break;
                 case 'settings':
                   Navigator.of(context).push(
@@ -2333,7 +2333,7 @@ class _ChatScreenState extends State<ChatScreen> {
               PopupMenuDivider(),
               PopupMenuItem(value: 'github', child: Text('ربط مستودع GitHub')),
               PopupMenuItem(value: 'cloud', child: Text('اتصال السحابة')),
-              PopupMenuItem(value: 'openrouter', child: Text('مفتاح OpenRouter')),
+              PopupMenuItem(value: 'provider', child: Text('مفتاح OpenRouter')),
               PopupMenuItem(value: 'settings', child: Text('الإعدادات')),
             ],
           ),
@@ -2744,9 +2744,9 @@ class _ChatScreenState extends State<ChatScreen> {
                       const SizedBox(width: 6),
                       _composerIconButton(
                         icon: Icons.key_rounded,
-                        tooltip: _openRouterEnabled ? 'إعدادات OpenRouter — متصل' : 'إدخال مفتاح OpenRouter',
-                        foreground: _openRouterEnabled ? GiantPalette.success : GiantPalette.muted,
-                        onPressed: _openOpenRouterDialog,
+                        tooltip: _externalProviderEnabled ? 'إعدادات المزوّد الخارجي — متصل' : 'إعداد المزوّد الخارجي',
+                        foreground: _externalProviderEnabled ? GiantPalette.success : GiantPalette.muted,
+                        onPressed: _openExternalProviderDialog,
                       ),
                       const SizedBox(width: 6),
                       _composerIconButton(
@@ -2802,8 +2802,8 @@ class _ChatScreenState extends State<ChatScreen> {
                             case 'cloud':
                               _openCloudDialog();
                               break;
-                            case 'openrouter':
-                              _openOpenRouterDialog();
+                            case 'provider':
+                              _openExternalProviderDialog();
                               break;
                           }
                         },
@@ -2814,7 +2814,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           PopupMenuDivider(),
                           PopupMenuItem(value: 'github', child: Text('ربط مستودع GitHub')),
                           PopupMenuItem(value: 'cloud', child: Text('اتصال السحابة')),
-                          PopupMenuItem(value: 'openrouter', child: Text('مفتاح OpenRouter')),
+                          PopupMenuItem(value: 'provider', child: Text('مفتاح OpenRouter')),
                           PopupMenuDivider(),
                           PopupMenuItem(value: 'new', child: Text('محادثة جديدة')),
                         ],
