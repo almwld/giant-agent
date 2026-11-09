@@ -23,8 +23,8 @@ class GainCommandOutputParser {
     final scanStart = _receivedCharacters - _scanTail.length;
     final scan = _scanTail + chunk;
     final match = _matcher.firstMatch(scan);
-    final markerOffset = match == null ? null : scanStart + match.start;
-    if (markerOffset != null) {
+    if (match != null) {
+      final markerOffset = scanStart + match.start;
       _appendCaptured(chunk, markerOffset - _receivedCharacters);
       if (markerOffset < _capturedCharacters) {
         _output = StringBuffer(_output.toString().substring(0, markerOffset));
