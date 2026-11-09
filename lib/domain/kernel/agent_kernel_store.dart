@@ -121,6 +121,16 @@ class AgentKernelStore {
           CREATE INDEX idx_agent_events_request
           ON agent_events(request_id, row_id)
         ''');
+        await db.execute("""
+          CREATE TRIGGER agent_events_no_update
+          BEFORE UPDATE ON agent_events
+          BEGIN SELECT RAISE(ABORT, 'agent_events is append-only'); END
+        """);
+        await db.execute("""
+          CREATE TRIGGER agent_events_no_delete
+          BEFORE DELETE ON agent_events
+          BEGIN SELECT RAISE(ABORT, 'agent_events is append-only'); END
+        """);
       },
     );
   }
