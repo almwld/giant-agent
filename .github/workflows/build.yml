@@ -75,6 +75,9 @@ jobs:
       - name: Test AgentService durable execution boundary
         run: flutter test test/services/agent_service_durable_test.dart
 
+      - name: Test TaskManager SQLite migration and recovery
+        run: flutter test test/agent/task_manager_recovery_test.dart
+
       - name: Test Gain PTY output protocol
         run: flutter test test/domain/terminal/gain_command_output_parser_test.dart
 
