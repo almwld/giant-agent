@@ -56,6 +56,9 @@ class GainPtyClient {
     String shell = '/system/bin/sh',
   }) async {
     if (_disposed) throw StateError('GainPtyClient has been disposed.');
+    if (shell.trim().startsWith('root:')) {
+      throw ArgumentError.value(shell, 'shell', 'Gain root mode is disabled until an explicit approval flow exists.');
+    }
     if (_running) return true;
     if (_starting) return false;
     _starting = true;
