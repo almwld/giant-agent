@@ -113,7 +113,7 @@ class AppTheme {
       onPrimary: Color(0xFF062F2B),
       primaryContainer: Color(0xFF164B46),
       onPrimaryContainer: Color(0xFFDDF2EF),
-      secondary: Color(0xFF6AA8F5),
+      secondary: secondary,
       onSecondary: Color(0xFF102B4D),
       surface: darkSurface,
       onSurface: darkText,
