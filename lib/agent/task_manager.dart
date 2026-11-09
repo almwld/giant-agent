@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/agent_service.dart';
+import '../domain/kernel/agent_kernel_store.dart';
 
 /// Persistent task lifecycle backed by the real local agent runtime.
 /// Task history survives process restarts; completion is recorded only after
@@ -15,17 +16,24 @@ enum TaskExecutionOutcome {
 }
 
 class TaskManager {
-  TaskManager._internal();
+  TaskManager._internal({AgentKernelStore? store})
+      : _store = store ?? AgentKernelStore(),
+        _agent = AgentService.instance;
+
+  TaskManager.withStore(AgentKernelStore store)
+      : _store = store,
+        _agent = AgentService.instance;
+
   static final TaskManager _instance = TaskManager._internal();
   factory TaskManager() => _instance;
 
   static const String _storageKey = 'giant_agent.tasks.v1';
-  final AgentService _agent = AgentService.instance;
+  final AgentKernelStore _store;
+  final AgentService _agent;
   final List<Map<String, dynamic>> _tasks = [];
   String _currentTask = '';
   bool _executing = false;
   Future<void>? _loading;
-  Future<void> _writeTail = Future<void>.value();
 
   Future<void> _ensureLoaded() {
     _loading ??= _load();
@@ -35,56 +43,68 @@ class TaskManager {
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_storageKey);
-    if (raw == null || raw.isEmpty) return;
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! List) return;
-      _tasks
-        ..clear()
-        ..addAll(decoded.whereType<Map>().map((item) {
-          final task = Map<String, dynamic>.from(item);
-          // A process may die while a task is running. Never report it as
-          // actively executing after restart; it is explicitly resumable.
-          if (task['status'] == 'running') {
-            task['status'] = 'paused';
-            task['recovery_note'] = 'توقف التطبيق أثناء التنفيذ؛ يمكن استئناف المهمة.';
-            final steps = task['steps'];
-            if (steps is List) {
-              for (final rawStep in steps) {
-                if (rawStep is Map && rawStep['status'] == 'running') {
-                  rawStep['status'] = 'pending';
-                }
-              }
-            }
-          }
-          return task;
-        }));
-      if (_tasks.isNotEmpty) {
-        _currentTask = _tasks.last['id']?.toString() ?? '';
+    var legacyTasks = <Map<String, dynamic>>[];
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is List) {
+          legacyTasks = decoded
+              .whereType<Map>()
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList(growable: false);
+        }
+      } on FormatException {
+        // Keep malformed legacy data untouched for diagnosis.
       }
+    }
+
+    // Import the v1 SharedPreferences snapshot only when the SQLite task table
+    // is empty. The import and subsequent reads are safe to repeat.
+    await _store.importLegacyTasksIfEmpty(legacyTasks);
+    final persisted = await _store.getTasks();
+    _tasks
+      ..clear()
+      ..addAll(persisted.map(_normalizeRecoveredTask));
+    if (_tasks.isNotEmpty) {
+      _currentTask = _tasks.last['id']?.toString() ?? '';
+    }
+    if (raw != null && legacyTasks.isNotEmpty && persisted.isNotEmpty) {
+      await prefs.remove(_storageKey);
+    }
+    if (_tasks.any((task) => task['status'] == 'paused')) {
       await _persist();
-    } on FormatException {
-      // Keep a corrupt preference untouched for diagnosis; start with an
-      // empty in-memory queue rather than crashing the agent UI.
     }
   }
 
-  Future<void> _persist() {
-    final snapshot = jsonEncode(_tasks);
-    final completer = Completer<void>();
-    final previous = _writeTail;
-    _writeTail = completer.future;
-    return () async {
-      await previous.catchError((_) {});
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString(_storageKey, snapshot);
-        completer.complete();
-      } catch (error, stack) {
-        completer.completeError(error, stack);
-        rethrow;
+  Map<String, dynamic> _normalizeRecoveredTask(
+    Map<String, dynamic> source,
+  ) {
+    final task = Map<String, dynamic>.from(source);
+    // A process may die while a task is running. Never report it as actively
+    // executing after restart; ambiguous work remains paused for reconciliation.
+    if (task['status'] == 'running') {
+      task['status'] = 'paused';
+      task['recovery_note'] =
+          'توقف التطبيق أثناء التنفيذ؛ راجع الحالة قبل استئناف المهمة.';
+      final steps = task['steps'];
+      if (steps is List) {
+        for (final rawStep in steps) {
+          if (rawStep is Map && rawStep['status'] == 'running') {
+            rawStep['status'] = 'pending';
+          }
+        }
       }
-    }();
+    }
+    return task;
+  }
+
+  Future<void> _persist() async {
+    // Task snapshots are updated in-place, but each SQLite upsert is atomic.
+    // Do not hide storage errors: callers must know if a state transition
+    // was not durably committed.
+    for (final task in _tasks) {
+      await _store.saveTask(task);
+    }
   }
 
   Map<String, dynamic> _copyTask(Map<String, dynamic> task) =>
@@ -98,7 +118,7 @@ class TaskManager {
     final goal = description.trim();
     if (goal.isEmpty) throw ArgumentError.value(description, 'description');
     final now = DateTime.now();
-    final id = now.microsecondsSinceEpoch.toString();
+    final id = '${now.microsecondsSinceEpoch}_${_tasks.length + 1}';
     final task = <String, dynamic>{
       'id': id,
       'description': goal,
@@ -429,6 +449,6 @@ $checkpoint
     if (_executing) throw StateError('لا يمكن مسح المهام أثناء التنفيذ.');
     _tasks.clear();
     _currentTask = '';
-    await _persist();
+    await _store.clearTasks();
   }
 }
