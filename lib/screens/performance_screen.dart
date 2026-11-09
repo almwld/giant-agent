@@ -42,19 +42,19 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
               title: '⚡ سرعة الاستجابة',
               value: '${_stats['average_response_time_ms'] ?? 0} ms',
               icon: Icons.speed,
-              color: Colors.blue,
+              color: const Color(0xFF1A73E8),
             ),
             _buildCard(
               title: '📊 إجمالي الطلبات',
               value: '${_stats['total_requests'] ?? 0}',
               icon: Icons.request_page,
-              color: Colors.green,
+              color: const Color(0xFF0A8F83),
             ),
             _buildCard(
               title: '💾 نسبة التخزين المؤقت',
               value: '${_stats['cache_hit_rate'] ?? 0}%',
               icon: Icons.memory,
-              color: Colors.orange,
+              color: const Color(0xFF34A99F),
             ),
             _buildCard(
               title: '📋 قائمة الانتظار',
