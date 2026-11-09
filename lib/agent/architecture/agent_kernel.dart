@@ -204,11 +204,11 @@ class AgentKernel {
         requestId: request.id,
         type: 'model_ready',
         title: openRouterEnabled
-            ? 'تم التحقق من اتصال external API provider'
+            ? 'تم التحقق من اتصال المزوّد الخارجي'
             : 'تم التحقق من جاهزية النموذج المحلي',
         status: 'completed',
         details: openRouterEnabled
-            ? 'سيستخدم الوكيل نموذج external API provider المحدد.'
+            ? 'سيستخدم الوكيل النموذج الخارجي المحدد.'
             : 'سيستخدم الوكيل نموذج GGUF المحلي.',
       );
 
