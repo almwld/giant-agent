@@ -7,6 +7,7 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import '../services/agent_service.dart';
 import '../services/app_preferences.dart';
+import '../services/model_service.dart';
 
 /// Voice interaction states shown by the assistant UI.
 enum AgentState {
@@ -408,6 +409,7 @@ class _AiVoiceAssistantScreenState extends State<AiVoiceAssistantScreen> {
   late final AgentController _agentController;
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final ModelService _modelService = ModelService();
 
   bool get _isArabic =>
       AppPreferences.instance.locale.languageCode == 'ar';
@@ -441,6 +443,79 @@ class _AiVoiceAssistantScreenState extends State<AiVoiceAssistantScreen> {
         curve: Curves.easeOut,
       );
     }
+  }
+
+  Future<void> _showModelPicker() async {
+    if (_agentController.isBusy) return;
+    final models = _modelService.getModels();
+    if (models.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _isArabic
+                ? 'لم يتم العثور على نماذج GGUF. استورد نموذجاً من الشاشة الرئيسية أولاً.'
+                : 'No GGUF models found. Import a model from the main screen first.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Theme.of(context).cardColor,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+              child: Text(
+                _isArabic ? 'اختر النموذج المحلي' : 'Choose local model',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            for (final model in models)
+              ListTile(
+                leading: Icon(
+                  model['id'] == _modelService.getActiveModel()['id']
+                      ? Icons.check_circle_rounded
+                      : Icons.memory_rounded,
+                  color: model['id'] == _modelService.getActiveModel()['id']
+                      ? const Color(0xFF34D399)
+                      : const Color(0xFF64748B),
+                ),
+                title: Text(model['name']?.toString() ?? 'GGUF'),
+                subtitle: Text(
+                  '${model['size'] ?? ''} • ${model['type'] ?? 'GGUF'}',
+                ),
+                onTap: () async {
+                  Navigator.of(sheetContext).pop();
+                  final ok = await _modelService.switchModel(
+                    model['id'].toString(),
+                  );
+                  if (!mounted) return;
+                  setState(() {});
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        ok
+                            ? (_isArabic
+                                ? 'تم تفعيل ${model['name']}'
+                                : '${model['name']} is now active')
+                            : (_isArabic
+                                ? 'تعذر تحميل النموذج المحدد'
+                                : 'Could not load the selected model'),
+                      ),
+                    ),
+                  );
+                },
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   String _stateLabel(AgentState state) {
@@ -503,14 +578,19 @@ class _AiVoiceAssistantScreenState extends State<AiVoiceAssistantScreen> {
                   ),
                 ),
                 Text(
-                  _isArabic
-                      ? 'يستخدم محرك Giant Agent المشترك'
-                      : 'Powered by the shared Giant Agent runtime',
+                  _modelService.getActiveModelName(),
                   style: TextStyle(fontSize: 10, color: muted),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
             actions: [
+              IconButton(
+                tooltip: _isArabic ? 'اختيار النموذج' : 'Select model',
+                onPressed: _showModelPicker,
+                icon: const Icon(Icons.memory_rounded),
+              ),
               IconButton(
                 tooltip: _agentController.speechEnabled
                     ? (_isArabic ? 'إيقاف النطق' : 'Mute speech')
