@@ -55,6 +55,16 @@ class AgentWorkflowScreen extends StatelessWidget {
     }
   }
 
+  String _agentRoleLabel(String role) {
+    switch (role) {
+      case 'explore': return 'استكشاف';
+      case 'plan': return 'تخطيط';
+      case 'coder': return 'تنفيذ';
+      case 'reviewer': return 'مراجعة';
+      default: return role;
+    }
+  }
+
   IconData _eventIcon(String type, String tool, String title) {
     final value = '$type $tool $title'.toLowerCase();
     if (value.contains('python') || value.contains('terminal') ||
@@ -123,6 +133,7 @@ class AgentWorkflowScreen extends StatelessWidget {
                   '';
               final tool = event['tool_name']?.toString() ?? '';
               final eventType = event['type']?.toString() ?? '';
+              final agentType = event['agent_type']?.toString() ?? '';
               final icon = _eventIcon(eventType, tool, title);
               return Container(
                 margin: const EdgeInsets.only(bottom: 9),
@@ -156,6 +167,18 @@ class AgentWorkflowScreen extends StatelessWidget {
                     padding: const EdgeInsets.only(top: 5),
                     child: Row(
                       children: [
+                        if (agentType.isNotEmpty) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: GiantPalette.primaryLight.withOpacity(.12),
+                              borderRadius: BorderRadius.circular(7),
+                            ),
+                            child: Text(_agentRoleLabel(agentType),
+                                style: const TextStyle(color: GiantPalette.primaryLight, fontSize: 10)),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
                         if (tool.isNotEmpty) ...[
                           Flexible(
                             child: Text(tool,
@@ -178,6 +201,10 @@ class AgentWorkflowScreen extends StatelessWidget {
                     ),
                   ),
                   children: [
+                    if (event['agent_type'] != null)
+                      _detailBlock('نوع الوكيل الفرعي', _agentRoleLabel(event['agent_type'].toString())),
+                    if (event['task_id'] != null)
+                      _detailBlock('معرّف الوكيل الفرعي', event['task_id'].toString()),
                     if (event['content'] != null)
                       _detailBlock('المحتوى', event['content'].toString()),
                     if (details.isNotEmpty) _detailBlock('التفاصيل', details),
@@ -189,7 +216,7 @@ class AgentWorkflowScreen extends StatelessWidget {
                       _detailBlock('المخرجات', event['output'].toString()),
                     ...event.entries.where((entry) => !{
                       'id','title','status','tool_name','type','details','content',
-                      'file_name','command','output','subtitle','request_id',
+                      'file_name','command','output','subtitle','request_id','agent_type','task_id',
                       'session_id','timestamp'
                     }.contains(entry.key)).map((entry) => _detailBlock(
                       entry.key,
@@ -230,6 +257,7 @@ class AgentWorkflowScreen extends StatelessWidget {
     final failed = rows.where((e) => {'failed','error'}.contains((e['status'] ?? '').toString().toLowerCase())).length;
     final active = rows.where((e) => (e['status'] ?? '').toString().toLowerCase() == 'running').length;
     final pending = rows.where((e) => (e['status'] ?? '').toString().toLowerCase() == 'pending').length;
+    final subagents = rows.map((e) => e['task_id']?.toString() ?? '').where((id) => id.isNotEmpty).toSet().length;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(color: GiantPalette.surface, borderRadius: BorderRadius.circular(14), border: Border.all(color: GiantPalette.primaryLight.withOpacity(.25))),
@@ -238,6 +266,7 @@ class AgentWorkflowScreen extends StatelessWidget {
         const SizedBox(height: 10),
         Wrap(spacing: 16, runSpacing: 8, children: [
           _metric('إجمالي الأحداث', rows.length.toString(), Colors.white70),
+          _metric('الوكلاء الفرعيون', subagents.toString(), GiantPalette.primaryLight),
           _metric('مكتمل', completed.toString(), GiantPalette.success),
           _metric('قيد التنفيذ', active.toString(), GiantPalette.primaryLight),
           _metric('بانتظار التنفيذ', pending.toString(), GiantPalette.muted),
