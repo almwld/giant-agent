@@ -325,7 +325,16 @@ class TaskManager {
     task.remove('error');
     task.remove('recovery_note');
     task['updated_at'] = DateTime.now().toIso8601String();
-    await _persist();
+    await _store.saveTaskWithEvents(task, events: [
+      {
+        'type': 'task_resume_requested',
+        'status': 'pending',
+        'payload': <String, Object?>{
+          'policy': 'explicit_user_action',
+          'previous_step_state': step['status'],
+        },
+      },
+    ]);
     return executeNextStep();
   }
 
@@ -367,7 +376,21 @@ class TaskManager {
     task['updated_at'] = DateTime.now().toIso8601String();
     step['status'] = 'running';
     try {
-      await _persist();
+      await _store.saveTaskWithEvents(task, events: [
+        {
+          'type': 'task_started',
+          'status': 'running',
+          'payload': <String, Object?>{'execution_path': 'task_manager'},
+        },
+        {
+          'type': 'step_started',
+          'status': 'running',
+          'payload': <String, Object?>{
+            'step': step['step'],
+            'action': step['action'],
+          },
+        },
+      ]);
       final originalPrompt = task['description'] as String;
       final checkpoint = task['resume_context']?.toString().trim() ?? '';
       final executionPrompt = checkpoint.isEmpty
@@ -387,13 +410,25 @@ $checkpoint
       );
       final outcome = classifyResult(result);
       if (outcome == TaskExecutionOutcome.interrupted) {
-        step['status'] = 'pending';
+        step['status'] = 'uncertain';
+        step['recovery_state'] = 'side_effect_unknown';
         step['result'] = result;
         task['resume_context'] = result;
         task['status'] = 'paused';
-        task['recovery_note'] = 'توقف التنفيذ قبل اكتمال المهمة؛ يمكن استئنافها.';
+        task['recovery_note'] = 'توقف التنفيذ قبل اكتمال المهمة؛ افحص التأثيرات قبل الاستئناف.';
         task['updated_at'] = DateTime.now().toIso8601String();
-        await _persist();
+        await _store.saveTaskWithEvents(task, events: [
+          {
+            'type': 'step_interrupted',
+            'status': 'uncertain',
+            'payload': <String, Object?>{'step': step['step'], 'result': result},
+          },
+          {
+            'type': 'task_paused',
+            'status': 'paused',
+            'payload': <String, Object?>{'reason': task['recovery_note']},
+          },
+        ]);
         return {
           'status': 'paused',
           'step': step['step'],
@@ -409,7 +444,18 @@ $checkpoint
         task['status'] = 'failed';
         task['error'] = result;
         task['updated_at'] = DateTime.now().toIso8601String();
-        await _persist();
+        await _store.saveTaskWithEvents(task, events: [
+          {
+            'type': 'step_failed',
+            'status': 'failed',
+            'payload': <String, Object?>{'step': step['step'], 'error': result},
+          },
+          {
+            'type': 'task_failed',
+            'status': 'failed',
+            'payload': <String, Object?>{'error': result},
+          },
+        ]);
         return {'status': 'failed', 'error': result, 'task_summary': _copyTask(task)};
       }
       step['status'] = 'completed';
@@ -420,7 +466,18 @@ $checkpoint
       task['result'] = result;
       task.remove('resume_context');
       task.remove('recovery_note');
-      await _persist();
+      await _store.saveTaskWithEvents(task, events: [
+        {
+          'type': 'step_completed',
+          'status': 'completed',
+          'payload': <String, Object?>{'step': step['step'], 'result': result},
+        },
+        {
+          'type': 'task_completed',
+          'status': 'completed',
+          'payload': <String, Object?>{'result': result},
+        },
+      ]);
       return {
         'status': 'completed',
         'step': step['step'],
@@ -435,7 +492,18 @@ $checkpoint
       task['status'] = 'failed';
       task['error'] = error.toString();
       task['updated_at'] = DateTime.now().toIso8601String();
-      await _persist();
+      await _store.saveTaskWithEvents(task, events: [
+        {
+          'type': 'step_failed',
+          'status': 'failed',
+          'payload': <String, Object?>{'step': step['step'], 'error': error.toString()},
+        },
+        {
+          'type': 'task_failed',
+          'status': 'failed',
+          'payload': <String, Object?>{'error': error.toString()},
+        },
+      ]);
       return {'status': 'failed', 'error': error.toString(), 'task_summary': _copyTask(task)};
     } finally {
       _executing = false;
