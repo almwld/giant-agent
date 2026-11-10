@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/services.dart';
+import 'arabic_ocr_service.dart';
 
 /// On-device OCR bridge. ML Kit's bundled recognizer is Latin-script only;
 /// it does not provide Arabic OCR or semantic image understanding.
@@ -9,6 +10,7 @@ class ImageRecognitionService {
   static Future<String> analyzeImage(File imageFile) async {
     final result = await _recognize(imageFile);
     final text = result['text']?.toString() ?? '';
+    final arabicText = result['arabic_text']?.toString() ?? '';
     final rawLines = result['lines'];
     final lines = rawLines is List
         ? rawLines.whereType<Map>().map((line) {
@@ -35,10 +37,13 @@ class ImageRecognitionService {
             return '- $name$score';
           }).join('\n')
         : '';
-    final summary = text.trim().isEmpty
-        ? 'لم يُعثر على نص قابل للاستخراج بواسطة OCR المحلي.'
-        : 'النص المستخرج من الصورة (OCR):\n$text';
-    final warnings = [result['ocr_warning']?.toString(), result['labeling_warning']?.toString()]
+    final summary = text.trim().isEmpty && arabicText.trim().isEmpty
+        ? 'لم يُعثر على نص واضح قابل للاستخراج من الصورة.'
+        : [
+            if (arabicText.trim().isNotEmpty) 'النص العربي المستخرج (OCR محلي):\n$arabicText',
+            if (text.trim().isNotEmpty) 'النص اللاتيني المستخرج (OCR محلي):\n$text',
+          ].join('\n\n');
+    final warnings = [result['ocr_warning']?.toString(), result['arabic_ocr_warning']?.toString(), result['labeling_warning']?.toString()]
         .whereType<String>().where((warning) => warning.trim().isNotEmpty).toList();
     return '$summary'
         '${lines.isEmpty ? '' : '\n\nتفاصيل الأسطر:\n$lines'}'
@@ -50,7 +55,9 @@ class ImageRecognitionService {
 
   static Future<String> extractTextFromImage(File imageFile) async {
     final result = await _recognize(imageFile);
-    return result['text']?.toString() ?? '';
+    final arabic = result['arabic_text']?.toString() ?? '';
+    final latin = result['text']?.toString() ?? '';
+    return [arabic, latin].where((part) => part.trim().isNotEmpty).join('\n\n');
   }
 
   static Future<Map<String, dynamic>> _recognize(File imageFile) async {
@@ -68,6 +75,17 @@ class ImageRecognitionService {
     if (result == null || result['ok'] != true) {
       throw StateError(result?['error']?.toString() ?? 'OCR engine failed.');
     }
-    return result;
+
+    // Keep ML Kit's fast Latin OCR and image labels, and add a true Arabic
+    // character recognizer. Tesseract's ara model is installed once and then
+    // runs locally without sending the image to a cloud service.
+    final combined = Map<String, dynamic>.from(result);
+    try {
+      combined['arabic_text'] = await ArabicOcrService.instance.recognize(imageFile);
+    } catch (error) {
+      combined['arabic_ocr_warning'] =
+          'تعذر تشغيل OCR العربي: $error. سيظل استخراج النص اللاتيني متاحاً.';
+    }
+    return combined;
   }
 }
