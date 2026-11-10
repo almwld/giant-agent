@@ -37,6 +37,31 @@ void main() {
     expect(events.every((event) => event['request_id'] == 'request-1'), isTrue);
   });
 
+  test('can execute a bounded repair batch after an initial batch', () async {
+    final executed = <String>[];
+    final orchestrator = SubagentOrchestrator(
+      parentRequestId: 'request-replan',
+      conversationId: 'chat-replan',
+      maxConcurrency: 1,
+      onEvent: (_) {},
+      execute: (task, dependencies, isCancelled) async {
+        executed.add(task.id);
+        return 'repaired:${task.id}';
+      },
+    );
+
+    final first = await orchestrator.run([
+      const SubagentTask(id: 'initial', title: 'Initial', prompt: 'Initial'),
+    ]);
+    final repair = await orchestrator.run([
+      const SubagentTask(id: 'repair-1', title: 'Repair', prompt: 'Repair'),
+    ]);
+
+    expect(first.single.status, 'completed');
+    expect(repair.single.output, 'repaired:repair-1');
+    expect(executed, ['initial', 'repair-1']);
+  });
+
   test('skips dependent agents when a prerequisite fails', () async {
     final orchestrator = SubagentOrchestrator(
       parentRequestId: 'request-2',
