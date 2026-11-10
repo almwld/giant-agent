@@ -66,7 +66,7 @@ class AgentKernel {
   int _eventSequence = 0;
   bool _cancellationRequested = false;
   SubagentOrchestrator? _activeSubagentOrchestrator;
-  String? _activeSubagentId;
+  final Set<String> _activeSubagentIds = <String>{};
   String? _activeSubagentParentRequestId;
   final FifoTaskQueue _requestQueue = FifoTaskQueue();
   int get queuedRequestCount => _requestQueue.pendingCount;
@@ -387,7 +387,8 @@ class AgentKernel {
       final output = (await _models.processInput(prompt,
         conversationId: '$conversationId::subagent::$taskId',
         persistTurn: false, allowedTools: allowedTools,
-        shouldCancel: () => _cancellationRequested)).trim();
+        shouldCancel: () => _cancellationRequested,
+        requestId: parentRequestId)).trim();
       if (_cancellationRequested || _isCancelledOutput(output) || _isIncompleteOutput(output)) {
         throw SubagentInterrupted(output.isEmpty ? 'تم إيقاف استئناف الوكيل الفرعي.' : output);
       }
@@ -413,7 +414,7 @@ class AgentKernel {
     } finally {
       _models.endAgentRequest(requestId);
       _activeRequestId = null;
-      if (_activeSubagentId == taskId) _activeSubagentId = null;
+      _activeSubagentIds.remove(taskId);
       if (_activeSubagentParentRequestId == parentRequestId) _activeSubagentParentRequestId = null;
       _cancellationRequested = false;
       if (_state != AgentKernelState.failed) _state = AgentKernelState.idle;
@@ -446,7 +447,7 @@ class AgentKernel {
     required String conversationId,
   }) async {
     if (!_planner.requiresPlan(prompt)) {
-      return _models.processInput(prompt, conversationId: conversationId);
+      return _models.processInput(prompt, conversationId: conversationId, requestId: requestId);
     }
 
     final softwareScope = RegExp(
@@ -513,13 +514,15 @@ class AgentKernel {
       }),
     );
 
+    final cloudParallelismEnabled = await OpenAICompatibleProvider.instance.isEnabled();
+    final workerConcurrency = cloudParallelismEnabled ? 3 : 1;
     final orchestrator = SubagentOrchestrator(
       parentRequestId: requestId,
       conversationId: conversationId,
-      // The current llama.cpp JNI context is mutable and protected by one FIFO
-      // lock. Keep one inference worker until the runtime supports isolated
-      // parallel contexts; task state and dependency scheduling are independent.
-      maxConcurrency: 1,
+      // The mutable llama.cpp JNI context remains strictly single-worker.
+      // OpenRouter calls have request-scoped zones; workspace side effects are
+      // separately serialized by ModelService's tool FIFO.
+      maxConcurrency: workerConcurrency,
       onEvent: (event) {
         final taskId = event['task_id']?.toString() ?? '';
         _emit(
@@ -587,7 +590,7 @@ ${dependencyContext.isEmpty ? 'لا توجد تبعيات سابقة.' : depende
 - لا تعرض التفكير الداخلي التفصيلي.
 ''';
 
-        _activeSubagentId = task.id;
+        _activeSubagentIds.add(task.id);
         late final String output;
         try {
           output = (await _models.processInput(
@@ -597,9 +600,10 @@ ${dependencyContext.isEmpty ? 'لا توجد تبعيات سابقة.' : depende
             allowedTools: allowedTools,
             shouldCancel: () =>
                 _cancellationRequested || isTaskCancelled(),
+            requestId: requestId,
           )).trim();
         } finally {
-          if (_activeSubagentId == task.id) _activeSubagentId = null;
+          _activeSubagentIds.remove(task.id);
         }
 
         if (_cancellationRequested || _isCancelledOutput(output)) {
@@ -951,7 +955,7 @@ $evidence
   Future<bool> cancelSubagent(String taskId) async {
     final orchestrator = _activeSubagentOrchestrator;
     final scheduledChild = orchestrator != null && orchestrator.cancelTask(taskId);
-    final recoveredChild = _activeSubagentId == taskId;
+    final recoveredChild = _activeSubagentIds.contains(taskId);
     if (!scheduledChild && !recoveredChild) return false;
     _emit(
       requestId: _activeSubagentParentRequestId ?? _activeRequestId ?? 'runtime',
