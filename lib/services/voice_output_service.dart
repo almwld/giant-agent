@@ -34,7 +34,10 @@ class VoiceOutputService {
     _initialized = true;
   }
 
-  Future<void> speak(String text) async {
+  Future<void> speak(
+    String text, {
+    bool waitForCompletion = false,
+  }) async {
     final value = text.trim();
     if (value.isEmpty) return;
     await initialize();
@@ -51,7 +54,16 @@ class VoiceOutputService {
         ? 'ar-SA'
         : (arabicLanguages.isNotEmpty ? arabicLanguages.first : 'ar-SA');
     await _tts.setLanguage(arabicLocale);
-    await _tts.speak(value);
+    await _tts.awaitSpeakCompletion(waitForCompletion);
+    try {
+      await _tts.speak(value);
+    } finally {
+      // Keep ordinary chat playback non-blocking; voice turns opt into
+      // completion so the in-chat orb remains in its speaking state.
+      if (waitForCompletion) {
+        await _tts.awaitSpeakCompletion(false);
+      }
+    }
   }
 
   Future<void> stop() async {
