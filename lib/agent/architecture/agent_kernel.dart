@@ -342,16 +342,25 @@ class AgentKernel {
     }
 
     final plan = _planner.createPlan(prompt);
+    final isSoftwareTask = RegExp(
+      r'(كود|برمج|تطبيق|موقع|برنامج|ملف|نظام|قاعدة|واجهة|نواة|ذاكرة|وكيل|تخطيط|استعادة|تكامل|دورة عمل|api|flutter|dart|python|javascript|software|code|app|website|project|refactor|debug|fix|kernel|memory|agent|planner|recovery|integration|workflow)',
+    ).hasMatch(prompt.toLowerCase());
     final tasks = <SubagentTask>[];
     for (var index = 0; index < plan.length; index++) {
       final step = plan[index];
       final number = step['step'] as int;
-      final role = switch (index) {
-        0 || 1 => 'explore',
-        2 => 'plan',
-        3 => 'coder',
-        _ => 'reviewer',
-      };
+      final role = isSoftwareTask
+          ? switch (index) {
+              0 || 1 => 'explore',
+              2 => 'plan',
+              3 => 'coder',
+              _ => 'reviewer',
+            }
+          : switch (index) {
+              0 || 1 => 'explore',
+              2 => 'plan',
+              _ => 'reviewer',
+            };
       final dependencies = switch (index) {
         0 || 1 => const <String>[],
         2 => <String>['${requestId}_agent_1', '${requestId}_agent_2']
