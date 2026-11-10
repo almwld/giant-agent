@@ -318,7 +318,7 @@ class MainActivity: FlutterActivity() {
                         emitAgentEvent("${requestId}_inference", "استدلال النموذج المحلي جارٍ", "running", requestId = requestId)
                         try {
                             val tokenCallback = object : TokenCallback {
-                                override fun onToken(token: String) { emitAgentToken(token) }
+                                override fun onToken(token: String) { emitAgentToken(token, requestId) }
                             }
                             val answer = llamaBridge.nativeGenerateStreaming(prompt, tokens, temp, tokenCallback)
                             terminalStatus = when {
@@ -532,13 +532,21 @@ class MainActivity: FlutterActivity() {
         return Pair(relativePath, canonical.name)
     }
 
-    private fun emitAgentToken(token: String) {
+    private fun emitAgentToken(token: String, requestId: String) {
         // Each callback carries only the newly decoded UTF-8 chunk from JNI.
         // A unique id lets Dart safely discard a replay without suppressing
         // legitimate adjacent chunks that happen to contain identical text.
         val eventId = "token_${System.nanoTime()}"
         runOnUiThread {
-            agentEventSink?.success(mapOf("id" to eventId, "type" to "stream_token", "text" to token))
+            agentEventSink?.success(mapOf(
+                "id" to eventId,
+                "request_id" to requestId,
+                "attempt_id" to requestId,
+                "step_id" to requestId,
+                "type" to "stream_token",
+                "text" to token,
+                "timestamp" to System.currentTimeMillis()
+            ))
         }
     }
 
