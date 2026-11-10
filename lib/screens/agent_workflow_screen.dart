@@ -113,6 +113,14 @@ class AgentWorkflowScreen extends StatelessWidget {
             );
           }
           final ordered = rows.toList(growable: false);
+          final latestSubagentEvent = <String, String>{};
+          for (final event in ordered) {
+            final taskId = event['task_id']?.toString() ?? '';
+            final eventId = event['id']?.toString() ?? '';
+            if (taskId.isNotEmpty && eventId.isNotEmpty) {
+              latestSubagentEvent[taskId] = eventId;
+            }
+          }
           return ListView(
             padding: const EdgeInsets.all(14),
             children: [
@@ -214,6 +222,7 @@ class AgentWorkflowScreen extends StatelessWidget {
                     if (event['command'] != null)
                       _detailBlock('الأمر', event['command'].toString()),
                     if (event['task_id'] != null &&
+                        latestSubagentEvent[event['task_id'].toString()] == event['id']?.toString() &&
                         {'running', 'pending'}.contains(status.toLowerCase()))
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
