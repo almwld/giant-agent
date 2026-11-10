@@ -14,7 +14,16 @@ class VoiceOutputService {
 
   Future<void> initialize() async {
     if (_initialized) return;
-    await _tts.setLanguage('ar-SA');
+    final dynamic available = await _tts.getLanguages;
+    final arabicLanguages = available is List
+        ? available.map((value) => value.toString())
+            .where((value) => value.toLowerCase().startsWith('ar'))
+            .toList()
+        : <String>[];
+    final arabicLocale = arabicLanguages.contains('ar-SA')
+        ? 'ar-SA'
+        : (arabicLanguages.isNotEmpty ? arabicLanguages.first : 'ar-SA');
+    await _tts.setLanguage(arabicLocale);
     await _tts.setSpeechRate(0.48);
     await _tts.setPitch(1.0);
     await _tts.awaitSpeakCompletion(false);
@@ -32,7 +41,16 @@ class VoiceOutputService {
     await _tts.stop();
     // Arabic locale is explicitly selected so Arabic answers are not read
     // using the device's default English voice.
-    await _tts.setLanguage('ar-SA');
+    final dynamic available = await _tts.getLanguages;
+    final arabicLanguages = available is List
+        ? available.map((value) => value.toString())
+            .where((value) => value.toLowerCase().startsWith('ar'))
+            .toList()
+        : <String>[];
+    final arabicLocale = arabicLanguages.contains('ar-SA')
+        ? 'ar-SA'
+        : (arabicLanguages.isNotEmpty ? arabicLanguages.first : 'ar-SA');
+    await _tts.setLanguage(arabicLocale);
     await _tts.speak(value);
   }
 
