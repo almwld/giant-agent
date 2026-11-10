@@ -21,6 +21,32 @@ class AgentForegroundService : Service() {
         private const val NOTIFICATION_ID = 7403
         private const val EXTRA_TITLE = "task_title"
         private const val EXTRA_BODY = "task_body"
+
+        /** Updates the foreground notification without restarting the service. */
+        fun updateNotification(context: Context, title: String, body: String) {
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                manager.createNotificationChannel(NotificationChannel(
+                    CHANNEL_ID, "Giant Agent runtime", NotificationManager.IMPORTANCE_LOW
+                ).apply { description = "إشعارات تنفيذ مهام الوكيل المحلي والاستعادة" })
+            }
+            val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)?.let { intent ->
+                PendingIntent.getActivity(context, NOTIFICATION_ID, intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0))
+            }
+            val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle(title)
+                .setContentText(body)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+                .setContentIntent(launch)
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .setCategory(NotificationCompat.CATEGORY_SERVICE)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .build()
+            manager.notify(NOTIFICATION_ID, notification)
+        }
     }
 
     @Volatile private var title = "Giant Agent"
