@@ -360,6 +360,54 @@ class ModelService {
     }
   }
 
+  /// Produces a short structured planning response without invoking tools or
+  /// persisting a user-visible conversation turn. It still uses the one shared
+  /// inference lock and provider selected by the user.
+  Future<String> generateStructuredOutput(
+    String prompt, {
+    String conversationId = 'global',
+    bool Function()? shouldCancel,
+  }) {
+    return _withRuntimeLock(() async {
+      if (shouldCancel?.call() == true) {
+        return 'تم إيقاف التخطيط بناءً على طلب المستخدم.';
+      }
+      final context = await AgentMemoryService.instance.buildContext(
+        prompt,
+        conversationId: conversationId,
+      );
+      if (shouldCancel?.call() == true) {
+        return 'تم إيقاف التخطيط بناءً على طلب المستخدم.';
+      }
+      final completePrompt = '''
+أنت مخطط مهام لوكيل رئيسي. لا تنفذ أدوات ولا تكتب حلولاً نهائية.
+حوّل هدف المستخدم إلى 2 إلى 6 مهام فرعية صغيرة قابلة للتحقق.
+أعد JSON صالحاً فقط دون Markdown أو شرح، بهذا الشكل:
+{"tasks":[{"id":"short_id","role":"explore|plan|coder|reviewer","title":"عنوان قصير","prompt":"تعليمات المهمة","depends_on":["short_id"]}]}
+قواعد إلزامية:
+- استخدم explore للاستكشاف والقراءة، plan للتصميم، coder للتعديلات البرمجية فقط، reviewer للتحقق.
+- اجعل المهام المستقلة بلا تبعيات، واربط كل مهمة بما تحتاجه فعلاً من نتائج سابقة.
+- لا تجعل أي وكيل ينشئ وكيلاً آخر.
+- لا تضع أسراراً أو بيانات اعتماد في المهام.
+- لا تدّع أن التنفيذ قد حدث؛ هذه خطة فقط.
+- لا تستخدم coder إلا إذا كان هدف المستخدم يتطلب تعديل برنامج أو ملفات مشروع.
+- اجعل prompt لكل مهمة مستقلاً بما يكفي، ولا يتجاوز 1200 حرفاً.
+${context.isEmpty ? '' : 'سياق مختصر:\n$context\n'}
+هدف المستخدم:
+$prompt
+''';
+      final output = await _generateText(
+        _boundPrompt(completePrompt),
+        maxTokens: 1024,
+        temperature: .1,
+      );
+      if (shouldCancel?.call() == true) {
+        return 'تم إيقاف التخطيط بناءً على طلب المستخدم.';
+      }
+      return output.trim();
+    });
+  }
+
   /// Direct conversational path: no AgentKernel orchestration and no tool loop.
   /// The local GGUF model or the official OpenRouter provider answers normally.
   Future<String> processChat(
