@@ -195,6 +195,22 @@ class ModelService {
     return _llama.cancel();
   }
 
+  Future<bool> shareWorkspace() async {
+    final result = await _agentTools.invokeMapMethod<String, dynamic>('shareWorkspace');
+    if (result == null || result['ok'] != true) {
+      throw PlatformException(code: 'WORKSPACE_SHARE_FAILED', message: result?['error']?.toString() ?? 'Workspace sharing failed.');
+    }
+    return true;
+  }
+
+  Future<Map<String, dynamic>> readImagePreview({required String path}) async {
+    final result = await _agentTools.invokeMapMethod<String, dynamic>('readImagePreview', {'path': path});
+    if (result == null || result['ok'] != true || result['base64'] == null) {
+      throw PlatformException(code: 'IMAGE_PREVIEW_FAILED', message: 'Unable to load image preview.');
+    }
+    return result;
+  }
+
   Future<Map<String, dynamic>> exportWorkspace() async {
     final result = await _agentTools.invokeMapMethod<String, dynamic>('exportWorkspace');
     if (result == null || result['ok'] != true || result['path'] == null) {
