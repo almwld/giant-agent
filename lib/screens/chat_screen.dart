@@ -159,12 +159,12 @@ class _ChatScreenState extends State<ChatScreen> {
       if (path != null && path.isNotEmpty) _processSharedFilePath(path);
       return;
     }
-    if (step['tool_name'] == 'execute_python') {
+    if (step['tool_name'] == 'execute_python' || step['tool_name'] == 'gain_terminal') {
       _terminalHasActivity = true;
       final type = step['type']?.toString();
       if (type == 'tool_start') {
-        _terminal.write('\r\n\x1B[33m>>> Python execution started\x1B[0m\r\n');
-        final code = step['content']?.toString() ?? '';
+        _terminal.write('\r\n\x1B[33m>>> ${step['tool_name'] == 'gain_terminal' ? 'Gain terminal' : 'Python execution'} started\x1B[0m\r\n');
+        final code = step['content']?.toString() ?? step['command']?.toString() ?? '';
         if (code.isNotEmpty) _terminal.write('\x1B[90m$code\x1B[0m\r\n');
       } else if (type == 'tool_output') {
         final output = step['output']?.toString() ?? '';
@@ -352,6 +352,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     _modelService.requestTerminalApproval = _requestTerminalApproval;
+    _modelService.onAgentEvent = _handleAgentEvent;
     _loadBubbleScale();
     _initDatabase();
     // The screen consumes exactly one event stream. ModelService and the
@@ -2248,6 +2249,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _agentEventSubscription?.cancel();
     _nativeAgentEventSubscription?.cancel();
     _modelService.requestTerminalApproval = null;
+    _modelService.onAgentEvent = null;
     _speech.stop();
     _voiceOutput.stop();
     _controller.dispose();
@@ -2289,6 +2291,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final title = step['title']?.toString().toLowerCase() ?? '';
     final toolName = step['tool_name']?.toString().toLowerCase() ?? '';
     return toolName == 'execute_python' ||
+        toolName == 'gain_terminal' ||
         type == 'terminal' ||
         type == 'terminal_run' ||
         type == 'terminal_output' ||
