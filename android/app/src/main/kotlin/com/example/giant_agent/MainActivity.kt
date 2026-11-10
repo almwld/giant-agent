@@ -48,10 +48,10 @@ class MainActivity: FlutterActivity() {
                             result.success(true)
                         }
                         "updateTask" -> {
-                            dispatchBackgroundService(
-                                AgentForegroundService.ACTION_UPDATE,
-                                call.argument<String>("title"),
-                                call.argument<String>("body")
+                            AgentForegroundService.updateNotification(
+                                this,
+                                call.argument<String>("title") ?: "Giant Agent",
+                                call.argument<String>("body") ?: "يواصل الوكيل تنفيذ المهمة في الخلفية"
                             )
                             result.success(true)
                         }
@@ -60,7 +60,7 @@ class MainActivity: FlutterActivity() {
                             result.success(true)
                         }
                         "stop" -> {
-                            dispatchBackgroundService(AgentForegroundService.ACTION_STOP, null, null)
+                            stopService(Intent(this, AgentForegroundService::class.java))
                             result.success(true)
                         }
                         else -> result.notImplemented()
