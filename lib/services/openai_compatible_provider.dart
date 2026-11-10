@@ -118,11 +118,12 @@ class OpenAICompatibleProvider {
           'max_tokens': maxTokens,
           'temperature': temperature,
         });
-      final streamed = await client.send(request).timeout(requestTimeout);
-      if (streamed.isRedirect) {
-        throw StateError('رفض OpenRouter إعادة توجيه HTTP ${streamed.statusCode}. تحقق من الاتصال أو إعدادات الشبكة.');
-      }
-      final response = await http.Response.fromStream(streamed).timeout(requestTimeout);
+      final response = await client.send(request).then((streamed) {
+        if (streamed.isRedirect) {
+          throw StateError('رفض OpenRouter إعادة توجيه HTTP ${streamed.statusCode}. تحقق من الاتصال أو إعدادات الشبكة.');
+        }
+        return http.Response.fromStream(streamed);
+      }).timeout(requestTimeout);
       final dynamic decoded;
       try { decoded = jsonDecode(response.body); }
       on FormatException {
