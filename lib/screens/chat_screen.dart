@@ -352,7 +352,6 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     _modelService.requestTerminalApproval = _requestTerminalApproval;
-    _modelService.onAgentEvent = _handleAgentEvent;
     _loadBubbleScale();
     _initDatabase();
     // The screen consumes exactly one event stream. ModelService and the
@@ -2249,7 +2248,6 @@ class _ChatScreenState extends State<ChatScreen> {
     _agentEventSubscription?.cancel();
     _nativeAgentEventSubscription?.cancel();
     _modelService.requestTerminalApproval = null;
-    _modelService.onAgentEvent = null;
     _speech.stop();
     _voiceOutput.stop();
     _controller.dispose();
