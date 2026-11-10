@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
@@ -116,6 +117,83 @@ class OpenAICompatibleProvider {
       if (text.trim().isNotEmpty) return text.trim();
     }
     throw StateError('استجابة OpenRouter لا تحتوي نصاً قابلاً للعرض.');
+  }
+
+
+  /// Sends an image to a vision-capable OpenRouter model using the standard
+  /// OpenAI multimodal content format. The selected model must support vision.
+  Future<String> generateWithImage(
+    File image, {
+    required String prompt,
+    int maxTokens = 1024,
+    double temperature = 0.2,
+  }) async {
+    if (!await image.exists()) throw FileSystemException('Image does not exist.', image.path);
+    final bytes = await image.readAsBytes();
+    if (bytes.isEmpty || bytes.length > 12 * 1024 * 1024) {
+      throw FileSystemException('Image must be between 1 byte and 12 MB.', image.path);
+    }
+    final key = (await getApiKey())?.trim();
+    if (key == null || key.isEmpty || !await isEnabled()) {
+      throw StateError('OpenRouter غير مفعّل أو لا يوجد مفتاح محفوظ.');
+    }
+    final extension = image.path.toLowerCase().split('.').last;
+    final mime = switch (extension) {
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      'gif' => 'image/gif',
+      _ => 'image/jpeg',
+    };
+    final dataUrl = 'data:$mime;base64,${base64Encode(bytes)}';
+    final client = http.Client();
+    try {
+      final request = http.Request('POST', chatCompletionsUri(defaultBaseUrl))
+        ..followRedirects = false
+        ..headers.addAll({
+          'Authorization': 'Bearer $key',
+          'Content-Type': 'application/json; charset=utf-8',
+          'HTTP-Referer': 'https://github.com/almwld/giant-agent',
+          'X-Title': 'Giant Agent',
+        })
+        ..body = jsonEncode({
+          'model': await getModel(),
+          'messages': [{
+            'role': 'user',
+            'content': [
+              {'type': 'text', 'text': prompt},
+              {'type': 'image_url', 'image_url': {'url': dataUrl}},
+            ],
+          }],
+          'max_tokens': maxTokens,
+          'temperature': temperature,
+        });
+      final response = await client.send(request).then((streamed) {
+        if (streamed.isRedirect) {
+          throw StateError('رفض OpenRouter إعادة توجيه طلب الصورة (HTTP ${streamed.statusCode}).');
+        }
+        return http.Response.fromStream(streamed);
+      }).timeout(requestTimeout);
+      final dynamic decoded;
+      try {
+        decoded = decodeJsonResponse(response.bodyBytes);
+      } on FormatException {
+        throw StateError('أعاد OpenRouter استجابة غير JSON (HTTP ${response.statusCode}).');
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final detail = decoded is Map
+            ? (decoded['error'] is Map
+                ? decoded['error']['message']?.toString()
+                : decoded['error']?.toString())
+            : null;
+        throw StateError('OpenRouter vision HTTP ${response.statusCode}: ${detail ?? 'تعذر تحليل الصورة.'}');
+      }
+      if (decoded is! Map<String, dynamic>) throw StateError('تنسيق استجابة OpenRouter غير متوقع.');
+      return extractText(decoded);
+    } on TimeoutException {
+      throw TimeoutException('انتهت مهلة تحليل الصورة عبر OpenRouter.');
+    } finally {
+      client.close();
+    }
   }
 
   Future<String> generate(
