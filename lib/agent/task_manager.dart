@@ -1,7 +1,5 @@
 import 'dart:convert';
 
-import 'package:shared_preferences/shared_preferences.dart';
-
 import '../services/agent_service.dart';
 import '../domain/kernel/agent_kernel_store.dart';
 
@@ -26,7 +24,6 @@ class TaskManager {
   static final TaskManager _instance = TaskManager._internal();
   factory TaskManager() => _instance;
 
-  static const String _storageKey = 'giant_agent.tasks.v1';
   final AgentKernelStore _store;
   final AgentService _agent;
   final List<Map<String, dynamic>> _tasks = [];
@@ -40,35 +37,15 @@ class TaskManager {
   }
 
   Future<void> _load() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_storageKey);
-    var legacyTasks = <Map<String, dynamic>>[];
-    if (raw != null && raw.isNotEmpty) {
-      try {
-        final decoded = jsonDecode(raw);
-        if (decoded is List) {
-          legacyTasks = decoded
-              .whereType<Map>()
-              .map((item) => Map<String, dynamic>.from(item))
-              .toList(growable: false);
-        }
-      } on FormatException {
-        // Keep malformed legacy data untouched for diagnosis.
-      }
-    }
-
-    // Import the v1 SharedPreferences snapshot only when the SQLite task table
-    // is empty. The import and subsequent reads are safe to repeat.
-    await _store.importLegacyTasksIfEmpty(legacyTasks);
+    // Compatibility import is isolated in the data layer. TaskManager itself
+    // never reads or writes SharedPreferences.
+    await _store.migrateLegacyTaskSnapshot();
     final persisted = await _store.getTasks();
     _tasks
       ..clear()
       ..addAll(persisted.map(_normalizeRecoveredTask));
     if (_tasks.isNotEmpty) {
       _currentTask = _tasks.last['id']?.toString() ?? '';
-    }
-    if (raw != null && legacyTasks.isNotEmpty && persisted.isNotEmpty) {
-      await prefs.remove(_storageKey);
     }
     if (_tasks.any((task) => task['status'] == 'paused')) {
       await _persist();
