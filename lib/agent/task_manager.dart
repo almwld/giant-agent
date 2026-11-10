@@ -548,6 +548,10 @@ $checkpoint
   List<Map<String, dynamic>> getTasks() =>
       _tasks.map(_copyTask).toList(growable: false);
 
+  /// Replays the immutable lifecycle journal for a task in insertion order.
+  Future<List<KernelEventRecord>> eventsForTask(String taskId) =>
+      _store.taskEvents(taskId);
+
   Future<List<Map<String, dynamic>>> getTasksForConversation(
     String conversationId, {
     String? status,
