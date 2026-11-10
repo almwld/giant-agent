@@ -58,7 +58,7 @@ class MainActivity: FlutterActivity() {
                         }
                         "updateTask" -> {
                             AgentForegroundService.updateNotification(
-                                this,
+                                applicationContext,
                                 call.argument<String>("title") ?: "Giant Agent",
                                 call.argument<String>("body") ?: "يواصل الوكيل تنفيذ المهمة في الخلفية"
                             )
@@ -69,7 +69,7 @@ class MainActivity: FlutterActivity() {
                             result.success(true)
                         }
                         "stop" -> {
-                            stopService(Intent(this, AgentForegroundService::class.java))
+                            applicationContext.stopService(Intent(applicationContext, AgentForegroundService::class.java))
                             result.success(true)
                         }
                         else -> result.notImplemented()
@@ -440,15 +440,16 @@ class MainActivity: FlutterActivity() {
     }
 
     private fun dispatchBackgroundService(action: String, title: String?, body: String?) {
-        val intent = Intent(this, AgentForegroundService::class.java).apply {
+        val appContext = applicationContext
+        val intent = Intent(appContext, AgentForegroundService::class.java).apply {
             this.action = action
             if (!title.isNullOrBlank()) putExtra("task_title", title)
             if (!body.isNullOrBlank()) putExtra("task_body", body)
         }
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            startForegroundService(intent)
+            appContext.startForegroundService(intent)
         } else {
-            startService(intent)
+            appContext.startService(intent)
         }
     }
 
