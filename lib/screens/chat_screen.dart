@@ -1035,6 +1035,8 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
+    await TaskManager().recordResumeIntent(taskId);
+
     final completedTools = _agentSteps.where((event) =>
       event['status'] == 'completed' &&
       (event['type'] == 'tool_output' ||
