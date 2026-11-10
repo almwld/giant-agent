@@ -141,7 +141,7 @@ class OutputEngine {
                               ? 'تم العثور على الملف وقراءة محتواه بنجاح.'
                               : 'تم التحقق من وجود الملف داخل مساحة العمل.';
       final artifact = _artifact(
-        id: 'output_${requestId}_file_${artifacts.length}',
+        id: 'output_${requestId}_file_${base64Url.encode(utf8.encode(path)).replaceAll('=', '')}',
         requestId: requestId,
         conversationId: conversationId,
         taskId: event['task_id']?.toString(),
