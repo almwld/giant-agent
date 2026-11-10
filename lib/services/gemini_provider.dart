@@ -113,7 +113,7 @@ class GeminiProvider {
       if (streamed.isRedirect) {
         throw StateError('أعاد Google Gemini توجيه HTTP ${streamed.statusCode}. تحقق من عنوان الخدمة والاتصال.');
       }
-      final response = await http.Response.fromStream(streamed);
+      final response = await http.Response.fromStream(streamed).timeout(requestTimeout);
       final dynamic decoded;
       try {
         decoded = jsonDecode(response.body);
