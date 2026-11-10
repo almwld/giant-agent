@@ -6,6 +6,7 @@ import '../agent/architecture/agent_event_bus.dart';
 import 'agent_memory_service.dart';
 import 'openai_compatible_provider.dart';
 import 'gemini_provider.dart';
+import 'providers/zero_config_provider.dart';
 import 'model_provider_settings.dart';
 import '../tools/tool_manager.dart';
 import '../domain/harness/evaluator_service.dart';
@@ -358,12 +359,22 @@ class ModelService {
         return GeminiProvider.instance.generate(
           prompt, maxTokens: maxTokens, temperature: temperature,
         );
+      case ModelProviderMode.zeroConfig:
+        return ZeroConfigProvider.instance.generate(
+          prompt, maxTokens: maxTokens, temperature: temperature,
+        );
     }
   }
 
   Future<String> _processInput(String input) async {
     _cancelRequested = false;
     input = _boundPrompt(input);
+    // The keyless gateway is intentionally conversation-only: do not expose
+    // tool execution or claim agent capabilities for providers without reliable
+    // function-calling support.
+    if (await ModelProviderSettings.instance.getMode() == ModelProviderMode.zeroConfig) {
+      return _generateText(input, maxTokens: 768, temperature: .35);
+    }
     if (await ModelProviderSettings.instance.getMode() == ModelProviderMode.local && !await _llama.isLoaded()) {
       return '⚠️ لم يتم تحميل نموذج GGUF المحلي. حمّل نموذجاً أو اختر OpenRouter أو Gemini من إعدادات المزوّد.';
     }
