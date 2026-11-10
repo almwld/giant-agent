@@ -1543,12 +1543,28 @@ class _ChatScreenState extends State<ChatScreen> {
       );
 
       String response;
+      String localOcr = '';
       try {
-        // OCR/labels are analysis metadata only; the original image remains
+        // Arabic and Latin OCR stays on-device; the original image remains
         // attached to the user message and visible in the conversation.
-        response = await ImageRecognitionService.analyzeImage(storedImage);
+        localOcr = await ImageRecognitionService.analyzeImage(storedImage);
       } catch (error) {
-        response = 'تعذر تحليل الصورة محلياً، لكن الصورة محفوظة في المحادثة: $error';
+        localOcr = 'تعذر استخراج النص محلياً: $error';
+      }
+
+      final providerMode = await ModelProviderSettings.instance.getMode();
+      if (providerMode == ModelProviderMode.gemini ||
+          providerMode == ModelProviderMode.openRouter) {
+        try {
+          final visualAnalysis = await _modelService.processImage(storedImage);
+          response = 'الفهم البصري بواسطة النموذج متعدد الوسائط:\n$visualAnalysis'
+              '\n\nنتيجة OCR والتصنيف المحلي:\n$localOcr';
+        } catch (error) {
+          response = '$localOcr\n\nتعذر تحليل الصورة بواسطة النموذج السحابي: $error';
+        }
+      } else {
+        response = '$localOcr\n\nلتحليل محتوى الصورة وفهم المشهد، فعّل نموذجاً يدعم الرؤية عبر Gemini أو OpenRouter. '
+            'النموذج المحلي الحالي والمزوّد المجاني التلقائي مخصصان للنص فقط.';
       }
       if (!mounted) return;
       setState(() {
