@@ -24,7 +24,9 @@ class ModelService {
   Future<void> _requestTail = Future<void>.value();
   String _activeRequestId = '';
   int _toolEventSequence = 0;
-  late final EvaluatorService _evaluator = EvaluatorService(readWorkspaceFile: readFile);
+  late final EvaluatorService _evaluator = EvaluatorService(
+    readWorkspaceFile: (path) => readFile(path: path),
+  );
   late final ReflexionService _reflexion = ReflexionService(
     generate: (prompt) => _generateText(
       _boundPrompt(prompt),
