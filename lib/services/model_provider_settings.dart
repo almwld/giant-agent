@@ -2,7 +2,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'gemini_provider.dart';
 import 'openai_compatible_provider.dart';
 
-enum ModelProviderMode { local, openRouter, gemini }
+enum ModelProviderMode { local, openRouter, gemini, zeroConfig }
 
 class ModelProviderSettings {
   ModelProviderSettings._();
@@ -16,6 +16,7 @@ class ModelProviderSettings {
       case 'local': return ModelProviderMode.local;
       case 'openrouter': return ModelProviderMode.openRouter;
       case 'gemini': return ModelProviderMode.gemini;
+      case 'zero_config': return ModelProviderMode.zeroConfig;
     }
     // One-time compatibility with existing installations that enabled the
     // old OpenRouter toggle before explicit provider modes existed.
@@ -34,6 +35,7 @@ class ModelProviderSettings {
       ModelProviderMode.local => 'local',
       ModelProviderMode.openRouter => 'openrouter',
       ModelProviderMode.gemini => 'gemini',
+      ModelProviderMode.zeroConfig => 'zero_config',
     });
   }
 }
