@@ -115,11 +115,20 @@ jobs:
           cp build/app/outputs/flutter-apk/app-release.apk dist/split/giant-agent-x86_64.apk
           test -s dist/split/giant-agent-x86_64.apk
 
+      - name: Build x86 release APK
+        env:
+          CHAQUOPY_ABI_FILTERS: x86
+        run: |
+          set -euo pipefail
+          flutter build apk --release --target-platform android-x86
+          cp build/app/outputs/flutter-apk/app-release.apk dist/split/giant-agent-x86.apk
+          test -s dist/split/giant-agent-x86.apk
+
       - name: Generate checksums and verify APK outputs
         run: |
           set -euo pipefail
           find dist -type f -name '*.apk' -print -exec ls -lh {} \;
-          test "$(find dist/split -maxdepth 1 -type f -name '*.apk' | wc -l)" -eq 3
+          test "$(find dist/split -maxdepth 1 -type f -name '*.apk' | wc -l)" -eq 4
           sha256sum dist/universal/*.apk dist/split/*.apk | tee dist/SHA256SUMS.txt
 
       - name: Upload universal APK
