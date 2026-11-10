@@ -46,7 +46,7 @@ class AdvancedNotifications {
       time.millisecondsSinceEpoch.remainder(2147483647),
       title, body, tz.TZDateTime.from(time, tz.local),
       const NotificationDetails(android: android),
-      androidAllowWhileIdle: true,
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
     );
   }
