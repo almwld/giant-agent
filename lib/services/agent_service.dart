@@ -191,8 +191,10 @@ class AgentService {
     required String sideEffectDisposition,
   }) async {
     await initialize();
-    final recovery = SubagentRecoveryCoordinator(_store);
-    return recovery.resume(
+    await AgentBackgroundExecutionService.instance.beginTask('استئناف الوكيل الفرعي $taskId');
+    try {
+      final recovery = SubagentRecoveryCoordinator(_store);
+      return await recovery.resume(
       taskId: taskId,
       sideEffectDisposition: sideEffectDisposition,
       execute: ({required parent, required task, required dependencyResults}) async {
@@ -211,7 +213,11 @@ class AgentService {
           await _flushExecutionJournal();
         }
       },
-    );
+      );
+    } finally {
+      await _backgroundProgressTail;
+      await AgentBackgroundExecutionService.instance.endTask();
+    }
   }
 
   Future<bool> cancel() => _executionKernel.cancel();
