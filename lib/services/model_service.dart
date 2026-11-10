@@ -313,15 +313,23 @@ class ModelService {
     String conversationId = 'global',
     bool persistTurn = true,
     Set<String>? allowedTools,
+    bool Function()? shouldCancel,
   }) {
     return _withRuntimeLock(() async {
+      if (shouldCancel?.call() == true) {
+        return 'تم إيقاف تنفيذ الوكيل بناءً على طلب المستخدم.';
+      }
       final context = await AgentMemoryService.instance.buildContext(
         input,
         conversationId: conversationId,
       );
+      if (shouldCancel?.call() == true) {
+        return 'تم إيقاف تنفيذ الوكيل بناءً على طلب المستخدم.';
+      }
       final response = await _processInput(
         context.isEmpty ? input : '$context\n\nطلب المستخدم: $input',
         allowedTools: allowedTools,
+        shouldCancel: shouldCancel,
       );
       if (persistTurn) {
         await AgentMemoryService.instance.saveTurn(
@@ -410,7 +418,11 @@ class ModelService {
   Future<String> _processInput(
     String input, {
     Set<String>? allowedTools,
+    bool Function()? shouldCancel,
   }) async {
+    if (shouldCancel?.call() == true) {
+      return 'تم إيقاف تنفيذ الوكيل بناءً على طلب المستخدم.';
+    }
     _cancelRequested = false;
     input = _boundPrompt(input);
     if (await ModelProviderSettings.instance.getMode() == ModelProviderMode.local && !await _llama.isLoaded()) {
