@@ -129,7 +129,7 @@ class OpenAICompatibleProvider {
         ..followRedirects = false
         ..headers.addAll({
           'Authorization': 'Bearer $key',
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json; charset=utf-8',
           'HTTP-Referer': 'https://github.com/almwld/giant-agent',
           'X-Title': 'Giant Agent',
         })
@@ -153,7 +153,7 @@ class OpenAICompatibleProvider {
 
       final dynamic decoded;
       try {
-        decoded = jsonDecode(response.body);
+        decoded = jsonDecode(utf8.decode(response.bodyBytes, allowMalformed: false));
       } on FormatException {
         throw StateError(
           'أعاد OpenRouter استجابة غير JSON (HTTP ${response.statusCode}).',
