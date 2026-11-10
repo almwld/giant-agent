@@ -153,9 +153,8 @@ class AgentService {
       while (await _store.hasActiveRequests()) {
         await Future<void>.delayed(const Duration(seconds: 1));
       }
-    } catch (error) {
-      // Keep the service alive only while the durable queue can be observed.
-      debugPrint('GiantAgent recovered queue monitor failed: $error');
+    } catch (_) {
+      // Stop monitoring if durable queue state can no longer be read.
     } finally {
       await AgentBackgroundExecutionService.instance.endTask();
     }
