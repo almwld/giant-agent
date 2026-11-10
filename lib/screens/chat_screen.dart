@@ -72,6 +72,21 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _includeGithubContext = false;
   bool _externalProviderEnabled = false;
   bool _agentModeEnabled = true;
+  int _bubbleScale = 1; // 0 = compact, 1 = standard, 2 = wide
+
+  Future<void> _loadBubbleScale() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() => _bubbleScale = (prefs.getInt('giant_chat_bubble_scale') ?? 1).clamp(0, 2));
+  }
+
+  Future<void> _setBubbleScale(int value) async {
+    final next = value.clamp(0, 2);
+    if (next == _bubbleScale) return;
+    setState(() => _bubbleScale = next);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('giant_chat_bubble_scale', next);
+  }
 
   // Keep tool-call JSON out of the user-facing answer stream. The actual
   // invocation and result are represented by structured native tool events.
@@ -335,6 +350,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    _loadBubbleScale();
     _initDatabase();
     // The screen consumes exactly one event stream. ModelService and the
     // kernel publish directly; the Android EventChannel is bridged into it.
@@ -2924,9 +2940,13 @@ class _ChatScreenState extends State<ChatScreen> {
                   alignment: isUser ? AlignmentDirectional.centerEnd : AlignmentDirectional.centerStart,
                   child: Container(
                     margin: const EdgeInsetsDirectional.only(bottom: 12),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: _bubbleScale == 0 ? 11 : (_bubbleScale == 2 ? 19 : 16),
+                      vertical: _bubbleScale == 0 ? 8 : (_bubbleScale == 2 ? 15 : 12),
+                    ),
                     constraints: BoxConstraints(
-                      maxWidth: MediaQuery.of(context).size.width * 0.8,
+                      maxWidth: MediaQuery.of(context).size.width *
+                          (_bubbleScale == 0 ? 0.68 : (_bubbleScale == 2 ? 0.94 : 0.8)),
                     ),
                     decoration: BoxDecoration(
                       color: isUser ? GiantPalette.primary : GiantPalette.surface,
@@ -3015,7 +3035,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           child: SelectableText(
                             msg['content'],
                             textAlign: TextAlign.start,
-                            style: const TextStyle(color: Colors.white, fontSize: 14),
+                            style: TextStyle(color: Colors.white, fontSize: _bubbleScale == 0 ? 13 : (_bubbleScale == 2 ? 15 : 14)),
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -3084,6 +3104,17 @@ class _ChatScreenState extends State<ChatScreen> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          PopupMenuButton<int>(
+                            tooltip: 'حجم الفقاعة',
+                            icon: const Icon(Icons.format_size_rounded, color: Colors.white60, size: 18),
+                            color: const Color(0xFF182B2A),
+                            onSelected: _setBubbleScale,
+                            itemBuilder: (context) => const [
+                              PopupMenuItem(value: 0, child: Text('مضغوط')),
+                              PopupMenuItem(value: 1, child: Text('عادي')),
+                              PopupMenuItem(value: 2, child: Text('واسع')),
+                            ],
+                          ),
                           _messageActionButton(
                             icon: Icons.copy_rounded,
                             tooltip: 'نسخ الرسالة',
