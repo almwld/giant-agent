@@ -11,6 +11,7 @@ on:
     branches:
       - main
       - feat/integrated-agent-completion
+      - feat/consolidate-sqlite-runtime-v2
   workflow_dispatch:
 
 permissions:
