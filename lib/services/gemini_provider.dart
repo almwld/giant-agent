@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
@@ -86,6 +87,77 @@ class GeminiProvider {
         .where((part) => part.isNotEmpty).join('\n').trim();
     if (text.isEmpty) throw StateError('أعاد Gemini إجابة فارغة.');
     return text;
+  }
+
+
+  /// Sends an image as inline binary data to a Gemini vision-capable model.
+  Future<String> generateWithImage(
+    File image, {
+    required String prompt,
+    int maxTokens = 1024,
+    double temperature = 0.2,
+  }) async {
+    if (!await image.exists()) throw FileSystemException('Image does not exist.', image.path);
+    final bytes = await image.readAsBytes();
+    if (bytes.isEmpty || bytes.length > 12 * 1024 * 1024) {
+      throw FileSystemException('Image must be between 1 byte and 12 MB.', image.path);
+    }
+    final key = (await getApiKey())?.trim();
+    if (key == null || key.isEmpty || !await isEnabled()) {
+      throw StateError('Gemini غير مفعّل أو لا يوجد مفتاح محفوظ.');
+    }
+    final extension = image.path.toLowerCase().split('.').last;
+    final mime = switch (extension) {
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      'gif' => 'image/gif',
+      _ => 'image/jpeg',
+    };
+    final client = http.Client();
+    try {
+      final request = http.Request('POST', generateContentUri(await getModel()))
+        ..followRedirects = false
+        ..headers.addAll({
+          'Content-Type': 'application/json; charset=utf-8',
+          'x-goog-api-key': key,
+        })
+        ..body = jsonEncode({
+          'contents': [{
+            'parts': [
+              {'text': prompt},
+              {'inline_data': {'mime_type': mime, 'data': base64Encode(bytes)}},
+            ],
+          }],
+          'generationConfig': {
+            'maxOutputTokens': maxTokens,
+            'temperature': temperature,
+          },
+        });
+      final response = await client.send(request).then((streamed) {
+        if (streamed.isRedirect) {
+          throw StateError('أعاد Gemini توجيه طلب الصورة (HTTP ${streamed.statusCode}).');
+        }
+        return http.Response.fromStream(streamed);
+      }).timeout(requestTimeout);
+      final dynamic decoded;
+      try {
+        decoded = decodeJsonResponse(response.bodyBytes);
+      } on FormatException {
+        throw StateError('أعاد Gemini استجابة غير JSON (HTTP ${response.statusCode}).');
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final detail = decoded is Map && decoded['error'] is Map
+            ? (decoded['error'] as Map)['message']?.toString()
+            : null;
+        throw StateError('Gemini vision HTTP ${response.statusCode}: ${detail ?? 'تعذر تحليل الصورة.'}');
+      }
+      if (decoded is! Map<String, dynamic>) throw StateError('تنسيق استجابة Gemini غير متوقع.');
+      return extractText(decoded);
+    } on TimeoutException {
+      throw TimeoutException('انتهت مهلة تحليل الصورة عبر Gemini.');
+    } finally {
+      client.close();
+    }
   }
 
   Future<String> generate(
