@@ -8,7 +8,6 @@ on:
       - feat/consolidate-sqlite-runtime-v2
       - integration/giant-agent-stabilization
       - feat/chat-bubble-resize-teal-toasts
-      - integration/giant-agent-stabilization
   pull_request:
     branches:
       - main
@@ -70,6 +69,9 @@ jobs:
 
       - name: Test AgentService durable execution boundary
         run: flutter test test/services/agent_service_durable_test.dart
+
+      - name: Test approved voice orb Lottie asset and states
+        run: flutter test test/voice/voice_orb_lottie_test.dart
 
       - name: Test TaskManager SQLite migration and recovery
         run: flutter test test/agent/task_manager_recovery_test.dart
