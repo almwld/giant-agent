@@ -7,6 +7,7 @@ on:
       - feat/integrated-agent-completion
       - feat/consolidate-sqlite-runtime-v2
       - integration/giant-agent-stabilization
+      - fix/voice-terminal-approval-stabilization
       - fix/openrouter-only-provider-policy
       - feat/voice-orb-in-chat-session
       - feat/chat-bubble-resize-teal-toasts
