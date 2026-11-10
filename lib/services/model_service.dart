@@ -685,7 +685,7 @@ $toolCatalog
             ..write('\nDo not claim the goal is complete. Choose a different corrective tool action.\n\nAssistant:');
 
           if (reflexionAttempts >= maxReflexionAttempts) {
-            return 'تعذر إكمال الطلب: لم يتحقق الهدف بعد $maxReflexionAttempts محاولات تصحيح آمنة. آخر نتيجة: ${verificationMessage}';
+            return 'تعذر إكمال الطلب: لم يتحقق الهدف بعد $maxReflexionAttempts محاولات تصحيح آمنة. آخر نتيجة: $verificationMessage';
           }
 
           _emitToolEvent(
