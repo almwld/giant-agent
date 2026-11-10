@@ -57,7 +57,7 @@ class ModelRunner {
       
       // تحديد حجم المخرجات
       final outputSize = 1000;
-      var outputTensor = List.filled(outputSize, 0.0).reshape([1, outputSize]);
+      final outputTensor = <List<double>>[List<double>.filled(outputSize, 0.0)];
       
       // تشغيل النموذج
       _interpreter!.run(inputTensor, outputTensor);
