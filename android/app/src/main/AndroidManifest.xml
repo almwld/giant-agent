@@ -1,7 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     package="com.example.giant_agent">
-    
+
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
@@ -10,7 +10,7 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
         tools:ignore="ScopedStorage"/>
-    
+
     <application
         android:label="Giant Agent X"
         android:name="androidx.multidex.MultiDexApplication"
@@ -18,7 +18,7 @@
         android:roundIcon="@drawable/ic_launcher"
         android:requestLegacyExternalStorage="true"
         android:allowBackup="true">
-        
+
         <service
             android:name=".AgentForegroundService"
             android:enabled="true"
@@ -30,13 +30,20 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:theme="@style/LaunchTheme">
-            
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+
+            <meta-data
+                android:name="io.flutter.embedding.android.NormalTheme"
+                android:resource="@style/NormalTheme" />
+
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
-            
+
             <!-- استقبال ملفات TFLite -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW"/>
@@ -48,7 +55,7 @@
                 <data android:pathPattern=".*\\.tflite"/>
                 <data android:pathPattern=".*\\.tflite"/>
             </intent-filter>
-            
+
             <!-- استقبال الملفات عبر المشاركة -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND"/>
@@ -56,14 +63,14 @@
                 <data android:mimeType="application/octet-stream"/>
                 <data android:mimeType="*/*"/>
             </intent-filter>
-            
+
             <!-- استقبال الملفات عبر OPEN -->
             <intent-filter>
                 <action android:name="android.intent.action.OPEN_DOCUMENT"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <data android:mimeType="*/*"/>
             </intent-filter>
-            
+
             <!-- استقبال GET_CONTENT -->
             <intent-filter>
                 <action android:name="android.intent.action.GET_CONTENT"/>
@@ -71,7 +78,7 @@
                 <data android:mimeType="*/*"/>
             </intent-filter>
         </activity>
-        
+
         <meta-data
             android:name="flutterEmbedding"
             android:value="2"/>

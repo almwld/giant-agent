@@ -7,11 +7,97 @@ import 'services/app_preferences.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await AppPreferences.instance.load();
-  final prefs = await SharedPreferences.getInstance();
-  final showSplash = !(prefs.getBool('giant_has_launched') ?? false);
-  if (showSplash) await prefs.setBool('giant_has_launched', true);
-  runApp(MyApp(showSplash: showSplash));
+  // Paint a Flutter frame immediately. Preference/platform-channel startup
+  // must never keep Android on its launch window.
+  runApp(const StartupGate());
+}
+
+class StartupGate extends StatefulWidget {
+  const StartupGate({super.key});
+
+  @override
+  State<StartupGate> createState() => _StartupGateState();
+}
+
+class _StartupGateState extends State<StartupGate> {
+  bool _ready = false;
+  bool _showSplash = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initialize();
+  }
+
+  Future<void> _initialize() async {
+    try {
+      await AppPreferences.instance.load().timeout(
+        const Duration(seconds: 5),
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Giant Agent startup [preferences] failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+
+    var showSplash = false;
+    try {
+      final prefs = await SharedPreferences.getInstance().timeout(
+        const Duration(seconds: 5),
+      );
+      showSplash = !(prefs.getBool('giant_has_launched') ?? false);
+      if (showSplash) {
+        await prefs.setBool('giant_has_launched', true).timeout(
+          const Duration(seconds: 5),
+        );
+      }
+    } catch (error, stackTrace) {
+      debugPrint('Giant Agent startup [launch-state] failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _showSplash = showSplash;
+      _ready = true;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_ready) return MyApp(showSplash: _showSplash);
+
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: const Color(0xFF10131B),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF2563EB),
+          brightness: Brightness.dark,
+        ),
+      ),
+      home: const Scaffold(
+        backgroundColor: Color(0xFF10131B),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 34,
+                height: 34,
+                child: CircularProgressIndicator(strokeWidth: 2.5),
+              ),
+              SizedBox(height: 18),
+              Text(
+                'جارٍ تجهيز Giant Agent…',
+                style: TextStyle(color: Color(0xFFE4E4E7), fontSize: 14),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class MyApp extends StatelessWidget {
