@@ -4,6 +4,7 @@ import 'dart:convert';
 import '../../services/agent_memory_service.dart';
 import '../../services/model_service.dart';
 import '../../services/openai_compatible_provider.dart';
+import '../../services/model_provider_settings.dart';
 import '../../services/planner_service.dart';
 import 'agent_timeline_event.dart';
 import 'agent_event_bus.dart';
@@ -209,7 +210,9 @@ class AgentKernel {
         // Receipt is not execution; only a real completed operation is green.
         status: 'pending',
       );
-      final openRouterEnabled = await OpenAICompatibleProvider.instance.isEnabled();
+      final selectedMode = await ModelProviderSettings.instance.getMode();
+      final openRouterEnabled = selectedMode == ModelProviderMode.openRouter &&
+          await OpenAICompatibleProvider.instance.isEnabled();
       if (!openRouterEnabled) {
         if (!_models.hasActiveModel()) {
           throw StateError(
@@ -367,7 +370,9 @@ class AgentKernel {
     _cancellationRequested = false;
     _models.beginAgentRequest(requestId);
     try {
-      final providerEnabled = await OpenAICompatibleProvider.instance.isEnabled();
+      final selectedMode = await ModelProviderSettings.instance.getMode();
+      final providerEnabled = selectedMode == ModelProviderMode.openRouter &&
+          await OpenAICompatibleProvider.instance.isEnabled();
       if (!providerEnabled) {
         if (!_models.hasActiveModel() || !await _models.isModelLoaded()) {
           throw StateError('يجب تحميل النموذج المحلي قبل استئناف الوكيل الفرعي.');
@@ -517,7 +522,9 @@ class AgentKernel {
       }),
     );
 
-    final cloudParallelismEnabled = await OpenAICompatibleProvider.instance.isEnabled();
+    final selectedMode = await ModelProviderSettings.instance.getMode();
+    final cloudParallelismEnabled = selectedMode == ModelProviderMode.openRouter &&
+        await OpenAICompatibleProvider.instance.isEnabled();
     final workerConcurrency = cloudParallelismEnabled ? 3 : 1;
     final orchestrator = SubagentOrchestrator(
       parentRequestId: requestId,
