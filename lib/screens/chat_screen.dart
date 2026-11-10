@@ -1726,27 +1726,29 @@ class _ChatScreenState extends State<ChatScreen> {
       await _stopVoiceInteraction();
       return;
     }
-
+    if (!mounted) return;
     _finalizingVoiceInput = false;
     _voiceRequestActive = false;
+    setState(() {
+      _voiceOrbVisible = true;
+      _voiceOrbState = AgentState.listening;
+    });
+    await _startVoiceRecognition();
+  }
+
+  Future<void> _startVoiceRecognition() async {
+    if (!mounted || !_voiceOrbVisible) return;
+    _finalizingVoiceInput = false;
     var voiceListeningStarted = false;
-    if (mounted) {
-      setState(() {
-        _voiceOrbVisible = true;
-        _voiceOrbState = AgentState.listening;
-      });
-    }
 
     final available = await _speech.initialize(
       onStatus: (_) {
-        if (!mounted) return;
+        if (!mounted || !_voiceOrbVisible) return;
         final listening = _speech.isListening;
         setState(() => _isListening = listening);
-        if (voiceListeningStarted &&
-            !listening &&
-            !_finalizingVoiceInput &&
-            _voiceOrbVisible) {
+        if (voiceListeningStarted && !listening && !_finalizingVoiceInput) {
           setState(() {
+            _isListening = false;
             _voiceOrbVisible = false;
             _voiceOrbState = AgentState.idle;
           });
@@ -1764,8 +1766,9 @@ class _ChatScreenState extends State<ChatScreen> {
         );
       },
     );
-    if (!available || !mounted) {
-      if (mounted) {
+
+    if (!available || !mounted || !_voiceOrbVisible) {
+      if (mounted && _voiceOrbVisible) {
         setState(() {
           _voiceOrbVisible = false;
           _voiceOrbState = AgentState.idle;
@@ -1779,6 +1782,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
     try {
       final locales = await _speech.locales();
+      if (!mounted || !_voiceOrbVisible) return;
       final arabic = locales
           .where((item) => item.localeId.toLowerCase().startsWith('ar'))
           .toList();
@@ -1793,7 +1797,9 @@ class _ChatScreenState extends State<ChatScreen> {
           listenMode: ListenMode.dictation,
         ),
         onResult: (result) {
-          if (!mounted || result.recognizedWords.isEmpty) return;
+          if (!mounted || !_voiceOrbVisible || result.recognizedWords.isEmpty) {
+            return;
+          }
           setState(() {
             _controller.text = result.recognizedWords;
             _controller.selection = TextSelection.collapsed(
@@ -1802,40 +1808,46 @@ class _ChatScreenState extends State<ChatScreen> {
           });
           if (result.finalResult && !_finalizingVoiceInput) {
             _finalizingVoiceInput = true;
+            voiceListeningStarted = false;
             _voiceRequestActive = true;
-            unawaited(_speech.stop());
+            final stopListening = _speech.stop();
             setState(() {
               _isListening = false;
               _voiceOrbState = AgentState.thinking;
             });
             Future<void>.delayed(const Duration(milliseconds: 180), () async {
-              if (!mounted) return;
+              if (!mounted || !_voiceOrbVisible) {
+                _voiceRequestActive = false;
+                return;
+              }
               try {
-                // Reuse the normal chat pipeline so this voice turn is saved in
-                // the current conversation and uses its existing agent/runtime.
+                await stopListening;
+                // Reuse the current chat pipeline: every spoken turn is saved
+                // in this conversation and executed by its shared runtime.
                 await _sendMessage();
+              } catch (error) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('تعذر إكمال الطلب الصوتي: $error')),
+                  );
+                }
               } finally {
                 _voiceRequestActive = false;
-                if (mounted) {
+                if (mounted && _voiceOrbVisible) {
                   setState(() {
                     _isListening = false;
-                    _voiceOrbVisible = false;
-                    _voiceOrbState = AgentState.idle;
+                    _voiceOrbState = AgentState.listening;
                   });
+                  // Keep live voice mode open for the next conversational turn.
+                  await _startVoiceRecognition();
                 }
               }
             });
           }
         },
       );
-      if (mounted) {
+      if (mounted && _voiceOrbVisible) {
         setState(() => _isListening = _speech.isListening);
-        if (!_speech.isListening && !_finalizingVoiceInput && _voiceOrbVisible) {
-          setState(() {
-            _voiceOrbVisible = false;
-            _voiceOrbState = AgentState.idle;
-          });
-        }
       }
     } catch (error) {
       if (!mounted) return;
