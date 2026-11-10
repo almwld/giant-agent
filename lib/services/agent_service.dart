@@ -153,6 +153,9 @@ class AgentService {
 
   Future<bool> cancel() => _executionKernel.cancel();
 
+  Future<bool> cancelSubagent(String taskId) =>
+      _executionKernel.cancelSubagent(taskId);
+
   Future<Map<String, dynamic>> exportWorkspace() =>
       _executionKernel.exportWorkspace();
 
