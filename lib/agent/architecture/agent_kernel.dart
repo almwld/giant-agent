@@ -159,6 +159,7 @@ class AgentKernel {
         request.prompt, 'prompt', 'Task must not be empty.',
       ));
     }
+    AgentEventBus.instance.bindRequest(request.id, request.conversationId);
     final hadActiveRequest = _activeRequestId != null || _requestQueue.isRunning;
     _emit(
       requestId: request.id,
@@ -297,6 +298,7 @@ class AgentKernel {
       rethrow;
     } finally {
       _models.endAgentRequest(request.id);
+      AgentEventBus.instance.unbindRequest(request.id);
       _activeRequestId = null;
       _cancellationRequested = false;
       if (_state == AgentKernelState.failed ||
