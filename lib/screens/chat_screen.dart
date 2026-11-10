@@ -1729,6 +1729,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
     _finalizingVoiceInput = false;
     _voiceRequestActive = false;
+    var voiceListeningStarted = false;
     if (mounted) {
       setState(() {
         _voiceOrbVisible = true;
@@ -1741,7 +1742,10 @@ class _ChatScreenState extends State<ChatScreen> {
         if (!mounted) return;
         final listening = _speech.isListening;
         setState(() => _isListening = listening);
-        if (!listening && !_finalizingVoiceInput && _voiceOrbVisible) {
+        if (voiceListeningStarted &&
+            !listening &&
+            !_finalizingVoiceInput &&
+            _voiceOrbVisible) {
           setState(() {
             _voiceOrbVisible = false;
             _voiceOrbState = AgentState.idle;
@@ -1773,57 +1777,76 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
-    final locales = await _speech.locales();
-    final arabic = locales
-        .where((item) => item.localeId.toLowerCase().startsWith('ar'))
-        .toList();
-    await _speech.listen(
-      localeId: arabic.isNotEmpty ? arabic.first.localeId : null,
-      listenFor: const Duration(seconds: 60),
-      pauseFor: const Duration(seconds: 5),
-      listenOptions: SpeechListenOptions(
-        partialResults: true,
-        cancelOnError: true,
-        listenMode: ListenMode.dictation,
-      ),
-      onResult: (result) {
-        if (!mounted || result.recognizedWords.isEmpty) return;
-        setState(() {
-          _controller.text = result.recognizedWords;
-          _controller.selection = TextSelection.collapsed(
-            offset: _controller.text.length,
-          );
-        });
-        if (result.finalResult && !_finalizingVoiceInput) {
-          _finalizingVoiceInput = true;
-          _voiceRequestActive = true;
-          unawaited(_speech.stop());
+    try {
+      final locales = await _speech.locales();
+      final arabic = locales
+          .where((item) => item.localeId.toLowerCase().startsWith('ar'))
+          .toList();
+      voiceListeningStarted = true;
+      await _speech.listen(
+        localeId: arabic.isNotEmpty ? arabic.first.localeId : null,
+        listenFor: const Duration(seconds: 60),
+        pauseFor: const Duration(seconds: 5),
+        listenOptions: SpeechListenOptions(
+          partialResults: true,
+          cancelOnError: true,
+          listenMode: ListenMode.dictation,
+        ),
+        onResult: (result) {
+          if (!mounted || result.recognizedWords.isEmpty) return;
           setState(() {
-            _isListening = false;
-            _voiceOrbState = AgentState.thinking;
+            _controller.text = result.recognizedWords;
+            _controller.selection = TextSelection.collapsed(
+              offset: _controller.text.length,
+            );
           });
-          Future<void>.delayed(const Duration(milliseconds: 180), () async {
-            if (!mounted) return;
-            try {
-              // Reuse the normal chat pipeline so this voice turn is saved in
-              // the current conversation and uses its existing agent/runtime.
-              await _sendMessage();
-            } finally {
-              _voiceRequestActive = false;
-              if (mounted) {
-                setState(() {
-                  _isListening = false;
-                  _voiceOrbVisible = false;
-                  _voiceOrbState = AgentState.idle;
-                });
+          if (result.finalResult && !_finalizingVoiceInput) {
+            _finalizingVoiceInput = true;
+            _voiceRequestActive = true;
+            unawaited(_speech.stop());
+            setState(() {
+              _isListening = false;
+              _voiceOrbState = AgentState.thinking;
+            });
+            Future<void>.delayed(const Duration(milliseconds: 180), () async {
+              if (!mounted) return;
+              try {
+                // Reuse the normal chat pipeline so this voice turn is saved in
+                // the current conversation and uses its existing agent/runtime.
+                await _sendMessage();
+              } finally {
+                _voiceRequestActive = false;
+                if (mounted) {
+                  setState(() {
+                    _isListening = false;
+                    _voiceOrbVisible = false;
+                    _voiceOrbState = AgentState.idle;
+                  });
+                }
               }
-            }
+            });
+          }
+        },
+      );
+      if (mounted) {
+        setState(() => _isListening = _speech.isListening);
+        if (!_speech.isListening && !_finalizingVoiceInput && _voiceOrbVisible) {
+          setState(() {
+            _voiceOrbVisible = false;
+            _voiceOrbState = AgentState.idle;
           });
         }
-      },
-    );
-    if (mounted) {
-      setState(() => _isListening = _speech.isListening);
+      }
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isListening = false;
+        _voiceOrbVisible = false;
+        _voiceOrbState = AgentState.error;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذر بدء الاستماع: $error')),
+      );
     }
   }
 
