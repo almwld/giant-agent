@@ -77,11 +77,11 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _loadBubbleScale() async {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
-    setState(() => _bubbleScale = (prefs.getInt('giant_chat_bubble_scale') ?? 1).clamp(0, 2));
+    setState(() => _bubbleScale = (prefs.getInt('giant_chat_bubble_scale') ?? 1).clamp(0, 2).toInt());
   }
 
   Future<void> _setBubbleScale(int value) async {
-    final next = value.clamp(0, 2);
+    final next = value.clamp(0, 2).toInt();
     if (next == _bubbleScale) return;
     setState(() => _bubbleScale = next);
     final prefs = await SharedPreferences.getInstance();
