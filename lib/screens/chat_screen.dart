@@ -1536,9 +1536,19 @@ class _ChatScreenState extends State<ChatScreen> {
       onResult: (result) {
         if (!mounted || result.recognizedWords.isEmpty) return;
         setState(() {
+          // Keep partial Arabic transcription visible while recognition runs.
           _controller.text = result.recognizedWords;
           _controller.selection = TextSelection.collapsed(offset: _controller.text.length);
         });
+        // Submit only the finalized utterance. The recognized text is saved as
+        // the normal user message and processed by the existing Agent Runtime.
+        if (result.finalResult) {
+          _speech.stop();
+          if (mounted) setState(() => _isListening = false);
+          Future<void>.delayed(const Duration(milliseconds: 180), () {
+            if (mounted && _controller.text.trim().isNotEmpty) _sendMessage();
+          });
+        }
       },
     );
     if (mounted) setState(() => _isListening = _speech.isListening);
