@@ -464,6 +464,7 @@ ${dependencyContext.isEmpty ? 'لا توجد تبعيات سابقة.' : depende
           conversationId: isolatedConversationId,
           persistTurn: false,
           allowedTools: allowedTools,
+          shouldCancel: () => _cancellationRequested,
         )).trim();
 
         if (_cancellationRequested || _isCancelledOutput(output)) {
