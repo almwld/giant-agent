@@ -116,6 +116,14 @@ class _ChatScreenState extends State<ChatScreen> {
   void _handleAgentEvent(dynamic event) {
     if (!mounted || event is! Map) return;
     final step = Map<String, dynamic>.from(event);
+    final eventSessionId = step['session_id']?.toString() ?? '';
+    if (_sessionReady && eventSessionId.isNotEmpty &&
+        eventSessionId != _currentSessionId) {
+      // Late events from a previous/queued conversation are still persisted
+      // against their source session, but never leak into the visible chat.
+      if (step['type'] != 'stream_token') _saveAgentEvent(step);
+      return;
+    }
     final incomingTitle = step['title']?.toString() ?? '';
     if (step['type'] == 'agent_status' &&
         (incomingTitle.contains('استدلال النموذج المحلي') ||
@@ -623,6 +631,10 @@ class _ChatScreenState extends State<ChatScreen> {
     if (eventKey == null || eventKey.isEmpty) return;
     final requestId = event['request_id']?.toString();
     if (requestId == null || requestId.isEmpty) return;
+    final eventSessionId = event['session_id']?.toString();
+    final sessionId = eventSessionId == null || eventSessionId.isEmpty
+        ? sessionId
+        : eventSessionId;
 
     // Immutable execution history: every lifecycle transition is inserted,
     // even when the UI projection below updates an existing event key.
@@ -632,11 +644,11 @@ class _ChatScreenState extends State<ChatScreen> {
     await _db!.transaction((txn) async {
       final rows = await txn.rawQuery(
         'SELECT COUNT(*) AS count FROM agent_execution_logs WHERE session_id = ? AND request_id = ?',
-        [_currentSessionId, requestId],
+        [sessionId, requestId],
       );
       final sequence = (rows.first['count'] as int? ?? 0) + 1;
       await txn.insert('agent_execution_logs', {
-        'session_id': _currentSessionId,
+        'session_id': sessionId,
         'request_id': requestId,
         'step_id': stepId,
         'sequence_number': sequence,
@@ -651,9 +663,9 @@ class _ChatScreenState extends State<ChatScreen> {
     // remains append-only and records every version of this event.
     final existing = await _db!.query('agent_events',
       columns: ['id'], where: 'session_id = ? AND event_key = ?',
-      whereArgs: [_currentSessionId, eventKey], limit: 1);
+      whereArgs: [sessionId, eventKey], limit: 1);
     final values = {
-      'session_id': _currentSessionId,
+      'session_id': sessionId,
       'event_key': eventKey,
       'event_json': eventPayload,
       'timestamp': eventTimestamp,
