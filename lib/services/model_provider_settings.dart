@@ -20,7 +20,7 @@ class ModelProviderSettings {
     // One-time compatibility with existing installations that enabled the
     // old OpenRouter toggle before explicit provider modes existed.
     if (await OpenAICompatibleProvider.instance.isEnabled() &&
-        !await OpenAICompatibleProvider.instance.hasLegacyNonOpenRouterEndpoint()) {
+        !(await OpenAICompatibleProvider.instance.hasLegacyNonOpenRouterEndpoint())) {
       return ModelProviderMode.openRouter;
     }
     if (await GeminiProvider.instance.isEnabled()) {
