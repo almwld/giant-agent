@@ -61,7 +61,7 @@ class ZeroConfigProvider {
       ).timeout(requestTimeout);
       if (response.statusCode < 200 || response.statusCode >= 300) {
         final body = utf8.decode(response.bodyBytes, allowMalformed: true);
-        throw StateError('Pollinations HTTP ${response.statusCode}: ${body.substring(0, body.length.clamp(0, 500))}');
+        throw StateError('Pollinations HTTP ${response.statusCode}: ${body.substring(0, body.length > 500 ? 500 : body.length)}');
       }
       final raw = utf8.decode(response.bodyBytes, allowMalformed: false);
       dynamic decoded;
