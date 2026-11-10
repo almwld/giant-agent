@@ -116,8 +116,7 @@ class AgentKernelStore {
             status TEXT NOT NULL,
             payload_json TEXT NOT NULL,
             created_at TEXT NOT NULL,
-            FOREIGN KEY(request_id) REFERENCES agent_requests(id),
-            FOREIGN KEY(task_id) REFERENCES agent_tasks(id)
+            FOREIGN KEY(request_id) REFERENCES agent_requests(id)
           )
         ''');
         await db.execute('''
@@ -143,7 +142,7 @@ class AgentKernelStore {
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) await _createTaskTable(db);
         if (oldVersion < 3) {
-          await db.execute('ALTER TABLE agent_events ADD COLUMN task_id TEXT REFERENCES agent_tasks(id)');
+          await db.execute('ALTER TABLE agent_events ADD COLUMN task_id TEXT');
           await db.execute('CREATE INDEX IF NOT EXISTS idx_agent_events_task ON agent_events(task_id, row_id)');
         }
       },
@@ -328,9 +327,17 @@ class AgentKernelStore {
   }) async {
     final db = await database;
     final now = DateTime.now().toUtc().toIso8601String();
-    await db.transaction((txn) => _appendTaskEvent(
-      txn, taskId, type, status, payload, now,
-    ));
+    await db.transaction((txn) async {
+      final task = await txn.query(
+        'agent_tasks',
+        columns: ['id'],
+        where: 'id = ?',
+        whereArgs: [taskId],
+        limit: 1,
+      );
+      if (task.isEmpty) throw StateError('Cannot journal an unknown task: $taskId');
+      await _appendTaskEvent(txn, taskId, type, status, payload, now);
+    });
   }
 
   Future<void> clearTasks() async =>
