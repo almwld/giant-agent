@@ -20,8 +20,9 @@
 - Child lifecycle events are emitted through the existing AgentKernel and
   AgentEventBus. AgentService appends request-scoped runtime and tool events to
   the existing immutable SQLite event journal.
-- Cancellation stops pending children and propagates to the active shared
-  inference call. Interrupted children are distinguished from failed children.
+- Global cancellation stops pending children and propagates to the active shared
+  inference call. A user can also stop one selected pending/running child from
+  the Timeline; interrupted children are distinguished from failed children.
 - Final synthesis uses only collected child outputs and cannot invoke tools.
 
 ## Shared-runtime safety
@@ -44,8 +45,9 @@ Kimi Agent Swarm. Remaining work includes:
 2. Persisted child-task snapshots and safe child-level recovery/resume after
    process restart. Current request recovery deliberately marks interrupted
    work instead of replaying side effects.
-3. User-facing subagent management UI: live child list, per-child output,
-   pause/resume, and targeted cancellation.
+3. Richer subagent management: per-child output inspection, pause/resume, and
+   explicit child-level retry. The Timeline currently exposes child roles,
+   identities, statuses, and targeted stop.
 4. True parallel model execution. It must not be enabled by creating duplicate
    LlamaService/JNI runtimes or bypassing the shared runtime lock.
 5. End-to-end device validation of tool permissions, cancellation, background
