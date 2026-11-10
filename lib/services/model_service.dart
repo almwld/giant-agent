@@ -420,7 +420,10 @@ $toolCatalog
           continue;
         }
 
-        final signature = jsonEncode(payload);
+        final signature = jsonEncode(<String, dynamic>{
+          'name': toolName,
+          'arguments': rawArgs,
+        });
         if (!executedCalls.add(signature)) {
           _emitToolEvent(
             'reflexion_failed',
@@ -495,7 +498,11 @@ $toolCatalog
               'arguments': action.arguments,
             };
             final proposedSignature = jsonEncode(proposed);
-            if (proposedSignature == signature || executedCalls.contains(proposedSignature)) {
+            final normalizedProposedSignature = jsonEncode(<String, dynamic>{
+              'name': action.toolName,
+              'arguments': action.arguments,
+            });
+            if (normalizedProposedSignature == signature || executedCalls.contains(normalizedProposedSignature)) {
               throw const FormatException('Reflexion proposed an action that has already been attempted.');
             }
             pendingReflexionPayload = proposed;
