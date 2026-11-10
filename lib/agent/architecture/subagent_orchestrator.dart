@@ -113,7 +113,7 @@ class SubagentOrchestrator {
         );
         if (isTaskCancelled(task.id)) {
           results[task.id] = SubagentResult(taskId: task.id, status: 'cancelled');
-          await _emit(task, 'subagent_cancelled', 'interrupted');
+          await _emit(task, 'subagent_cancelled', 'cancelled');
         } else {
           results[task.id] = SubagentResult(
             taskId: task.id,
@@ -141,7 +141,7 @@ class SubagentOrchestrator {
         await _emit(
           task,
           cancelled ? 'subagent_cancelled' : 'subagent_interrupted',
-          'interrupted',
+          cancelled ? 'cancelled' : 'interrupted',
           details: error.message,
         );
       } catch (error) {
@@ -163,7 +163,7 @@ class SubagentOrchestrator {
           final task = byId[id]!;
           results[id] = SubagentResult(taskId: id, status: 'cancelled');
           pending.remove(id);
-          await _emit(task, 'subagent_cancelled', 'interrupted');
+          await _emit(task, 'subagent_cancelled', 'cancelled');
         }
       } else {
         var scheduled = false;
@@ -173,7 +173,7 @@ class SubagentOrchestrator {
           if (_cancelledTasks.contains(task.id)) {
             pending.remove(task.id);
             results[task.id] = SubagentResult(taskId: task.id, status: 'cancelled');
-            await _emit(task, 'subagent_cancelled', 'interrupted');
+            await _emit(task, 'subagent_cancelled', 'cancelled');
             _finishedTaskIds.add(task.id);
             scheduled = true;
             continue;
