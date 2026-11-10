@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import '../services/llama_service.dart';
+import '../agent/architecture/agent_event_bus.dart';
 import 'agent_memory_service.dart';
 import 'openai_compatible_provider.dart';
 import '../tools/tool_manager.dart';
@@ -17,11 +18,10 @@ class ModelService {
   bool _isLoading = false;
   bool _cancelRequested = false;
   Future<void> _requestTail = Future<void>.value();
-  final StreamController<Map<String, dynamic>> _toolEvents = StreamController<Map<String, dynamic>>.broadcast();
   String _activeRequestId = '';
   int _toolEventSequence = 0;
 
-  Stream<Map<String, dynamic>> get toolEvents => _toolEvents.stream;
+  Stream<Map<String, dynamic>> get toolEvents => AgentEventBus.instance.events;
   void beginAgentRequest(String requestId) => _activeRequestId = requestId;
   void endAgentRequest(String requestId) { if (_activeRequestId == requestId) _activeRequestId = ''; }
 
@@ -35,7 +35,7 @@ class ModelService {
     String? stepId,
   }) {
     final sequence = ++_toolEventSequence;
-    _toolEvents.add({
+    AgentEventBus.instance.publish({
       'id': 'tool_${_activeRequestId}_event_$sequence',
       'request_id': _activeRequestId,
       'attempt_id': _activeRequestId,
