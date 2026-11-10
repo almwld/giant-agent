@@ -67,6 +67,7 @@ class AgentKernel {
   bool _cancellationRequested = false;
   SubagentOrchestrator? _activeSubagentOrchestrator;
   final Set<String> _activeSubagentIds = <String>{};
+  final Set<String> _cancelledSubagentIds = <String>{};
   String? _activeSubagentParentRequestId;
   final FifoTaskQueue _requestQueue = FifoTaskQueue();
   int get queuedRequestCount => _requestQueue.pendingCount;
@@ -387,7 +388,7 @@ class AgentKernel {
       final output = (await _models.processInput(prompt,
         conversationId: '$conversationId::subagent::$taskId',
         persistTurn: false, allowedTools: allowedTools,
-        shouldCancel: () => _cancellationRequested,
+        shouldCancel: () => _cancellationRequested || _cancelledSubagentIds.contains(taskId),
         requestId: parentRequestId)).trim();
       if (_cancellationRequested || _isCancelledOutput(output) || _isIncompleteOutput(output)) {
         throw SubagentInterrupted(output.isEmpty ? 'تم إيقاف استئناف الوكيل الفرعي.' : output);
@@ -415,6 +416,7 @@ class AgentKernel {
       _models.endAgentRequest(requestId);
       _activeRequestId = null;
       _activeSubagentIds.remove(taskId);
+      _cancelledSubagentIds.remove(taskId);
       if (_activeSubagentParentRequestId == parentRequestId) _activeSubagentParentRequestId = null;
       _cancellationRequested = false;
       if (_state != AgentKernelState.failed) _state = AgentKernelState.idle;
@@ -447,7 +449,8 @@ class AgentKernel {
     required String conversationId,
   }) async {
     if (!_planner.requiresPlan(prompt)) {
-      return _models.processInput(prompt, conversationId: conversationId, requestId: requestId);
+      return _models.processInput(prompt, conversationId: conversationId,
+        requestId: requestId, shouldCancel: () => _cancellationRequested);
     }
 
     final softwareScope = RegExp(
@@ -753,6 +756,7 @@ $evidence
       persistTurn: false,
       allowedTools: const <String>{},
       requestId: requestId,
+      shouldCancel: () => _cancellationRequested,
     );
     final normalizedFinal = finalOutput.trim();
     if (_cancellationRequested ||
@@ -958,6 +962,7 @@ $evidence
     final scheduledChild = orchestrator != null && orchestrator.cancelTask(taskId);
     final recoveredChild = _activeSubagentIds.contains(taskId);
     if (!scheduledChild && !recoveredChild) return false;
+    if (recoveredChild) _cancelledSubagentIds.add(taskId);
     _emit(
       requestId: _activeSubagentParentRequestId ?? _activeRequestId ?? 'runtime',
       taskId: taskId,
