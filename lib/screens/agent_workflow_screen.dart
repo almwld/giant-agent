@@ -403,6 +403,24 @@ class AgentWorkflowScreen extends StatelessWidget {
                 Text(preview, maxLines: 7, overflow: TextOverflow.ellipsis,
                     style: const TextStyle(color: Colors.white70, fontSize: 11, height: 1.45)),
               ],
+              if ((kind == 'binary_document' || kind == 'file') && path != null)
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: TextButton.icon(
+                    onPressed: () async {
+                      try {
+                        await AgentService.instance.openWorkspaceFile(path);
+                      } catch (error) {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('تعذر فتح الملف: $error')),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.open_in_new_rounded, size: 16),
+                    label: const Text('فتح الملف'),
+                  ),
+                ),
               if (kind == 'image' && path != null)
                 Align(
                   alignment: AlignmentDirectional.centerStart,
