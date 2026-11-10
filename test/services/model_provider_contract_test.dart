@@ -51,6 +51,12 @@ void main() {
       );
     });
 
+    test('recognizes only the official HTTPS OpenRouter base URL', () {
+      expect(OpenAICompatibleProvider.isOfficialBaseUrl('https://openrouter.ai/api/v1'), isTrue);
+      expect(OpenAICompatibleProvider.isOfficialBaseUrl('https://api.example.com/v1'), isFalse);
+      expect(OpenAICompatibleProvider.isOfficialBaseUrl('http://openrouter.ai/api/v1'), isFalse);
+    });
+
     test('extracts OpenRouter message content', () {
       expect(
         OpenAICompatibleProvider.extractText({
