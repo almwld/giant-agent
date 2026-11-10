@@ -24,6 +24,17 @@
 - Startup recovery marks pending/running child snapshots as interrupted and
   exposes them for explicit recovery. It never automatically replays a child
   or a side-effecting operation.
+- Child resume is now a durable, explicit operation exposed by `AgentService`.
+  SQLite atomically claims an interrupted/failed child, rejects completed or
+  cancelled children, reconstructs completed dependency outputs, and records
+  the user's side-effect disposition before execution.
+- Full child outputs are persisted separately from bounded Timeline summaries,
+  so downstream recovery can reconstruct dependency context without relying on
+  truncated display text.
+- Recovered children execute through the existing `AgentKernel` and shared
+  `ModelService`; role-based tool permissions remain enforced. A process death
+  during resume is reconciled back to an interrupted state and requires a new
+  explicit authorization.
 - When worker results contain failed or skipped tasks, the coordinator may
   request one bounded evidence-driven repair plan. The repair batch receives
   unique IDs, does not automatically rerun completed tasks, and cannot loop
@@ -47,12 +58,11 @@ and is tested independently.
 This is an integrated first implementation, not a claim of feature parity with
 Kimi Agent Swarm. Remaining work includes:
 
-1. Explicit user-authorized child resume from persisted snapshots. Recovery
-   currently marks interrupted children and exposes their prompts/dependencies;
-   it does not silently replay work.
-2. Richer subagent management: pause/resume, explicit child-level retry, and
-   full (untruncated) child result retrieval. The Timeline currently exposes
-   child roles, identities, statuses, bounded result summaries, and targeted stop.
+1. A dedicated Timeline recovery control that presents the required side-effect
+   disposition and invokes `AgentService.resumeSubagent`; the durable service
+   API and execution path are now present.
+2. Richer subagent management: pause/resume controls and explicit child-level
+   retry policy for completed work.
 3. Detached/background execution with Android lifecycle guarantees and durable
    notification/progress behavior.
 4. True parallel model execution. It must not be enabled by creating duplicate
