@@ -632,6 +632,13 @@ class AgentKernelStore {
     });
   }
 
+  Future<bool> hasActiveRequests() async {
+    final count = Sqflite.firstIntValue(await (await database).rawQuery(
+      "SELECT COUNT(*) FROM agent_requests WHERE status IN ('queued', 'running')",
+    )) ?? 0;
+    return count > 0;
+  }
+
   Future<List<KernelRequestRecord>> queuedRequests() async {
     final rows = await (await database).query(
       'agent_requests',
