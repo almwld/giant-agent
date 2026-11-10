@@ -1805,7 +1805,7 @@ class _ChatScreenState extends State<ChatScreen> {
               ConstrainedBox(constraints: const BoxConstraints(maxWidth: 290), child: Row(children: [
                 const Icon(Icons.remove_circle_outline, color: Colors.white70),
                 Expanded(child: Slider(min: 120, max: 310, divisions: 19,
-                  value: _voiceOrbSize.clamp(120, 310), activeColor: const Color(0xFF22D3EE),
+                  value: _voiceOrbSize.clamp(120, 310).toDouble(), activeColor: const Color(0xFF22D3EE),
                   onChanged: (v) => setState(() => _voiceOrbSize = v),
                   onChangeEnd: (v) async {
                     final p = await SharedPreferences.getInstance();
