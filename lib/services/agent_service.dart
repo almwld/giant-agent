@@ -4,6 +4,7 @@ import '../agent/architecture/agent_timeline_event.dart';
 import '../agent/architecture/agent_event_bus.dart';
 import '../domain/kernel/agent_kernel.dart' as durable;
 import '../domain/kernel/agent_kernel_store.dart';
+import '../domain/kernel/subagent_recovery_coordinator.dart';
 import 'model_service.dart';
 
 /// The sole application-facing task boundary.
@@ -167,6 +168,34 @@ class AgentService {
   /// Returns durable child snapshots for a request, including safely interrupted work.
   Future<List<Map<String, dynamic>>> subagentsForRequest(String requestId) =>
       _store.subagentsForRequest(requestId);
+
+  /// Resumes one interrupted child only after an explicit user decision about
+  /// possible side effects. The child reuses the process-wide execution kernel.
+  Future<String> resumeSubagent(
+    String taskId, {
+    required String sideEffectDisposition,
+  }) async {
+    await initialize();
+    final recovery = SubagentRecoveryCoordinator(_store);
+    return recovery.resume(
+      taskId: taskId,
+      sideEffectDisposition: sideEffectDisposition,
+      execute: ({required parent, required task, required dependencyResults}) async {
+        final output = await _executionKernel.executeRecoveredSubagent(
+          parentRequestId: parent.id,
+          parentPrompt: parent.prompt,
+          conversationId: parent.conversationId,
+          taskId: taskId,
+          title: task['title']?.toString() ?? taskId,
+          taskPrompt: task['prompt']?.toString() ?? '',
+          agentType: task['agent_type']?.toString() ?? 'explore',
+          dependencyResults: dependencyResults,
+        );
+        await _flushExecutionJournal();
+        return output;
+      },
+    );
+  }
 
   Future<bool> cancel() => _executionKernel.cancel();
 
