@@ -107,7 +107,7 @@ class OpenAICompatibleProvider {
           .whereType<Map>()
           .map((part) => part['text']?.toString() ?? '')
           .where((part) => part.isNotEmpty)
-          .join('\\n');
+          .join('\n');
       if (text.trim().isNotEmpty) return text.trim();
     }
     throw StateError('استجابة OpenRouter لا تحتوي نصاً قابلاً للعرض.');
