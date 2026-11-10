@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/services.dart';
 import '../services/llama_service.dart';
 import '../agent/architecture/agent_event_bus.dart';
@@ -301,6 +302,28 @@ class ModelService {
       }
       return response;
     });
+  }
+
+  /// Multimodal image understanding through the currently selected vision
+  /// provider. Local GGUF and the keyless text gateway remain text-only.
+  Future<String> processImage(
+    File image, {
+    String prompt = 'حلّل الصورة بصرياً بالتفصيل. صف العناصر الظاهرة والعلاقات بينها، واقرأ النصوص العربية واللاتينية إن وجدت. ميّز بين ما تراه فعلاً وما تستنتجه، ولا تخمّن التفاصيل غير الواضحة.',
+  }) async {
+    if (!await image.exists()) {
+      throw FileSystemException('ملف الصورة غير موجود.', image.path);
+    }
+    final mode = await ModelProviderSettings.instance.getMode();
+    switch (mode) {
+      case ModelProviderMode.gemini:
+        return GeminiProvider.instance.generateWithImage(image, prompt: prompt);
+      case ModelProviderMode.openRouter:
+        return OpenAICompatibleProvider.instance.generateWithImage(image, prompt: prompt);
+      case ModelProviderMode.local:
+        throw StateError('النموذج المحلي الحالي نصّي فقط. استخدم OCR المحلي أو اختر نموذج رؤية عبر Gemini أو OpenRouter.');
+      case ModelProviderMode.zeroConfig:
+        throw StateError('المزوّد المجاني التلقائي يدعم المحادثة النصية فقط ولا يدعم تحليل الصور.');
+    }
   }
 
   /// Direct conversational path: no AgentKernel orchestration and no tool loop.
