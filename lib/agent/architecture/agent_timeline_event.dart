@@ -29,7 +29,7 @@ class AgentTimelineEvent {
   Map<String, dynamic> toMap() => <String, dynamic>{
         'id': id,
         'request_id': requestId,
-        'attempt_id': attemptId ?? requestId,
+        if (attemptId != null && attemptId!.isNotEmpty) 'attempt_id': attemptId,
         'type': type,
         'title': title,
         'status': status,
@@ -51,7 +51,7 @@ class AgentTimelineEvent {
     return AgentTimelineEvent(
       id: map['id']?.toString() ?? '',
       requestId: (map['request_id'] ?? map['requestId'])?.toString() ?? '',
-      attemptId: map['attempt_id']?.toString(),
+      attemptId: (map['attempt_id'] ?? map['request_id'] ?? map['requestId'])?.toString(),
       stepId: (map['step_id'] ?? map['stepId'])?.toString(),
       sequence: rawSequence is num ? rawSequence.toInt() : int.tryParse(rawSequence?.toString() ?? ''),
       type: map['type']?.toString() ?? 'unknown',
