@@ -25,83 +25,117 @@ class _AgentOsShellState extends State<AgentOsShell> {
     AgentIntegrationsPage(),
   ];
 
+  static const _icons = <IconData>[
+    Icons.grid_view_rounded,
+    Icons.account_tree_rounded,
+    Icons.forum_rounded,
+    Icons.smart_toy_rounded,
+    Icons.hub_rounded,
+  ];
+
   @override
   Widget build(BuildContext context) {
     final isArabic = Localizations.localeOf(context).languageCode == 'ar';
     final labels = isArabic
         ? const ['الرئيسية', 'سير العمل', 'المحادثة', 'الوكلاء', 'التكاملات']
         : const ['Overview', 'Workflow', 'Chat', 'Agents', 'Integrations'];
-    final icons = const [
-      Icons.dashboard_rounded,
-      Icons.account_tree_rounded,
-      Icons.forum_rounded,
-      Icons.smart_toy_rounded,
-      Icons.hub_rounded,
-    ];
+    final theme = Theme.of(context);
+    final dark = theme.brightness == Brightness.dark;
 
     return Scaffold(
       body: IndexedStack(index: _index, children: _pages),
       bottomNavigationBar: SafeArea(
         top: false,
+        minimum: const EdgeInsets.fromLTRB(12, 0, 12, 9),
         child: Container(
-          margin: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-          padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 4),
+          height: 70,
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 5),
           decoration: BoxDecoration(
-            color: Theme.of(context).brightness == Brightness.dark
-                ? AppTheme.darkSurface.withOpacity(.96)
-                : Colors.white.withOpacity(.97),
-            borderRadius: BorderRadius.circular(22),
+            color: dark ? const Color(0xFF172536) : Colors.white,
+            borderRadius: BorderRadius.circular(23),
             border: Border.all(
-              color: AppTheme.primary.withOpacity(.18),
+              color: dark
+                  ? Colors.white.withOpacity(.07)
+                  : const Color(0xFF0A8F83).withOpacity(.10),
             ),
             boxShadow: [
               BoxShadow(
-                color: AppTheme.primary.withOpacity(.09),
-                blurRadius: 22,
-                offset: const Offset(0, 7),
+                color: Colors.black.withOpacity(dark ? .22 : .075),
+                blurRadius: 26,
+                offset: const Offset(0, 8),
               ),
             ],
           ),
           child: Row(
             children: List.generate(labels.length, (i) {
               final selected = _index == i;
+              final isChat = i == 2;
+              final foreground = selected
+                  ? AppTheme.primary
+                  : theme.colorScheme.onSurface.withOpacity(.58);
+
               return Expanded(
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(16),
-                  onTap: () => setState(() => _index = i),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    padding: const EdgeInsets.symmetric(vertical: 7),
-                    decoration: BoxDecoration(
-                      color: selected
-                          ? AppTheme.primary.withOpacity(.12)
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          icons[i],
-                          size: 21,
-                          color: selected
-                              ? AppTheme.primary
-                              : Theme.of(context).colorScheme.onSurface.withOpacity(.55),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          labels[i],
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                child: Semantics(
+                  button: true,
+                  selected: selected,
+                  label: labels[i],
+                  child: Tooltip(
+                    message: labels[i],
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(17),
+                        onTap: () => setState(() => _index = i),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 220),
+                          curve: Curves.easeOutCubic,
+                          margin: const EdgeInsets.symmetric(horizontal: 2),
+                          decoration: BoxDecoration(
                             color: selected
-                                ? AppTheme.primary
-                                : Theme.of(context).colorScheme.onSurface.withOpacity(.62),
+                                ? AppTheme.primary.withOpacity(dark ? .18 : .09)
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(17),
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              AnimatedContainer(
+                                duration: const Duration(milliseconds: 220),
+                                width: isChat ? 35 : 29,
+                                height: isChat ? 35 : 29,
+                                decoration: BoxDecoration(
+                                  color: isChat && selected
+                                      ? AppTheme.primary
+                                      : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Icon(
+                                  _icons[i],
+                                  size: isChat ? 20 : 19,
+                                  color: isChat && selected
+                                      ? Colors.white
+                                      : foreground,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                labels[i],
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 9.5,
+                                  height: 1.15,
+                                  fontWeight: selected
+                                      ? FontWeight.w800
+                                      : FontWeight.w500,
+                                  color: foreground,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
