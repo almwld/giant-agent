@@ -27,6 +27,7 @@ import '../services/github_repository_service.dart';
 import '../services/cloud_storage_service.dart';
 import '../services/web_search_service.dart';
 import '../agent/task_manager.dart';
+import '../domain/kernel/agent_kernel_store.dart';
 import '../agent/architecture/agent_event_bus.dart';
 import '../theme/giant_palette.dart';
 
