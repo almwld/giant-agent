@@ -44,6 +44,9 @@ jobs:
           python3.11 --version
           command -v python3.11
 
+      - name: Install parser test dependency
+        run: pip install pypdf python-docx openpyxl
+
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -54,10 +57,22 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Analyze Dart sources
+      - name: Lint architecture Markdown
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          files = list(Path('docs').rglob('*.md')) if Path('docs').exists() else []
+          for path in files:
+              text = path.read_text(encoding='utf-8')
+              if '\\x00' in text:
+                  raise SystemExit(f'NUL byte in {path}')
+          print(f'Checked {len(files)} architecture Markdown files')
+          PY
+
+      - name: Analyze all Flutter and Dart sources
         run: flutter analyze
 
-      - name: Run automated tests
+      - name: Run Flutter unit tests
         run: flutter test
 
       - name: Build universal release APK
@@ -66,15 +81,25 @@ jobs:
           mkdir -p dist
           cp build/app/outputs/flutter-apk/app-release.apk dist/giant-agent-universal.apk
 
-      - name: Verify APK outputs
+      - name: Build split-per-ABI release APKs
+        run: |
+          flutter build apk --release --split-per-abi --no-shrink
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk dist/giant-agent-armeabi-v7a.apk
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk dist/giant-agent-arm64-v8a.apk
+          cp build/app/outputs/flutter-apk/app-x86_64-release.apk dist/giant-agent-x86_64.apk
+
+      - name: Verify APK outputs and checksums
         run: |
           set -e
           test -s dist/giant-agent-universal.apk
+          test -s dist/giant-agent-armeabi-v7a.apk
+          test -s dist/giant-agent-arm64-v8a.apk
+          test -s dist/giant-agent-x86_64.apk
           echo "APK files produced:"
           ls -lh dist/*.apk
           sha256sum dist/*.apk | tee dist/SHA256SUMS.txt
 
-      - name: 📤 Upload universal APK
+      - name: Upload universal APK
         uses: actions/upload-artifact@v4
         with:
           name: giant-agent-universal-release
@@ -82,7 +107,31 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: 📤 Upload SHA256 checksums
+      - name: Upload arm64-v8a APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: giant-agent-arm64-v8a-release
+          path: dist/giant-agent-arm64-v8a.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload armeabi-v7a APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: giant-agent-armeabi-v7a-release
+          path: dist/giant-agent-armeabi-v7a.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload x86_64 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: giant-agent-x86_64-release
+          path: dist/giant-agent-x86_64.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload SHA256 checksums
         uses: actions/upload-artifact@v4
         with:
           name: giant-agent-sha256-checksums
