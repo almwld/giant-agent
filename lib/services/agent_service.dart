@@ -7,6 +7,7 @@ import '../domain/kernel/agent_kernel_store.dart';
 import '../domain/kernel/subagent_recovery_coordinator.dart';
 import 'model_service.dart';
 import 'agent_background_execution_service.dart';
+import '../domain/output/output_engine.dart';
 
 /// The sole application-facing task boundary.
 ///
@@ -43,6 +44,7 @@ class AgentService {
   final ModelService _models;
   late final durable.AgentKernel _durableKernel;
   final AgentKernelStore _store;
+  late final OutputEngine _outputEngine = OutputEngine(store: _store, models: _models);
   final bool _initializeExecutionRuntime;
   StreamSubscription<Map<String, dynamic>>? _eventSubscription;
   Future<void> _journalTail = Future<void>.value();
@@ -63,12 +65,33 @@ class AgentService {
           conversationId: request.conversationId,
         ),
       );
-    } finally {
+    } catch (error) {
       await instance._flushExecutionJournal();
+      await instance._outputEngine.finalize(
+        requestId: request.id,
+        conversationId: request.conversationId,
+        finalText: '',
+        requestStatus: 'failed',
+        failure: error.toString(),
+      );
+      await instance._flushExecutionJournal();
+      rethrow;
     }
+    await instance._flushExecutionJournal();
     final output = response.output;
-    if (_isInterruptedOutput(output)) {
-      throw durable.KernelRequestInterrupted(output);
+    final interrupted = _isInterruptedOutput(output);
+    final collection = await instance._outputEngine.finalize(
+      requestId: request.id,
+      conversationId: request.conversationId,
+      finalText: output,
+      requestStatus: interrupted ? 'interrupted' : 'completed',
+    );
+    await instance._flushExecutionJournal();
+    if (interrupted) throw durable.KernelRequestInterrupted(output);
+    if (!collection.verified) {
+      throw durable.KernelRequestInterrupted(
+        'تم حفظ النتائج المتاحة، لكن لم يكتمل التحقق من جميع المخرجات. ${collection.summary}',
+      );
     }
     return output;
   }
@@ -197,6 +220,13 @@ class AgentService {
 
   Future<List<KernelEventRecord>> eventsFor(String requestId) =>
       _durableKernel.eventsFor(requestId);
+
+  /// Returns saved artifacts (text, code, documents and media) for one request.
+  Future<List<Map<String, dynamic>>> outputsForRequest(String requestId) =>
+      _store.outputsForRequest(requestId);
+
+  Future<List<Map<String, dynamic>>> outputsForConversation(String conversationId) =>
+      _store.outputsForConversation(conversationId);
 
   /// Replays the immutable lifecycle journal for one child agent.
   Future<List<KernelEventRecord>> eventsForSubagent(String taskId) =>
