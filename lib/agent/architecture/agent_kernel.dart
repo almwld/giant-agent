@@ -67,6 +67,7 @@ class AgentKernel {
   bool _cancellationRequested = false;
   SubagentOrchestrator? _activeSubagentOrchestrator;
   String? _activeSubagentId;
+  String? _activeSubagentParentRequestId;
   final FifoTaskQueue _requestQueue = FifoTaskQueue();
   int get queuedRequestCount => _requestQueue.pendingCount;
 
@@ -361,6 +362,7 @@ class AgentKernel {
     final requestId = 'resume_${parentRequestId}_${taskId}_${DateTime.now().microsecondsSinceEpoch}';
     _activeRequestId = requestId;
     _activeSubagentId = taskId;
+    _activeSubagentParentRequestId = parentRequestId;
     _cancellationRequested = false;
     _models.beginAgentRequest(requestId);
     try {
@@ -412,6 +414,7 @@ class AgentKernel {
       _models.endAgentRequest(requestId);
       _activeRequestId = null;
       if (_activeSubagentId == taskId) _activeSubagentId = null;
+      if (_activeSubagentParentRequestId == parentRequestId) _activeSubagentParentRequestId = null;
       _cancellationRequested = false;
       if (_state != AgentKernelState.failed) _state = AgentKernelState.idle;
     }
@@ -951,7 +954,7 @@ $evidence
     final recoveredChild = _activeSubagentId == taskId;
     if (!scheduledChild && !recoveredChild) return false;
     _emit(
-      requestId: _activeRequestId ?? 'runtime',
+      requestId: _activeSubagentParentRequestId ?? _activeRequestId ?? 'runtime',
       taskId: taskId,
       type: 'subagent_cancellation_requested',
       title: 'طلب إيقاف الوكيل الفرعي',
@@ -969,7 +972,7 @@ $evidence
 
   Future<bool> cancel() async {
     if (!isExecuting) return false;
-    final requestId = _activeRequestId ?? 'runtime';
+    final requestId = _activeSubagentParentRequestId ?? _activeRequestId ?? 'runtime';
     _cancellationRequested = true;
     _activeSubagentOrchestrator?.cancel();
     _state = AgentKernelState.cancelling;
