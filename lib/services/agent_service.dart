@@ -105,7 +105,12 @@ class AgentService {
     });
   }
 
-  Future<void> _flushExecutionJournal() => _journalTail;
+  Future<void> _flushExecutionJournal() async {
+    // AgentEventBus uses an asynchronous broadcast stream. Let queued delivery
+    // callbacks append their rows before waiting for the serialized write tail.
+    await Future<void>.delayed(Duration.zero);
+    await _journalTail;
+  }
 
   Future<void> _initialize() async {
     // The execution runtime must be ready before queued durable work is drained.
@@ -163,5 +168,9 @@ class AgentService {
 
   /// Closes the injected durable store in contract tests. The app singleton
   /// should remain alive for the process lifetime.
-  Future<void> disposeForTesting() => _durableKernel.dispose();
+  Future<void> disposeForTesting() async {
+    await _flushExecutionJournal();
+    await _eventSubscription?.cancel();
+    await _durableKernel.dispose();
+  }
 }
