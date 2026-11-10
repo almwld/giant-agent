@@ -128,6 +128,7 @@ class SubagentOrchestrator {
             'subagent_completed',
             'completed',
             details: visibleOutput,
+            result: output,
           );
         }
       } on SubagentInterrupted catch (error) {
@@ -223,6 +224,7 @@ class SubagentOrchestrator {
     String type,
     String status, {
     String? details,
+    String? result,
   }) async {
     try {
       await _onEvent(<String, Object?>{
@@ -237,6 +239,7 @@ class SubagentOrchestrator {
         'type': type,
         'status': status,
         if (details != null) 'details': details,
+        if (result != null) 'result': result,
         'timestamp': DateTime.now().toUtc().toIso8601String(),
       });
     } catch (_) {
