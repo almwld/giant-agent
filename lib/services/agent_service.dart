@@ -6,6 +6,7 @@ import '../domain/kernel/agent_kernel.dart' as durable;
 import '../domain/kernel/agent_kernel_store.dart';
 import '../domain/kernel/subagent_recovery_coordinator.dart';
 import 'model_service.dart';
+import 'agent_background_execution_service.dart';
 
 /// The sole application-facing task boundary.
 ///
@@ -45,6 +46,7 @@ class AgentService {
   final bool _initializeExecutionRuntime;
   StreamSubscription<Map<String, dynamic>>? _eventSubscription;
   Future<void> _journalTail = Future<void>.value();
+  Future<void> _backgroundProgressTail = Future<void>.value();
   Future<void>? _initialization;
   bool _initialized = false;
   static int _requestSequence = 0;
@@ -100,6 +102,13 @@ class AgentService {
       // Token deltas are streamed to the chat renderer and are intentionally
       // excluded from the durable lifecycle journal to avoid unbounded growth.
       if (event['type'] == 'stream_token') return;
+      _backgroundProgressTail = _backgroundProgressTail
+          .then((_) => AgentBackgroundExecutionService.instance.updateTask(
+                title: event['title']?.toString() ?? 'Giant Agent',
+                body: event['details']?.toString() ??
+                    '${event['status']?.toString() ?? 'قيد التنفيذ'} — ${event['type']?.toString() ?? 'تحديث'}',
+              ))
+          .catchError((Object _) {});
       _journalTail = _journalTail
           .then((_) async {
         if ((event['task_id']?.toString() ?? '').isNotEmpty) {
@@ -136,23 +145,29 @@ class AgentService {
     String? requestId,
   }) async {
     await initialize();
-    final suppliedRequestId = requestId?.trim();
-    final resolvedRequestId =
-        suppliedRequestId == null || suppliedRequestId.isEmpty
-            ? '${DateTime.now().microsecondsSinceEpoch}_${++_requestSequence}'
-            : suppliedRequestId;
-    final record = await _durableKernel.submit(
-      id: resolvedRequestId,
-      prompt: prompt,
-      conversationId: conversationId,
-    );
-    if (record.status == 'failed') {
-      throw StateError(record.error ?? 'Agent request failed.');
+    await AgentBackgroundExecutionService.instance.beginTask(prompt);
+    try {
+      final suppliedRequestId = requestId?.trim();
+      final resolvedRequestId =
+          suppliedRequestId == null || suppliedRequestId.isEmpty
+              ? '${DateTime.now().microsecondsSinceEpoch}_${++_requestSequence}'
+              : suppliedRequestId;
+      final record = await _durableKernel.submit(
+        id: resolvedRequestId,
+        prompt: prompt,
+        conversationId: conversationId,
+      );
+      if (record.status == 'failed') {
+        throw StateError(record.error ?? 'Agent request failed.');
+      }
+      if (record.status != 'completed' && record.status != 'interrupted') {
+        throw StateError('Unexpected durable request state: ${record.status}');
+      }
+      return record.result ?? '';
+    } finally {
+      await _backgroundProgressTail;
+      await AgentBackgroundExecutionService.instance.endTask();
     }
-    if (record.status != 'completed' && record.status != 'interrupted') {
-      throw StateError('Unexpected durable request state: ${record.status}');
-    }
-    return record.result ?? '';
   }
 
   Future<KernelRequestRecord?> request(String requestId) =>
