@@ -54,15 +54,45 @@ jobs:
         run: flutter pub get
 
       - name: Build universal release APK
+        env:
+          CHAQUOPY_ABI_FILTERS: armeabi-v7a,arm64-v8a,x86,x86_64
+          GRADLE_OPTS: -Dorg.gradle.daemon=false
         run: |
           flutter build apk --release
           mkdir -p dist
           cp build/app/outputs/flutter-apk/app-release.apk dist/giant-agent-universal.apk
 
+      - name: Build arm64-v8a release APK
+        env:
+          CHAQUOPY_ABI_FILTERS: arm64-v8a
+          GRADLE_OPTS: -Dorg.gradle.daemon=false
+        run: |
+          flutter build apk --release --target-platform android-arm64
+          cp build/app/outputs/flutter-apk/app-release.apk dist/app-arm64-v8a-release.apk
+
+      - name: Build armeabi-v7a release APK
+        env:
+          CHAQUOPY_ABI_FILTERS: armeabi-v7a
+          GRADLE_OPTS: -Dorg.gradle.daemon=false
+        run: |
+          flutter build apk --release --target-platform android-arm
+          cp build/app/outputs/flutter-apk/app-release.apk dist/app-armeabi-v7a-release.apk
+
+      - name: Build x86_64 release APK
+        env:
+          CHAQUOPY_ABI_FILTERS: x86_64
+          GRADLE_OPTS: -Dorg.gradle.daemon=false
+        run: |
+          flutter build apk --release --target-platform android-x64
+          cp build/app/outputs/flutter-apk/app-release.apk dist/app-x86_64-release.apk
+
       - name: Verify APK outputs
         run: |
           set -e
           test -s dist/giant-agent-universal.apk
+          test -s dist/app-arm64-v8a-release.apk
+          test -s dist/app-armeabi-v7a-release.apk
+          test -s dist/app-x86_64-release.apk
           echo "APK files produced:"
           ls -lh dist/*.apk
           sha256sum dist/*.apk | tee dist/SHA256SUMS.txt
@@ -72,6 +102,30 @@ jobs:
         with:
           name: giant-agent-universal-release
           path: dist/giant-agent-universal.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: 📤 Upload arm64-v8a
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-arm64-v8a-release
+          path: dist/app-arm64-v8a-release.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: 📤 Upload armeabi-v7a
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-armeabi-v7a-release
+          path: dist/app-armeabi-v7a-release.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: 📤 Upload x86_64
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-x86_64-release
+          path: dist/app-x86_64-release.apk
           if-no-files-found: error
           retention-days: 30
 
