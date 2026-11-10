@@ -54,6 +54,9 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Analyze Dart sources
+        run: flutter analyze
+
       - name: Run automated tests
         run: flutter test
 
