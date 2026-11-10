@@ -1,0 +1,47 @@
+import 'package:flutter_tts/flutter_tts.dart';
+
+/// Text-to-speech output shared by chat replies and voice conversations.
+/// Arabic is preferred, while device voices remain available as a fallback.
+class VoiceOutputService {
+  VoiceOutputService._();
+  static final VoiceOutputService instance = VoiceOutputService._();
+
+  final FlutterTts _tts = FlutterTts();
+  bool _initialized = false;
+  bool _speaking = false;
+
+  bool get isSpeaking => _speaking;
+
+  Future<void> initialize() async {
+    if (_initialized) return;
+    await _tts.setLanguage('ar-SA');
+    await _tts.setSpeechRate(0.48);
+    await _tts.setPitch(1.0);
+    await _tts.awaitSpeakCompletion(false);
+    _tts.setStartHandler(() => _speaking = true);
+    _tts.setCompletionHandler(() => _speaking = false);
+    _tts.setCancelHandler(() => _speaking = false);
+    _tts.setErrorHandler((_) => _speaking = false);
+    _initialized = true;
+  }
+
+  Future<void> speak(String text) async {
+    final value = text.trim();
+    if (value.isEmpty) return;
+    await initialize();
+    await _tts.stop();
+    // Arabic locale is explicitly selected so Arabic answers are not read
+    // using the device's default English voice.
+    await _tts.setLanguage('ar-SA');
+    await _tts.speak(value);
+  }
+
+  Future<void> stop() async {
+    await _tts.stop();
+    _speaking = false;
+  }
+
+  Future<void> dispose() async {
+    await stop();
+  }
+}
