@@ -11,16 +11,129 @@ import 'agent/task_manager.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await AppPreferences.instance.load();
-  await NotificationService.init();
-  await ReminderService().init();
-  // Reconcile durable request and task state before exposing the UI.
-  await AgentService.instance.initialize();
-  await TaskManager().initialize();
-  final prefs = await SharedPreferences.getInstance();
-  final showSplash = !(prefs.getBool('giant_has_launched') ?? false);
-  if (showSplash) await prefs.setBool('giant_has_launched', true);
-  runApp(MyApp(showSplash: showSplash));
+  // Render a real Flutter frame before touching databases, native channels,
+  // permissions, or the agent runtime. A failed/slow initializer must never
+  // leave Android displaying only the black launch window.
+  runApp(const GiantAgentBootstrap());
+}
+
+class GiantAgentBootstrap extends StatefulWidget {
+  const GiantAgentBootstrap({super.key});
+
+  @override
+  State<GiantAgentBootstrap> createState() => _GiantAgentBootstrapState();
+}
+
+class _GiantAgentBootstrapState extends State<GiantAgentBootstrap> {
+  bool _ready = false;
+  bool _showSplash = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeApplication();
+  }
+
+  Future<void> _attempt(
+    String name,
+    Future<void> Function() initialize, {
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    try {
+      await initialize().timeout(timeout);
+    } catch (error, stackTrace) {
+      // Startup is best-effort: keep the UI available and retain diagnostics.
+      debugPrint('GiantAgent startup [$name] failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
+  Future<void> _initializeApplication() async {
+    await _attempt(
+      'preferences',
+      () => AppPreferences.instance.load(),
+      timeout: const Duration(seconds: 5),
+    );
+
+    // These services are deliberately not allowed to block first paint.
+    await _attempt(
+      'notifications',
+      () async { await NotificationService.init(); },
+      timeout: const Duration(seconds: 8),
+    );
+    await _attempt(
+      'reminders',
+      () => ReminderService().init(),
+      timeout: const Duration(seconds: 8),
+    );
+    await _attempt(
+      'agent-runtime',
+      () => AgentService.instance.initialize(),
+      timeout: const Duration(seconds: 20),
+    );
+    await _attempt(
+      'task-recovery',
+      () => TaskManager().initialize(),
+      timeout: const Duration(seconds: 12),
+    );
+
+    var showSplash = false;
+    try {
+      final prefs = await SharedPreferences.getInstance()
+          .timeout(const Duration(seconds: 5));
+      showSplash = !(prefs.getBool('giant_has_launched') ?? false);
+      if (showSplash) {
+        await prefs.setBool('giant_has_launched', true)
+            .timeout(const Duration(seconds: 5));
+      }
+    } catch (error, stackTrace) {
+      debugPrint('GiantAgent startup [launch-state] failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _showSplash = showSplash;
+      _ready = true;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_ready) return MyApp(showSplash: _showSplash);
+
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: const Color(0xFF10131B),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF2563EB),
+          brightness: Brightness.dark,
+        ),
+      ),
+      home: const Scaffold(
+        backgroundColor: Color(0xFF10131B),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 34,
+                height: 34,
+                child: CircularProgressIndicator(strokeWidth: 2.5),
+              ),
+              SizedBox(height: 18),
+              Text(
+                'جارٍ تجهيز Giant Agent…',
+                style: TextStyle(color: Color(0xFFE4E4E7), fontSize: 14),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -40,9 +153,6 @@ class MyApp extends StatelessWidget {
           Locale('ar'),
           Locale('en'),
         ],
-        // Let Flutter's localization system provide Directionality to the
-        // Navigator and every Material route. A second root Directionality
-        // wrapper can override route-level direction and confuse overlays.
         localizationsDelegates: const [
           GlobalMaterialLocalizations.delegate,
           GlobalWidgetsLocalizations.delegate,
