@@ -13,7 +13,7 @@ void main() {
       conversationId: 'chat-1',
       maxConcurrency: 2,
       onEvent: events.add,
-      execute: (task, dependencies) async {
+      execute: (task, dependencies, isCancelled) async {
         if (task.id == 'synthesis') {
           dependencyOutput = dependencies['research']!.output!;
         }
@@ -42,7 +42,7 @@ void main() {
       parentRequestId: 'request-2',
       conversationId: 'chat-2',
       onEvent: (_) {},
-      execute: (task, dependencies) async { if (task.id == 'first') throw StateError('worker failed'); return 'unexpected'; },
+      execute: (task, dependencies, isCancelled) async { if (task.id == 'first') throw StateError('worker failed'); return 'unexpected'; },
     );
     final results = await orchestrator.run([
       const SubagentTask(id: 'first', title: 'First', prompt: 'First'),
@@ -56,7 +56,7 @@ void main() {
       parentRequestId: 'request-interrupted',
       conversationId: 'chat-interrupted',
       onEvent: (_) {},
-      execute: (task, dependencies) async {
+      execute: (task, dependencies, isCancelled) async {
         throw const SubagentInterrupted('cancelled at safe boundary');
       },
     );
@@ -73,7 +73,7 @@ void main() {
   });
 
   test('rejects duplicate ids, unknown dependencies and dependency cycles', () {
-    final o = SubagentOrchestrator(parentRequestId: 'request-3', conversationId: 'chat-3', onEvent: (_) {}, execute: (task, dependencies) async => 'ok');
+    final o = SubagentOrchestrator(parentRequestId: 'request-3', conversationId: 'chat-3', onEvent: (_) {}, execute: (task, dependencies, isCancelled) async => 'ok');
     expect(() => o.run([
       const SubagentTask(id: 'x', title: 'X', prompt: 'x'),
       const SubagentTask(id: 'x', title: 'X2', prompt: 'x2'),
@@ -91,7 +91,7 @@ void main() {
     final started = Completer<void>();
     final release = Completer<void>();
     late SubagentOrchestrator o;
-    o = SubagentOrchestrator(parentRequestId: 'request-4', conversationId: 'chat-4', maxConcurrency: 1, onEvent: (_) {}, execute: (task, dependencies) async {
+    o = SubagentOrchestrator(parentRequestId: 'request-4', conversationId: 'chat-4', maxConcurrency: 1, onEvent: (_) {}, execute: (task, dependencies, isCancelled) async {
       started.complete();
       await release.future;
       return 'done';
