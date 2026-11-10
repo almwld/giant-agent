@@ -26,8 +26,15 @@ class ModelService {
   Future<bool> Function(String command)? requestTerminalApproval;
   final GainTerminalTool _gainTerminal = GainTerminalTool();
   Future<void> _requestTail = Future<void>.value();
-  String _activeRequestId = '';
+  Future<void> _toolTail = Future<void>.value();
+  String _fallbackRequestId = '';
+  int _parallelExecutions = 0;
   int _toolEventSequence = 0;
+  static const Object _requestIdZoneKey = #giantAgentRequestId;
+  static const Object _parallelProviderZoneKey = #giantAgentParallelProvider;
+  String get _activeRequestId =>
+      Zone.current[_requestIdZoneKey] as String? ?? _fallbackRequestId;
+
   late final EvaluatorService _evaluator = EvaluatorService(
     readWorkspaceFile: (path) => readFile(path: path),
   );
@@ -40,8 +47,8 @@ class ModelService {
   );
 
   Stream<Map<String, dynamic>> get toolEvents => AgentEventBus.instance.events;
-  void beginAgentRequest(String requestId) => _activeRequestId = requestId;
-  void endAgentRequest(String requestId) { if (_activeRequestId == requestId) _activeRequestId = ''; }
+  void beginAgentRequest(String requestId) => _fallbackRequestId = requestId;
+  void endAgentRequest(String requestId) { if (_fallbackRequestId == requestId) _fallbackRequestId = ''; }
 
   void _emitToolEvent(String type, String title, {
     String? toolName,
@@ -72,6 +79,18 @@ class ModelService {
   }
 
   /// One FIFO lock protects every operation that touches the mutable JNI model.
+  Future<T> _withToolLock<T>(Future<T> Function() operation) async {
+    final gate = Completer<void>();
+    final previous = _toolTail;
+    _toolTail = gate.future;
+    try {
+      await previous;
+      return await operation();
+    } finally {
+      if (!gate.isCompleted) gate.complete();
+    }
+  }
+
   Future<T> _withRuntimeLock<T>(Future<T> Function() operation) async {
     final gate = Completer<void>();
     final previous = _requestTail;
@@ -123,7 +142,7 @@ class ModelService {
   }
 
   Future<bool> isModelLoaded() => _llama.isLoaded();
-  bool get isBusy => _isLoading;
+  bool get isBusy => _isLoading || _parallelExecutions > 0;
   bool hasActiveModel() => _activeModelId.isNotEmpty && _models.any((m) => m['id'] == _activeModelId);
   String getActiveModelName() => getActiveModel()['name']?.toString() ?? 'لا يوجد';
   String getActiveModelSize() => getActiveModel()['size']?.toString() ?? '0';
@@ -196,6 +215,13 @@ class ModelService {
   }
 
   Future<Map<String, dynamic>> _executeTool(
+    Map<String, dynamic> payload, {
+    String? stepId,
+    Set<String>? allowedTools,
+  }) => _withToolLock(() => _executeToolUnlocked(
+        payload, stepId: stepId, allowedTools: allowedTools));
+
+  Future<Map<String, dynamic>> _executeToolUnlocked(
     Map<String, dynamic> payload, {
     String? stepId,
     Set<String>? allowedTools,
@@ -314,8 +340,11 @@ class ModelService {
     bool persistTurn = true,
     Set<String>? allowedTools,
     bool Function()? shouldCancel,
-  }) {
-    return _withRuntimeLock(() async {
+    String? requestId,
+  }) async {
+    final mode = await ModelProviderSettings.instance.getMode();
+    final parallelProvider = mode == ModelProviderMode.openRouter;
+    Future<String> executeScoped() async {
       if (shouldCancel?.call() == true) {
         return 'تم إيقاف تنفيذ الوكيل بناءً على طلب المستخدم.';
       }
@@ -327,7 +356,7 @@ class ModelService {
         return 'تم إيقاف تنفيذ الوكيل بناءً على طلب المستخدم.';
       }
       final response = await _processInput(
-        context.isEmpty ? input : '$context\n\nطلب المستخدم: $input',
+        context.isEmpty ? input : '$context\\n\\nطلب المستخدم: $input',
         allowedTools: allowedTools,
         shouldCancel: shouldCancel,
       );
@@ -339,7 +368,23 @@ class ModelService {
         );
       }
       return response;
-    });
+    }
+
+    final zoneValues = <Object, Object?>{
+      _requestIdZoneKey: requestId ?? _fallbackRequestId,
+      _parallelProviderZoneKey: parallelProvider,
+    };
+    if (parallelProvider) {
+      _parallelExecutions++;
+      try {
+        return await runZoned(executeScoped, zoneValues: zoneValues);
+      } finally {
+        _parallelExecutions--;
+      }
+    }
+    return _withRuntimeLock(
+      () => runZoned(executeScoped, zoneValues: zoneValues),
+    );
   }
 
   /// Multimodal image understanding through the currently selected vision
@@ -471,7 +516,9 @@ $prompt
     if (shouldCancel?.call() == true) {
       return 'تم إيقاف تنفيذ الوكيل بناءً على طلب المستخدم.';
     }
-    _cancelRequested = false;
+    final parallelProvider = Zone.current[_parallelProviderZoneKey] == true;
+    bool isCancelled() => shouldCancel?.call() == true || (!parallelProvider && _cancelRequested);
+    if (!parallelProvider) _cancelRequested = false;
     input = _boundPrompt(input);
     if (await ModelProviderSettings.instance.getMode() == ModelProviderMode.local && !await _llama.isLoaded()) {
       return '⚠️ لم يتم تحميل نموذج GGUF المحلي. حمّل نموذج GGUF أو اختر OpenRouter من إعدادات المزوّد.';
@@ -500,7 +547,7 @@ $toolCatalog
       Map<String, dynamic>? pendingReflexionPayload;
 
       for (var step = 0; step < maxToolCalls; step++) {
-        if (_cancelRequested) return 'تم إيقاف تنفيذ الوكيل بناءً على طلب المستخدم.';
+        if (isCancelled()) return 'تم إيقاف تنفيذ الوكيل بناءً على طلب المستخدم.';
 
         Map<String, dynamic> payload;
         if (pendingReflexionPayload != null) {
@@ -508,7 +555,7 @@ $toolCatalog
           pendingReflexionPayload = null;
         } else {
           final generated = await _generateText(history.toString(), maxTokens: 768, temperature: .25);
-          if (_cancelRequested) {
+          if (isCancelled()) {
             return generated.trim().isEmpty
                 ? 'تم إيقاف التوليد.'
                 : '${generated.trim()}\n\n[تم إيقاف التوليد]';
