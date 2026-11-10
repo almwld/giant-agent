@@ -92,8 +92,10 @@ runtime. All children call the existing ModelService. Local GGUF inference
 continues to use one mutable llama.cpp JNI context behind a strict FIFO lock.
 When OpenRouter is selected, up to three independent provider requests can
 overlap using request-scoped Zone values for cancellation and event identity.
-Workspace mutations and their verification remain serialized in a separate
-FIFO critical section. This provides real bounded cloud-worker concurrency
+Read-only workers can overlap up to the bounded cloud limit. Coder workers
+obtain an exclusive scheduler lease: no other worker can read or mutate the
+workspace until the coder finishes. Tool execution and independent verification
+also remain serialized in ModelService's FIFO critical section. This provides real bounded cloud-worker concurrency
 without creating duplicate local inference runtimes.
 
 ## Explicitly not complete yet
