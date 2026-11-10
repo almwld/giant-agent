@@ -596,43 +596,53 @@ $toolCatalog
         }
 
         final toolStepId = 'verified_step_${_activeRequestId}_${DateTime.now().microsecondsSinceEpoch}';
-        Map<String, dynamic> result;
-        try {
-          result = await _executeTool(
-            payload,
+        late Map<String, dynamic> result;
+        late bool verificationPassed;
+        late String verificationMessage;
+        await _withToolLock(() async {
+          try {
+            result = await _executeToolUnlocked(
+              payload,
+              stepId: toolStepId,
+              allowedTools: allowedTools,
+            );
+          } catch (error) {
+            result = <String, dynamic>{'ok': false, 'error': error.toString()};
+          }
+          if (isCancelled()) {
+            verificationPassed = false;
+            verificationMessage = 'تم الإيقاف بعد تنفيذ الأداة وقبل التحقق.';
+            return;
+          }
+          _emitToolEvent(
+            'verification_started',
+            'يتحقق من النتيجة الفعلية',
+            toolName: toolName,
+            details: 'التحقق من أثر الأداة داخل مساحة العمل، وليس من رسالة النموذج.',
+            status: 'running',
             stepId: toolStepId,
-            allowedTools: allowedTools,
           );
-        } catch (error) {
-          result = <String, dynamic>{'ok': false, 'error': error.toString()};
-        }
+          final verification = await _evaluator.verify(
+            input,
+            toolName,
+            rawArgs,
+            result,
+          );
+          verificationPassed = verification.passed;
+          verificationMessage = verificationMessage;
+          _emitToolEvent(
+            verification.passed ? 'verification_passed' : 'verification_failed',
+            verification.passed ? 'اجتاز التحقق المستقل' : 'فشل التحقق المستقل',
+            toolName: toolName,
+            output: jsonEncode(verification.evidence ?? const <String, Object?>{}),
+            details: verification.message,
+            status: verification.passed ? 'completed' : 'failed',
+            stepId: toolStepId,
+          );
+        });
         if (isCancelled()) return 'تم إيقاف الوكيل بعد اكتمال الأداة الحالية.';
 
-        _emitToolEvent(
-          'verification_started',
-          'يتحقق من النتيجة الفعلية',
-          toolName: toolName,
-          details: 'التحقق من أثر الأداة داخل مساحة العمل، وليس من رسالة النموذج.',
-          status: 'running',
-          stepId: toolStepId,
-        );
-        final verification = await _evaluator.verify(
-          input,
-          toolName,
-          rawArgs,
-          result,
-        );
-        _emitToolEvent(
-          verification.passed ? 'verification_passed' : 'verification_failed',
-          verification.passed ? 'اجتاز التحقق المستقل' : 'فشل التحقق المستقل',
-          toolName: toolName,
-          output: jsonEncode(verification.evidence ?? const <String, Object?>{}),
-          details: verification.message,
-          status: verification.passed ? 'completed' : 'failed',
-          stepId: toolStepId,
-        );
-
-        if (!verification.passed) {
+        if (!verificationPassed) {
           final failedAction = jsonEncode(payload);
           history
             ..write('\n\nSystem Note: Tool $toolName result: ${jsonEncode(result)}')
