@@ -25,10 +25,22 @@ class ModelService {
   void beginAgentRequest(String requestId) => _activeRequestId = requestId;
   void endAgentRequest(String requestId) { if (_activeRequestId == requestId) _activeRequestId = ''; }
 
-  void _emitToolEvent(String type, String title, {String? toolName, String? path, String? content, String? output, String? details, String? status}) {
+  void _emitToolEvent(String type, String title, {
+    String? toolName,
+    String? path,
+    String? content,
+    String? output,
+    String? details,
+    String? status,
+    String? stepId,
+  }) {
+    final sequence = ++_toolEventSequence;
     _toolEvents.add({
-      'id': 'tool_${_activeRequestId}_${++_toolEventSequence}',
+      'id': 'tool_${_activeRequestId}_event_$sequence',
       'request_id': _activeRequestId,
+      'attempt_id': _activeRequestId,
+      'step_id': stepId ?? 'tool_${_activeRequestId}_$sequence',
+      'sequence': sequence,
       'type': type,
       'title': title,
       'tool_name': toolName,
@@ -176,8 +188,9 @@ class ModelService {
     }
     final path = args['path']?.toString() ?? '';
     final content = args['content']?.toString() ?? '';
+    final toolStepId = 'tool_step_${_activeRequestId}_${DateTime.now().microsecondsSinceEpoch}';
     _emitToolEvent('tool_start', _toolStartTitle(name), toolName: name, path: path,
-        content: name == 'execute_python' ? args['code']?.toString() : null, status: 'running');
+        content: name == 'execute_python' ? args['code']?.toString() : null, status: 'running', stepId: toolStepId);
     try {
       late final Map<String, dynamic> result;
       switch (name) {
@@ -200,20 +213,20 @@ class ModelService {
       final output = (result['output'] ?? result['path'] ?? result['error'] ?? result).toString();
       if (ok && name == 'create_file') {
         _emitToolEvent('file_created', 'تم إنشاء الملف', toolName: name, path: path,
-            output: output, details: 'أنشأ المحرك الملف داخل مساحة العمل فعلياً.');
+            output: output, details: 'أنشأ المحرك الملف داخل مساحة العمل فعلياً.', stepId: toolStepId);
       } else if (ok && name == 'write_file') {
         _emitToolEvent('file_updated', 'تم تحديث الملف', toolName: name, path: path,
-            output: output, details: 'حُفظت التغييرات في مساحة العمل فعلياً.');
+            output: output, details: 'حُفظت التغييرات في مساحة العمل فعلياً.', stepId: toolStepId);
       }
       _emitToolEvent(ok ? 'tool_output' : 'tool_error',
           ok ? _toolCompleteTitle(name) : 'فشل تنفيذ الأداة',
           toolName: name, path: path, output: output,
           details: ok ? null : result['error']?.toString(),
-          status: ok ? 'completed' : 'failed');
+          status: ok ? 'completed' : 'failed', stepId: toolStepId);
       return result;
     } catch (error) {
       _emitToolEvent('tool_error', 'فشل تنفيذ الأداة', toolName: name,
-          path: path, output: error.toString(), status: 'failed');
+          path: path, output: error.toString(), status: 'failed', stepId: toolStepId);
       rethrow;
     }
   }
