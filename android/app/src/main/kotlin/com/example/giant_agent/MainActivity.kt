@@ -144,6 +144,21 @@ class MainActivity: FlutterActivity() {
                         result.error("WRITE_FILE_FAILED", t.message ?: "File update failed", null)
                     }
                 }
+                "inspectWorkspaceFile" -> {
+                    try {
+                        val relativePath = call.argument<String>("path").orEmpty()
+                        val file = resolveAgentFile(relativePath)
+                        require(file.isFile && file.canRead()) { "Workspace file does not exist or cannot be read." }
+                        result.success(mapOf(
+                            "ok" to true,
+                            "path" to relativePath,
+                            "size_bytes" to file.length(),
+                            "extension" to file.extension.lowercase()
+                        ))
+                    } catch (t: Throwable) {
+                        result.error("WORKSPACE_FILE_INSPECT_FAILED", t.message ?: "Unable to inspect workspace file.", null)
+                    }
+                }
                 "readFile" -> {
                     val relativePath = call.argument<String>("path").orEmpty()
                     val eventId = "tool_${System.nanoTime()}"
