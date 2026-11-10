@@ -159,9 +159,9 @@ jobs:
           set -e
           for apk in dist/*.apk; do
             echo "===== Largest uncompressed entries: $apk ====="
-            unzip -l "$apk" | awk 'NR > 3 && $1 ~ /^[0-9]+$/ { print $1 "\\t" $4 }' | sort -nr | head -25
+            unzip -l "$apk" | awk 'NR > 3 && $1 ~ /^[0-9]+$/ { print $1, $4 }' | sort -nr | head -25
             echo "===== Native library sizes: $apk ====="
-            unzip -l "$apk" | awk '$4 ~ /^lib\\/.*\\.so$/ { print $1 "\\t" $4 }' | sort -nr | head -20
+            unzip -l "$apk" | awk 'substr($4,1,4)=="lib/" && substr($4,length($4)-2)==".so" { print $1, $4 }' | sort -nr | head -20
           done
 
       - name: 📤 Upload universal APK
