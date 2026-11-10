@@ -297,6 +297,7 @@ class _ChatScreenState extends State<ChatScreen> {
         : null;
     final activeTaskId = taskId ?? tracked!['id'].toString();
     await manager.markRunning(activeTaskId, requestId: requestId);
+    await _refreshTaskJournalEvents(taskId: activeTaskId);
     try {
       final output = await _generateWithStages(prompt, requestId: requestId);
       if (_isInterruptedTaskOutput(output)) {
@@ -309,9 +310,11 @@ class _ChatScreenState extends State<ChatScreen> {
       } else {
         await manager.markCompleted(activeTaskId, output);
       }
+      await _refreshTaskJournalEvents(taskId: activeTaskId);
       return output;
     } catch (error) {
       await manager.markFailed(activeTaskId, error.toString());
+      await _refreshTaskJournalEvents(taskId: activeTaskId);
       rethrow;
     }
   }
@@ -544,6 +547,87 @@ class _ChatScreenState extends State<ChatScreen> {
     return '';
   }
 
+  Map<String, dynamic> _taskJournalEventToTimeline(
+    String taskId,
+    Map<String, dynamic> task,
+    KernelEventRecord event,
+  ) {
+    final payload = event.payload;
+    final titles = <String, String>{
+      'task_created': 'تم إنشاء المهمة',
+      'task_started': 'بدأ تنفيذ المهمة',
+      'task_resumed': 'استؤنف تنفيذ المهمة',
+      'task_resume_requested': 'تم تسجيل طلب استئناف المهمة',
+      'step_started': 'بدأت خطوة التنفيذ',
+      'step_completed': 'اكتملت خطوة التنفيذ',
+      'step_interrupted': 'انقطعت خطوة التنفيذ وحالتها غير مؤكدة',
+      'step_failed': 'فشلت خطوة التنفيذ',
+      'task_paused': 'أوقفت المهمة مؤقتاً',
+      'task_completed': 'اكتملت المهمة',
+      'task_failed': 'فشلت المهمة',
+      'task_cancelled': 'أُلغيت المهمة',
+      'task_interrupted_on_restart': 'استُعيدت مهمة بعد إغلاق التطبيق',
+    };
+    final detail = (payload['error'] ??
+            payload['note'] ??
+            payload['reason'] ??
+            payload['result'] ??
+            payload['description'] ??
+            payload['policy'] ??
+            '')
+        .toString();
+    return <String, dynamic>{
+      'id': 'kernel_${event.id}',
+      'task_id': taskId,
+      'request_id': payload['request_id']?.toString() ??
+          task['request_id']?.toString() ??
+          '',
+      'session_id': _currentSessionId,
+      'type': event.type,
+      'title': titles[event.type] ?? event.type,
+      'status': event.status,
+      'details': detail.length > 1800 ? '${detail.substring(0, 1800)}…' : detail,
+      'timestamp': event.createdAt.toIso8601String(),
+      'source': 'sqlite_task_journal',
+    };
+  }
+
+  Future<void> _refreshTaskJournalEvents({String? taskId}) async {
+    final manager = TaskManager();
+    final tasks = taskId == null
+        ? await manager.getTasksForConversation(_currentSessionId)
+        : manager.getTasks().where((task) => task['id'] == taskId).toList();
+    final existingIds = _agentSteps.map((event) => event['id']?.toString()).toSet();
+    final additions = <Map<String, dynamic>>[];
+    for (final task in tasks) {
+      final id = task['id']?.toString() ?? '';
+      if (id.isEmpty || task['conversation_id']?.toString() != _currentSessionId) {
+        continue;
+      }
+      final events = await manager.eventsForTask(id);
+      for (final event in events) {
+        final timelineEvent = _taskJournalEventToTimeline(id, task, event);
+        if (existingIds.add(timelineEvent['id'].toString())) {
+          additions.add(timelineEvent);
+        }
+      }
+    }
+    if (additions.isEmpty) return;
+    additions.sort((a, b) =>
+        (DateTime.tryParse(a['timestamp']?.toString() ?? '') ??
+                DateTime.fromMillisecondsSinceEpoch(0))
+            .compareTo(
+          DateTime.tryParse(b['timestamp']?.toString() ?? '') ??
+              DateTime.fromMillisecondsSinceEpoch(0),
+        ));
+    if (mounted) {
+      setState(() => _agentSteps.addAll(additions));
+    } else {
+      _agentSteps.addAll(additions);
+    }
+    AgentWorkflowScreen.publish(_agentSteps, finalOutputText: _latestAssistantOutput);
+  }
+
   Future<void> _loadHistory() async {
     final messages = await _db?.query('messages', where: 'session_id = ?', whereArgs: [_currentSessionId], orderBy: 'timestamp ASC');
     final events = await _db?.query('agent_events', where: 'session_id = ?', whereArgs: [_currentSessionId], orderBy: 'timestamp ASC');
@@ -580,6 +664,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _messages..clear()..addAll(restoredMessages);
       _agentSteps..clear()..addAll(restoredEvents);
     });
+    await _refreshTaskJournalEvents();
     AgentWorkflowScreen.publish(_agentSteps, finalOutputText: _latestAssistantOutput);
     _scrollToBottom();
   }
