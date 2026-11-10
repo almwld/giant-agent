@@ -137,6 +137,7 @@ void main() {
     expect(recoveryEvents.last.payload['replay'], false);
     expect(recoveryEvents.last.payload['policy'], 'manual_reconciliation');
 
+    await manager.recordResumeIntent('task-recovery-1');
     await manager.markRunning('task-recovery-1', requestId: 'request-recovery-1');
     expect(manager.getTasks().single['status'], 'running');
 
@@ -163,7 +164,8 @@ void main() {
       lifecycleEvents.map((event) => event.type),
       containsAllInOrder([
         'task_interrupted_on_restart',
-        'task_started',
+        'task_resume_requested',
+        'task_resumed',
         'step_started',
         'step_interrupted',
         'task_paused',
