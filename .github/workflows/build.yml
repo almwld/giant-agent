@@ -193,64 +193,6 @@ jobs:
           path: dist/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 30
-)
-            if [ "$dex_found" != true ]; then
-              echo "GainPtyBridge reference not found in any DEX file in $apk"
-              exit 1
-            fi
-          done
-
-      - name: Verify APK outputs and checksums
-        run: |
-          set -e
-          test -s dist/giant-agent-universal.apk
-          test -s dist/app-arm64-v8a-release.apk
-          test -s dist/app-armeabi-v7a-release.apk
-          test -s dist/app-x86_64-release.apk
-          echo "APK files produced:"
-          ls -lh dist/*.apk
-          sha256sum dist/*.apk | tee dist/SHA256SUMS.txt
-
-      - name: 📤 Upload universal APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: giant-agent-universal-release
-          path: dist/giant-agent-universal.apk
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: 📤 Upload arm64-v8a
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-arm64-v8a-release
-          path: dist/app-arm64-v8a-release.apk
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: 📤 Upload armeabi-v7a
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-armeabi-v7a-release
-          path: dist/app-armeabi-v7a-release.apk
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: 📤 Upload x86_64
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-x86_64-release
-          path: dist/app-x86_64-release.apk
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: 📤 Upload SHA256 checksums
-        uses: actions/upload-artifact@v4
-        with:
-          name: giant-agent-sha256-checksums
-          path: dist/SHA256SUMS.txt
-          if-no-files-found: error
-          retention-days: 30
-
 
   gain-pty-emulator:
     name: Android emulator Gain PTY smoke test
