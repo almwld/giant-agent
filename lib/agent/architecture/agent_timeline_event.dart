@@ -29,7 +29,7 @@ class AgentTimelineEvent {
   Map<String, dynamic> toMap() => <String, dynamic>{
         'id': id,
         'request_id': requestId,
-        if (attemptId != null && attemptId!.isNotEmpty) 'attempt_id': attemptId,
+        'attempt_id': attemptId != null && attemptId!.isNotEmpty ? attemptId : requestId,
         'type': type,
         'title': title,
         'status': status,
@@ -43,8 +43,8 @@ class AgentTimelineEvent {
     final rawTimestamp = map['timestamp'];
     final timestamp = rawTimestamp is DateTime
         ? rawTimestamp
-        : rawTimestamp is int
-            ? DateTime.fromMillisecondsSinceEpoch(rawTimestamp, isUtc: true)
+        : rawTimestamp is num
+            ? DateTime.fromMillisecondsSinceEpoch(rawTimestamp.toInt(), isUtc: true)
             : DateTime.tryParse(rawTimestamp?.toString() ?? '') ??
                 DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
     final rawSequence = map['sequence'];
