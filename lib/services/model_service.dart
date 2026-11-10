@@ -331,7 +331,7 @@ class ModelService {
   }
 
   /// Multimodal image understanding through the currently selected vision
-  /// provider. Local GGUF and the keyless text gateway remain text-only.
+  /// provider. Local GGUF remains text-only; OpenRouter supplies vision.
   Future<String> processImage(
     File image, {
     String prompt = 'حلّل الصورة بصرياً بالتفصيل. صف العناصر الظاهرة والعلاقات بينها، واقرأ النصوص العربية واللاتينية إن وجدت. ميّز بين ما تراه فعلاً وما تستنتجه، ولا تخمّن التفاصيل غير الواضحة.',
@@ -349,7 +349,7 @@ class ModelService {
   }
 
   /// Direct conversational path: no AgentKernel orchestration and no tool loop.
-  /// The local model (or configured OpenAI-compatible provider) answers normally.
+  /// The local GGUF model or the official OpenRouter provider answers normally.
   Future<String> processChat(
     String input, {
     String conversationId = 'global',
@@ -407,7 +407,7 @@ class ModelService {
     _cancelRequested = false;
     input = _boundPrompt(input);
     if (await ModelProviderSettings.instance.getMode() == ModelProviderMode.local && !await _llama.isLoaded()) {
-      return '⚠️ لم يتم تحميل نموذج GGUF المحلي. حمّل نموذجاً أو اختر OpenRouter أو Gemini من إعدادات المزوّد.';
+      return '⚠️ لم يتم تحميل نموذج GGUF المحلي. حمّل نموذج GGUF أو اختر OpenRouter من إعدادات المزوّد.';
     }
     final toolCatalog = ToolManager().promptCatalog;
     final history = StringBuffer('''أنت Giant Agent، مساعد ذكي متعدد المصادر. أجب بلغة المستخدم.
