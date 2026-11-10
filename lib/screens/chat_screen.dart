@@ -180,18 +180,18 @@ class _ChatScreenState extends State<ChatScreen> {
     if (_activeAgentRequestId.isNotEmpty) {
       step.putIfAbsent('request_id', () => _activeAgentRequestId);
 
-      // Collapse all repeated native inference-start/update events into one
-      // stable timeline record for this user request. Later events update it.
+      // Preserve every transition as its own event. Correlate related
+      // inference updates through step_id without reusing their event IDs.
       final nativeTitle = step['title']?.toString() ?? '';
       if (step['type'] == 'agent_status' &&
           (nativeTitle.contains('استدلال النموذج المحلي') ||
            nativeTitle.contains('توليد الإجابة') ||
            nativeTitle.contains('توقف التوليد') ||
            nativeTitle.contains('الاستدلال المحلي'))) {
-        step['id'] = 'native_inference_$_activeAgentRequestId';
+        step.putIfAbsent('step_id', () => 'native_inference_$_activeAgentRequestId');
         step['request_id'] = _activeAgentRequestId;
       } else if (step['type'] == 'task_finished') {
-        step['id'] = 'native_finished_$_activeAgentRequestId';
+        step.putIfAbsent('step_id', () => 'native_finished_$_activeAgentRequestId');
         step['request_id'] = _activeAgentRequestId;
       }
     }
@@ -204,6 +204,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     final id = step['id']?.toString() ?? '';
     if (id.isEmpty) return;
+    step.putIfAbsent('step_id', () => id);
     _saveAgentEvent(step);
     setState(() {
       final index = _agentSteps.indexWhere((item) => item['id'] == id);
