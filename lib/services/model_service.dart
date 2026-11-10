@@ -356,7 +356,7 @@ class ModelService {
         return 'تم إيقاف تنفيذ الوكيل بناءً على طلب المستخدم.';
       }
       final response = await _processInput(
-        context.isEmpty ? input : '$context\\n\\nطلب المستخدم: $input',
+        context.isEmpty ? input : '$context\n\nطلب المستخدم: $input',
         allowedTools: allowedTools,
         shouldCancel: shouldCancel,
       );
