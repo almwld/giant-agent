@@ -21,7 +21,7 @@ class ModelRunner {
       print('📥 جاري تحميل النموذج TFLite: $modelPath');
       
       // تحميل النموذج باستخدام TFLite
-      _interpreter = await Interpreter.fromFile(file);
+      _interpreter = Interpreter.fromFile(file);
       _currentModelPath = modelPath;
       _isLoaded = true;
       
