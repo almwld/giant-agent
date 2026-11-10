@@ -13,6 +13,8 @@ class AgentTimelineEvent {
     this.attemptId,
     this.sequence,
     this.details,
+    this.taskId,
+    this.agentType,
   });
 
   final String id;
@@ -25,6 +27,8 @@ class AgentTimelineEvent {
   final String? attemptId;
   final int? sequence;
   final String? details;
+  final String? taskId;
+  final String? agentType;
 
   Map<String, dynamic> toMap() => <String, dynamic>{
         'id': id,
@@ -37,6 +41,8 @@ class AgentTimelineEvent {
         if (stepId != null && stepId!.isNotEmpty) 'step_id': stepId,
         if (sequence != null) 'sequence': sequence,
         if (details != null && details!.isNotEmpty) 'details': details,
+        if (taskId != null && taskId!.isNotEmpty) 'task_id': taskId,
+        if (agentType != null && agentType!.isNotEmpty) 'agent_type': agentType,
       };
 
   factory AgentTimelineEvent.fromMap(Map<String, dynamic> map) {
@@ -59,6 +65,8 @@ class AgentTimelineEvent {
       status: map['status']?.toString() ?? 'pending',
       timestamp: timestamp,
       details: map['details']?.toString(),
+      taskId: map['task_id']?.toString(),
+      agentType: map['agent_type']?.toString(),
     );
   }
 }
