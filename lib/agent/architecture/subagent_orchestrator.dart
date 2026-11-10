@@ -121,7 +121,15 @@ class SubagentOrchestrator {
             status: 'completed',
             output: output,
           );
-          await _emit(task, 'subagent_completed', 'completed');
+          final visibleOutput = output.length > 1200
+              ? '${output.substring(0, 1200)}…'
+              : output;
+          await _emit(
+            task,
+            'subagent_completed',
+            'completed',
+            details: visibleOutput,
+          );
         }
       } on SubagentInterrupted catch (error) {
         final cancelled = isTaskCancelled(task.id);
