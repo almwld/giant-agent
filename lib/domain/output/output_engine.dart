@@ -99,24 +99,23 @@ class OutputEngine {
       fileEvents[path] = event;
     }
 
-    List<String> workspaceFiles = const <String>[];
-    String? listingError;
-    try {
-      workspaceFiles = await _models.listWorkspaceFiles();
-    } catch (error) {
-      listingError = error.toString();
-    }
-
     for (final entry in fileEvents.entries) {
       final path = entry.key;
       final event = entry.value;
       final kind = _kindFor(path);
       final mimeType = _mimeFor(path);
-      final exists = workspaceFiles.any((candidate) =>
-          candidate == path || candidate.endsWith('/$path') || path.endsWith('/$candidate'));
+      Map<String, dynamic>? fileMetadata;
+      String? inspectError;
+      try {
+        fileMetadata = await _models.inspectWorkspaceFile(path: path);
+      } catch (error) {
+        inspectError = error.toString();
+      }
+      final exists = fileMetadata != null;
+      final sizeBytes = (fileMetadata?['size_bytes'] as num?)?.toInt() ?? 0;
       String? content;
       String? readError;
-      if (exists && kind != 'image' && kind != 'binary_document') {
+      if (exists && kind == 'code_or_text' && sizeBytes <= 1024 * 1024) {
         try {
           final read = await _models.readFile(path: path);
           content = (read['content'] ?? read['text'] ?? read['output'])?.toString();
@@ -124,17 +123,23 @@ class OutputEngine {
           readError = error.toString();
         }
       }
-      final contentReadable = kind == 'image' || kind == 'binary_document'
-          ? exists
-          : content != null && content.isNotEmpty;
+      final contentReadable = kind == 'code_or_text'
+          ? (content != null && content.isNotEmpty) || sizeBytes > 1024 * 1024
+          : exists;
       final verified = exists && contentReadable;
       final verificationMessage = !exists
-          ? 'لم يعثر فهرس مساحة العمل على الملف بعد إنشائه. ${listingError ?? ''}'
+          ? 'تعذر التحقق من وجود الملف داخل مساحة العمل: ${inspectError ?? 'الملف غير موجود.'}'
           : !contentReadable
               ? 'الملف موجود، لكن تعذرت قراءة محتواه للتحقق: ${readError ?? 'محتوى فارغ أو غير متاح.'}'
-              : kind == 'image' || kind == 'binary_document'
-                  ? 'تم التحقق من وجود الملف في مساحة العمل؛ المعاينة تتطلب عارضاً مناسباً.'
-                  : 'تم العثور على الملف وقراءة محتواه بنجاح.';
+              : kind == 'image'
+                  ? 'تم التحقق من وجود الصورة وحجمها؛ يمكن طلب معاينتها عند الحاجة.'
+                  : kind == 'binary_document'
+                      ? 'تم التحقق من وجود المستند وحجمه؛ معاينته تعتمد على عارض المستندات.'
+                      : kind == 'code_or_text' && sizeBytes > 1024 * 1024
+                          ? 'تم التحقق من وجود الملف وحجمه؛ تجاوز حد القراءة النصية للمعاينة.'
+                          : kind == 'code_or_text'
+                              ? 'تم العثور على الملف وقراءة محتواه بنجاح.'
+                              : 'تم التحقق من وجود الملف داخل مساحة العمل.';
       final artifact = _artifact(
         id: 'output_${requestId}_file_${artifacts.length}',
         requestId: requestId,
@@ -153,7 +158,8 @@ class OutputEngine {
           'source_event': event['type'],
           'tool_name': event['tool_name'],
           'extension': _extension(path),
-          'workspace_listing_available': listingError == null,
+          'workspace_inspection': fileMetadata != null,
+          'size_bytes': sizeBytes,
           'verification_scope': 'workspace_presence_and_readability',
         },
         createdAt: now,
