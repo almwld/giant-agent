@@ -394,7 +394,9 @@ class AgentKernel {
         conversationId: '$conversationId::subagent::$taskId',
         persistTurn: false, allowedTools: allowedTools,
         shouldCancel: () => _cancellationRequested || _cancelledSubagentIds.contains(taskId),
-        requestId: parentRequestId)).trim();
+        requestId: parentRequestId,
+        taskId: taskId,
+        agentType: agentType)).trim();
       if (_cancellationRequested || _isCancelledOutput(output) || _isIncompleteOutput(output)) {
         throw SubagentInterrupted(output.isEmpty ? 'تم إيقاف استئناف الوكيل الفرعي.' : output);
       }
