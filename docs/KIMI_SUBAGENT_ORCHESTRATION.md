@@ -1,22 +1,50 @@
 # Kimi-style delegated-agent orchestration
 
-This change adds the worker-coordination primitive for the Kimi patterns identified
-in the reverse-engineering notes: child-agent identities, dependency-aware
-scheduling, bounded fan-out, factual lifecycle events, and aggregated results.
+## Implemented in this branch
 
-The child agent is a task record, not a second model/runtime instance. The
-executor must be the application's shared AgentService/runtime boundary.
-Independent children may be scheduled concurrently up to a hard limit of 1–8.
-A child starts only after all dependencies complete successfully. Failed
-prerequisites cause dependent children to be skipped. Cancellation prevents
-pending children from starting; already-running work is allowed to settle.
+- The planner's multi-step requests are dispatched as child-agent tasks rather
+  than executed by one generic sequential loop.
+- Child identities are stable within a parent request and carry an agent role:
+  `explore`, `plan`, `coder`, or `reviewer`.
+- Each child receives a dedicated conversation ID. Parent history and sibling
+  contexts are not automatically injected into that context.
+- Dependency results are passed explicitly to downstream children.
+- Explore, plan, and reviewer agents are restricted at both prompt-catalog and
+  runtime-validation layers to `read_file` and `list_files`. Coder agents can
+  use the registered workspace tools; terminal execution still requires the
+  existing literal user-approval flow.
+- Child lifecycle events are emitted through the existing AgentKernel and
+  AgentEventBus. AgentService appends request-scoped runtime and tool events to
+  the existing immutable SQLite event journal.
+- Cancellation stops pending children and propagates to the active shared
+  inference call. Interrupted children are distinguished from failed children.
+- Final synthesis uses only collected child outputs and cannot invoke tools.
 
-Events contain operational metadata and outputs/errors only, never private
-chain-of-thought. The app integration must persist emitted events into the
-append-only SQLite event journal keyed by task/session/request IDs.
+## Shared-runtime safety
 
-This commit provides a tested scheduler contract. It does not claim that chat
-requests are already decomposed into child agents or that SQLite persistence is
-wired by this primitive alone. The next integration step is to connect the
-planner's structured delegation output to this scheduler and the existing
-shared runtime without creating a second ModelService or LlamaService.
+A child is a task/context, not a new model, terminal, JNI bridge, or tool
+runtime. All children call the existing ModelService. The current llama.cpp
+JNI context is mutable and protected by one FIFO lock, so production execution
+uses a concurrency limit of one until isolated inference contexts are
+implemented and verified. The scheduler itself supports bounded concurrency
+and is tested independently.
+
+## Explicitly not complete yet
+
+This is an integrated first implementation, not a claim of feature parity with
+Kimi Agent Swarm. Remaining work includes:
+
+1. Model-driven dynamic delegation and replanning instead of the current
+   deterministic PlannerService task templates.
+2. Persisted child-task snapshots and safe child-level recovery/resume after
+   process restart. Current request recovery deliberately marks interrupted
+   work instead of replaying side effects.
+3. User-facing subagent management UI: live child list, per-child output,
+   pause/resume, and targeted cancellation.
+4. True parallel model execution. It must not be enabled by creating duplicate
+   LlamaService/JNI runtimes or bypassing the shared runtime lock.
+5. End-to-end device validation of tool permissions, cancellation, background
+   execution, and Timeline replay.
+
+No event contains private chain-of-thought. Timeline records factual task
+transitions, tool operations, statuses, and final results only.
