@@ -116,7 +116,7 @@ class OpenAICompatibleProvider {
       if (streamed.isRedirect) {
         throw StateError('رفض OpenRouter إعادة توجيه HTTP ${streamed.statusCode}. تحقق من الاتصال أو إعدادات الشبكة.');
       }
-      final response = await http.Response.fromStream(streamed);
+      final response = await http.Response.fromStream(streamed).timeout(requestTimeout);
       final dynamic decoded;
       try { decoded = jsonDecode(response.body); }
       on FormatException {
