@@ -154,6 +154,10 @@ class AgentService {
   Future<List<KernelEventRecord>> eventsFor(String requestId) =>
       _durableKernel.eventsFor(requestId);
 
+  /// Replays the immutable lifecycle journal for one child agent.
+  Future<List<KernelEventRecord>> eventsForSubagent(String taskId) =>
+      _store.taskEvents(taskId);
+
   Future<bool> cancel() => _executionKernel.cancel();
 
   Future<bool> cancelSubagent(String taskId) =>
