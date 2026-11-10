@@ -518,9 +518,73 @@ ${dependencyContext.isEmpty ? 'لا توجد تبعيات سابقة.' : depende
     );
 
     _activeSubagentOrchestrator = orchestrator;
-    late final List<SubagentResult> results;
+    var results = <SubagentResult>[];
     try {
       results = await orchestrator.run(tasks);
+
+      // One bounded repair cycle lets the coordinator adapt to worker evidence
+      // without creating an unbounded agent loop or replaying completed work.
+      final hasRecoverableGaps = results.any((result) =>
+          result.status == 'failed' || result.status == 'skipped');
+      if (!_cancellationRequested && hasRecoverableGaps) {
+        _emit(
+          requestId: requestId,
+          type: 'replanning_started',
+          title: 'يراجع الوكيل الرئيسي فجوات التنفيذ ويخطط لمحاولة تصحيح واحدة',
+          status: 'running',
+          details: 'يسمح النظام بجولة تصحيح واحدة فقط؛ ولا يعيد تشغيل المهام المكتملة تلقائياً.',
+        );
+        try {
+          final priorEvidence = results.map((result) {
+            final task = tasks.firstWhere((item) => item.id == result.taskId);
+            return 'الوكيل: ${task.agentType}\\nالمهمة: ${task.prompt}\\nالحالة: ${result.status}\\nالنتيجة: ${result.output ?? result.error ?? 'لا توجد نتيجة.'}';
+          }).join('\\n---\\n');
+          final repairPlan = await _models.generateStructuredOutput(
+            '''
+أنت منسق إصلاح لمهمة لم تكتمل بالكامل.
+المهمة الأصلية: $prompt
+
+نتائج الجولة السابقة:
+$priorEvidence
+
+أنشئ خطة تصحيح محدودة من 2 إلى 6 مهام JSON داخل الكائن {"tasks":[...]}. 
+كل مهمة تحتوي id وrole وtitle وprompt وdepends_on.
+استخدم فقط الأدوار explore أو plan أو coder أو reviewer.
+لا تكرر أي مهمة اكتملت، ولا تعِد تنفيذ تغييرات ناجحة. افحص الحالة الحالية قبل اقتراح تعديل جديد.
+عالج الفشل والفجوات فقط، واجعل المهام مستقلة قدر الإمكان. لا تذكر التفكير الداخلي.
+''',
+            conversationId: '$conversationId::replanner::$requestId',
+            shouldCancel: () => _cancellationRequested,
+          );
+          if (!_cancellationRequested &&
+              !repairPlan.startsWith('تم إيقاف التخطيط')) {
+            final repairTasks = _parseSubagentPlan(
+              repairPlan,
+              requestId: '${requestId}_replan_1',
+              allowCoder: isSoftwareTask,
+            );
+            tasks.addAll(repairTasks);
+            final repairResults = await orchestrator.run(repairTasks);
+            results = <SubagentResult>[...results, ...repairResults];
+            _emit(
+              requestId: requestId,
+              type: 'replanning_completed',
+              title: 'اكتملت جولة التصحيح المحدودة',
+              status: 'completed',
+              details: 'أضيفت ${repairTasks.length} مهام تصحيح دون إعادة تشغيل المهام المكتملة.',
+            );
+          }
+        } catch (error) {
+          _emit(
+            requestId: requestId,
+            type: 'replanning_failed',
+            title: 'تعذر إنشاء خطة تصحيح آمنة',
+            status: 'failed',
+            details: error.toString(),
+          );
+          // Preserve the first-round evidence and continue with an honest partial result.
+        }
+      }
     } finally {
       if (identical(_activeSubagentOrchestrator, orchestrator)) {
         _activeSubagentOrchestrator = null;
