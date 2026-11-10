@@ -234,6 +234,12 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Enable KVM for Android emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
       - name: Run cold-launch and Gain PTY smoke test on Android emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -241,7 +247,7 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_2
-          emulator-boot-timeout: 600000
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot -wipe-data
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot -wipe-data -cores 2 -memory 4096
           disable-animations: true
           script: flutter test integration_test/gain_pty_emulator_smoke_test.dart -d emulator-5554
