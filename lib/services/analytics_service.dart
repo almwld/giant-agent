@@ -62,8 +62,8 @@ class AnalyticsService {
   }
   
   Future<Map<String, dynamic>> getStats() async {
-    final eventCount = Sqflite.firstIntValue(await _db?.rawQuery('SELECT COUNT(*) FROM events')) ?? 0;
-    final sessionCount = Sqflite.firstIntValue(await _db?.rawQuery('SELECT COUNT(*) FROM sessions')) ?? 0;
+    final eventCount = Sqflite.firstIntValue(await _db?.rawQuery('SELECT COUNT(*) FROM events') ?? <Map<String, Object?>>[]) ?? 0;
+    final sessionCount = Sqflite.firstIntValue(await _db?.rawQuery('SELECT COUNT(*) FROM sessions') ?? <Map<String, Object?>>[]) ?? 0;
     
     return {
       'total_events': eventCount,
