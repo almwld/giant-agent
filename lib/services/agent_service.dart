@@ -90,11 +90,16 @@ class AgentService {
   Future<String> runTask(
     String prompt, {
     String conversationId = 'global',
+    String? requestId,
   }) async {
     await initialize();
-    final requestId = '${DateTime.now().microsecondsSinceEpoch}_${++_requestSequence}';
+    final suppliedRequestId = requestId?.trim();
+    final resolvedRequestId =
+        suppliedRequestId == null || suppliedRequestId.isEmpty
+            ? '${DateTime.now().microsecondsSinceEpoch}_${++_requestSequence}'
+            : suppliedRequestId;
     final record = await _durableKernel.submit(
-      id: requestId,
+      id: resolvedRequestId,
       prompt: prompt,
       conversationId: conversationId,
     );
