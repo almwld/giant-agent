@@ -382,7 +382,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final dir = await getApplicationDocumentsDirectory();
     _db = await openDatabase(
       '${dir.path}/conversations.db',
-      version: 6,
+      version: 7,
       onCreate: (db, version) async {
         await db.execute('''CREATE TABLE sessions (
           id TEXT PRIMARY KEY, title TEXT NOT NULL,
@@ -390,7 +390,8 @@ class _ChatScreenState extends State<ChatScreen> {
         )''');
         await db.execute('''CREATE TABLE messages (
           id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL,
-          content TEXT, isUser INTEGER, timestamp INTEGER, request_id TEXT
+          content TEXT, isUser INTEGER, timestamp INTEGER, request_id TEXT,
+          attachment_path TEXT, attachment_name TEXT
         )''');
         await db.execute('''CREATE TABLE agent_events (
           id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL,
@@ -468,6 +469,10 @@ class _ChatScreenState extends State<ChatScreen> {
         }
         if (oldVersion < 6) {
           await db.execute('DROP TRIGGER IF EXISTS agent_execution_logs_no_delete');
+        }
+        if (oldVersion < 7) {
+          await db.execute('ALTER TABLE messages ADD COLUMN attachment_path TEXT');
+          await db.execute('ALTER TABLE messages ADD COLUMN attachment_name TEXT');
         }
       },
     );
@@ -647,6 +652,8 @@ class _ChatScreenState extends State<ChatScreen> {
       'content': msg['content'] as String,
       'time': DateTime.fromMillisecondsSinceEpoch(msg['timestamp'] as int),
       'requestId': msg['request_id']?.toString() ?? '',
+      'attachmentPath': msg['attachment_path']?.toString(),
+      'attachmentName': msg['attachment_name']?.toString(),
     }).toList();
     for (final message in restoredMessages) {
       if (message['isUser'] == true && (message['requestId']?.toString() ?? '').isEmpty) {
@@ -844,7 +851,13 @@ class _ChatScreenState extends State<ChatScreen> {
     await _loadSessions();
   }
 
-  Future<void> _saveMessage(String content, bool isUser, {String? requestId}) async {
+  Future<void> _saveMessage(
+    String content,
+    bool isUser, {
+    String? requestId,
+    String? attachmentPath,
+    String? attachmentName,
+  }) async {
     if (!_sessionReady || _currentSessionId.isEmpty) return;
     final now = DateTime.now().millisecondsSinceEpoch;
     final insertedId = await _db?.insert('messages', {
@@ -853,6 +866,8 @@ class _ChatScreenState extends State<ChatScreen> {
       'isUser': isUser ? 1 : 0,
       'timestamp': now,
       'request_id': requestId,
+      'attachment_path': attachmentPath,
+      'attachment_name': attachmentName,
     });
     if (insertedId != null) {
       for (final message in _messages.reversed) {
@@ -1483,35 +1498,77 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _pickImage() async {
-    final picker = ImagePicker();
-    final image = await picker.pickImage(source: ImageSource.gallery);
-    if (image == null || !mounted) return;
-    final requestId = DateTime.now().microsecondsSinceEpoch.toString();
-    _activeAgentRequestId = requestId;
-    setState(() {
-      _messages.add({
-        'isUser': true,
-        'content': 'صورة مرفقة: ${image.name}',
-        'time': DateTime.now(),
-        'requestId': requestId,
-      });
-      _isLoading = true;
-    });
-    await _saveMessage('صورة مرفقة: ${image.name}', true, requestId: requestId);
-    String response;
+    if (_isLoading) return;
     try {
-      // The current bundled GGUF model is text-only. Report this capability
-      // boundary honestly instead of asking it to guess from a filename.
-      response = await ImageRecognitionService.analyzeImage(File(image.path));
+      final picker = ImagePicker();
+      final image = await picker.pickImage(source: ImageSource.gallery);
+      if (image == null || !mounted) return;
+
+      // Keep a durable app-private copy. ImagePicker's cache path is temporary
+      // and must never be stored as the conversation's long-term attachment.
+      final documents = await getApplicationDocumentsDirectory();
+      final attachmentDirectory = Directory(
+        '${documents.path}${Platform.pathSeparator}chat_attachments',
+      );
+      await attachmentDirectory.create(recursive: true);
+      final extension = image.name.contains('.')
+          ? image.name.split('.').last.toLowerCase().replaceAll(
+                RegExp(r'[^a-z0-9]'),
+                '',
+              )
+          : 'jpg';
+      final requestId = DateTime.now().microsecondsSinceEpoch.toString();
+      final storedImage = await File(image.path).copy(
+        '${attachmentDirectory.path}${Platform.pathSeparator}$requestId.${extension.isEmpty ? 'jpg' : extension}',
+      );
+      final attachmentText = 'صورة مرفقة: ${image.name}';
+      _activeAgentRequestId = requestId;
+      setState(() {
+        _messages.add({
+          'isUser': true,
+          'content': attachmentText,
+          'time': DateTime.now(),
+          'requestId': requestId,
+          'attachmentPath': storedImage.path,
+          'attachmentName': image.name,
+        });
+        _isLoading = true;
+      });
+      await _saveMessage(
+        attachmentText,
+        true,
+        requestId: requestId,
+        attachmentPath: storedImage.path,
+        attachmentName: image.name,
+      );
+
+      String response;
+      try {
+        // OCR/labels are analysis metadata only; the original image remains
+        // attached to the user message and visible in the conversation.
+        response = await ImageRecognitionService.analyzeImage(storedImage);
+      } catch (error) {
+        response = 'تعذر تحليل الصورة محلياً، لكن الصورة محفوظة في المحادثة: $error';
+      }
+      if (!mounted) return;
+      setState(() {
+        _messages.add({
+          'isUser': false,
+          'content': response,
+          'time': DateTime.now(),
+          'requestId': requestId,
+        });
+        _isLoading = false;
+      });
+      await _saveMessage(response, false, requestId: requestId);
+      _scrollToBottom();
     } catch (error) {
-      response = 'تعذر استقبال الصورة: $error';
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذر إرفاق الصورة: $error')),
+      );
     }
-    if (!mounted) return;
-    setState(() {
-      _messages.add({'isUser': false, 'content': response, 'time': DateTime.now()});
-      _isLoading = false;
-    });
-    await _saveMessage(response, false);
   }
 
 
@@ -2836,6 +2893,8 @@ class _ChatScreenState extends State<ChatScreen> {
                 final msg = _messages[index];
                 final isUser = msg['isUser'] as bool;
                 final requestId = msg['requestId']?.toString() ?? '';
+                final attachmentPath = msg['attachmentPath']?.toString();
+                final attachmentName = msg['attachmentName']?.toString() ?? 'صورة مرفقة';
                 final messageEvents = isUser && requestId.isNotEmpty
                     ? _agentSteps.where((event) =>
                         event['request_id']?.toString() == requestId &&
@@ -2865,6 +2924,76 @@ class _ChatScreenState extends State<ChatScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        if (attachmentPath != null && attachmentPath.isNotEmpty) ...[
+                          GestureDetector(
+                            onTap: () => showDialog<void>(
+                              context: context,
+                              barrierColor: Colors.black87,
+                              builder: (previewContext) => Dialog(
+                                backgroundColor: Colors.transparent,
+                                insetPadding: const EdgeInsets.all(12),
+                                child: Stack(
+                                  children: [
+                                    InteractiveViewer(
+                                      minScale: 0.7,
+                                      maxScale: 5,
+                                      child: Center(
+                                        child: Image.file(
+                                          File(attachmentPath),
+                                          fit: BoxFit.contain,
+                                          errorBuilder: (_, __, ___) => const Padding(
+                                            padding: EdgeInsets.all(24),
+                                            child: Text('تعذر تحميل الصورة المحفوظة',
+                                                style: TextStyle(color: Colors.white)),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    Positioned(
+                                      top: 4,
+                                      right: 4,
+                                      child: IconButton(
+                                        onPressed: () => Navigator.pop(previewContext),
+                                        icon: const Icon(Icons.close, color: Colors.white),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  maxWidth: MediaQuery.of(context).size.width * 0.68,
+                                  maxHeight: 280,
+                                ),
+                                child: Image.file(
+                                  File(attachmentPath),
+                                  fit: BoxFit.contain,
+                                  errorBuilder: (_, __, ___) => Container(
+                                    width: 220,
+                                    padding: const EdgeInsets.all(18),
+                                    color: Colors.black26,
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(Icons.broken_image_outlined,
+                                            color: Colors.white70, size: 34),
+                                        const SizedBox(height: 6),
+                                        Text(attachmentName,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
                         Directionality(
                           textDirection: _contentDirection(msg['content']?.toString() ?? ''),
                           child: SelectableText(
