@@ -126,6 +126,33 @@ void main() {
     await service.disposeForTesting();
   });
 
+  test('runtime subagent lifecycle events are appended to the parent request journal',
+      () async {
+    final store = await _store('${directory.path}/subagent-events.db');
+    final service = AgentService.withExecutor(
+      store: store,
+      executor: (request) async => 'completed:${request.prompt}',
+    );
+
+    await service.runTask('delegate this task', conversationId: 'agent-chat');
+    final requestId = await _requestIdForPrompt(store, 'delegate this task');
+    await store.appendRequestEvent({
+      'id': 'subagent-event-1',
+      'request_id': requestId,
+      'task_id': 'child-1',
+      'type': 'subagent_started',
+      'status': 'running',
+      'title': 'Explore worker started',
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+    });
+
+    final events = await service.eventsFor(requestId);
+    expect(events.last.type, 'subagent_started');
+    expect(events.last.status, 'running');
+    expect(events.last.payload['task_id'], 'child-1');
+    await service.disposeForTesting();
+  });
+
   test('interrupted output is persisted as interrupted, not completed', () async {
     final store = await _store('${directory.path}/interrupted.db');
     late String requestId;
