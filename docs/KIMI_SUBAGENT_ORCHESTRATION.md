@@ -45,9 +45,9 @@ Kimi Agent Swarm. Remaining work includes:
 2. Persisted child-task snapshots and safe child-level recovery/resume after
    process restart. Current request recovery deliberately marks interrupted
    work instead of replaying side effects.
-3. Richer subagent management: per-child output inspection, pause/resume, and
-   explicit child-level retry. The Timeline currently exposes child roles,
-   identities, statuses, and targeted stop.
+3. Richer subagent management: pause/resume, explicit child-level retry, and
+   full (untruncated) child result retrieval. The Timeline currently exposes
+   child roles, identities, statuses, bounded result summaries, and targeted stop.
 4. True parallel model execution. It must not be enabled by creating duplicate
    LlamaService/JNI runtimes or bypassing the shared runtime lock.
 5. End-to-end device validation of tool permissions, cancellation, background
