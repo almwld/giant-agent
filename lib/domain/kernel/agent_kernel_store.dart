@@ -324,6 +324,10 @@ class AgentKernelStore {
     final timestamp = event['timestamp']?.toString() ??
         DateTime.now().toUtc().toIso8601String();
     final now = DateTime.now().toUtc().toIso8601String();
+    final eventType = event['type']?.toString() ?? 'unknown';
+    final eventStatus = eventType == 'subagent_cancelled'
+        ? 'cancelled'
+        : event['status']?.toString() ?? 'pending';
     final snapshot = <String, dynamic>{
       ...previous,
       'id': taskId,
@@ -334,8 +338,8 @@ class AgentKernelStore {
       'title': event['title']?.toString() ?? taskId,
       'prompt': event['task_prompt']?.toString() ?? previous['prompt'],
       'depends_on': event['depends_on'] ?? previous['depends_on'] ?? const <String>[],
-      'status': event['status']?.toString() ?? 'pending',
-      'last_event_type': event['type']?.toString() ?? 'unknown',
+      'status': eventStatus,
+      'last_event_type': eventType,
       'last_details': event['details']?.toString(),
       'last_result': event['result']?.toString() ?? previous['last_result'],
       'created_at': previous['created_at']?.toString() ?? timestamp,
