@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../services/agent_service.dart';
 import '../domain/kernel/agent_kernel_store.dart';
+import '../domain/kernel/task_recovery_engine.dart';
 
 /// Persistent task lifecycle backed by the real local agent runtime.
 /// Task history survives process restarts; completion is recorded only after
@@ -43,6 +44,7 @@ class TaskManager {
     // Compatibility import is isolated in the data layer. TaskManager itself
     // never reads or writes SharedPreferences.
     await _store.migrateLegacyTaskSnapshot();
+    await TaskRecoveryEngine(_store).recoverInterruptedTasks();
     final persisted = await _store.getTasks();
     _tasks
       ..clear()
@@ -116,7 +118,16 @@ class TaskManager {
     };
     _tasks.add(task);
     _currentTask = id;
-    await _persist();
+    await _store.saveTaskWithEvents(task, events: [
+      {
+        'type': 'task_created',
+        'status': 'pending',
+        'payload': <String, Object?>{
+          'conversation_id': conversationId,
+          'description': goal,
+        },
+      },
+    ]);
     return _copyTask(task);
   }
 
@@ -137,7 +148,7 @@ class TaskManager {
 
   /// Marks a task as running when execution is owned by ChatScreen/AgentKernel.
   /// This keeps the persisted task lifecycle in sync without executing it twice.
-  Future<void> markRunning(String taskId) async {
+  Future<void> markRunning(String taskId, {String? requestId}) async {
     await _ensureLoaded();
     if (_executing && _currentTask != taskId) {
       throw StateError('يوجد تنفيذ مهمة جارٍ بالفعل.');
@@ -157,7 +168,26 @@ class TaskManager {
     task['updated_at'] = DateTime.now().toIso8601String();
     task.remove('error');
     task.remove('recovery_note');
-    await _persist();
+    if (requestId != null && requestId.isNotEmpty) {
+      task['request_id'] = requestId;
+    }
+    await _store.saveTaskWithEvents(task, events: [
+      {
+        'type': 'task_started',
+        'status': 'running',
+        'payload': <String, Object?>{
+          if (requestId != null && requestId.isNotEmpty) 'request_id': requestId,
+        },
+      },
+      {
+        'type': 'step_started',
+        'status': 'running',
+        'payload': <String, Object?>{
+          'step': step['step'],
+          'action': step['action'],
+        },
+      },
+    ]);
   }
 
   Future<void> markCompleted(String taskId, String result) async {
@@ -174,7 +204,18 @@ class TaskManager {
     task['updated_at'] = task['completed_at'];
     task.remove('error');
     if (_currentTask == taskId) _executing = false;
-    await _persist();
+    await _store.saveTaskWithEvents(task, events: [
+      {
+        'type': 'step_completed',
+        'status': 'completed',
+        'payload': <String, Object?>{'step': step['step'], 'result': result},
+      },
+      {
+        'type': 'task_completed',
+        'status': 'completed',
+        'payload': <String, Object?>{'result': result},
+      },
+    ]);
   }
 
   Future<void> markFailed(String taskId, String error) async {
@@ -189,7 +230,18 @@ class TaskManager {
     task['error'] = error;
     task['updated_at'] = DateTime.now().toIso8601String();
     if (_currentTask == taskId) _executing = false;
-    await _persist();
+    await _store.saveTaskWithEvents(task, events: [
+      {
+        'type': 'step_failed',
+        'status': 'failed',
+        'payload': <String, Object?>{'step': step['step'], 'error': error},
+      },
+      {
+        'type': 'task_failed',
+        'status': 'failed',
+        'payload': <String, Object?>{'error': error},
+      },
+    ]);
   }
 
   Future<void> markInterrupted(String taskId, String note) async {
@@ -197,13 +249,25 @@ class TaskManager {
     final task = _findTask(taskId);
     if (task == null) return;
     final step = _firstStep(task);
-    step['status'] = 'pending';
+    step['status'] = 'uncertain';
+    step['recovery_state'] = 'side_effect_unknown';
     (task['steps'] as List)[0] = step;
     task['status'] = 'paused';
     task['recovery_note'] = note;
     task['updated_at'] = DateTime.now().toIso8601String();
     if (_currentTask == taskId) _executing = false;
-    await _persist();
+    await _store.saveTaskWithEvents(task, events: [
+      {
+        'type': 'step_interrupted',
+        'status': 'uncertain',
+        'payload': <String, Object?>{'step': step['step'], 'note': note},
+      },
+      {
+        'type': 'task_paused',
+        'status': 'paused',
+        'payload': <String, Object?>{'reason': note},
+      },
+    ]);
   }
 
   Future<void> markCancelled(String taskId) async {
@@ -216,7 +280,13 @@ class TaskManager {
     task['status'] = 'cancelled';
     task['updated_at'] = DateTime.now().toIso8601String();
     if (_currentTask == taskId) _executing = false;
-    await _persist();
+    await _store.saveTaskWithEvents(task, events: [
+      {
+        'type': 'task_cancelled',
+        'status': 'cancelled',
+        'payload': <String, Object?>{'step': step['step']},
+      },
+    ]);
   }
 
   Future<bool> selectTask(String taskId) async {
