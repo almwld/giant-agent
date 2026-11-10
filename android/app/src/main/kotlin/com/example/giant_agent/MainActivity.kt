@@ -35,6 +35,42 @@ class MainActivity: FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         NotificationBridge.register(this, flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "giant_agent/background")
+            .setMethodCallHandler { call, result ->
+                try {
+                    when (call.method) {
+                        "startTask" -> {
+                            dispatchBackgroundService(
+                                AgentForegroundService.ACTION_START_TASK,
+                                call.argument<String>("title"),
+                                call.argument<String>("body")
+                            )
+                            result.success(true)
+                        }
+                        "updateTask" -> {
+                            dispatchBackgroundService(
+                                AgentForegroundService.ACTION_UPDATE,
+                                call.argument<String>("title"),
+                                call.argument<String>("body")
+                            )
+                            result.success(true)
+                        }
+                        "runtimeReady" -> {
+                            dispatchBackgroundService(AgentForegroundService.ACTION_RUNTIME, null, null)
+                            result.success(true)
+                        }
+                        "stop" -> {
+                            startService(Intent(this, AgentForegroundService::class.java).apply {
+                                action = AgentForegroundService.ACTION_STOP
+                            })
+                            result.success(true)
+                        }
+                        else -> result.notImplemented()
+                    }
+                } catch (error: Throwable) {
+                    result.error("BACKGROUND_SERVICE_FAILED", error.message, null)
+                }
+            }
         GainPtyBridge.register(this, flutterEngine.dartExecutor.binaryMessenger)
 
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, AGENT_EVENTS_CHANNEL)
@@ -295,8 +331,7 @@ class MainActivity: FlutterActivity() {
                     val threads = (call.argument<Int>("threads") ?: 2).coerceIn(1, 8)
                     if (path.isBlank() || !File(path).isFile || !File(path).canRead()) result.success(false)
                     else {
-                        if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(Intent(this, AgentForegroundService::class.java))
-                        else startService(Intent(this, AgentForegroundService::class.java))
+                        dispatchBackgroundService(AgentForegroundService.ACTION_RUNTIME, null, null)
                         aiExecutor.execute {
                             val ok = try { llamaBridge.nativeLoadModel(path, threads, null, 1.0f) }
                             catch (t: Throwable) { android.util.Log.e("GiantLLM", "GGUF load failed", t); false }
@@ -394,6 +429,19 @@ class MainActivity: FlutterActivity() {
                     if (sink != null) sink.success(event) else pendingSharedFiles.add(path)
                 }
             }
+        }
+    }
+
+    private fun dispatchBackgroundService(action: String, title: String?, body: String?) {
+        val intent = Intent(this, AgentForegroundService::class.java).apply {
+            this.action = action
+            if (!title.isNullOrBlank()) putExtra("task_title", title)
+            if (!body.isNullOrBlank()) putExtra("task_body", body)
+        }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
         }
     }
 
