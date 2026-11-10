@@ -863,7 +863,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   const Icon(Icons.terminal, color: GiantPalette.primaryLight),
                   const SizedBox(width: 8),
                   Expanded(child: Text(
-                    step == null ? 'Agent Terminal' : (step['title']?.toString() ?? 'نتيجة التنفيذ'),
+                    step == null ? 'Agent Output Console' : (step['title']?.toString() ?? 'نتيجة التنفيذ'),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
@@ -890,7 +890,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _init() async {
     await AgentService.instance.initialize();
-    final remoteEnabled = await OpenAICompatibleProvider.instance.isEnabled();
+    final selectedMode = await ModelProviderSettings.instance.getMode();
+    final remoteEnabled = selectedMode != ModelProviderMode.local;
     if (!mounted) return;
     setState(() {
       _models = _modelService.getModels();
@@ -1437,74 +1438,180 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _openExternalProviderDialog() async {
-    final keyController = TextEditingController(text: await OpenAICompatibleProvider.instance.getApiKey() ?? '');
-    final modelController = TextEditingController(text: await OpenAICompatibleProvider.instance.getModel());
-    final endpointController = TextEditingController(text: await OpenAICompatibleProvider.instance.getBaseUrl());
-    var enabled = await OpenAICompatibleProvider.instance.isEnabled();
+    final settings = ModelProviderSettings.instance;
+    var mode = await settings.getMode();
+    final keyController = TextEditingController(
+      text: mode == ModelProviderMode.gemini
+          ? (await GeminiProvider.instance.getApiKey() ?? '')
+          : (await OpenAICompatibleProvider.instance.getApiKey() ?? ''),
+    );
+    final modelController = TextEditingController(
+      text: mode == ModelProviderMode.gemini
+          ? await GeminiProvider.instance.getModel()
+          : await OpenAICompatibleProvider.instance.getModel(),
+    );
     var busy = false;
     var error = '';
-    if (!mounted) { keyController.dispose(); modelController.dispose(); endpointController.dispose(); return; }
+    if (!mounted) {
+      keyController.dispose();
+      modelController.dispose();
+      return;
+    }
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, updateDialog) => AlertDialog(
           backgroundColor: GiantPalette.surface,
-          title: const Text('ربط مزوّد نموذج خارجي', style: TextStyle(color: Colors.white)),
+          title: const Text('اختيار محرك الذكاء الاصطناعي',
+              style: TextStyle(color: Colors.white)),
           content: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              const Text('أدخل مفتاح أي مزوّد يدعم واجهة OpenAI-compatible مع عنوان API الخاص به. يُحفظ المفتاح مشفراً على الجهاز.',
-                style: TextStyle(color: GiantPalette.muted, fontSize: 12)),
-              const SizedBox(height: 6),
-              const Text('أمثلة للعناوين: OpenRouter: https://openrouter.ai/api/v1 • Gemini: https://generativelanguage.googleapis.com/v1beta/openai • Groq: https://api.groq.com/openai/v1 • DeepSeek: https://api.deepseek.com/v1',
-                style: TextStyle(color: GiantPalette.primaryLight, fontSize: 11)),
-              const SizedBox(height: 12),
-              TextField(controller: keyController, obscureText: true, autocorrect: false,
-                decoration: const InputDecoration(labelText: 'API Key', hintText: 'أدخل مفتاح المزوّد', border: OutlineInputBorder())),
-              const SizedBox(height: 10),
-              TextField(controller: endpointController, keyboardType: TextInputType.url, autocorrect: false,
-                decoration: const InputDecoration(labelText: 'API Base URL', hintText: 'https://api.example.com/v1', border: OutlineInputBorder())),
-              const SizedBox(height: 10),
-              TextField(controller: modelController,
-                decoration: const InputDecoration(labelText: 'معرّف النموذج', hintText: 'openai/gpt-4o-mini', border: OutlineInputBorder())),
-              SwitchListTile(contentPadding: EdgeInsets.zero, value: enabled,
-                onChanged: (v) => updateDialog(() => enabled = v),
-                title: const Text('استخدام مزوّد النموذج الخارجي للاستدلال')),
-              if (error.isNotEmpty) Text(error, style: const TextStyle(color: Colors.redAccent, fontSize: 12)),
+              DropdownButtonFormField<ModelProviderMode>(
+                value: mode,
+                decoration: const InputDecoration(
+                  labelText: 'مصدر التوليد',
+                  border: OutlineInputBorder(),
+                ),
+                items: const [
+                  DropdownMenuItem(
+                    value: ModelProviderMode.local,
+                    child: Text('محلي — GGUF'),
+                  ),
+                  DropdownMenuItem(
+                    value: ModelProviderMode.openRouter,
+                    child: Text('سحابي — OpenRouter'),
+                  ),
+                  DropdownMenuItem(
+                    value: ModelProviderMode.gemini,
+                    child: Text('سحابي — Google Gemini'),
+                  ),
+                ],
+                onChanged: busy ? null : (value) {
+                  if (value == null) return;
+                  updateDialog(() {
+                    mode = value;
+                    if (mode == ModelProviderMode.gemini) {
+                      modelController.text = GeminiProvider.defaultModel;
+                    } else if (mode == ModelProviderMode.openRouter) {
+                      modelController.text = OpenAICompatibleProvider.defaultModel;
+                    }
+                    error = '';
+                  });
+                },
+              ),
+              if (mode != ModelProviderMode.local) ...[
+                const SizedBox(height: 12),
+                Text(
+                  mode == ModelProviderMode.gemini
+                      ? 'يستخدم Gemini Native API عبر generateContent. لا تضع عنوان Google في خانة OpenRouter.'
+                      : 'يُسمح باتصال OpenRouter الرسمي فقط. يُحفظ المفتاح مشفراً على الجهاز.',
+                  style: const TextStyle(color: GiantPalette.muted, fontSize: 12),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: keyController,
+                  obscureText: true,
+                  autocorrect: false,
+                  decoration: InputDecoration(
+                    labelText: mode == ModelProviderMode.gemini
+                        ? 'Gemini API Key'
+                        : 'OpenRouter API Key',
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: modelController,
+                  autocorrect: false,
+                  decoration: InputDecoration(
+                    labelText: 'معرّف النموذج',
+                    hintText: mode == ModelProviderMode.gemini
+                        ? GeminiProvider.defaultModel
+                        : OpenAICompatibleProvider.defaultModel,
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+              ],
+              if (error.isNotEmpty)
+                Text(error, style: const TextStyle(color: Colors.redAccent, fontSize: 12)),
               if (busy) const LinearProgressIndicator(),
             ]),
           ),
           actions: [
-            TextButton(onPressed: busy ? null : () async {
-              await OpenAICompatibleProvider.instance.disconnect();
-              if (mounted) setState(() => _externalProviderEnabled = false);
-              if (dialogContext.mounted) Navigator.pop(dialogContext);
-              if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('تم فصل المزوّد وحذف بياناته.')));
-            }, child: const Text('فصل وحذف المفتاح')),
-            TextButton(onPressed: busy ? null : () => Navigator.pop(dialogContext), child: const Text('إلغاء')),
-            FilledButton(onPressed: busy ? null : () async {
-              updateDialog(() { busy = true; error = ''; });
-              try {
-                if (keyController.text.trim().isNotEmpty) {
-                  await OpenAICompatibleProvider.instance.configure(
-                    apiKey: keyController.text, model: modelController.text,
-                    baseUrl: endpointController.text, enable: enabled);
-                } else {
-                  await OpenAICompatibleProvider.instance.setEnabled(enabled);
-                }
-                if (mounted) setState(() => _externalProviderEnabled = enabled);
+            TextButton(
+              onPressed: busy ? null : () async {
+                await OpenAICompatibleProvider.instance.disconnect();
+                await GeminiProvider.instance.disconnect();
+                await settings.setMode(ModelProviderMode.local);
+                if (mounted) setState(() => _externalProviderEnabled = false);
                 if (dialogContext.mounted) Navigator.pop(dialogContext);
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                  content: Text(enabled ? 'تم تفعيل المزوّد: ' + modelController.text.trim() : 'تم تعطيل المزوّد.')));
-              } catch (e) { updateDialog(() { busy = false; error = e.toString(); }); }
-            }, child: const Text('حفظ')),
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('تم فصل المزوّدات السحابية.')),
+                );
+              },
+              child: const Text('فصل المزوّدات'),
+            ),
+            TextButton(
+              onPressed: busy ? null : () => Navigator.pop(dialogContext),
+              child: const Text('إلغاء'),
+            ),
+            FilledButton(
+              onPressed: busy ? null : () async {
+                updateDialog(() { busy = true; error = ''; });
+                try {
+                  switch (mode) {
+                    case ModelProviderMode.local:
+                      await settings.setMode(ModelProviderMode.local);
+                      break;
+                    case ModelProviderMode.openRouter:
+                      if (keyController.text.trim().isNotEmpty) {
+                        await OpenAICompatibleProvider.instance.configure(
+                          apiKey: keyController.text,
+                          model: modelController.text,
+                          baseUrl: OpenAICompatibleProvider.defaultBaseUrl,
+                          enable: true,
+                        );
+                      } else {
+                        await OpenAICompatibleProvider.instance.setEnabled(true);
+                      }
+                      await settings.setMode(ModelProviderMode.openRouter);
+                      break;
+                    case ModelProviderMode.gemini:
+                      if (keyController.text.trim().isNotEmpty) {
+                        await GeminiProvider.instance.configure(
+                          apiKey: keyController.text,
+                          model: modelController.text,
+                          enable: true,
+                        );
+                      } else {
+                        await GeminiProvider.instance.setEnabled(true);
+                      }
+                      await settings.setMode(ModelProviderMode.gemini);
+                      break;
+                  }
+                  if (mounted) {
+                    setState(() => _externalProviderEnabled = mode != ModelProviderMode.local);
+                  }
+                  if (dialogContext.mounted) Navigator.pop(dialogContext);
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(switch (mode) {
+                      ModelProviderMode.local => 'تم اختيار النموذج المحلي.',
+                      ModelProviderMode.openRouter => 'تم اختيار OpenRouter: ${modelController.text.trim()}',
+                      ModelProviderMode.gemini => 'تم اختيار Gemini: ${modelController.text.trim()}',
+                    })),
+                  );
+                } catch (e) {
+                  updateDialog(() { busy = false; error = e.toString(); });
+                }
+              },
+              child: const Text('حفظ واستخدام'),
+            ),
           ],
         ),
       ),
     );
     keyController.dispose();
     modelController.dispose();
-    endpointController.dispose();
   }
 
   Future<void> _openGitHubDialog() async {
