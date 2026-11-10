@@ -432,7 +432,7 @@ $toolCatalog
             details: 'The proposed recovery action duplicates an action already attempted.',
             status: 'failed',
           );
-          return 'تعذر إكمال الهدف بأمان: اقترح محرك التأمل إجراءً مكرراً، فأوقفته آلية منع التكرار.';
+          return 'تعذر إكمال الطلب: لم يتحقق الهدف؛ اقترح محرك التأمل إجراءً مكرراً، فأوقفته آلية منع التكرار.';
         }
 
         final toolStepId = 'verified_step_${_activeRequestId}_${DateTime.now().microsecondsSinceEpoch}';
@@ -476,7 +476,7 @@ $toolCatalog
             ..write('\nDo not claim the goal is complete. Choose a different corrective tool action.\n\nAssistant:');
 
           if (reflexionAttempts >= maxReflexionAttempts) {
-            return 'لم يتحقق الهدف بعد $maxReflexionAttempts محاولات تصحيح آمنة. آخر نتيجة: ${verification.message}';
+            return 'تعذر إكمال الطلب: لم يتحقق الهدف بعد $maxReflexionAttempts محاولات تصحيح آمنة. آخر نتيجة: ${verification.message}';
           }
 
           _emitToolEvent(
@@ -524,7 +524,7 @@ $toolCatalog
               status: 'failed',
               stepId: toolStepId,
             );
-            return 'فشل التحقق من النتيجة، ولم يتمكن محرك التأمل من اقتراح إجراء بديل صالح: $error';
+            return 'تعذر إكمال الطلب: فشل التحقق من النتيجة، ولم يتمكن محرك التأمل من اقتراح إجراء بديل صالح: $error';
           }
           continue;
         }
