@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../core/theme.dart';
 
 class CommandGrid extends StatelessWidget {
   final Function(String) onCommandSelected;
