@@ -803,6 +803,36 @@ class AgentKernelStore {
     });
   }
 
+  /// Completes a previously interrupted parent only after its recovered
+  /// children have been re-synthesized and the Output Engine has verified all artifacts.
+  Future<void> completeInterruptedRequest(String id, String result) async {
+    final db = await database;
+    final now = DateTime.now().toUtc().toIso8601String();
+    await db.transaction((txn) async {
+      final changed = await txn.update(
+        'agent_requests',
+        <String, Object?>{
+          'status': 'completed',
+          'result': result,
+          'error': null,
+          'completed_at': now,
+          'updated_at': now,
+        },
+        where: "id = ? AND status = 'interrupted'",
+        whereArgs: [id],
+      );
+      if (changed != 1) throw StateError('Request $id is not interrupted and cannot be recovered.');
+      await _appendEvent(
+        txn,
+        id,
+        'request_recovered_completed',
+        'completed',
+        <String, Object?>{'recovered_after_child_resume': true, 'output_verified': true},
+        now,
+      );
+    });
+  }
+
   Future<KernelRequestRecord?> getRequest(String id) async {
     final rows = await (await database).query(
       'agent_requests',
