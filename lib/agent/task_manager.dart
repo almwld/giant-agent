@@ -148,6 +148,23 @@ class TaskManager {
 
   /// Marks a task as running when execution is owned by ChatScreen/AgentKernel.
   /// This keeps the persisted task lifecycle in sync without executing it twice.
+  /// Records an explicit user decision to resume an ambiguous task.
+  /// This does not execute anything; the caller must request confirmation first.
+  Future<void> recordResumeIntent(String taskId) async {
+    await _ensureLoaded();
+    final task = _findTask(taskId);
+    if (task == null) throw StateError('المهمة غير موجودة.');
+    if (task['status'] != 'paused' && task['status'] != 'failed') {
+      throw StateError('المهمة ليست متوقفة أو قابلة للاستئناف.');
+    }
+    await _store.appendTaskEvent(
+      taskId,
+      'task_resume_requested',
+      'paused',
+      payload: const {'authorization': 'explicit_user_confirmation'},
+    );
+  }
+
   Future<void> markRunning(String taskId, {String? requestId}) async {
     await _ensureLoaded();
     if (_executing && _currentTask != taskId) {
@@ -158,6 +175,7 @@ class TaskManager {
     if (task['status'] == 'completed' || task['status'] == 'cancelled') {
       throw StateError('لا يمكن تشغيل مهمة منتهية.');
     }
+    final isResume = task['status'] == 'paused';
     _currentTask = taskId;
     _executing = true;
     final step = _firstStep(task);
@@ -173,10 +191,11 @@ class TaskManager {
     }
     await _store.saveTaskWithEvents(task, events: [
       {
-        'type': 'task_started',
+        'type': isResume ? 'task_resumed' : 'task_started',
         'status': 'running',
         'payload': <String, Object?>{
           if (requestId != null && requestId.isNotEmpty) 'request_id': requestId,
+          if (isResume) 'resume_authorized': true,
         },
       },
       {
