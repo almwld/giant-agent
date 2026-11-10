@@ -31,6 +31,9 @@ class TaskManager {
   bool _executing = false;
   Future<void>? _loading;
 
+  /// Loads and reconciles the durable task snapshot during app startup.
+  Future<void> initialize() => _ensureLoaded();
+
   Future<void> _ensureLoaded() {
     _loading ??= _load();
     return _loading!;
