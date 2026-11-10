@@ -66,6 +66,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final SpeechToText _speech = SpeechToText();
   final VoiceOutputService _voiceOutput = VoiceOutputService.instance;
   bool _isListening = false;
+  bool _finalizingVoiceInput = false;
   bool _webSearchEnabled = false;
   bool _includeGithubContext = false;
   bool _externalProviderEnabled = false;
@@ -1512,6 +1513,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted) setState(() => _isListening = false);
       return;
     }
+    _finalizingVoiceInput = false;
     final available = await _speech.initialize(
       onStatus: (_) {
         if (mounted) setState(() => _isListening = _speech.isListening);
@@ -1551,11 +1553,17 @@ class _ChatScreenState extends State<ChatScreen> {
         });
         // Submit only the finalized utterance. The recognized text is saved as
         // the normal user message and processed by the existing Agent Runtime.
-        if (result.finalResult) {
+        if (result.finalResult && !_finalizingVoiceInput) {
+          _finalizingVoiceInput = true;
           _speech.stop();
           if (mounted) setState(() => _isListening = false);
           Future<void>.delayed(const Duration(milliseconds: 180), () {
-            if (mounted && _controller.text.trim().isNotEmpty) _sendMessage();
+            if (!mounted) return;
+            if (_controller.text.trim().isNotEmpty) {
+              _sendMessage();
+            } else {
+              _finalizingVoiceInput = false;
+            }
           });
         }
       },
