@@ -1810,7 +1810,7 @@ class _ChatScreenState extends State<ChatScreen> {
             _finalizingVoiceInput = true;
             voiceListeningStarted = false;
             _voiceRequestActive = true;
-            unawaited(_speech.stop());
+            final stopListening = _speech.stop();
             setState(() {
               _isListening = false;
               _voiceOrbState = AgentState.thinking;
@@ -1821,6 +1821,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 return;
               }
               try {
+                await stopListening;
                 // Reuse the current chat pipeline: every spoken turn is saved
                 // in this conversation and executed by its shared runtime.
                 await _sendMessage();
