@@ -90,7 +90,7 @@ class AgentService {
     if (interrupted) throw durable.KernelRequestInterrupted(output);
     if (!collection.verified) {
       throw durable.KernelRequestInterrupted(
-        'تم حفظ النتائج المتاحة، لكن لم يكتمل التحقق من جميع المخرجات. ${collection.summary}',
+        '$output\\n\\nتم حفظ النتائج المتاحة، لكن لم يكتمل التحقق من جميع المخرجات. ${collection.summary}',
       );
     }
     return output;
