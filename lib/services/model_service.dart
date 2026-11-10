@@ -629,7 +629,7 @@ $toolCatalog
             result,
           );
           verificationPassed = verification.passed;
-          verificationMessage = verificationMessage;
+          verificationMessage = verification.message;
           _emitToolEvent(
             verification.passed ? 'verification_passed' : 'verification_failed',
             verification.passed ? 'اجتاز التحقق المستقل' : 'فشل التحقق المستقل',
@@ -646,11 +646,11 @@ $toolCatalog
           final failedAction = jsonEncode(payload);
           history
             ..write('\n\nSystem Note: Tool $toolName result: ${jsonEncode(result)}')
-            ..write('\nIndependent verification FAILED: ${verification.message}')
+            ..write('\nIndependent verification FAILED: ${verificationMessage}')
             ..write('\nDo not claim the goal is complete. Choose a different corrective tool action.\n\nAssistant:');
 
           if (reflexionAttempts >= maxReflexionAttempts) {
-            return 'تعذر إكمال الطلب: لم يتحقق الهدف بعد $maxReflexionAttempts محاولات تصحيح آمنة. آخر نتيجة: ${verification.message}';
+            return 'تعذر إكمال الطلب: لم يتحقق الهدف بعد $maxReflexionAttempts محاولات تصحيح آمنة. آخر نتيجة: ${verificationMessage}';
           }
 
           _emitToolEvent(
