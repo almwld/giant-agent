@@ -44,6 +44,10 @@
   `ModelService`; role-based tool permissions remain enforced. A process death
   during resume is reconciled back to an interrupted state and requires a new
   explicit authorization.
+- Once every interrupted child has been explicitly resumed, the parent is
+  re-synthesized from the full durable child results. The parent request is
+  promoted from interrupted to completed only after the Output Engine verifies
+  the final text and all referenced workspace artifacts.
 - Durable requests and explicit child recovery now acquire an Android foreground
   service for the duration of active work. The native notification is updated
   with the current lifecycle step, and a reference count prevents one queued
