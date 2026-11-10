@@ -68,7 +68,10 @@
 - The Output Engine runs inside the durable request executor, before SQLite
   marks the parent request completed. It stores the final synthesis, complete
   child results, and discovered workspace artifacts in a dedicated indexed
-  SQLite table linked to request and conversation IDs.
+  SQLite table linked to request and conversation IDs. The Timeline shows
+  incremental artifact cards with text/code previews and verification status;
+  supported images can be previewed on demand, and the workspace ZIP is shared
+  through Android's FileProvider rather than exposing a raw cache path.
 - File outputs are classified as source/code, text, image, document, or generic
   file. The engine verifies workspace presence and reads text/code content where
   supported; unverified or missing files produce a partial-output state and keep
