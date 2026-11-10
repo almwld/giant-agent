@@ -96,6 +96,9 @@ class AgentService {
 
   void _attachExecutionJournal() {
     _eventSubscription ??= AgentEventBus.instance.events.listen((event) {
+      // Token deltas are streamed to the chat renderer and are intentionally
+      // excluded from the durable lifecycle journal to avoid unbounded growth.
+      if (event['type'] == 'stream_token') return;
       _journalTail = _journalTail
           .then((_) => _store.appendRequestEvent(event))
           .catchError((Object _) {
