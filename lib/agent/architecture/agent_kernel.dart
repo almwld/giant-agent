@@ -84,6 +84,8 @@ class AgentKernel {
     required String status,
     String? details,
     String? eventId,
+    String? taskId,
+    String? agentType,
   }) {
     final sequence = ++_eventSequence;
     final event = AgentTimelineEvent(
@@ -99,6 +101,8 @@ class AgentKernel {
       status: status,
       timestamp: DateTime.now(),
       details: details,
+      taskId: taskId,
+      agentType: agentType,
     );
     _events.add(event);
     AgentEventBus.instance.publish(event.toMap());
@@ -402,6 +406,8 @@ class AgentKernel {
         _emit(
           requestId: requestId,
           eventId: taskId,
+          taskId: taskId,
+          agentType: event['agent_type']?.toString(),
           type: event['type']?.toString() ?? 'subagent_event',
           title: event['title']?.toString() ?? 'تحديث الوكيل الفرعي',
           status: event['status']?.toString() ?? 'pending',
