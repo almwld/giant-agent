@@ -3326,23 +3326,29 @@ class _ChatScreenState extends State<ChatScreen> {
                       _composerIconButton(
                         icon: _isLoading && _controller.text.trim().isEmpty
                             ? Icons.stop_rounded
-                            : (_controller.text.trim().isNotEmpty
-                                ? Icons.arrow_upward_rounded
-                                : (_isListening ? Icons.graphic_eq_rounded : Icons.mic_none_rounded)),
+                            : (_voiceOrbVisible
+                                ? Icons.graphic_eq_rounded
+                                : (_controller.text.trim().isNotEmpty
+                                    ? Icons.arrow_upward_rounded
+                                    : (_isListening ? Icons.graphic_eq_rounded : Icons.mic_none_rounded))),
                         tooltip: _isLoading && _controller.text.trim().isEmpty
                             ? 'إيقاف الوكيل'
-                            : (_controller.text.trim().isNotEmpty
-                                ? 'إرسال الرسالة'
-                                : (_isListening ? 'إيقاف التحدث' : 'بدء التحدث بالعربية')),
+                            : (_voiceOrbVisible
+                                ? 'إيقاف المساعد الصوتي'
+                                : (_controller.text.trim().isNotEmpty
+                                    ? 'إرسال الرسالة'
+                                    : 'بدء التحدث')),
                         background: _isLoading && _controller.text.trim().isEmpty
                             ? Colors.white
-                            : (_isListening ? GiantPalette.primary : GiantPalette.primary),
+                            : GiantPalette.primary,
                         foreground: _isLoading && _controller.text.trim().isEmpty
                             ? const Color(0xFF18181B) : Colors.white,
                         onPressed: _isLoading && _controller.text.trim().isEmpty
                             ? _cancelAgent
-                            : (_controller.text.trim().isNotEmpty
-                                ? _sendMessage : _toggleVoiceInput),
+                            : (_voiceOrbVisible
+                                ? _stopVoiceInteraction
+                                : (_controller.text.trim().isNotEmpty
+                                    ? _sendMessage : _toggleVoiceInput)),
                         prominent: true,
                       ),
                       const SizedBox(width: 8),
