@@ -76,8 +76,8 @@ class ReminderService {
     
     for (var reminder in reminders) {
       await NotificationService().showNotification(
-        reminder['title'],
-        reminder['description'],
+        reminder['title'] as String?,
+        reminder['description'] as String?,
       );
       await completeReminder((reminder['id'] as num).toInt());
     }
