@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build Android APKs
+    name: Build Android APK
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -81,23 +81,13 @@ jobs:
           mkdir -p dist
           cp build/app/outputs/flutter-apk/app-release.apk dist/giant-agent-universal.apk
 
-      - name: Build split-per-ABI release APKs
-        run: |
-          flutter build apk --release --split-per-abi --no-shrink
-          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk dist/giant-agent-armeabi-v7a.apk
-          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk dist/giant-agent-arm64-v8a.apk
-          cp build/app/outputs/flutter-apk/app-x86_64-release.apk dist/giant-agent-x86_64.apk
-
-      - name: Verify APK outputs and checksums
+      - name: Verify APK output and checksum
         run: |
           set -e
           test -s dist/giant-agent-universal.apk
-          test -s dist/giant-agent-armeabi-v7a.apk
-          test -s dist/giant-agent-arm64-v8a.apk
-          test -s dist/giant-agent-x86_64.apk
-          echo "APK files produced:"
-          ls -lh dist/*.apk
-          sha256sum dist/*.apk | tee dist/SHA256SUMS.txt
+          echo "APK file produced:"
+          ls -lh dist/giant-agent-universal.apk
+          sha256sum dist/giant-agent-universal.apk | tee dist/SHA256SUMS.txt
 
       - name: Upload universal APK
         uses: actions/upload-artifact@v4
@@ -107,31 +97,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Upload arm64-v8a APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: giant-agent-arm64-v8a-release
-          path: dist/giant-agent-arm64-v8a.apk
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: Upload armeabi-v7a APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: giant-agent-armeabi-v7a-release
-          path: dist/giant-agent-armeabi-v7a.apk
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: Upload x86_64 APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: giant-agent-x86_64-release
-          path: dist/giant-agent-x86_64.apk
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: Upload SHA256 checksums
+      - name: Upload SHA256 checksum
         uses: actions/upload-artifact@v4
         with:
           name: giant-agent-sha256-checksums
