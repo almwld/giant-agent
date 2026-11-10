@@ -690,7 +690,7 @@ $toolCatalog
             final action = await _reflexion.generateFix(
               originalGoal: input,
               failedAction: failedAction,
-              errorMessage: verification.message,
+              errorMessage: verificationMessage,
             );
             final proposed = <String, dynamic>{
               'name': action.toolName,
