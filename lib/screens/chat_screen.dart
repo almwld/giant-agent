@@ -1488,15 +1488,23 @@ class _ChatScreenState extends State<ChatScreen> {
                     child: Text('سحابي — Google Gemini'),
                   ),
                 ],
-                onChanged: busy ? null : (value) {
+                onChanged: busy ? null : (value) async {
                   if (value == null) return;
+                  final savedKey = value == ModelProviderMode.gemini
+                      ? await GeminiProvider.instance.getApiKey()
+                      : value == ModelProviderMode.openRouter
+                          ? await OpenAICompatibleProvider.instance.getApiKey()
+                          : null;
+                  final savedModel = value == ModelProviderMode.gemini
+                      ? await GeminiProvider.instance.getModel()
+                      : value == ModelProviderMode.openRouter
+                          ? await OpenAICompatibleProvider.instance.getModel()
+                          : '';
+                  if (!dialogContext.mounted) return;
                   updateDialog(() {
                     mode = value;
-                    if (mode == ModelProviderMode.gemini) {
-                      modelController.text = GeminiProvider.defaultModel;
-                    } else if (mode == ModelProviderMode.openRouter) {
-                      modelController.text = OpenAICompatibleProvider.defaultModel;
-                    }
+                    keyController.text = savedKey ?? '';
+                    if (savedModel.isNotEmpty) modelController.text = savedModel;
                     error = '';
                   });
                 },
