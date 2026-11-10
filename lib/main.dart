@@ -6,12 +6,17 @@ import 'screens/chat_screen.dart';
 import 'services/app_preferences.dart';
 import 'services/notification_service.dart';
 import 'services/reminder_service.dart';
+import 'services/agent_service.dart';
+import 'agent/task_manager.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await AppPreferences.instance.load();
   await NotificationService.init();
   await ReminderService().init();
+  // Reconcile durable request and task state before exposing the UI.
+  await AgentService.instance.initialize();
+  await TaskManager().initialize();
   final prefs = await SharedPreferences.getInstance();
   final showSplash = !(prefs.getBool('giant_has_launched') ?? false);
   if (showSplash) await prefs.setBool('giant_has_launched', true);
