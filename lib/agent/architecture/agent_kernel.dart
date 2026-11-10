@@ -378,6 +378,12 @@ class AgentKernel {
         details: output.length > 1200 ? '${output.substring(0, 1200)}…' : output,
         result: output);
       return output;
+    } on SubagentInterrupted catch (error) {
+      _emit(requestId: parentRequestId, taskId: taskId, agentType: agentType,
+        taskPrompt: taskPrompt, type: 'subagent_resume_interrupted',
+        title: 'توقف استئناف الوكيل الفرعي: $title', status: 'interrupted',
+        details: error.toString());
+      rethrow;
     } catch (error) {
       _emit(requestId: parentRequestId, taskId: taskId, agentType: agentType,
         taskPrompt: taskPrompt, type: 'subagent_resume_failed',
