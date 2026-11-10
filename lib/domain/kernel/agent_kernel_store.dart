@@ -822,10 +822,10 @@ class AgentKernelStore {
           'completed_at': now,
           'updated_at': now,
         },
-        where: "id = ? AND status = 'interrupted'",
+        where: "id = ? AND status IN ('interrupted', 'failed')",
         whereArgs: [id],
       );
-      if (changed != 1) throw StateError('Request $id is not interrupted and cannot be recovered.');
+      if (changed != 1) throw StateError('Request $id is not recoverable from its current state.');
       await _appendEvent(
         txn,
         id,
