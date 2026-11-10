@@ -3,6 +3,7 @@ package com.example.giant_agent
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -279,6 +280,68 @@ class MainActivity: FlutterActivity() {
                             emitPythonEvent("tool_error", code, message, "failed", eventId)
                             runOnUiThread { result.success(mapOf("ok" to false, "output" to "", "error" to message)) }
                         }
+                    }
+                }
+                "shareWorkspace" -> {
+                    aiExecutor.execute {
+                        try {
+                            val workspace = File(filesDir, "agent_workspace").apply { mkdirs() }.canonicalFile
+                            val exportFile = File(cacheDir, "giant-agent-workspace.zip")
+                            var count = 0
+                            ZipOutputStream(FileOutputStream(exportFile)).use { zip ->
+                                workspace.walkTopDown().filter { it.isFile }.forEach { file ->
+                                    val canonical = file.canonicalFile
+                                    require(canonical.path.startsWith(workspace.path + File.separator)) {
+                                        "Workspace contains a path outside its root."
+                                    }
+                                    require(canonical.absolutePath == file.absolutePath) {
+                                        "Symbolic links are not included in workspace exports."
+                                    }
+                                    zip.putNextEntry(ZipEntry(file.relativeTo(workspace).invariantSeparatorsPath))
+                                    file.inputStream().use { input -> input.copyTo(zip) }
+                                    zip.closeEntry()
+                                    count++
+                                }
+                            }
+                            val uri = FileProvider.getUriForFile(
+                                this@MainActivity, "$packageName.fileprovider", exportFile
+                            )
+                            runOnUiThread {
+                                val send = Intent(Intent.ACTION_SEND).apply {
+                                    type = "application/zip"
+                                    putExtra(Intent.EXTRA_STREAM, uri)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                startActivity(Intent.createChooser(send, "مشاركة مخرجات Giant Agent"))
+                                result.success(mapOf("ok" to true, "files" to count))
+                            }
+                        } catch (t: Throwable) {
+                            runOnUiThread { result.error("WORKSPACE_SHARE_FAILED", t.message ?: "Workspace sharing failed.", null) }
+                        }
+                    }
+                }
+                "readImagePreview" -> {
+                    try {
+                        val relativePath = call.argument<String>("path").orEmpty()
+                        val file = resolveAgentFile(relativePath)
+                        require(file.isFile && file.canRead()) { "Image does not exist or cannot be read." }
+                        require(file.extension.lowercase() in setOf("png", "jpg", "jpeg", "webp", "gif", "bmp")) {
+                            "Unsupported image format."
+                        }
+                        require(file.length() in 1..(2L * 1024L * 1024L)) {
+                            "Image preview is limited to 2 MB."
+                        }
+                        val mime = when (file.extension.lowercase()) {
+                            "png" -> "image/png"
+                            "jpg", "jpeg" -> "image/jpeg"
+                            "webp" -> "image/webp"
+                            "gif" -> "image/gif"
+                            else -> "image/bmp"
+                        }
+                        val encoded = android.util.Base64.encodeToString(file.readBytes(), android.util.Base64.NO_WRAP)
+                        result.success(mapOf("ok" to true, "mime_type" to mime, "base64" to encoded))
+                    } catch (t: Throwable) {
+                        result.error("IMAGE_PREVIEW_FAILED", t.message ?: "Image preview failed.", null)
                     }
                 }
                 "exportWorkspace" -> {
