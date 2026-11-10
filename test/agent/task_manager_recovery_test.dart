@@ -136,6 +136,10 @@ void main() {
     expect(recoveryEvents.map((event) => event.type), contains('task_interrupted_on_restart'));
     expect(recoveryEvents.last.payload['replay'], false);
     expect(recoveryEvents.last.payload['policy'], 'manual_reconciliation');
+    await expectLater(
+      manager.markRunning('task-recovery-1'),
+      throwsA(isA<StateError>()),
+    );
 
     await manager.recordResumeIntent('task-recovery-1');
     await manager.markRunning('task-recovery-1', requestId: 'request-recovery-1');
