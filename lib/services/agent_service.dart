@@ -271,6 +271,32 @@ class AgentService {
       final parentId = child?['parent_request_id']?.toString() ?? '';
       final parent = parentId.isEmpty ? null : await _store.getRequest(parentId);
       if (parent != null) {
+        final children = await _store.subagentsForRequest(parent.id);
+        final allChildrenCompleted = children.isNotEmpty && children.every(
+          (item) => item['status'] == 'completed' &&
+              (item['last_result']?.toString() ?? '').trim().isNotEmpty,
+        );
+        if (allChildrenCompleted) {
+          final finalText = await _executionKernel.synthesizeRecoveredRequest(
+            requestId: parent.id,
+            prompt: parent.prompt,
+            conversationId: parent.conversationId,
+            completedChildren: children,
+          );
+          await _flushExecutionJournal();
+          final collection = await _outputEngine.finalize(
+            requestId: parent.id,
+            conversationId: parent.conversationId,
+            finalText: finalText,
+            requestStatus: 'completed',
+          );
+          await _flushExecutionJournal();
+          if (collection.verified) {
+            await _store.completeInterruptedRequest(parent.id, finalText);
+            return finalText;
+          }
+          return '$finalText\\n\\nلم تُغلق المهمة بعد: ${collection.summary}';
+        }
         await _outputEngine.finalize(
           requestId: parent.id,
           conversationId: parent.conversationId,
