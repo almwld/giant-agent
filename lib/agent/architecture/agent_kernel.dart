@@ -670,46 +670,7 @@ $evidence
       final role = item['role']?.toString().trim().toLowerCase() ?? '';
       final title = item['title']?.toString().trim() ?? '';
       final taskPrompt = item['prompt']?.toString().trim() ?? '';
-      if (!RegExp(r'^[a-zA-Z0-9_-]{1,48}
-    if (!isExecuting) return false;
-    final requestId = _activeRequestId ?? 'runtime';
-    _cancellationRequested = true;
-    _activeSubagentOrchestrator?.cancel();
-    _state = AgentKernelState.cancelling;
-    _emit(
-      requestId: requestId,
-      eventId: 'kernel_${requestId}_cancellation',
-      type: 'cancellation_requested',
-      title: 'طلب إيقاف التنفيذ',
-      status: 'running',
-    );
-
-    var accepted = false;
-    try {
-      accepted = await _models.cancelGeneration();
-    } catch (_) {
-      // The orchestrator still stops at the next safe boundary.
-    }
-    _emit(
-      requestId: requestId,
-      eventId: 'kernel_${requestId}_cancellation',
-      type: 'cancellation_recorded',
-      title: 'تم تسجيل طلب الإيقاف',
-      status: 'completed',
-      details: accepted
-          ? 'قبل محرك الاستدلال إيقاف التوليد.'
-          : 'سيوقف المنسق الخطوات التالية عند أقرب نقطة آمنة.',
-    );
-    return true;
-  }
-
-  Future<Map<String, dynamic>> exportWorkspace() =>
-      _models.exportWorkspace();
-
-  Future<List<String>> listWorkspaceFiles() =>
-      _models.listWorkspaceFiles();
-}
-).hasMatch(id) ||
+      if (!RegExp(r'^[a-zA-Z0-9_-]{1,48}$').hasMatch(id) ||
           !localIds.add(id) ||
           title.isEmpty ||
           title.length > 100 ||
@@ -733,12 +694,12 @@ $evidence
         throw const FormatException('Duplicate task dependency.');
       }
       tasks.add(SubagentTask(
-        id: '${requestId}_agent_$id',
+        id: '\${requestId}_agent_$id',
         title: 'الوكيل $role — $title',
         prompt: taskPrompt,
         agentType: role,
         dependsOn: dependencies
-            .map((dependency) => '${requestId}_agent_$dependency')
+            .map((dependency) => '\${requestId}_agent_$dependency')
             .toList(growable: false),
       ));
     }
@@ -793,13 +754,13 @@ $evidence
             };
       final dependencies = switch (index) {
         0 || 1 => const <String>[],
-        2 => <String>['${requestId}_agent_1', '${requestId}_agent_2']
+        2 => <String>['\${requestId}_agent_1', '\${requestId}_agent_2']
             .where((id) => tasks.any((task) => task.id == id))
             .toList(growable: false),
-        _ => <String>['${requestId}_agent_${number - 1}'],
+        _ => <String>['\${requestId}_agent_\${number - 1}'],
       };
       tasks.add(SubagentTask(
-        id: '${requestId}_agent_$number',
+        id: '\${requestId}_agent_$number',
         title: 'الوكيل $role — الخطوة $number',
         prompt: plan[index]['action'] as String,
         agentType: role,
@@ -839,7 +800,7 @@ $evidence
     _state = AgentKernelState.cancelling;
     _emit(
       requestId: requestId,
-      eventId: 'kernel_${requestId}_cancellation',
+      eventId: 'kernel_\${requestId}_cancellation',
       type: 'cancellation_requested',
       title: 'طلب إيقاف التنفيذ',
       status: 'running',
@@ -853,7 +814,7 @@ $evidence
     }
     _emit(
       requestId: requestId,
-      eventId: 'kernel_${requestId}_cancellation',
+      eventId: 'kernel_\${requestId}_cancellation',
       type: 'cancellation_recorded',
       title: 'تم تسجيل طلب الإيقاف',
       status: 'completed',
