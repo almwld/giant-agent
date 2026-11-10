@@ -430,6 +430,24 @@ class AgentWorkflowScreen extends StatelessWidget {
                     label: const Text('معاينة الصورة'),
                   ),
                 ),
+              if (kind == 'binary_document' && path != null)
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: TextButton.icon(
+                    onPressed: () async {
+                      try {
+                        await AgentService.instance.openWorkspaceFile(path);
+                      } catch (error) {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('تعذر فتح المستند: $error')),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.open_in_new_rounded, size: 16),
+                    label: const Text('فتح المستند'),
+                  ),
+                ),
               if (!isVerified && artifact['details'] != null)
                 Padding(padding: const EdgeInsets.only(top: 5), child: Text(artifact['details'].toString(), style: const TextStyle(color: Color(0xFFFBBF24), fontSize: 10))),
             ]),
