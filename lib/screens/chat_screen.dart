@@ -67,6 +67,9 @@ class _ChatScreenState extends State<ChatScreen> {
   final VoiceOutputService _voiceOutput = VoiceOutputService.instance;
   bool _isListening = false;
   bool _finalizingVoiceInput = false;
+  bool _voiceOrbVisible = false;
+  bool _voiceRequestActive = false;
+  AgentState _voiceOrbState = AgentState.idle;
   bool _webSearchEnabled = false;
   bool _includeGithubContext = false;
   bool _externalProviderEnabled = false;
@@ -1451,6 +1454,9 @@ class _ChatScreenState extends State<ChatScreen> {
     await _saveMessage(response, false, requestId: requestId);
     // The text reply is already rendered; audio playback starts without
     // blocking the chat or changing the active conversation.
+    if (_voiceRequestActive && mounted) {
+      setState(() => _voiceOrbState = AgentState.speaking);
+    }
     try {
       await _voiceOutput.speak(response);
     } catch (_) {
@@ -1458,6 +1464,10 @@ class _ChatScreenState extends State<ChatScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('تعذر تشغيل الصوت. تحقق من تثبيت صوت اللغة العربية على الجهاز.')),
         );
+      }
+    } finally {
+      if (_voiceRequestActive && mounted) {
+        setState(() => _voiceOrbState = AgentState.idle);
       }
     }
     _scrollToBottom();
@@ -1631,34 +1641,142 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
 
-  Future<void> _toggleVoiceInput() async {
-    if (_speech.isListening) {
+  Future<void> _stopVoiceInteraction() async {
+    _finalizingVoiceInput = true;
+    _voiceRequestActive = false;
+    try {
       await _speech.stop();
-      if (mounted) setState(() => _isListening = false);
+      await _voiceOutput.stop();
+      if (_isLoading && _agentModeEnabled) await _cancelAgent();
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() {
+      _isListening = false;
+      _voiceOrbVisible = false;
+      _voiceOrbState = AgentState.idle;
+    });
+  }
+
+  Widget _buildVoiceOrbOverlay() {
+    final status = switch (_voiceOrbState) {
+      AgentState.idle => 'جاهز للاستماع',
+      AgentState.listening => 'أستمع إليك الآن…',
+      AgentState.thinking => 'أعالج طلبك داخل المحادثة…',
+      AgentState.speaking => 'أجيبك صوتياً…',
+      AgentState.error => 'تعذر إكمال الاتصال الصوتي',
+    };
+    final transcript = _controller.text.trim();
+    return Material(
+      color: const Color(0xE610131B),
+      child: SafeArea(
+        child: Stack(
+          children: [
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 28),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    GlowingOrb(state: _voiceOrbState, size: 238),
+                    const SizedBox(height: 22),
+                    Text(
+                      status,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    if (transcript.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        transcript,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Color(0xFFCBD5E1),
+                          fontSize: 13,
+                          height: 1.5,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            PositionedDirectional(
+              top: 12,
+              end: 12,
+              child: IconButton.filledTonal(
+                tooltip: 'إيقاف المساعد الصوتي',
+                onPressed: _stopVoiceInteraction,
+                icon: const Icon(Icons.close_rounded),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _toggleVoiceInput() async {
+    if (_speech.isListening || _voiceOrbVisible) {
+      await _stopVoiceInteraction();
       return;
     }
+
     _finalizingVoiceInput = false;
+    _voiceRequestActive = false;
+    if (mounted) {
+      setState(() {
+        _voiceOrbVisible = true;
+        _voiceOrbState = AgentState.listening;
+      });
+    }
+
     final available = await _speech.initialize(
-      onStatus: (_) {
-        if (mounted) setState(() => _isListening = _speech.isListening);
+      onStatus: (status) {
+        if (!mounted) return;
+        final listening = _speech.isListening;
+        setState(() => _isListening = listening);
+        if (!listening && !_finalizingVoiceInput && _voiceOrbVisible) {
+          setState(() {
+            _voiceOrbVisible = false;
+            _voiceOrbState = AgentState.idle;
+          });
+        }
       },
       onError: (error) {
-        if (mounted) {
-          setState(() => _isListening = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('تعذر تشغيل الإدخال الصوتي: ' + error.errorMsg)),
-          );
-        }
+        if (!mounted) return;
+        setState(() {
+          _isListening = false;
+          _voiceOrbVisible = false;
+          _voiceOrbState = AgentState.error;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تعذر تشغيل الإدخال الصوتي: ${error.errorMsg}')),
+        );
       },
     );
     if (!available || !mounted) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('خدمة التعرف على الكلام غير متاحة على هذا الجهاز.')),
-      );
+      if (mounted) {
+        setState(() {
+          _voiceOrbVisible = false;
+          _voiceOrbState = AgentState.idle;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('خدمة التعرف على الكلام غير متاحة على هذا الجهاز.')),
+        );
+      }
       return;
     }
+
     final locales = await _speech.locales();
-    final arabic = locales.where((item) => item.localeId.toLowerCase().startsWith('ar')).toList();
+    final arabic = locales
+        .where((item) => item.localeId.toLowerCase().startsWith('ar'))
+        .toList();
     await _speech.listen(
       localeId: arabic.isNotEmpty ? arabic.first.localeId : null,
       listenFor: const Duration(seconds: 60),
@@ -1671,28 +1789,42 @@ class _ChatScreenState extends State<ChatScreen> {
       onResult: (result) {
         if (!mounted || result.recognizedWords.isEmpty) return;
         setState(() {
-          // Keep partial Arabic transcription visible while recognition runs.
           _controller.text = result.recognizedWords;
-          _controller.selection = TextSelection.collapsed(offset: _controller.text.length);
+          _controller.selection = TextSelection.collapsed(
+            offset: _controller.text.length,
+          );
         });
-        // Submit only the finalized utterance. The recognized text is saved as
-        // the normal user message and processed by the existing Agent Runtime.
         if (result.finalResult && !_finalizingVoiceInput) {
           _finalizingVoiceInput = true;
-          _speech.stop();
-          if (mounted) setState(() => _isListening = false);
-          Future<void>.delayed(const Duration(milliseconds: 180), () {
+          _voiceRequestActive = true;
+          unawaited(_speech.stop());
+          setState(() {
+            _isListening = false;
+            _voiceOrbState = AgentState.thinking;
+          });
+          Future<void>.delayed(const Duration(milliseconds: 180), () async {
             if (!mounted) return;
-            if (_controller.text.trim().isNotEmpty) {
-              _sendMessage();
-            } else {
-              _finalizingVoiceInput = false;
+            try {
+              // Reuse the normal chat pipeline so this voice turn is saved in
+              // the current conversation and uses its existing agent/runtime.
+              await _sendMessage();
+            } finally {
+              _voiceRequestActive = false;
+              if (mounted) {
+                setState(() {
+                  _isListening = false;
+                  _voiceOrbVisible = false;
+                  _voiceOrbState = AgentState.idle;
+                });
+              }
             }
           });
         }
       },
     );
-    if (mounted) setState(() => _isListening = _speech.isListening);
+    if (mounted) {
+      setState(() => _isListening = _speech.isListening);
+    }
   }
 
   Future<void> _openExternalProviderDialog() async {
@@ -2648,11 +2780,9 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
         actions: [
           IconButton(
-            tooltip: 'المساعد الصوتي',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const AiVoiceAssistantScreen()),
-            ),
-            icon: const Icon(Icons.graphic_eq_rounded, color: Color(0xFF22D3EE), size: 19),
+            tooltip: 'بدء المحادثة الصوتية داخل الجلسة الحالية',
+            onPressed: _toggleVoiceInput,
+            icon: const Icon(Icons.mic_none_rounded, color: Color(0xFF22D3EE), size: 19),
           ),
           IconButton(
             tooltip: 'محادثة جديدة',
@@ -2902,7 +3032,8 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ),
       ),
-      body: Container(
+      body: Stack(children: [
+        Container(
         margin: const EdgeInsets.fromLTRB(12, 8, 12, 10),
         decoration: BoxDecoration(
           color: const Color(0xFF18181B),
@@ -3333,6 +3464,9 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ),
       ),
+      if (_voiceOrbVisible)
+        Positioned.fill(child: _buildVoiceOrbOverlay()),
+    ]),
     );
   }
 }
