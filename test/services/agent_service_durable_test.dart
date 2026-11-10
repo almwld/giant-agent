@@ -40,10 +40,22 @@ Future<AgentKernelStore> _store(String path) async {
             'CREATE INDEX idx_agent_requests_queue ON agent_requests(status, sequence)',
           );
           await db.execute('''
+            CREATE TABLE agent_tasks (
+              sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+              id TEXT NOT NULL UNIQUE,
+              conversation_id TEXT NOT NULL DEFAULT 'global',
+              status TEXT NOT NULL,
+              payload_json TEXT NOT NULL,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            )
+          ''');
+          await db.execute('''
             CREATE TABLE agent_events (
               row_id INTEGER PRIMARY KEY AUTOINCREMENT,
               id TEXT NOT NULL UNIQUE,
               request_id TEXT,
+              task_id TEXT,
               type TEXT NOT NULL,
               status TEXT NOT NULL,
               payload_json TEXT NOT NULL,
@@ -51,6 +63,7 @@ Future<AgentKernelStore> _store(String path) async {
               FOREIGN KEY(request_id) REFERENCES agent_requests(id)
             )
           ''');
+          await db.execute('CREATE INDEX idx_agent_events_task ON agent_events(task_id, row_id)');
           await db.execute(
             'CREATE INDEX idx_agent_events_request ON agent_events(request_id, row_id)',
           );
@@ -151,6 +164,36 @@ void main() {
     expect(events.last.status, 'running');
     expect(events.last.payload['task_id'], 'child-1');
     await service.disposeForTesting();
+  });
+
+  test('subagent snapshots are durable and interrupted children are not replayed', () async {
+    final store = await _store('${directory.path}/subagent-recovery.db');
+    await store.enqueue(id: 'parent-1', prompt: 'parent', conversationId: 'chat-1');
+    await store.markRunning('parent-1');
+    await store.recordSubagentEvent({
+      'id': 'child-event-1',
+      'request_id': 'parent-1',
+      'session_id': 'chat-1',
+      'task_id': 'parent-1_agent_worker',
+      'agent_type': 'coder',
+      'title': 'Implement feature',
+      'task_prompt': 'Implement the requested feature',
+      'depends_on': ['parent-1_agent_explore'],
+      'type': 'subagent_started',
+      'status': 'running',
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+    });
+
+    final before = await store.subagentsForRequest('parent-1');
+    expect(before.single['prompt'], 'Implement the requested feature');
+    expect(before.single['status'], 'running');
+
+    expect(await store.reconcileInterruptedSubagents(), 1);
+    final after = await store.subagentsForRequest('parent-1');
+    expect(after.single['status'], 'interrupted');
+    expect(after.single['recovery_requires_explicit_resume'], isTrue);
+    expect((await store.taskEvents('parent-1_agent_worker')).last.type,
+        'subagent_interrupted_on_restart');
   });
 
   test('interrupted output is persisted as interrupted, not completed', () async {
