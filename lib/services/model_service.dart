@@ -606,7 +606,7 @@ $toolCatalog
         } catch (error) {
           result = <String, dynamic>{'ok': false, 'error': error.toString()};
         }
-        if (_cancelRequested) return 'تم إيقاف الوكيل بعد اكتمال الأداة الحالية.';
+        if (isCancelled()) return 'تم إيقاف الوكيل بعد اكتمال الأداة الحالية.';
 
         _emitToolEvent(
           'verification_started',
