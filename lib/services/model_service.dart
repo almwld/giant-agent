@@ -203,6 +203,14 @@ class ModelService {
     return true;
   }
 
+  Future<bool> openWorkspaceFile({required String path}) async {
+    final opened = await _agentTools.invokeMethod<bool>('openWorkspaceFile', {'path': path});
+    if (opened != true) {
+      throw PlatformException(code: 'WORKSPACE_FILE_OPEN_FAILED', message: 'Unable to open workspace file.');
+    }
+    return true;
+  }
+
   Future<Map<String, dynamic>> inspectWorkspaceFile({required String path}) async {
     final result = await _agentTools.invokeMapMethod<String, dynamic>('inspectWorkspaceFile', {'path': path});
     if (result == null || result['ok'] != true) {
