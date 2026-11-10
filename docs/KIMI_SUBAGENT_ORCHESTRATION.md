@@ -13,6 +13,15 @@
 - Each child receives a dedicated conversation ID. Parent history and sibling
   contexts are not automatically injected into that context.
 - Dependency results are passed explicitly to downstream children.
+- The scheduler now runs up to three independent child workers concurrently
+  when the configured OpenRouter provider is active. Local GGUF inference remains
+  strictly single-worker because llama.cpp exposes one mutable JNI context.
+- Cloud workers carry request-scoped Zone context for event correlation and
+  cancellation. A child cancellation does not cancel its siblings; parent
+  cancellation is propagated to all workers.
+- Workspace tool effects and their independent verification share one FIFO
+  critical section. This prevents concurrent file mutations from racing with
+  verification, while independent cloud inference requests can overlap.
 - Explore, plan, and reviewer agents are restricted at both prompt-catalog and
   runtime-validation layers to `read_file` and `list_files`. Coder agents can
   use the registered workspace tools; terminal execution still requires the
