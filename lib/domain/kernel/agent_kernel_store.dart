@@ -211,6 +211,93 @@ class AgentKernelStore {
     });
   }
 
+  /// Persists a child-agent projection and its immutable lifecycle event.
+  /// Child prompts and dependency IDs are retained for explicit, reviewed recovery;
+  /// this method never starts or replays work.
+  Future<void> recordSubagentEvent(Map<String, dynamic> event) async {
+    final taskId = event['task_id']?.toString() ?? '';
+    final requestId = event['request_id']?.toString() ?? '';
+    if (taskId.isEmpty || requestId.isEmpty) return;
+    final db = await database;
+    final rows = await db.query(
+      'agent_tasks',
+      where: 'id = ?',
+      whereArgs: [taskId],
+      limit: 1,
+    );
+    Map<String, dynamic> previous = <String, dynamic>{};
+    if (rows.isNotEmpty) {
+      final decoded = jsonDecode(rows.single['payload_json']! as String);
+      if (decoded is Map) previous = Map<String, dynamic>.from(decoded);
+      if (previous['kind'] != null && previous['kind'] != 'subagent') {
+        throw StateError('Task id collision while persisting subagent $taskId.');
+      }
+    }
+    final timestamp = event['timestamp']?.toString() ??
+        DateTime.now().toUtc().toIso8601String();
+    final now = DateTime.now().toUtc().toIso8601String();
+    final snapshot = <String, dynamic>{
+      ...previous,
+      'id': taskId,
+      'kind': 'subagent',
+      'parent_request_id': requestId,
+      'conversation_id': event['session_id']?.toString() ?? 'global',
+      'agent_type': event['agent_type']?.toString() ?? 'unknown',
+      'title': event['title']?.toString() ?? taskId,
+      'prompt': event['task_prompt']?.toString() ?? previous['prompt'],
+      'depends_on': event['depends_on'] ?? previous['depends_on'] ?? const <String>[],
+      'status': event['status']?.toString() ?? 'pending',
+      'last_event_type': event['type']?.toString() ?? 'unknown',
+      'last_details': event['details']?.toString(),
+      'created_at': previous['created_at']?.toString() ?? timestamp,
+      'updated_at': now,
+    };
+    final payload = Map<String, Object?>.from(event);
+    await saveTaskWithEvents(snapshot, events: <Map<String, Object?>>[
+      <String, Object?>{
+        'type': event['type']?.toString() ?? 'subagent_event',
+        'status': event['status']?.toString() ?? 'pending',
+        'payload': payload,
+      },
+    ]);
+  }
+
+  /// Marks children interrupted after process death. Side effects are never replayed.
+  Future<int> reconcileInterruptedSubagents() async {
+    final snapshots = (await getTasks())
+        .where((task) => task['kind'] == 'subagent' &&
+            {'pending', 'running'}.contains(task['status']))
+        .toList(growable: false);
+    for (final task in snapshots) {
+      final now = DateTime.now().toUtc().toIso8601String();
+      final recovered = <String, dynamic>{
+        ...task,
+        'status': 'interrupted',
+        'last_event_type': 'subagent_interrupted_on_restart',
+        'updated_at': now,
+        'recovery_requires_explicit_resume': true,
+      };
+      await saveTaskWithEvents(recovered, events: <Map<String, Object?>>[
+        <String, Object?>{
+          'type': 'subagent_interrupted_on_restart',
+          'status': 'interrupted',
+          'payload': <String, Object?>{
+            'parent_request_id': task['parent_request_id'],
+            'replay': false,
+            'requires_explicit_resume': true,
+          },
+        },
+      ]);
+    }
+    return snapshots.length;
+  }
+
+  Future<List<Map<String, dynamic>>> subagentsForRequest(String requestId) async =>
+      (await getTasks())
+          .where((task) => task['kind'] == 'subagent' &&
+              task['parent_request_id'] == requestId)
+          .toList(growable: false);
+
   /// One-time compatibility migration. SharedPreferences is read only here;
   /// all subsequent task reads and writes use SQLite exclusively.
   Future<void> migrateLegacyTaskSnapshot() async {
