@@ -50,7 +50,37 @@ No markdown, explanation, or private reasoning.
       if (entry.key is! String) throw const FormatException('Reflexion argument names must be strings.');
       normalized[entry.key as String] = entry.value;
     }
+    _validateArguments(tool, normalized);
     return ReflexionAction(toolName: tool, arguments: normalized, rawResponse: raw);
+  }
+
+  void _validateArguments(String tool, Map<String, dynamic> args) {
+    bool hasText(String key) => args[key] is String && (args[key] as String).trim().isNotEmpty;
+    switch (tool) {
+      case 'create_file':
+      case 'write_file':
+        if (!hasText('path') || args['content'] is! String) {
+          throw FormatException('Reflexion action "$tool" requires a non-empty path and string content.');
+        }
+        break;
+      case 'read_file':
+        if (!hasText('path')) {
+          throw const FormatException('Reflexion read_file action requires a non-empty path.');
+        }
+        break;
+      case 'execute_python':
+        if (!hasText('code')) {
+          throw const FormatException('Reflexion execute_python action requires non-empty code.');
+        }
+        break;
+      case 'list_files':
+        if (args.isNotEmpty) {
+          throw const FormatException('Reflexion list_files action does not accept arguments.');
+        }
+        break;
+      default:
+        throw FormatException('Reflexion action "$tool" is not supported.');
+    }
   }
 
   Map<String, dynamic> _decodeObject(String raw) {
