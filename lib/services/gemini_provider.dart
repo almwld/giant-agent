@@ -64,6 +64,11 @@ class GeminiProvider {
     );
   }
 
+  /// Decode JSON from raw response bytes without relying on a server charset header.
+  static dynamic decodeJsonResponse(List<int> bodyBytes) {
+    return jsonDecode(utf8.decode(bodyBytes, allowMalformed: false));
+  }
+
   static String extractText(Map<String, dynamic> decoded) {
     final candidates = decoded['candidates'];
     if (candidates is! List || candidates.isEmpty || candidates.first is! Map) {
@@ -117,7 +122,7 @@ class GeminiProvider {
       }).timeout(requestTimeout);
       final dynamic decoded;
       try {
-        decoded = jsonDecode(utf8.decode(response.bodyBytes, allowMalformed: false));
+        decoded = decodeJsonResponse(response.bodyBytes);
       } on FormatException {
         throw StateError('أعاد Gemini استجابة غير JSON (HTTP ${response.statusCode}).');
       }
