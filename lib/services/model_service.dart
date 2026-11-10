@@ -6,8 +6,6 @@ import '../services/llama_service.dart';
 import '../agent/architecture/agent_event_bus.dart';
 import 'agent_memory_service.dart';
 import 'openai_compatible_provider.dart';
-import 'gemini_provider.dart';
-import 'providers/zero_config_provider.dart';
 import 'model_provider_settings.dart';
 import '../tools/tool_manager.dart';
 import '../tools/gain_terminal_tool.dart';
@@ -343,14 +341,10 @@ class ModelService {
     }
     final mode = await ModelProviderSettings.instance.getMode();
     switch (mode) {
-      case ModelProviderMode.gemini:
-        return GeminiProvider.instance.generateWithImage(image, prompt: prompt);
       case ModelProviderMode.openRouter:
         return OpenAICompatibleProvider.instance.generateWithImage(image, prompt: prompt);
       case ModelProviderMode.local:
-        throw StateError('النموذج المحلي الحالي نصّي فقط. استخدم OCR المحلي أو اختر نموذج رؤية عبر Gemini أو OpenRouter.');
-      case ModelProviderMode.zeroConfig:
-        throw StateError('المزوّد المجاني التلقائي يدعم المحادثة النصية فقط ولا يدعم تحليل الصور.');
+        throw StateError('النموذج المحلي الحالي نصّي فقط. استخدم OCR المحلي أو اختر نموذج رؤية عبر OpenRouter.');
     }
   }
 
@@ -399,19 +393,11 @@ class ModelService {
     switch (mode) {
       case ModelProviderMode.local:
         if (!await _llama.isLoaded()) {
-          throw StateError('لم يتم تحميل نموذج GGUF المحلي. حمّل نموذجاً من قائمة النماذج أو اختر مزوّداً سحابياً.');
+          throw StateError('لم يتم تحميل نموذج GGUF المحلي. حمّل نموذجاً من قائمة النماذج أو اختر OpenRouter.');
         }
         return _llama.generate(prompt, maxTokens: maxTokens, temperature: temperature);
       case ModelProviderMode.openRouter:
         return OpenAICompatibleProvider.instance.generate(
-          prompt, maxTokens: maxTokens, temperature: temperature,
-        );
-      case ModelProviderMode.gemini:
-        return GeminiProvider.instance.generate(
-          prompt, maxTokens: maxTokens, temperature: temperature,
-        );
-      case ModelProviderMode.zeroConfig:
-        return ZeroConfigProvider.instance.generate(
           prompt, maxTokens: maxTokens, temperature: temperature,
         );
     }
@@ -420,12 +406,6 @@ class ModelService {
   Future<String> _processInput(String input) async {
     _cancelRequested = false;
     input = _boundPrompt(input);
-    // The keyless gateway is intentionally conversation-only: do not expose
-    // tool execution or claim agent capabilities for providers without reliable
-    // function-calling support.
-    if (await ModelProviderSettings.instance.getMode() == ModelProviderMode.zeroConfig) {
-      return _generateText(input, maxTokens: 768, temperature: .35);
-    }
     if (await ModelProviderSettings.instance.getMode() == ModelProviderMode.local && !await _llama.isLoaded()) {
       return '⚠️ لم يتم تحميل نموذج GGUF المحلي. حمّل نموذجاً أو اختر OpenRouter أو Gemini من إعدادات المزوّد.';
     }
