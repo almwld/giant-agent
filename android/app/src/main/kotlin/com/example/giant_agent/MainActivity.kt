@@ -1,5 +1,6 @@
 package com.example.giant_agent
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import io.flutter.embedding.android.FlutterActivity
@@ -21,6 +22,13 @@ import com.google.mlkit.vision.label.ImageLabeling
 import com.google.mlkit.vision.label.defaults.ImageLabelerOptions
 
 class MainActivity: FlutterActivity() {
+    override fun provideFlutterEngine(context: Context): FlutterEngine? =
+        AgentRuntime.flutterEngine
+
+    // AgentForegroundService keeps this process alive while durable work runs;
+    // retaining the engine also retains the one shared Dart ModelService/LlamaService facade.
+    override fun shouldDestroyEngineWithHost(): Boolean = false
+
     private val CHANNEL = "file_receiver"
     private val AI_CHANNEL = "giant_agent/llama"
     private val AGENT_EVENTS_CHANNEL = "giant_agent_stream"
@@ -33,6 +41,7 @@ class MainActivity: FlutterActivity() {
     companion object { private const val REQUEST_OPEN_MODEL = 7402 }
     
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+        AgentRuntime.retainFlutterEngine(flutterEngine)
         super.configureFlutterEngine(flutterEngine)
         NotificationBridge.register(this, flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "giant_agent/background")
