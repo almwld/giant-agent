@@ -246,26 +246,40 @@ class AgentService {
     await AgentBackgroundExecutionService.instance.beginTask('استئناف الوكيل الفرعي $taskId');
     try {
       final recovery = SubagentRecoveryCoordinator(_store);
-      return await recovery.resume(
-      taskId: taskId,
-      sideEffectDisposition: sideEffectDisposition,
-      execute: ({required parent, required task, required dependencyResults}) async {
-        try {
-          return await _executionKernel.executeRecoveredSubagent(
-            parentRequestId: parent.id,
-            parentPrompt: parent.prompt,
-            conversationId: parent.conversationId,
-            taskId: taskId,
-            title: task['title']?.toString() ?? taskId,
-            taskPrompt: task['prompt']?.toString() ?? '',
-            agentType: task['agent_type']?.toString() ?? 'explore',
-            dependencyResults: dependencyResults,
-          );
-        } finally {
-          await _flushExecutionJournal();
-        }
-      },
+      final resumedOutput = await recovery.resume(
+        taskId: taskId,
+        sideEffectDisposition: sideEffectDisposition,
+        execute: ({required parent, required task, required dependencyResults}) async {
+          try {
+            return await _executionKernel.executeRecoveredSubagent(
+              parentRequestId: parent.id,
+              parentPrompt: parent.prompt,
+              conversationId: parent.conversationId,
+              taskId: taskId,
+              title: task['title']?.toString() ?? taskId,
+              taskPrompt: task['prompt']?.toString() ?? '',
+              agentType: task['agent_type']?.toString() ?? 'explore',
+              dependencyResults: dependencyResults,
+            );
+          } finally {
+            await _flushExecutionJournal();
+          }
+        },
       );
+      await _flushExecutionJournal();
+      final child = await _store.getSubagent(taskId);
+      final parentId = child?['parent_request_id']?.toString() ?? '';
+      final parent = parentId.isEmpty ? null : await _store.getRequest(parentId);
+      if (parent != null) {
+        await _outputEngine.finalize(
+          requestId: parent.id,
+          conversationId: parent.conversationId,
+          finalText: parent.result ?? '',
+          requestStatus: 'interrupted',
+        );
+        await _flushExecutionJournal();
+      }
+      return resumedOutput;
     } finally {
       await _backgroundProgressTail;
       await AgentBackgroundExecutionService.instance.endTask();
