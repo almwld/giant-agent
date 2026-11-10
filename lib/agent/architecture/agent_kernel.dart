@@ -66,6 +66,7 @@ class AgentKernel {
   int _eventSequence = 0;
   bool _cancellationRequested = false;
   SubagentOrchestrator? _activeSubagentOrchestrator;
+  String? _activeSubagentId;
   final FifoTaskQueue _requestQueue = FifoTaskQueue();
   int get queuedRequestCount => _requestQueue.pendingCount;
 
@@ -425,7 +426,7 @@ class AgentKernel {
           details: event['details']?.toString(),
         );
       },
-      execute: (task, dependencyResults) async {
+      execute: (task, dependencyResults, isTaskCancelled) async {
         if (_cancellationRequested) {
           throw const SubagentInterrupted('أوقف المستخدم تنفيذ الوكلاء الفرعيين.');
         }
@@ -476,13 +477,20 @@ ${dependencyContext.isEmpty ? 'لا توجد تبعيات سابقة.' : depende
 - لا تعرض التفكير الداخلي التفصيلي.
 ''';
 
-        final output = (await _models.processInput(
-          subagentPrompt,
-          conversationId: isolatedConversationId,
-          persistTurn: false,
-          allowedTools: allowedTools,
-          shouldCancel: () => _cancellationRequested,
-        )).trim();
+        _activeSubagentId = task.id;
+        late final String output;
+        try {
+          output = (await _models.processInput(
+            subagentPrompt,
+            conversationId: isolatedConversationId,
+            persistTurn: false,
+            allowedTools: allowedTools,
+            shouldCancel: () =>
+                _cancellationRequested || isTaskCancelled(),
+          )).trim();
+        } finally {
+          if (_activeSubagentId == task.id) _activeSubagentId = null;
+        }
 
         if (_cancellationRequested || _isCancelledOutput(output)) {
           throw const SubagentInterrupted('تم إيقاف الوكيل الفرعي أثناء التنفيذ.');
@@ -799,6 +807,28 @@ $evidence
       ));
     }
     return tasks;
+  }
+
+  Future<bool> cancelSubagent(String taskId) async {
+    final orchestrator = _activeSubagentOrchestrator;
+    if (orchestrator == null || !orchestrator.cancelTask(taskId)) {
+      return false;
+    }
+    _emit(
+      requestId: _activeRequestId ?? 'runtime',
+      taskId: taskId,
+      type: 'subagent_cancellation_requested',
+      title: 'طلب إيقاف الوكيل الفرعي',
+      status: 'running',
+    );
+    if (_activeSubagentId == taskId) {
+      try {
+        await _models.cancelGeneration();
+      } catch (_) {
+        // The worker will observe its cancellation token at the next boundary.
+      }
+    }
+    return true;
   }
 
   Future<bool> cancel() async {
