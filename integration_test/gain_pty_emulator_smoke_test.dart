@@ -60,7 +60,7 @@ void main() {
       expect(handle, isNotNull);
       expect(handle, greaterThan(0));
 
-      final command = "printf '%s\\n' '$marker'\\n";
+      final command = 'echo $marker\\n';
       final bytes = Uint8List.fromList(utf8.encode(command));
       final written = await method.invokeMethod<int>(
         'write',
