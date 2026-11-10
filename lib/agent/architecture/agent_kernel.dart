@@ -752,6 +752,7 @@ $evidence
       conversationId: conversationId,
       persistTurn: false,
       allowedTools: const <String>{},
+      requestId: requestId,
     );
     final normalizedFinal = finalOutput.trim();
     if (_cancellationRequested ||
