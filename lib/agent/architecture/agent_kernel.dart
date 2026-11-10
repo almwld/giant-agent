@@ -361,7 +361,7 @@ class AgentKernel {
     }
     final requestId = 'resume_${parentRequestId}_${taskId}_${DateTime.now().microsecondsSinceEpoch}';
     _activeRequestId = requestId;
-    _activeSubagentId = taskId;
+    _activeSubagentIds.add(taskId);
     _activeSubagentParentRequestId = parentRequestId;
     _cancellationRequested = false;
     _models.beginAgentRequest(requestId);
@@ -964,7 +964,7 @@ $evidence
       title: 'طلب إيقاف الوكيل الفرعي',
       status: 'running',
     );
-    if (_activeSubagentId == taskId) {
+    if (recoveredChild) {
       try {
         await _models.cancelGeneration();
       } catch (_) {
