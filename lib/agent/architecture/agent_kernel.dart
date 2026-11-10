@@ -87,6 +87,8 @@ class AgentKernel {
     String? eventId,
     String? taskId,
     String? agentType,
+    String? taskPrompt,
+    List<String>? dependsOn,
   }) {
     final sequence = ++_eventSequence;
     final event = AgentTimelineEvent(
@@ -104,6 +106,8 @@ class AgentKernel {
       details: details,
       taskId: taskId,
       agentType: agentType,
+      taskPrompt: taskPrompt,
+      dependsOn: dependsOn ?? const <String>[],
     );
     _events.add(event);
     AgentEventBus.instance.publish(event.toMap());
@@ -424,6 +428,8 @@ class AgentKernel {
           eventId: taskId,
           taskId: taskId,
           agentType: event['agent_type']?.toString(),
+          taskPrompt: event['task_prompt']?.toString(),
+          dependsOn: (event['depends_on'] as List?)?.map((item) => item.toString()).toList(growable: false) ?? const <String>[],
           type: event['type']?.toString() ?? 'subagent_event',
           title: event['title']?.toString() ?? 'تحديث الوكيل الفرعي',
           status: event['status']?.toString() ?? 'pending',
