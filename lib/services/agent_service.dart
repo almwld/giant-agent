@@ -322,7 +322,7 @@ class AgentService {
   Future<Map<String, dynamic>> exportWorkspace() =>
       _executionKernel.exportWorkspace();
 
-  Future<bool> shareWorkspace() => _models.shareWorkspace();
+  Future<bool> shareWorkspace(List<String> paths) => _models.shareWorkspace(paths: paths);
 
   Future<bool> openWorkspaceFile(String path) =>
       _models.openWorkspaceFile(path: path);
