@@ -100,8 +100,12 @@ class AgentService {
       // excluded from the durable lifecycle journal to avoid unbounded growth.
       if (event['type'] == 'stream_token') return;
       _journalTail = _journalTail
-          .then((_) => _store.appendRequestEvent(event))
-          .catchError((Object _) {
+          .then((_) async {
+        if ((event['task_id']?.toString() ?? '').isNotEmpty) {
+          await _store.recordSubagentEvent(event);
+        }
+        await _store.appendRequestEvent(event);
+      }).catchError((Object _) {
         // Request completion remains owned by the durable kernel. A failed
         // supplemental timeline write must not corrupt the shared runtime.
       });
@@ -120,6 +124,8 @@ class AgentService {
     if (_initializeExecutionRuntime) await _executionKernel.initialize();
     _attachExecutionJournal();
     await _durableKernel.initialize();
+    // Interrupted child work is made visible for explicit recovery, never replayed.
+    await _store.reconcileInterruptedSubagents();
     _initialized = true;
   }
 
@@ -157,6 +163,10 @@ class AgentService {
   /// Replays the immutable lifecycle journal for one child agent.
   Future<List<KernelEventRecord>> eventsForSubagent(String taskId) =>
       _store.taskEvents(taskId);
+
+  /// Returns durable child snapshots for a request, including safely interrupted work.
+  Future<List<Map<String, dynamic>>> subagentsForRequest(String requestId) =>
+      _store.subagentsForRequest(requestId);
 
   Future<bool> cancel() => _executionKernel.cancel();
 
