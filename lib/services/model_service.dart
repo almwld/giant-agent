@@ -198,9 +198,11 @@ class ModelService {
   Future<Map<String, dynamic>> _executeTool(
     Map<String, dynamic> payload, {
     String? stepId,
+    Set<String>? allowedTools,
   }) async {
     final name = payload['name']?.toString() ?? '';
-    if (!ToolManager().supports(name)) {
+    if (!ToolManager().supports(name) ||
+        (allowedTools != null && !allowedTools.contains(name))) {
       throw FormatException('Unsupported tool: $name');
     }
     final args = payload['arguments'];
@@ -310,6 +312,7 @@ class ModelService {
     String input, {
     String conversationId = 'global',
     bool persistTurn = true,
+    Set<String>? allowedTools,
   }) {
     return _withRuntimeLock(() async {
       final context = await AgentMemoryService.instance.buildContext(
@@ -318,6 +321,7 @@ class ModelService {
       );
       final response = await _processInput(
         context.isEmpty ? input : '$context\n\nطلب المستخدم: $input',
+        allowedTools: allowedTools,
       );
       if (persistTurn) {
         await AgentMemoryService.instance.saveTurn(
@@ -403,13 +407,18 @@ class ModelService {
     }
   }
 
-  Future<String> _processInput(String input) async {
+  Future<String> _processInput(
+    String input, {
+    Set<String>? allowedTools,
+  }) async {
     _cancelRequested = false;
     input = _boundPrompt(input);
     if (await ModelProviderSettings.instance.getMode() == ModelProviderMode.local && !await _llama.isLoaded()) {
       return '⚠️ لم يتم تحميل نموذج GGUF المحلي. حمّل نموذج GGUF أو اختر OpenRouter من إعدادات المزوّد.';
     }
-    final toolCatalog = ToolManager().promptCatalog;
+    final toolCatalog = allowedTools == null
+        ? ToolManager().promptCatalog
+        : ToolManager().promptCatalogFor(allowedTools);
     final history = StringBuffer('''أنت Giant Agent، مساعد ذكي متعدد المصادر. أجب بلغة المستخدم.
 الأدوات المتاحة فعلياً:
 $toolCatalog
@@ -456,7 +465,9 @@ $toolCatalog
 
         final toolName = payload['name']?.toString() ?? '';
         final rawArgs = payload['arguments'];
-        if (!ToolManager().supports(toolName) || rawArgs is! Map<String, dynamic>) {
+        if (!ToolManager().supports(toolName) ||
+            (allowedTools != null && !allowedTools.contains(toolName)) ||
+            rawArgs is! Map<String, dynamic>) {
           history
             ..write('\n\nSystem Note: Unsupported tool or invalid arguments. Use only the registered tool catalogue.\n\nAssistant:');
           continue;
@@ -480,7 +491,11 @@ $toolCatalog
         final toolStepId = 'verified_step_${_activeRequestId}_${DateTime.now().microsecondsSinceEpoch}';
         Map<String, dynamic> result;
         try {
-          result = await _executeTool(payload, stepId: toolStepId);
+          result = await _executeTool(
+            payload,
+            stepId: toolStepId,
+            allowedTools: allowedTools,
+          );
         } catch (error) {
           result = <String, dynamic>{'ok': false, 'error': error.toString()};
         }
