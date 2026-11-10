@@ -10,8 +10,8 @@ import 'agent_workspace_screen.dart';
 import 'package:flutter/services.dart';
 import 'package:xterm/xterm.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:cross_file/cross_file.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:lottie/lottie.dart';
 import 'settings_screen.dart';
 import '../models/chat_session.dart';
 import 'dart:convert';
@@ -422,7 +422,7 @@ class _ChatScreenState extends State<ChatScreen> {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF050A0F),
+      backgroundColor: const Color(0xFF263238),
       builder: (context) => SizedBox(
         height: MediaQuery.of(context).size.height * .72,
         child: Column(
@@ -817,7 +817,7 @@ class _ChatScreenState extends State<ChatScreen> {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF101820),
+      backgroundColor: const Color(0xFF1E293B),
       builder: (context) => DraggableScrollableSheet(
         expand: false,
         initialChildSize: .72,
@@ -829,13 +829,13 @@ class _ChatScreenState extends State<ChatScreen> {
             Padding(
               padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
               child: Row(children: [
-                const Icon(Icons.computer, color: Colors.tealAccent),
+                const Icon(Icons.computer, color: const Color(0xFF34A99F)),
                 const SizedBox(width: 9),
                 Expanded(child: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16))),
                 IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close, color: Colors.white70)),
               ]),
             ),
-            if (fileName != null) Padding(padding: const EdgeInsets.symmetric(horizontal: 18), child: Text(fileName, style: const TextStyle(color: Colors.tealAccent, fontSize: 12))),
+            if (fileName != null) Padding(padding: const EdgeInsets.symmetric(horizontal: 18), child: Text(fileName, style: const TextStyle(color: const Color(0xFF34A99F), fontSize: 12))),
             if (command != null) Padding(padding: const EdgeInsets.all(18), child: SelectableText('\$ $command', style: const TextStyle(color: Colors.lightGreenAccent, fontFamily: 'monospace'))),
             Expanded(child: SingleChildScrollView(
               controller: controller,
@@ -855,7 +855,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildAgentTimeline() {
     if (_agentSteps.isEmpty) return const SizedBox.shrink();
-    const cardColor = Color(0xFF1E1E1E);
+    const cardColor = Color(0xFF1E293B);
     const mutedColor = Color(0xFF9CA3AF);
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 12),
@@ -890,13 +890,13 @@ class _ChatScreenState extends State<ChatScreen> {
                   IconButton(
                     tooltip: 'فتح الطرفية',
                     visualDensity: VisualDensity.compact,
-                    icon: const Icon(Icons.terminal, color: Color(0xFF0D8274), size: 20),
+                    icon: const Icon(Icons.terminal, color: Color(0xFF0A8F83), size: 20),
                     onPressed: _showTerminal,
                   ),
                   IconButton(
                     tooltip: 'فتح مساحة عمل الوكيل',
                     visualDensity: VisualDensity.compact,
-                    icon: const Icon(Icons.computer_outlined, color: Color(0xFF0D8274), size: 19),
+                    icon: const Icon(Icons.computer_outlined, color: Color(0xFF0A8F83), size: 19),
                     onPressed: () => Navigator.of(context).push(MaterialPageRoute(
                       builder: (_) => AgentWorkspaceScreen(steps: List<Map<String, dynamic>>.from(_agentSteps)),
                     )),
@@ -922,7 +922,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       final icon = _agentStepIcon(type);
                       final color = failed
                           ? const Color(0xFFEF6A6A)
-                          : (running ? const Color(0xFF0D8274) : mutedColor);
+                          : (running ? const Color(0xFF0A8F83) : mutedColor);
                       final title = step['title']?.toString() ?? 'حدث من الوكيل';
                       final subtitle = step['subtitle']?.toString();
                       final opensTerminal = _opensTerminalFromStep(step);
@@ -957,11 +957,11 @@ class _ChatScreenState extends State<ChatScreen> {
                                 width: 20,
                                 height: 22,
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF2A2A2A),
+                                  color: const Color(0xFF263238),
                                   borderRadius: BorderRadius.circular(5),
                                 ),
                                 alignment: Alignment.center,
-                                child: Icon(icon, size: 13, color: isTool ? const Color(0xFF0D8274) : mutedColor),
+                                child: Icon(icon, size: 13, color: isTool ? const Color(0xFF0A8F83) : mutedColor),
                               ),
                               const SizedBox(width: 10),
                               Expanded(
@@ -988,7 +988,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                         color: failed
                                             ? const Color(0xFFFF9292)
                                             : running
-                                                ? const Color(0xFF54C7B7)
+                                                ? const Color(0xFF34A99F)
                                                 : mutedColor,
                                         fontSize: 9,
                                       )),
@@ -1036,15 +1036,98 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  Widget _buildSmartSpeakerEmptyState() {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 220,
+              height: 220,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [const Color(0xFF0A8F83).withOpacity(0.22), Colors.transparent],
+                ),
+              ),
+              child: Lottie.asset(
+                'assets/animations/smart_speaker.json',
+                width: 204,
+                height: 204,
+                fit: BoxFit.contain,
+                repeat: true,
+                errorBuilder: (context, error, stackTrace) => const Icon(
+                  Icons.graphic_eq_rounded,
+                  size: 96,
+                  color: Color(0xFF34A99F),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'المتحدث الذكي',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Colors.white),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'أنا جاهز لمساعدتك. اكتب سؤالك أو ابدأ محادثة جديدة.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, height: 1.6, color: Color(0xFFB7C4C2)),
+            ),
+            const SizedBox(height: 18),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E293B),
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: const Color(0xFF34A99F).withOpacity(0.3)),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.auto_awesome, size: 16, color: Color(0xFF34A99F)),
+                  SizedBox(width: 8),
+                  Text('مدعوم بنموذجك المحلي', style: TextStyle(fontSize: 12, color: Color(0xFFD6E2E0))),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
+      backgroundColor: const Color(0xFF263238),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF121212),
+        backgroundColor: const Color(0xFF263238),
         foregroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
-        title: const Text('Giant Agent X', style: TextStyle(color: Colors.white)),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 38,
+              height: 38,
+              child: Lottie.asset(
+                'assets/animations/smart_speaker.json',
+                fit: BoxFit.contain,
+                repeat: true,
+                errorBuilder: (context, error, stackTrace) => const Icon(
+                  Icons.graphic_eq_rounded,
+                  color: Color(0xFF34A99F),
+                ),
+              ),
+            ),
+            const SizedBox(width: 7),
+            const Text('المتحدث الذكي', style: TextStyle(color: Colors.white, fontSize: 17)),
+          ],
+        ),
         centerTitle: true,
         actions: [
           if (_isLoading)
@@ -1056,7 +1139,7 @@ class _ChatScreenState extends State<ChatScreen> {
           PopupMenuButton<String>(
             tooltip: 'القائمة',
             icon: const Icon(Icons.more_vert, color: Colors.white),
-            color: const Color(0xFF242424),
+            color: const Color(0xFF1E293B),
             elevation: 10,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(14),
@@ -1106,7 +1189,7 @@ class _ChatScreenState extends State<ChatScreen> {
               width: double.infinity,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [Colors.deepPurple.shade700, Colors.deepPurple.shade900],
+                  colors: [const Color(0xFF08776E), const Color(0xFF0A8F83)],
                 ),
               ),
               child: const Center(
@@ -1236,7 +1319,7 @@ class _ChatScreenState extends State<ChatScreen> {
         children: [
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            color: _modelService.hasActiveModel() ? const Color(0xFF18352F) : const Color(0xFF382B18),
+            color: _modelService.hasActiveModel() ? const Color(0xFF164B46) : const Color(0xFF463A24),
             child: Row(
               children: [
                 Icon(
@@ -1260,7 +1343,9 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
           Expanded(
-            child: ListView.builder(
+            child: _messages.isEmpty && _agentSteps.isEmpty
+                ? _buildSmartSpeakerEmptyState()
+                : ListView.builder(
               controller: _scrollController,
               padding: const EdgeInsets.all(16),
               itemCount: _messages.length + (_agentSteps.isNotEmpty ? 1 : 0),
@@ -1280,7 +1365,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       maxWidth: MediaQuery.of(context).size.width * 0.8,
                     ),
                     decoration: BoxDecoration(
-                      color: isUser ? const Color(0xFF0D8274) : const Color(0xFF1E1E1E),
+                      color: isUser ? const Color(0xFF0A8F83) : const Color(0xFF1E293B),
                       borderRadius: BorderRadius.only(
                         topLeft: const Radius.circular(16),
                         topRight: const Radius.circular(16),
@@ -1318,7 +1403,7 @@ class _ChatScreenState extends State<ChatScreen> {
               width: double.infinity,
               margin: const EdgeInsets.fromLTRB(16, 6, 16, 10),
               padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(color: const Color(0xFF1E1E1E), borderRadius: BorderRadius.circular(14)),
+              decoration: BoxDecoration(color: const Color(0xFF1E293B), borderRadius: BorderRadius.circular(14)),
               child: SelectableText(_streamingResponse, style: const TextStyle(color: Colors.white, fontSize: 14)),
             ),
           if (_isLoading)
@@ -1351,7 +1436,7 @@ class _ChatScreenState extends State<ChatScreen> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: const Color(0xFF1E1E1E),
+              color: const Color(0xFF1E293B),
               border: const Border(top: BorderSide(color: Colors.white12)),
             ),
             child: Row(
@@ -1379,7 +1464,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         borderSide: BorderSide.none,
                       ),
                       filled: true,
-                      fillColor: const Color(0xFF2A2A2A),
+                      fillColor: const Color(0xFF263238),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                     ),
                     onSubmitted: (_) => _sendMessage(),
@@ -1391,7 +1476,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   child: Container(
                     padding: const EdgeInsets.all(12),
                     decoration: const BoxDecoration(
-                      color: Colors.deepPurple,
+                      color: const Color(0xFF0A8F83),
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(Icons.send, color: Colors.white, size: 20),

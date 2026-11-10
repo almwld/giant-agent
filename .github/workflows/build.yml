@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - feat/sehatak-brand-identity
   pull_request:
     branches:
       - main
@@ -18,9 +19,9 @@ concurrency:
 
 jobs:
   build:
-    name: Build Android APKs
+    name: Build universal and ABI APKs
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
 
     steps:
       - name: Checkout repository
@@ -43,6 +44,9 @@ jobs:
           python3.11 --version
           command -v python3.11
 
+      - name: Install parser test dependency
+        run: pip install pypdf python-docx openpyxl
+
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -53,29 +57,97 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Lint architecture Markdown
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          files = list(Path('docs').rglob('*.md')) if Path('docs').exists() else []
+          for path in files:
+              content = path.read_text(encoding='utf-8')
+              if '\\x00' in content:
+                  raise SystemExit(f'NUL byte in {path}')
+          print(f'Checked {len(files)} architecture Markdown files')
+          PY
+
+      - name: Analyze all Flutter and Dart sources
+        run: flutter analyze
+
+      - name: Run Flutter unit tests
+        run: flutter test
+
+      # Build the all-ABI APK with Chaquopy's full ABI list. Do not use
+      # Flutter --split-per-abi: it conflicts with Chaquopy's ndk.abiFilters.
       - name: Build universal release APK
+        env:
+          CHAQUOPY_ABI_FILTERS: armeabi-v7a,arm64-v8a,x86_64,x86
         run: |
+          set -euo pipefail
           flutter build apk --release
-          mkdir -p dist
-          cp build/app/outputs/flutter-apk/app-release.apk dist/giant-agent-universal.apk
+          mkdir -p dist/universal
+          cp build/app/outputs/flutter-apk/app-release.apk dist/universal/giant-agent-universal.apk
+          test -s dist/universal/giant-agent-universal.apk
 
-      - name: Verify APK outputs
+      - name: Build ARM64 release APK
+        env:
+          CHAQUOPY_ABI_FILTERS: arm64-v8a
         run: |
-          set -e
-          test -s dist/giant-agent-universal.apk
-          echo "APK files produced:"
-          ls -lh dist/*.apk
-          sha256sum dist/*.apk | tee dist/SHA256SUMS.txt
+          set -euo pipefail
+          flutter build apk --release --target-platform android-arm64
+          mkdir -p dist/split
+          cp build/app/outputs/flutter-apk/app-release.apk dist/split/giant-agent-arm64-v8a.apk
+          test -s dist/split/giant-agent-arm64-v8a.apk
 
-      - name: 📤 Upload universal APK
+      - name: Build ARMv7 release APK
+        env:
+          CHAQUOPY_ABI_FILTERS: armeabi-v7a
+        run: |
+          set -euo pipefail
+          flutter build apk --release --target-platform android-arm
+          cp build/app/outputs/flutter-apk/app-release.apk dist/split/giant-agent-armeabi-v7a.apk
+          test -s dist/split/giant-agent-armeabi-v7a.apk
+
+      - name: Build x86_64 release APK
+        env:
+          CHAQUOPY_ABI_FILTERS: x86_64
+        run: |
+          set -euo pipefail
+          flutter build apk --release --target-platform android-x64
+          cp build/app/outputs/flutter-apk/app-release.apk dist/split/giant-agent-x86_64.apk
+          test -s dist/split/giant-agent-x86_64.apk
+
+      - name: Build x86 release APK
+        env:
+          CHAQUOPY_ABI_FILTERS: x86
+        run: |
+          set -euo pipefail
+          flutter build apk --release --target-platform android-x86
+          cp build/app/outputs/flutter-apk/app-release.apk dist/split/giant-agent-x86.apk
+          test -s dist/split/giant-agent-x86.apk
+
+      - name: Generate checksums and verify APK outputs
+        run: |
+          set -euo pipefail
+          find dist -type f -name '*.apk' -print -exec ls -lh {} \;
+          test "$(find dist/split -maxdepth 1 -type f -name '*.apk' | wc -l)" -eq 4
+          sha256sum dist/universal/*.apk dist/split/*.apk | tee dist/SHA256SUMS.txt
+
+      - name: Upload universal APK
         uses: actions/upload-artifact@v4
         with:
           name: giant-agent-universal-release
-          path: dist/giant-agent-universal.apk
+          path: dist/universal/giant-agent-universal.apk
           if-no-files-found: error
           retention-days: 30
 
-      - name: 📤 Upload SHA256 checksums
+      - name: Upload split APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: giant-agent-split-release
+          path: dist/split/*.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload SHA256 checksums
         uses: actions/upload-artifact@v4
         with:
           name: giant-agent-sha256-checksums

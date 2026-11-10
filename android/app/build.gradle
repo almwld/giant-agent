@@ -26,6 +26,18 @@ apply plugin: 'com.chaquo.python'
 apply plugin: 'kotlin-android'
 apply from: "$flutterRoot/packages/flutter_tools/gradle/flutter.gradle"
 
+// Build each ABI independently in CI. This avoids the conflict between
+// Android's ABI split mechanism and Chaquopy's required ndk.abiFilters.
+def allAndroidAbis = ["armeabi-v7a", "arm64-v8a", "x86_64", "x86"]
+def requestedChaquopyAbis = System.getenv("CHAQUOPY_ABI_FILTERS")
+def chaquopyAbis = requestedChaquopyAbis
+    ? requestedChaquopyAbis.split(",").collect { it.trim() }.findAll { it }
+    : allAndroidAbis
+def invalidAbis = chaquopyAbis.findAll { !allAndroidAbis.contains(it) }
+if (chaquopyAbis.isEmpty() || !invalidAbis.isEmpty()) {
+    throw new GradleException("Invalid CHAQUOPY_ABI_FILTERS: ${requestedChaquopyAbis}")
+}
+
 android {
     compileSdk 34
     ndkVersion flutter.ndkVersion
@@ -57,7 +69,11 @@ android {
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
         multiDexEnabled true
-        ndk { abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64" }
+        ndk {
+            // Chaquopy requires these filters. CI narrows this list for
+            // each architecture-specific APK instead of using --split-per-abi.
+            abiFilters(*chaquopyAbis)
+        }
         python { version "3.11" }
     }
 

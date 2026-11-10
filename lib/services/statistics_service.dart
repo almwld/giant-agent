@@ -36,14 +36,14 @@ class StatisticsService {
   
   Future<Map<String, dynamic>> getStatistics() async {
     final totalEvents = Sqflite.firstIntValue(
-      await _db?.rawQuery('SELECT COUNT(*) FROM stats')
+      await _db?.rawQuery('SELECT COUNT(*) FROM stats') ?? <Map<String, Object?>>[]
     ) ?? 0;
     
     final todayEvents = Sqflite.firstIntValue(
       await _db?.rawQuery('''
         SELECT COUNT(*) FROM stats 
         WHERE date(timestamp/1000, 'unixepoch') = date('now')
-      ''')
+      ''') ?? <Map<String, Object?>>[]
     ) ?? 0;
     
     return {

@@ -26,7 +26,7 @@ class RealModelRunner {
       print('📥 جاري تحميل النموذج: $modelPath');
       
       // تحميل النموذج باستخدام TFLite
-      _interpreter = await Interpreter.fromFile(file);
+      _interpreter = Interpreter.fromFile(file);
       _currentModelPath = modelPath;
       _isLoaded = true;
       
@@ -63,7 +63,7 @@ class RealModelRunner {
       
       // مخرجات النموذج
       final outputSize = 1000;
-      var outputTensor = List.filled(outputSize, 0.0).reshape([1, outputSize]);
+      final outputTensor = <List<double>>[List<double>.filled(outputSize, 0.0)];
       
       // تشغيل النموذج
       final startTime = DateTime.now();

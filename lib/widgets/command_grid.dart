@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../core/theme.dart';
 
 class CommandGrid extends StatelessWidget {
   final Function(String) onCommandSelected;
@@ -9,14 +8,14 @@ class CommandGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final commands = [
-      {'icon': Icons.analytics, 'title': 'تحليل بيانات', 'color': Colors.blue},
-      {'icon': Icons.code, 'title': 'كود Python', 'color': Colors.green},
-      {'icon': Icons.web, 'title': 'موقع ويب', 'color': Colors.purple},
-      {'icon': Icons.api, 'title': 'إنشاء API', 'color': Colors.orange},
-      {'icon': Icons.psychology, 'title': 'تعلم آلة', 'color': Colors.red},
-      {'icon': Icons.auto_awesome, 'title': 'أتمتة', 'color': Colors.teal},
-      {'icon': Icons.description, 'title': 'تحليل نص', 'color': Colors.indigo},
-      {'icon': Icons.calculate, 'title': 'حسابات', 'color': Colors.cyan},
+      {'icon': Icons.analytics, 'title': 'تحليل بيانات', 'color': const Color(0xFF1A73E8)},
+      {'icon': Icons.code, 'title': 'كود Python', 'color': const Color(0xFF0A8F83)},
+      {'icon': Icons.web, 'title': 'موقع ويب', 'color': const Color(0xFF1A73E8)},
+      {'icon': Icons.api, 'title': 'إنشاء API', 'color': const Color(0xFF34A99F)},
+      {'icon': Icons.psychology, 'title': 'تعلم آلة', 'color': const Color(0xFF08776E)},
+      {'icon': Icons.auto_awesome, 'title': 'أتمتة', 'color': const Color(0xFF34A99F)},
+      {'icon': Icons.description, 'title': 'تحليل نص', 'color': const Color(0xFF0A8F83)},
+      {'icon': Icons.calculate, 'title': 'حسابات', 'color': const Color(0xFF1A73E8)},
     ];
     
     return GridView.builder(
@@ -35,7 +34,7 @@ class CommandGrid extends StatelessWidget {
           icon: cmd['icon'] as IconData,
           title: cmd['title'] as String,
           color: cmd['color'] as Color,
-          onTap: () => onCommandSelected(cmd['title']),
+          onTap: () => onCommandSelected(cmd['title'] as String),
         );
       },
     );

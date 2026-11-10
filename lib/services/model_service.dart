@@ -10,19 +10,41 @@ class ModelService {
   static const MethodChannel _agentTools = MethodChannel('giant_agent/tools');
   List<Map<String, dynamic>> _models = [];
   String _activeModelId = '';
-  bool _isLoading = false;
+  // Coalesce concurrent startup/refresh requests. Dashboard, chat and status
+  // screens may ask for the model catalogue at nearly the same time.
+  Future<void>? _scanInFlight;
+  Future<bool>? _switchInFlight;
+  String? _switchTargetId;
   bool _cancelRequested = false;
 
   Future<void> init() => scanModels();
-  Future<void> scanModels() async {
+
+  Future<void> scanModels() {
+    final pending = _scanInFlight;
+    if (pending != null) return pending;
+
+    late final Future<void> operation;
+    operation = _scanModelsInternal().whenComplete(() {
+      if (identical(_scanInFlight, operation)) _scanInFlight = null;
+    });
+    _scanInFlight = operation;
+    return operation;
+  }
+
+  Future<void> _scanModelsInternal() async {
     final found = await _llama.discoverModels();
     _models = found.map((m) => <String, dynamic>{
       'id': m.id, 'name': m.name, 'path': m.path, 'size': m.size,
-      'sizeBytes': m.sizeBytes, 'type': 'GGUF', 'isLoaded': false, 'stats': 'available',
+      'sizeBytes': m.sizeBytes, 'type': 'GGUF',
+      'isLoaded': m.id == _activeModelId, 'stats': 'available',
     }).toList();
-    if (!_models.any((m) => m['id'] == _activeModelId)) _activeModelId = '';
-    if (_activeModelId.isEmpty && _models.isNotEmpty) await switchModel(_models.first['id'] as String);
+    if (!_models.any((m) => m['id'] == _activeModelId)) {
+      _activeModelId = '';
+    }
+    // Do not implicitly load a model while the app is starting. Model loading
+    // is an explicit user action, avoiding competing native initialization.
   }
+
   Future<void> refreshModels() => scanModels();
   Future<bool> importModelFromFile() async {
     final model = await _llama.importModel();
@@ -31,15 +53,42 @@ class ModelService {
     return _models.any((m) => m['path'] == model.path);
   }
   Future<bool> switchModel(String modelId) async {
+    if (modelId == _activeModelId) return true;
+
+    final pending = _switchInFlight;
+    if (pending != null) {
+      if (_switchTargetId == modelId) return pending;
+      await pending;
+      if (modelId == _activeModelId) return true;
+    }
+
     Map<String, dynamic>? model;
-    for (final item in _models) { if (item['id'] == modelId) { model = item; break; } }
-    if (model == null || _isLoading) return false;
-    _isLoading = true;
-    try {
-      final ok = await _llama.loadModel(model['path'] as String);
-      if (ok) _activeModelId = modelId;
+    for (final item in _models) {
+      if (item['id'] == modelId) {
+        model = item;
+        break;
+      }
+    }
+    if (model == null) return false;
+
+    _switchTargetId = modelId;
+    late final Future<bool> operation;
+    operation = _llama.loadModel(model['path'] as String).then((ok) {
+      if (ok) {
+        _activeModelId = modelId;
+        for (final item in _models) {
+          item['isLoaded'] = item['id'] == modelId;
+        }
+      }
       return ok;
-    } finally { _isLoading = false; }
+    }).whenComplete(() {
+      if (identical(_switchInFlight, operation)) {
+        _switchInFlight = null;
+        _switchTargetId = null;
+      }
+    });
+    _switchInFlight = operation;
+    return operation;
   }
   bool hasActiveModel() => _activeModelId.isNotEmpty && _models.any((m) => m['id'] == _activeModelId);
   String getActiveModelName() => getActiveModel()['name']?.toString() ?? 'لا يوجد';
@@ -49,6 +98,15 @@ class ModelService {
     return {'id': 'no_model', 'name': 'لا يوجد نموذج GGUF', 'size': '0', 'type': 'NONE'};
   }
   List<Map<String, dynamic>> getModels() => List.unmodifiable(_models);
+
+  List<Map<String, dynamic>> getAvailableModels() => getModels();
+
+  Map<String, dynamic> getPerformanceStats() => {
+    'average_response_time_ms': 0,
+    'total_requests': 0,
+    'cache_hit_rate': 0,
+    'queue_size': 0,
+  };
 
   Future<Map<String, dynamic>> createFile({required String path, required String content}) async {
     final result = await _agentTools.invokeMapMethod<String, dynamic>('createFile', {

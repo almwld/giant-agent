@@ -1,70 +1,52 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
 class AdvancedNotifications {
   static final AdvancedNotifications _instance = AdvancedNotifications._internal();
   factory AdvancedNotifications() => _instance;
   AdvancedNotifications._internal();
-  
+
   final FlutterLocalNotificationsPlugin _notifications = FlutterLocalNotificationsPlugin();
-  
+  bool _initialized = false;
+
   Future<void> init() async {
-    const AndroidInitializationSettings androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const DarwinInitializationSettings iosSettings = DarwinInitializationSettings();
-    const InitializationSettings settings = InitializationSettings(android: androidSettings, iOS: iosSettings);
-    
+    if (_initialized) return;
+    tz_data.initializeTimeZones();
+    const android = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const ios = DarwinInitializationSettings();
+    const settings = InitializationSettings(android: android, iOS: ios);
     await _notifications.initialize(settings);
+    _initialized = true;
   }
-  
+
   Future<void> showTaskCompleted(String taskName) async {
-    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      'task_channel',
-      'Task Notifications',
-      importance: Importance.high,
-      priority: Priority.high,
-    );
-    const NotificationDetails details = NotificationDetails(android: androidDetails);
-    
-    await _notifications.show(
-      DateTime.now().millisecond,
-      '✅ مهمة مكتملة',
-      'تم إكمال المهمة: $taskName',
-      details,
-    );
+    await init();
+    const android = AndroidNotificationDetails('task_channel', 'Task Notifications',
+        importance: Importance.high, priority: Priority.high);
+    await _notifications.show(DateTime.now().millisecondsSinceEpoch.remainder(2147483647),
+        'مهمة مكتملة', 'تم إكمال المهمة: $taskName',
+        const NotificationDetails(android: android));
   }
-  
+
   Future<void> showPythonResult(String result) async {
-    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      'python_channel',
-      'Python Execution',
-      importance: Importance.high,
-    );
-    const NotificationDetails details = NotificationDetails(android: androidDetails);
-    
-    await _notifications.show(
-      DateTime.now().millisecond,
-      '🐍 تنفيذ Python',
-      result.length > 100 ? '${result.substring(0, 100)}...' : result,
-      details,
-    );
+    await init();
+    const android = AndroidNotificationDetails('python_channel', 'Python Execution',
+        importance: Importance.high);
+    final body = result.length > 100 ? '${result.substring(0, 100)}...' : result;
+    await _notifications.show(DateTime.now().millisecondsSinceEpoch.remainder(2147483647),
+        'تنفيذ Python', body, const NotificationDetails(android: android));
   }
-  
+
   Future<void> scheduleReminder(DateTime time, String title, String body) async {
-    final tz.TZDateTime scheduled = tz.TZDateTime.from(time, tz.local);
-    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      'reminder_channel',
-      'Reminders',
-      importance: Importance.high,
-    );
-    const NotificationDetails details = NotificationDetails(android: androidDetails);
-    
+    await init();
+    const android = AndroidNotificationDetails('reminder_channel', 'Reminders',
+        importance: Importance.high);
     await _notifications.zonedSchedule(
-      time.millisecondsSinceEpoch,
-      title,
-      body,
-      scheduled,
-      details,
-      androidAllowWhileIdle: true,
+      time.millisecondsSinceEpoch.remainder(2147483647),
+      title, body, tz.TZDateTime.from(time, tz.local),
+      const NotificationDetails(android: android),
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
     );
   }

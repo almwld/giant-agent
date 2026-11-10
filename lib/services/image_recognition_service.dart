@@ -1,14 +1,10 @@
 import 'dart:io';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 
 class ImageRecognitionService {
   static Future<String> analyzeImage(File imageFile) async {
     // محاكاة تحليل الصورة
     // في الإصدار الحقيقي يمكن ربطها بـ Google Vision API أو TensorFlow Lite
     
-    final bytes = await imageFile.readAsBytes();
-    final base64Image = base64Encode(bytes);
     
     // تحليل بسيط
     return '''

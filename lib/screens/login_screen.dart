@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
+import '../core/theme.dart';
 import 'chat_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -55,7 +56,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Color(0xFF10A37F), Color(0xFF0D7A5F)],
+            colors: [AppTheme.primary, AppTheme.primaryDark],
           ),
         ),
         child: Center(
@@ -85,13 +86,13 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                       width: 100,
                       height: 100,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF10A37F).withOpacity(0.1),
+                        color: const Color(0xFF0A8F83).withOpacity(0.1),
                         borderRadius: BorderRadius.circular(30),
                       ),
                       child: const Icon(
                         Icons.bolt,
                         size: 50,
-                        color: Color(0xFF10A37F),
+                        color: Color(0xFF0A8F83),
                       ),
                     ),
                     const SizedBox(height: 24),
@@ -102,7 +103,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                       style: TextStyle(
                         fontSize: 28,
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFF10A37F),
+                        color: Color(0xFF0A8F83),
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -124,7 +125,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                     ElevatedButton(
                       onPressed: _handleLogin,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF10A37F),
+                        backgroundColor: const Color(0xFF0A8F83),
                         minimumSize: const Size(double.infinity, 56),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(28),
@@ -158,10 +159,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: const Color(0xFF10A37F).withOpacity(0.1),
+            color: const Color(0xFF0A8F83).withOpacity(0.1),
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Icon(icon, size: 24, color: const Color(0xFF10A37F)),
+          child: Icon(icon, size: 24, color: const Color(0xFF0A8F83)),
         ),
         const SizedBox(width: 16),
         Expanded(

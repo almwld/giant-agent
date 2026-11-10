@@ -61,10 +61,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
               onTap: _pickImage,
               child: CircleAvatar(
                 radius: 60,
-                backgroundColor: const Color(0xFF10A37F).withOpacity(0.1),
+                backgroundColor: const Color(0xFF0A8F83).withOpacity(0.1),
                 backgroundImage: _avatarImage != null ? FileImage(_avatarImage!) : null,
                 child: _avatarImage == null
-                    ? const Icon(Icons.camera_alt, size: 40, color: Color(0xFF10A37F))
+                    ? const Icon(Icons.camera_alt, size: 40, color: Color(0xFF0A8F83))
                     : null,
               ),
             ),
@@ -111,7 +111,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               icon: const Icon(Icons.save),
               label: const Text('Save Profile'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF10A37F),
+                backgroundColor: const Color(0xFF0A8F83),
                 minimumSize: const Size(double.infinity, 48),
               ),
             ),

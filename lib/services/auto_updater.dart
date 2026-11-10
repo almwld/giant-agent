@@ -1,5 +1,3 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 
 class AutoUpdater {
   static final AutoUpdater _instance = AutoUpdater._internal();
