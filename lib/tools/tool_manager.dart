@@ -38,6 +38,11 @@ class ToolManager {
       example: '{"name":"write_file","arguments":{"path":"index.html","content":"..."}}',
     ),
     AgentToolDefinition(
+      name: 'list_files',
+      description: 'عرض أسماء الملفات الموجودة داخل مساحة العمل لاكتشاف المسارات الصحيحة.',
+      example: '{"name":"list_files","arguments":{}}',
+    ),
+    AgentToolDefinition(
       name: 'execute_python',
       description: 'تنفيذ Python محلي مقيّد للحساب والطباعة والحلقات المحدودة؛ لا يدعم الاستيراد أو فتح الملفات أو الوصول إلى النظام.',
       example: '{"name":"execute_python","arguments":{"code":"for i in range(1, 4):\n    print(i)"}}',
