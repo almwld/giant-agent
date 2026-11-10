@@ -987,6 +987,94 @@ $evidence
     return true;
   }
 
+  /// Rebuilds the parent answer after every interrupted child has been
+  /// explicitly resumed. This is synthesis only; it cannot invoke tools.
+  Future<String> synthesizeRecoveredRequest({
+    required String requestId,
+    required String prompt,
+    required String conversationId,
+    required List<Map<String, dynamic>> completedChildren,
+  }) => _requestQueue.enqueue(() => _synthesizeRecoveredRequestAdmitted(
+        requestId: requestId,
+        prompt: prompt,
+        conversationId: conversationId,
+        completedChildren: completedChildren,
+      ));
+
+  Future<String> _synthesizeRecoveredRequestAdmitted({
+    required String requestId,
+    required String prompt,
+    required String conversationId,
+    required List<Map<String, dynamic>> completedChildren,
+  }) async {
+    if (prompt.trim().isEmpty || completedChildren.isEmpty ||
+        completedChildren.any((child) => child['status'] != 'completed' ||
+            (child['last_result']?.toString() ?? '').trim().isEmpty)) {
+      throw StateError('لا يمكن إعادة تجميع المهمة قبل اكتمال جميع الوكلاء ونتائجهم.');
+    }
+    final executionId = 'recovered_synthesis_${requestId}_${DateTime.now().microsecondsSinceEpoch}';
+    _activeRequestId = executionId;
+    _cancellationRequested = false;
+    _models.beginAgentRequest(executionId);
+    _state = AgentKernelState.executing;
+    try {
+      final evidence = completedChildren.map((child) {
+        final output = child['last_result']?.toString() ?? '';
+        final bounded = output.length > 9000 ? '${output.substring(0, 9000)}…' : output;
+        return '''
+الوكيل: ${child['agent_type'] ?? 'unknown'}
+المهمة: ${child['title'] ?? child['id']}
+المعرّف: ${child['id']}
+النتيجة الكاملة المحفوظة:
+$bounded
+''';
+      }).join('\n---\n');
+      _emit(
+        requestId: requestId,
+        type: 'recovered_synthesis_started',
+        title: 'يعيد تجميع المهمة من نتائج الوكلاء المستعادة',
+        status: 'running',
+        details: 'اكتملت جميع الوكلاء؛ يعاد الآن بناء الإجابة النهائية دون إعادة تنفيذ أدوات.',
+      );
+      final output = (await _models.processInput(
+        '''
+المهمة الأصلية: $prompt
+
+النتائج المحفوظة والمستعادة للوكلاء:
+$evidence
+
+اكتب نتيجة نهائية موحدة ومتماسكة اعتماداً على النتائج أعلاه فقط.
+لا تنفذ أدوات ولا تنشئ أو تعدّل ملفات في مرحلة التجميع.
+لا تضف حقائق أو نتائج غير موجودة في الأدلة.
+اذكر أي قيود أو نقاط لم يتم التحقق منها، ولا تعرض التفكير الداخلي.
+''',
+        conversationId: conversationId,
+        persistTurn: false,
+        allowedTools: const <String>{},
+        requestId: requestId,
+        shouldCancel: () => _cancellationRequested,
+      )).trim();
+      if (_cancellationRequested || _isCancelledOutput(output) || _isIncompleteOutput(output)) {
+        throw SubagentInterrupted(output.isEmpty ? 'توقف تجميع المهمة المستعادة.' : output);
+      }
+      if (_isFailureOutput(output)) throw StateError(output);
+      _emit(
+        requestId: requestId,
+        type: 'recovered_synthesis_completed',
+        title: 'اكتمل تجميع المهمة المستعادة',
+        status: 'completed',
+        details: output.length > 1400 ? '${output.substring(0, 1400)}…' : output,
+        result: output,
+      );
+      return output;
+    } finally {
+      _models.endAgentRequest(executionId);
+      _activeRequestId = null;
+      _cancellationRequested = false;
+      _state = AgentKernelState.idle;
+    }
+  }
+
   Future<bool> cancel() async {
     if (!isExecuting) return false;
     final requestId = _activeSubagentParentRequestId ?? _activeRequestId ?? 'runtime';
