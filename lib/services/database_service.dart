@@ -35,6 +35,8 @@ class DatabaseService {
     return await db.query('messages', orderBy: 'timestamp ASC');
   }
   
+  static Future<String> exportChat() => exportToText();
+
   static Future<void> clearMessages() async {
     final db = await database;
     await db.delete('messages');
