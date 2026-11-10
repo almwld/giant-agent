@@ -504,16 +504,24 @@ class AgentKernelStore {
         limit: 1,
       );
       if (request.isEmpty) return;
+      final values = <String, Object?>{
+        'id': id,
+        'request_id': requestId,
+        'type': type,
+        'status': event['status']?.toString() ?? 'pending',
+        'payload_json': jsonEncode(event),
+        'created_at': createdAt,
+      };
+      final taskId = event['task_id']?.toString();
+      if (taskId != null && taskId.isNotEmpty) {
+        final columns = await txn.rawQuery('PRAGMA table_info(agent_events)');
+        if (columns.any((column) => column['name'] == 'task_id')) {
+          values['task_id'] = taskId;
+        }
+      }
       await txn.insert(
         'agent_events',
-        {
-          'id': id,
-          'request_id': requestId,
-          'type': type,
-          'status': event['status']?.toString() ?? 'pending',
-          'payload_json': jsonEncode(event),
-          'created_at': createdAt,
-        },
+        values,
         conflictAlgorithm: ConflictAlgorithm.ignore,
       );
     });
