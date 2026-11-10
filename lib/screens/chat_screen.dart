@@ -32,6 +32,7 @@ import '../agent/task_manager.dart';
 import '../domain/kernel/agent_kernel_store.dart';
 import '../agent/architecture/agent_event_bus.dart';
 import '../theme/giant_palette.dart';
+import '../widgets/voice_orb.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -68,6 +69,10 @@ class _ChatScreenState extends State<ChatScreen> {
   final VoiceOutputService _voiceOutput = VoiceOutputService.instance;
   bool _isListening = false;
   bool _finalizingVoiceInput = false;
+  bool _voiceOrbVisible = false;
+  bool _voiceSpeechReady = false;
+  AgentState _voiceOrbState = AgentState.idle;
+  double _voiceOrbSize = 230;
   bool _webSearchEnabled = false;
   bool _includeGithubContext = false;
   bool _externalProviderEnabled = false;
@@ -352,6 +357,7 @@ class _ChatScreenState extends State<ChatScreen> {
     super.initState();
     _modelService.requestTerminalApproval = _requestTerminalApproval;
     _loadBubbleScale();
+    SharedPreferences.getInstance().then((p) { if (mounted) setState(() => _voiceOrbSize = (p.getDouble('giant_voice_orb_size') ?? 230).clamp(120, 310)); });
     _initDatabase();
     // The screen consumes exactly one event stream. ModelService and the
     // kernel publish directly; the Android EventChannel is bridged into it.
@@ -1459,6 +1465,9 @@ class _ChatScreenState extends State<ChatScreen> {
     await _saveMessage(response, false, requestId: requestId);
     // The text reply is already rendered; audio playback starts without
     // blocking the chat or changing the active conversation.
+    if (mounted && _voiceOrbVisible) {
+      setState(() => _voiceOrbState = AgentState.speaking);
+    }
     try {
       await _voiceOutput.speak(response);
     } catch (_) {
@@ -1466,6 +1475,10 @@ class _ChatScreenState extends State<ChatScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('تعذر تشغيل الصوت. تحقق من تثبيت صوت اللغة العربية على الجهاز.')),
         );
+      }
+    } finally {
+      if (mounted && _voiceOrbVisible) {
+        setState(() => _voiceOrbState = AgentState.listening);
       }
     }
     _scrollToBottom();
@@ -1702,6 +1715,120 @@ class _ChatScreenState extends State<ChatScreen> {
       },
     );
     if (mounted) setState(() => _isListening = _speech.isListening);
+  }
+
+  Future<void> _startLiveVoiceAssistant() async {
+    if (_voiceOrbVisible) return;
+    _finalizingVoiceInput = false;
+    setState(() { _voiceOrbVisible = true; _voiceOrbState = AgentState.listening; });
+    if (!_voiceSpeechReady) {
+      _voiceSpeechReady = await _speech.initialize(
+        onError: (error) {
+          if (mounted) setState(() => _voiceOrbState = AgentState.error);
+        },
+      );
+    }
+    if (!_voiceSpeechReady || !mounted || !_voiceOrbVisible) {
+      if (mounted) setState(() => _voiceOrbState = AgentState.error);
+      return;
+    }
+    await _listenInVoiceRoom();
+  }
+
+  Future<void> _listenInVoiceRoom() async {
+    if (!mounted || !_voiceOrbVisible) return;
+    try {
+      final locales = await _speech.locales();
+      final lang = Localizations.localeOf(context).languageCode;
+      final match = locales.where((e) => e.localeId.toLowerCase().startsWith(lang)).toList();
+      await _speech.listen(
+        localeId: match.isEmpty ? null : match.first.localeId,
+        listenFor: const Duration(seconds: 60),
+        pauseFor: const Duration(seconds: 5),
+        listenOptions: SpeechListenOptions(partialResults: true, cancelOnError: true, listenMode: ListenMode.dictation),
+        onResult: (result) {
+          if (!mounted || !_voiceOrbVisible || result.recognizedWords.isEmpty) return;
+          setState(() {
+            _controller.text = result.recognizedWords;
+            _controller.selection = TextSelection.collapsed(offset: _controller.text.length);
+          });
+          if (result.finalResult && !_finalizingVoiceInput) {
+            _finalizingVoiceInput = true;
+            _speech.stop();
+            setState(() => _voiceOrbState = AgentState.thinking);
+            Future<void>.delayed(const Duration(milliseconds: 160), () async {
+              if (!mounted || !_voiceOrbVisible) return;
+              await _sendMessage();
+              if (!mounted || !_voiceOrbVisible) return;
+              _finalizingVoiceInput = false;
+              setState(() => _voiceOrbState = AgentState.listening);
+              await _listenInVoiceRoom();
+            });
+          }
+        },
+      );
+      if (mounted && _voiceOrbVisible) setState(() => _isListening = _speech.isListening);
+    } catch (_) {
+      if (mounted && _voiceOrbVisible) setState(() => _voiceOrbState = AgentState.error);
+    }
+  }
+
+  Future<void> _stopVoiceInteraction() async {
+    _finalizingVoiceInput = true;
+    try { await _speech.stop(); await _voiceOutput.stop(); } catch (_) {}
+    if (!mounted) return;
+    setState(() {
+      _isListening = false;
+      _voiceOrbVisible = false;
+      _voiceOrbState = AgentState.idle;
+    });
+  }
+
+  Widget _buildVoiceOrbOverlay() {
+    final label = switch (_voiceOrbState) {
+      AgentState.idle => 'جاهز للاستماع',
+      AgentState.listening => 'أستمع إليك الآن…',
+      AgentState.thinking => 'أعالج طلبك داخل المحادثة…',
+      AgentState.speaking => 'أجيبك صوتياً…',
+      AgentState.error => 'تعذر تشغيل الصوت',
+    };
+    return Material(
+      color: const Color(0xEE10131B),
+      child: SafeArea(
+        child: Stack(children: [
+          Center(child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 56),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              GlowingOrb(state: _voiceOrbState, size: _voiceOrbSize),
+              const SizedBox(height: 20),
+              Text(label, textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+              if (_controller.text.trim().isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(_controller.text, maxLines: 4, overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 13)),
+              ],
+              const SizedBox(height: 22),
+              ConstrainedBox(constraints: const BoxConstraints(maxWidth: 290), child: Row(children: [
+                const Icon(Icons.remove_circle_outline, color: Colors.white70),
+                Expanded(child: Slider(min: 120, max: 310, divisions: 19,
+                  value: _voiceOrbSize.clamp(120, 310).toDouble(), activeColor: const Color(0xFF22D3EE),
+                  onChanged: (v) => setState(() => _voiceOrbSize = v),
+                  onChangeEnd: (v) async {
+                    final p = await SharedPreferences.getInstance();
+                    await p.setDouble('giant_voice_orb_size', v);
+                  })),
+                const Icon(Icons.add_circle_outline, color: Colors.white70),
+              ])),
+              Text('حجم الدائرة', style: TextStyle(color: Colors.white.withOpacity(.65), fontSize: 11)),
+            ]),
+          )),
+          PositionedDirectional(top: 8, end: 8, child: IconButton.filledTonal(
+            tooltip: 'إغلاق المساعد الصوتي', onPressed: _stopVoiceInteraction,
+            icon: const Icon(Icons.close_rounded))),
+        ]),
+      ),
+    );
   }
 
   Future<void> _openExternalProviderDialog() async {
@@ -2556,6 +2683,7 @@ class _ChatScreenState extends State<ChatScreen> {
     required IconData icon,
     required String tooltip,
     required VoidCallback onPressed,
+    VoidCallback? onLongPress,
     Color foreground = GiantPalette.muted,
     Color background = GiantPalette.border,
     bool prominent = false,
@@ -2568,6 +2696,7 @@ class _ChatScreenState extends State<ChatScreen> {
         child: InkWell(
           borderRadius: BorderRadius.circular(prominent ? 20 : 13),
           onTap: onPressed,
+          onLongPress: onLongPress,
           child: SizedBox(
             width: 32,
             height: 32,
@@ -2942,7 +3071,8 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ),
       ),
-      body: Container(
+      body: Stack(children: [
+        Container(
         margin: const EdgeInsets.fromLTRB(12, 8, 12, 10),
         decoration: BoxDecoration(
           color: const Color(0xFF18181B),
@@ -3252,6 +3382,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             ? _cancelAgent
                             : (_controller.text.trim().isNotEmpty
                                 ? _sendMessage : _toggleVoiceInput),
+                        onLongPress: !_isLoading && _controller.text.trim().isEmpty ? _startLiveVoiceAssistant : null,
                         prominent: true,
                       ),
                       const SizedBox(width: 8),
@@ -3373,6 +3504,8 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ),
       ),
+        if (_voiceOrbVisible) Positioned.fill(child: _buildVoiceOrbOverlay()),
+      ]),
     );
   }
 }
