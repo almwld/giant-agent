@@ -17,6 +17,7 @@ import 'package:xterm/xterm.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'settings_screen.dart';
+import 'ai_voice_assistant_screen.dart';
 import '../models/chat_session.dart';
 import 'dart:convert';
 import 'package:speech_to_text/speech_to_text.dart';
@@ -2694,6 +2695,13 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ),
         actions: [
+          IconButton(
+            tooltip: 'المساعد الصوتي',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AiVoiceAssistantScreen()),
+            ),
+            icon: const Icon(Icons.graphic_eq_rounded, color: Color(0xFF22D3EE), size: 19),
+          ),
           IconButton(
             tooltip: 'محادثة جديدة',
             onPressed: _newConversation,
