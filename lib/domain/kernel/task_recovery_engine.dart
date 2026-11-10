@@ -7,8 +7,8 @@ import 'agent_kernel_store.dart';
 /// A RUNNING step is ambiguous: its side effect may have happened immediately
 /// before process death. It is therefore marked "uncertain", never reset to
 /// PENDING and never automatically executed again.
-class TaskRecoveryEngine {
-  TaskRecoveryEngine(this._store);
+class RecoveryEngine {
+  RecoveryEngine(this._store);
 
   final AgentKernelStore _store;
 
@@ -56,7 +56,7 @@ class TaskRecoveryEngine {
     }
 
     debugPrint(
-      'TaskRecoveryEngine: recovered ${recovered.length} interrupted task(s).',
+      'RecoveryEngine: recovered ${recovered.length} interrupted task(s).',
     );
     return recovered;
   }
