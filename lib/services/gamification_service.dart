@@ -33,8 +33,8 @@ class GamificationService {
   Future<void> _loadStats() async {
     final result = await _db?.query('user_stats', limit: 1);
     if (result != null && result.isNotEmpty) {
-      _points = result.first['points'] ?? 0;
-      _level = result.first['level'] ?? 1;
+      _points = (result.first['points'] as num?)?.toInt() ?? 0;
+      _level = (result.first['level'] as num?)?.toInt() ?? 1;
       _achievements = (result.first['achievements'] as String?)?.split(',') ?? [];
     }
   }
