@@ -21,6 +21,12 @@ if (flutterVersionName == null) {
     flutterVersionName = '1.0'
 }
 
+// Keep Chaquopy/native ABI packaging aligned with the APK being produced.
+def chaquopyAbiFilters = (System.getenv("CHAQUOPY_ABI_FILTERS") ?: "armeabi-v7a,arm64-v8a,x86,x86_64")
+    .split(",")
+    .collect { it.trim() }
+    .findAll { !it.isEmpty() }
+
 apply plugin: 'com.android.application'
 apply plugin: 'com.chaquo.python'
 apply plugin: 'kotlin-android'
@@ -57,7 +63,7 @@ android {
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
         multiDexEnabled true
-        ndk { abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64" }
+        ndk { abiFilters(*chaquopyAbiFilters) }
         python { version "3.11" }
     }
 
