@@ -46,6 +46,7 @@ class _ChatScreenState extends State<ChatScreen> {
   static const EventChannel _agentEvents = EventChannel('giant_agent_stream');
   static const MethodChannel _fileReceiver = MethodChannel('file_receiver');
   StreamSubscription<dynamic>? _agentEventSubscription;
+  StreamSubscription<dynamic>? _nativeAgentEventSubscription;
   final List<Map<String, dynamic>> _agentSteps = [];
   String _activeAgentRequestId = '';
   final Set<String> _collapsedTimelineIds = <String>{};
@@ -333,7 +334,7 @@ class _ChatScreenState extends State<ChatScreen> {
         });
       },
     );
-    _agentEvents.receiveBroadcastStream().listen(
+    _nativeAgentEventSubscription = _agentEvents.receiveBroadcastStream().listen(
       (event) {
         if (event is Map) AgentEventBus.instance.publish(event);
       },
@@ -1811,6 +1812,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void dispose() {
     _agentEventSubscription?.cancel();
+    _nativeAgentEventSubscription?.cancel();
     _speech.stop();
     _controller.dispose();
     _scrollController.dispose();
