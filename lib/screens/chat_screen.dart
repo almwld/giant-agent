@@ -296,7 +296,7 @@ class _ChatScreenState extends State<ChatScreen> {
           )
         : null;
     final activeTaskId = taskId ?? tracked!['id'].toString();
-    await manager.markRunning(activeTaskId);
+    await manager.markRunning(activeTaskId, requestId: requestId);
     try {
       final output = await _generateWithStages(prompt, requestId: requestId);
       if (_isInterruptedTaskOutput(output)) {
