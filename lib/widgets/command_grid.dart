@@ -35,7 +35,7 @@ class CommandGrid extends StatelessWidget {
           icon: cmd['icon'] as IconData,
           title: cmd['title'] as String,
           color: cmd['color'] as Color,
-          onTap: () => onCommandSelected(cmd['title']),
+          onTap: () => onCommandSelected(cmd['title'] as String),
         );
       },
     );
