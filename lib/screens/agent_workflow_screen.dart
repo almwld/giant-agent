@@ -353,6 +353,11 @@ class AgentWorkflowScreen extends StatelessWidget {
     }
     final artifacts = latest.values.toList(growable: false);
     final verified = artifacts.where((item) => item['verified'] == true).length;
+    final exportPaths = artifacts
+        .map((item) => item['file_path']?.toString() ?? '')
+        .where((path) => path.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
     return Container(
       margin: const EdgeInsets.only(top: 14),
       padding: const EdgeInsets.all(14),
@@ -454,12 +459,13 @@ class AgentWorkflowScreen extends StatelessWidget {
           );
         }),
         const SizedBox(height: 10),
-        Align(
-          alignment: AlignmentDirectional.centerEnd,
-          child: OutlinedButton.icon(
-            onPressed: () async {
-              try {
-                await AgentService.instance.shareWorkspace();
+        if (exportPaths.isNotEmpty)
+          Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: OutlinedButton.icon(
+              onPressed: () async {
+                try {
+                  await AgentService.instance.shareWorkspace(exportPaths);
                 if (!context.mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                   content: Text('تم فتح نافذة مشاركة ملفات المهمة.'),
@@ -470,11 +476,11 @@ class AgentWorkflowScreen extends StatelessWidget {
                   SnackBar(content: Text('تعذر تصدير المخرجات: $error')),
                 );
               }
-            },
-            icon: const Icon(Icons.download_rounded, size: 17),
-            label: const Text('مشاركة / حفظ ملفات المهمة'),
+              },
+              icon: const Icon(Icons.download_rounded, size: 17),
+              label: const Text('مشاركة / حفظ ملفات المهمة المحددة'),
+            ),
           ),
-        ),
       ]),
     );
   }
