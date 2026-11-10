@@ -12,6 +12,7 @@ import 'package:xterm/xterm.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:cross_file/cross_file.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:lottie/lottie.dart';
 import 'settings_screen.dart';
 import '../models/chat_session.dart';
 import 'dart:convert';
@@ -1036,6 +1037,70 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  Widget _buildSmartSpeakerEmptyState() {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 220,
+              height: 220,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [const Color(0xFF0A8F83).withOpacity(0.22), Colors.transparent],
+                ),
+              ),
+              child: Lottie.asset(
+                'assets/animations/smart_speaker.json',
+                width: 204,
+                height: 204,
+                fit: BoxFit.contain,
+                repeat: true,
+                errorBuilder: (context, error, stackTrace) => const Icon(
+                  Icons.graphic_eq_rounded,
+                  size: 96,
+                  color: Color(0xFF34A99F),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'المتحدث الذكي',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Colors.white),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'أنا جاهز لمساعدتك. اكتب سؤالك أو ابدأ محادثة جديدة.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, height: 1.6, color: Color(0xFFB7C4C2)),
+            ),
+            const SizedBox(height: 18),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E293B),
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: const Color(0xFF34A99F).withOpacity(0.3)),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.auto_awesome, size: 16, color: Color(0xFF34A99F)),
+                  SizedBox(width: 8),
+                  Text('مدعوم بنموذجك المحلي', style: TextStyle(fontSize: 12, color: Color(0xFFD6E2E0))),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1044,7 +1109,26 @@ class _ChatScreenState extends State<ChatScreen> {
         backgroundColor: const Color(0xFF263238),
         foregroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
-        title: const Text('Giant Agent X', style: TextStyle(color: Colors.white)),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 38,
+              height: 38,
+              child: Lottie.asset(
+                'assets/animations/smart_speaker.json',
+                fit: BoxFit.contain,
+                repeat: true,
+                errorBuilder: (context, error, stackTrace) => const Icon(
+                  Icons.graphic_eq_rounded,
+                  color: Color(0xFF34A99F),
+                ),
+              ),
+            ),
+            const SizedBox(width: 7),
+            const Text('المتحدث الذكي', style: TextStyle(color: Colors.white, fontSize: 17)),
+          ],
+        ),
         centerTitle: true,
         actions: [
           if (_isLoading)
@@ -1260,7 +1344,9 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
           Expanded(
-            child: ListView.builder(
+            child: _messages.isEmpty && _agentSteps.isEmpty
+                ? _buildSmartSpeakerEmptyState()
+                : ListView.builder(
               controller: _scrollController,
               padding: const EdgeInsets.all(16),
               itemCount: _messages.length + (_agentSteps.isNotEmpty ? 1 : 0),
