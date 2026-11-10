@@ -60,7 +60,7 @@ class MyApp extends StatelessWidget {
           useMaterial3: true,
           snackBarTheme: SnackBarThemeData(
             behavior: SnackBarBehavior.floating,
-            backgroundColor: const Color(0xD9108178),
+            backgroundColor: const Color(0xB90D8078),
             elevation: 0,
             insetPadding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
             shape: RoundedRectangleBorder(
