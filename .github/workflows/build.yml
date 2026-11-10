@@ -8,6 +8,7 @@ on:
       - feat/consolidate-sqlite-runtime-v2
       - integration/giant-agent-stabilization
       - fix/openrouter-only-provider-policy
+      - feat/voice-orb-in-chat-session
       - feat/chat-bubble-resize-teal-toasts
   pull_request:
     branches:
