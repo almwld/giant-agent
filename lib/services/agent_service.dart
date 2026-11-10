@@ -181,18 +181,20 @@ class AgentService {
       taskId: taskId,
       sideEffectDisposition: sideEffectDisposition,
       execute: ({required parent, required task, required dependencyResults}) async {
-        final output = await _executionKernel.executeRecoveredSubagent(
-          parentRequestId: parent.id,
-          parentPrompt: parent.prompt,
-          conversationId: parent.conversationId,
-          taskId: taskId,
-          title: task['title']?.toString() ?? taskId,
-          taskPrompt: task['prompt']?.toString() ?? '',
-          agentType: task['agent_type']?.toString() ?? 'explore',
-          dependencyResults: dependencyResults,
-        );
-        await _flushExecutionJournal();
-        return output;
+        try {
+          return await _executionKernel.executeRecoveredSubagent(
+            parentRequestId: parent.id,
+            parentPrompt: parent.prompt,
+            conversationId: parent.conversationId,
+            taskId: taskId,
+            title: task['title']?.toString() ?? taskId,
+            taskPrompt: task['prompt']?.toString() ?? '',
+            agentType: task['agent_type']?.toString() ?? 'explore',
+            dependencyResults: dependencyResults,
+          );
+        } finally {
+          await _flushExecutionJournal();
+        }
       },
     );
   }
