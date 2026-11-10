@@ -633,7 +633,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (requestId == null || requestId.isEmpty) return;
     final eventSessionId = event['session_id']?.toString();
     final sessionId = eventSessionId == null || eventSessionId.isEmpty
-        ? sessionId
+        ? _currentSessionId
         : eventSessionId;
 
     // Immutable execution history: every lifecycle transition is inserted,
