@@ -1,12 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.example.giant_agent">
-    
+
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-    
+
     <queries>
         <intent>
             <action android:name="android.speech.RecognitionService"/>
@@ -19,26 +20,34 @@
         android:icon="@drawable/ic_launcher"
         android:roundIcon="@drawable/ic_launcher"
         android:allowBackup="true">
-        
+
         <service
             android:name=".AgentForegroundService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="specialUse">
-            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Keep the on-device AI model runtime available during long-running user-requested tasks." />
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keep the on-device AI model runtime available during long-running user-requested tasks." />
         </service>
 
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:theme="@style/LaunchTheme">
-            
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+
+            <meta-data
+                android:name="io.flutter.embedding.android.NormalTheme"
+                android:resource="@style/NormalTheme" />
+
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
-            
-            <!-- استقبال ملفات نماذج GGUF -->
+
             <intent-filter>
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
@@ -48,30 +57,27 @@
                 <data android:mimeType="*/*"/>
                 <data android:pathPattern=".*\\.gguf"/>
             </intent-filter>
-            
-            <!-- استقبال الملفات عبر المشاركة -->
+
             <intent-filter>
                 <action android:name="android.intent.action.SEND"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <data android:mimeType="application/octet-stream"/>
                 <data android:mimeType="*/*"/>
             </intent-filter>
-            
-            <!-- استقبال الملفات عبر OPEN -->
+
             <intent-filter>
                 <action android:name="android.intent.action.OPEN_DOCUMENT"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <data android:mimeType="*/*"/>
             </intent-filter>
-            
-            <!-- استقبال GET_CONTENT -->
+
             <intent-filter>
                 <action android:name="android.intent.action.GET_CONTENT"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <data android:mimeType="*/*"/>
             </intent-filter>
         </activity>
-        
+
         <meta-data
             android:name="flutterEmbedding"
             android:value="2"/>
