@@ -18,8 +18,16 @@
   use the registered workspace tools; terminal execution still requires the
   existing literal user-approval flow.
 - Child lifecycle events are emitted through the existing AgentKernel and
-  AgentEventBus. AgentService appends request-scoped runtime and tool events to
-  the existing immutable SQLite event journal.
+  AgentEventBus. AgentService persists child snapshots (role, prompt,
+  dependencies, status and latest bounded details) alongside immutable SQLite
+  task and parent-request event journals.
+- Startup recovery marks pending/running child snapshots as interrupted and
+  exposes them for explicit recovery. It never automatically replays a child
+  or a side-effecting operation.
+- When worker results contain failed or skipped tasks, the coordinator may
+  request one bounded evidence-driven repair plan. The repair batch receives
+  unique IDs, does not automatically rerun completed tasks, and cannot loop
+  indefinitely.
 - Global cancellation stops pending children and propagates to the active shared
   inference call. A user can also stop one selected pending/running child from
   the Timeline; interrupted children are distinguished from failed children.
@@ -39,19 +47,18 @@ and is tested independently.
 This is an integrated first implementation, not a claim of feature parity with
 Kimi Agent Swarm. Remaining work includes:
 
-1. Iterative replanning: the current model-generated plan is created once at
-   request start. The parent does not yet revise the graph dynamically in
-   response to intermediate worker findings or spawn follow-up agents.
-2. Persisted child-task snapshots and safe child-level recovery/resume after
-   process restart. Current request recovery deliberately marks interrupted
-   work instead of replaying side effects.
-3. Richer subagent management: pause/resume, explicit child-level retry, and
+1. Explicit user-authorized child resume from persisted snapshots. Recovery
+   currently marks interrupted children and exposes their prompts/dependencies;
+   it does not silently replay work.
+2. Richer subagent management: pause/resume, explicit child-level retry, and
    full (untruncated) child result retrieval. The Timeline currently exposes
    child roles, identities, statuses, bounded result summaries, and targeted stop.
+3. Detached/background execution with Android lifecycle guarantees and durable
+   notification/progress behavior.
 4. True parallel model execution. It must not be enabled by creating duplicate
    LlamaService/JNI runtimes or bypassing the shared runtime lock.
-5. End-to-end device validation of tool permissions, cancellation, background
-   execution, and Timeline replay.
+5. End-to-end device validation of tool permissions, cancellation, restart
+   recovery, background execution, and Timeline replay.
 
 No event contains private chain-of-thought. Timeline records factual task
 transitions, tool operations, statuses, and final results only.
