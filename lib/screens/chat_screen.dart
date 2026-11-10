@@ -32,6 +32,7 @@ import '../agent/task_manager.dart';
 import '../domain/kernel/agent_kernel_store.dart';
 import '../agent/architecture/agent_event_bus.dart';
 import '../theme/giant_palette.dart';
+import '../widgets/voice_orb.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -68,10 +69,29 @@ class _ChatScreenState extends State<ChatScreen> {
   final VoiceOutputService _voiceOutput = VoiceOutputService.instance;
   bool _isListening = false;
   bool _finalizingVoiceInput = false;
+  bool _voiceOrbVisible = false;
+  bool _voiceSpeechReady = false;
+  AgentState _voiceOrbState = AgentState.idle;
+  double _voiceOrbSize = 230;
   bool _webSearchEnabled = false;
   bool _includeGithubContext = false;
   bool _externalProviderEnabled = false;
   bool _agentModeEnabled = true;
+  int _bubbleScale = 1; // 0 = compact, 1 = standard, 2 = wide
+
+  Future<void> _loadBubbleScale() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() => _bubbleScale = (prefs.getInt('giant_chat_bubble_scale') ?? 1).clamp(0, 2).toInt());
+  }
+
+  Future<void> _setBubbleScale(int value) async {
+    final next = value.clamp(0, 2).toInt();
+    if (next == _bubbleScale) return;
+    setState(() => _bubbleScale = next);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('giant_chat_bubble_scale', next);
+  }
 
   // Keep tool-call JSON out of the user-facing answer stream. The actual
   // invocation and result are represented by structured native tool events.
@@ -335,6 +355,9 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    _modelService.requestTerminalApproval = _requestTerminalApproval;
+    _loadBubbleScale();
+    SharedPreferences.getInstance().then((p) { if (mounted) setState(() => _voiceOrbSize = (p.getDouble('giant_voice_orb_size') ?? 230).clamp(120, 310)); });
     _initDatabase();
     // The screen consumes exactly one event stream. ModelService and the
     // kernel publish directly; the Android EventChannel is bridged into it.
@@ -886,6 +909,41 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<bool> _requestTerminalApproval(String command) async {
+    if (!mounted) return false;
+    final approved = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('السماح بتنفيذ أمر طرفية؟'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('سيُنفذ النص التالي حرفياً داخل Android shell بصلاحيات التطبيق الحالية. لا توجد صلاحيات root. لا توافق إلا إذا كنت تفهم الأمر ومصدره.'),
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(10)),
+                  child: SelectableText(command, style: const TextStyle(color: Colors.greenAccent, fontFamily: 'monospace', fontSize: 12)),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('رفض')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('تنفيذ هذا الأمر مرة واحدة')),
+        ],
+      ),
+    );
+    return approved == true && mounted;
+  }
+
   Future<void> _clearAllSessions() async {
     if (_isLoading) return;
     final confirmed = await showDialog<bool>(
@@ -1407,6 +1465,9 @@ class _ChatScreenState extends State<ChatScreen> {
     await _saveMessage(response, false, requestId: requestId);
     // The text reply is already rendered; audio playback starts without
     // blocking the chat or changing the active conversation.
+    if (mounted && _voiceOrbVisible) {
+      setState(() => _voiceOrbState = AgentState.speaking);
+    }
     try {
       await _voiceOutput.speak(response);
     } catch (_) {
@@ -1414,6 +1475,10 @@ class _ChatScreenState extends State<ChatScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('تعذر تشغيل الصوت. تحقق من تثبيت صوت اللغة العربية على الجهاز.')),
         );
+      }
+    } finally {
+      if (mounted && _voiceOrbVisible) {
+        setState(() => _voiceOrbState = AgentState.listening);
       }
     }
     _scrollToBottom();
@@ -1650,6 +1715,120 @@ class _ChatScreenState extends State<ChatScreen> {
       },
     );
     if (mounted) setState(() => _isListening = _speech.isListening);
+  }
+
+  Future<void> _startLiveVoiceAssistant() async {
+    if (_voiceOrbVisible) return;
+    _finalizingVoiceInput = false;
+    setState(() { _voiceOrbVisible = true; _voiceOrbState = AgentState.listening; });
+    if (!_voiceSpeechReady) {
+      _voiceSpeechReady = await _speech.initialize(
+        onError: (error) {
+          if (mounted) setState(() => _voiceOrbState = AgentState.error);
+        },
+      );
+    }
+    if (!_voiceSpeechReady || !mounted || !_voiceOrbVisible) {
+      if (mounted) setState(() => _voiceOrbState = AgentState.error);
+      return;
+    }
+    await _listenInVoiceRoom();
+  }
+
+  Future<void> _listenInVoiceRoom() async {
+    if (!mounted || !_voiceOrbVisible) return;
+    try {
+      final locales = await _speech.locales();
+      final lang = Localizations.localeOf(context).languageCode;
+      final match = locales.where((e) => e.localeId.toLowerCase().startsWith(lang)).toList();
+      await _speech.listen(
+        localeId: match.isEmpty ? null : match.first.localeId,
+        listenFor: const Duration(seconds: 60),
+        pauseFor: const Duration(seconds: 5),
+        listenOptions: SpeechListenOptions(partialResults: true, cancelOnError: true, listenMode: ListenMode.dictation),
+        onResult: (result) {
+          if (!mounted || !_voiceOrbVisible || result.recognizedWords.isEmpty) return;
+          setState(() {
+            _controller.text = result.recognizedWords;
+            _controller.selection = TextSelection.collapsed(offset: _controller.text.length);
+          });
+          if (result.finalResult && !_finalizingVoiceInput) {
+            _finalizingVoiceInput = true;
+            _speech.stop();
+            setState(() => _voiceOrbState = AgentState.thinking);
+            Future<void>.delayed(const Duration(milliseconds: 160), () async {
+              if (!mounted || !_voiceOrbVisible) return;
+              await _sendMessage();
+              if (!mounted || !_voiceOrbVisible) return;
+              _finalizingVoiceInput = false;
+              setState(() => _voiceOrbState = AgentState.listening);
+              await _listenInVoiceRoom();
+            });
+          }
+        },
+      );
+      if (mounted && _voiceOrbVisible) setState(() => _isListening = _speech.isListening);
+    } catch (_) {
+      if (mounted && _voiceOrbVisible) setState(() => _voiceOrbState = AgentState.error);
+    }
+  }
+
+  Future<void> _stopVoiceInteraction() async {
+    _finalizingVoiceInput = true;
+    try { await _speech.stop(); await _voiceOutput.stop(); } catch (_) {}
+    if (!mounted) return;
+    setState(() {
+      _isListening = false;
+      _voiceOrbVisible = false;
+      _voiceOrbState = AgentState.idle;
+    });
+  }
+
+  Widget _buildVoiceOrbOverlay() {
+    final label = switch (_voiceOrbState) {
+      AgentState.idle => 'جاهز للاستماع',
+      AgentState.listening => 'أستمع إليك الآن…',
+      AgentState.thinking => 'أعالج طلبك داخل المحادثة…',
+      AgentState.speaking => 'أجيبك صوتياً…',
+      AgentState.error => 'تعذر تشغيل الصوت',
+    };
+    return Material(
+      color: const Color(0xEE10131B),
+      child: SafeArea(
+        child: Stack(children: [
+          Center(child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 56),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              GlowingOrb(state: _voiceOrbState, size: _voiceOrbSize),
+              const SizedBox(height: 20),
+              Text(label, textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+              if (_controller.text.trim().isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(_controller.text, maxLines: 4, overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 13)),
+              ],
+              const SizedBox(height: 22),
+              ConstrainedBox(constraints: const BoxConstraints(maxWidth: 290), child: Row(children: [
+                const Icon(Icons.remove_circle_outline, color: Colors.white70),
+                Expanded(child: Slider(min: 120, max: 310, divisions: 19,
+                  value: _voiceOrbSize.clamp(120, 310).toDouble(), activeColor: const Color(0xFF22D3EE),
+                  onChanged: (v) => setState(() => _voiceOrbSize = v),
+                  onChangeEnd: (v) async {
+                    final p = await SharedPreferences.getInstance();
+                    await p.setDouble('giant_voice_orb_size', v);
+                  })),
+                const Icon(Icons.add_circle_outline, color: Colors.white70),
+              ])),
+              Text('حجم الدائرة', style: TextStyle(color: Colors.white.withOpacity(.65), fontSize: 11)),
+            ]),
+          )),
+          PositionedDirectional(top: 8, end: 8, child: IconButton.filledTonal(
+            tooltip: 'إغلاق المساعد الصوتي', onPressed: _stopVoiceInteraction,
+            icon: const Icon(Icons.close_rounded))),
+        ]),
+      ),
+    );
   }
 
   Future<void> _openExternalProviderDialog() async {
@@ -2194,6 +2373,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _agentEventSubscription?.cancel();
     _nativeAgentEventSubscription?.cancel();
+    _modelService.requestTerminalApproval = null;
     _speech.stop();
     _voiceOutput.stop();
     _controller.dispose();
@@ -2503,6 +2683,7 @@ class _ChatScreenState extends State<ChatScreen> {
     required IconData icon,
     required String tooltip,
     required VoidCallback onPressed,
+    VoidCallback? onLongPress,
     Color foreground = GiantPalette.muted,
     Color background = GiantPalette.border,
     bool prominent = false,
@@ -2515,6 +2696,7 @@ class _ChatScreenState extends State<ChatScreen> {
         child: InkWell(
           borderRadius: BorderRadius.circular(prominent ? 20 : 13),
           onTap: onPressed,
+          onLongPress: onLongPress,
           child: SizedBox(
             width: 32,
             height: 32,
@@ -2889,7 +3071,8 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ),
       ),
-      body: Container(
+      body: Stack(children: [
+        Container(
         margin: const EdgeInsets.fromLTRB(12, 8, 12, 10),
         decoration: BoxDecoration(
           color: const Color(0xFF18181B),
@@ -2924,9 +3107,13 @@ class _ChatScreenState extends State<ChatScreen> {
                   alignment: isUser ? AlignmentDirectional.centerEnd : AlignmentDirectional.centerStart,
                   child: Container(
                     margin: const EdgeInsetsDirectional.only(bottom: 12),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: _bubbleScale == 0 ? 11 : (_bubbleScale == 2 ? 19 : 16),
+                      vertical: _bubbleScale == 0 ? 8 : (_bubbleScale == 2 ? 15 : 12),
+                    ),
                     constraints: BoxConstraints(
-                      maxWidth: MediaQuery.of(context).size.width * 0.8,
+                      maxWidth: MediaQuery.of(context).size.width *
+                          (_bubbleScale == 0 ? 0.68 : (_bubbleScale == 2 ? 0.94 : 0.8)),
                     ),
                     decoration: BoxDecoration(
                       color: isUser ? GiantPalette.primary : GiantPalette.surface,
@@ -3015,7 +3202,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           child: SelectableText(
                             msg['content'],
                             textAlign: TextAlign.start,
-                            style: const TextStyle(color: Colors.white, fontSize: 14),
+                            style: TextStyle(color: Colors.white, fontSize: _bubbleScale == 0 ? 13 : (_bubbleScale == 2 ? 15 : 14)),
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -3084,6 +3271,17 @@ class _ChatScreenState extends State<ChatScreen> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          PopupMenuButton<int>(
+                            tooltip: 'حجم الفقاعة',
+                            icon: const Icon(Icons.format_size_rounded, color: Colors.white60, size: 18),
+                            color: const Color(0xFF182B2A),
+                            onSelected: _setBubbleScale,
+                            itemBuilder: (context) => const [
+                              PopupMenuItem(value: 0, child: Text('مضغوط')),
+                              PopupMenuItem(value: 1, child: Text('عادي')),
+                              PopupMenuItem(value: 2, child: Text('واسع')),
+                            ],
+                          ),
                           _messageActionButton(
                             icon: Icons.copy_rounded,
                             tooltip: 'نسخ الرسالة',
@@ -3184,6 +3382,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             ? _cancelAgent
                             : (_controller.text.trim().isNotEmpty
                                 ? _sendMessage : _toggleVoiceInput),
+                        onLongPress: !_isLoading && _controller.text.trim().isEmpty ? _startLiveVoiceAssistant : null,
                         prominent: true,
                       ),
                       const SizedBox(width: 8),
@@ -3305,6 +3504,8 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ),
       ),
+        if (_voiceOrbVisible) Positioned.fill(child: _buildVoiceOrbOverlay()),
+      ]),
     );
   }
 }

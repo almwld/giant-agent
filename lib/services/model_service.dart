@@ -10,6 +10,8 @@ import 'gemini_provider.dart';
 import 'providers/zero_config_provider.dart';
 import 'model_provider_settings.dart';
 import '../tools/tool_manager.dart';
+import '../tools/gain_terminal_tool.dart';
+import '../tools/terminal_tool_coordinator.dart';
 import '../domain/harness/evaluator_service.dart';
 import '../domain/harness/reflexion_service.dart';
 
@@ -23,6 +25,8 @@ class ModelService {
   String _activeModelId = '';
   bool _isLoading = false;
   bool _cancelRequested = false;
+  Future<bool> Function(String command)? requestTerminalApproval;
+  final GainTerminalTool _gainTerminal = GainTerminalTool();
   Future<void> _requestTail = Future<void>.value();
   String _activeRequestId = '';
   int _toolEventSequence = 0;
@@ -208,8 +212,10 @@ class ModelService {
     final path = args['path']?.toString() ?? '';
     final content = args['content']?.toString() ?? '';
     final toolStepId = stepId ?? 'tool_step_${_activeRequestId}_${DateTime.now().microsecondsSinceEpoch}';
-    _emitToolEvent('tool_start', _toolStartTitle(name), toolName: name, path: path,
-        content: name == 'execute_python' ? args['code']?.toString() : null, status: 'running', stepId: toolStepId);
+    if (name != 'gain_terminal') {
+      _emitToolEvent('tool_start', _toolStartTitle(name), toolName: name, path: path,
+          content: name == 'execute_python' ? args['code']?.toString() : null, status: 'running', stepId: toolStepId);
+    }
     try {
       late final Map<String, dynamic> result;
       switch (name) {
@@ -231,6 +237,22 @@ class ModelService {
         case 'execute_python':
           result = await executePython(code: args['code']?.toString() ?? '');
           break;
+        case 'gain_terminal':
+          final approval = requestTerminalApproval;
+          if (approval == null) {
+            result = <String, dynamic>{'ok': false, 'denied': true, 'error': 'Terminal approval UI is unavailable.'};
+            break;
+          }
+          final coordinator = TerminalToolCoordinator(
+            requestApproval: approval,
+            execute: (command, timeout) => _gainTerminal.execute(command, timeout: timeout),
+            onEvent: (event) => AgentEventBus.instance.publish(event),
+          );
+          result = await coordinator.execute(
+            command: args['command']?.toString() ?? '',
+            timeoutSeconds: args['timeout_seconds'] is int ? args['timeout_seconds'] as int : 60,
+          );
+          break;
         default:
           throw FormatException('Unsupported tool: $name');
       }
@@ -243,15 +265,19 @@ class ModelService {
         _emitToolEvent('file_updated', 'تم تحديث الملف', toolName: name, path: path,
             output: output, details: 'حُفظت التغييرات في مساحة العمل فعلياً.', stepId: toolStepId);
       }
-      _emitToolEvent(ok ? 'tool_output' : 'tool_error',
-          ok ? _toolCompleteTitle(name) : 'فشل تنفيذ الأداة',
-          toolName: name, path: path, output: output,
-          details: ok ? null : result['error']?.toString(),
-          status: ok ? 'completed' : 'failed', stepId: toolStepId);
+      if (name != 'gain_terminal') {
+        _emitToolEvent(ok ? 'tool_output' : 'tool_error',
+            ok ? _toolCompleteTitle(name) : 'فشل تنفيذ الأداة',
+            toolName: name, path: path, output: output,
+            details: ok ? null : result['error']?.toString(),
+            status: ok ? 'completed' : 'failed', stepId: toolStepId);
+      }
       return result;
     } catch (error) {
-      _emitToolEvent('tool_error', 'فشل تنفيذ الأداة', toolName: name,
-          path: path, output: error.toString(), status: 'failed', stepId: toolStepId);
+      if (name != 'gain_terminal') {
+        _emitToolEvent('tool_error', 'فشل تنفيذ الأداة', toolName: name,
+            path: path, output: error.toString(), status: 'failed', stepId: toolStepId);
+      }
       rethrow;
     }
   }
@@ -262,6 +288,7 @@ class ModelService {
       case 'write_file': return 'يحدّث ملفاً موجوداً';
       case 'read_file': return 'يقرأ ملفاً من مساحة العمل';
       case 'execute_python': return 'يشغّل كود Python';
+      case 'gain_terminal': return 'يطلب موافقة لتنفيذ أمر طرفية';
       case 'list_files': return 'يعرض ملفات مساحة العمل';
       default: return 'ينفّذ أداة';
     }
@@ -273,6 +300,7 @@ class ModelService {
       case 'write_file': return 'اكتمل تحديث الملف';
       case 'read_file': return 'اكتملت قراءة الملف';
       case 'execute_python': return 'اكتمل تنفيذ Python';
+      case 'gain_terminal': return 'اكتمل تنفيذ أمر الطرفية';
       case 'list_files': return 'اكتمل استعراض الملفات';
       default: return 'اكتمل تنفيذ الأداة';
     }

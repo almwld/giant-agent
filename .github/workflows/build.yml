@@ -6,10 +6,14 @@ on:
       - main
       - feat/integrated-agent-completion
       - feat/consolidate-sqlite-runtime-v2
+      - integration/giant-agent-stabilization
+      - feat/chat-bubble-resize-teal-toasts
+      - integration/giant-agent-stabilization
   pull_request:
     branches:
       - main
       - feat/integrated-agent-completion
+      - feat/consolidate-sqlite-runtime-v2
   workflow_dispatch:
 
 permissions:

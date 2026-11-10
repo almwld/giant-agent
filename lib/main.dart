@@ -58,6 +58,21 @@ class MyApp extends StatelessWidget {
           scaffoldBackgroundColor: const Color(0xFFF5F6FA),
           canvasColor: const Color(0xFFF5F6FA),
           useMaterial3: true,
+          snackBarTheme: SnackBarThemeData(
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: const Color(0xB90D8078),
+            elevation: 0,
+            insetPadding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: const BorderSide(color: Color(0x5575E0D2), width: 0.8),
+            ),
+            contentTextStyle: const TextStyle(
+              color: Color(0xFFF0FFFC),
+              fontSize: 13,
+              height: 1.35,
+            ),
+          ),
           appBarTheme: const AppBarTheme(
             centerTitle: false,
             elevation: 0,
@@ -81,6 +96,21 @@ class MyApp extends StatelessWidget {
           scaffoldBackgroundColor: const Color(0xFF10131B),
           canvasColor: const Color(0xFF10131B),
           useMaterial3: true,
+          snackBarTheme: SnackBarThemeData(
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: const Color(0xD9108178),
+            elevation: 0,
+            insetPadding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: const BorderSide(color: Color(0x5575E0D2), width: 0.8),
+            ),
+            contentTextStyle: const TextStyle(
+              color: Color(0xFFF0FFFC),
+              fontSize: 13,
+              height: 1.35,
+            ),
+          ),
           appBarTheme: const AppBarTheme(
             centerTitle: false,
             elevation: 0,
