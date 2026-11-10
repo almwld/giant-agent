@@ -58,11 +58,9 @@ and is tested independently.
 This is an integrated first implementation, not a claim of feature parity with
 Kimi Agent Swarm. Remaining work includes:
 
-1. A dedicated Timeline recovery control that presents the required side-effect
-   disposition and invokes `AgentService.resumeSubagent`; the durable service
-   API and execution path are now present.
-2. Richer subagent management: pause/resume controls and explicit child-level
-   retry policy for completed work.
+1. Richer subagent management: pause/resume controls and explicit child-level
+   retry policy for completed work. The Timeline now exposes explicit recovery
+   for interrupted/failed children with a side-effect review decision.
 3. Detached/background execution with Android lifecycle guarantees and durable
    notification/progress behavior.
 4. True parallel model execution. It must not be enabled by creating duplicate
