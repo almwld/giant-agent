@@ -10,7 +10,7 @@ class ArabicOcrService {
   static final ArabicOcrService instance = ArabicOcrService._();
 
   static const String _modelUrl =
-      'https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/ara.traineddata';
+      'https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/87416418657359cb625c412a48b6e1d6d41c29bd/ara.traineddata';
   static const int _minimumModelBytes = 500 * 1024;
   Future<void>? _modelInstall;
 
