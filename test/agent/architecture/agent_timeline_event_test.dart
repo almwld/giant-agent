@@ -18,6 +18,7 @@ void main() {
       expect(event.toMap(), {
         'id': 'kernel_request-1_1',
         'request_id': 'request-1',
+        'attempt_id': 'request-1',
         'type': 'execution_started',
         'title': 'بدأ تنفيذ الطلب',
         'status': 'running',
