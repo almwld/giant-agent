@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../widgets/agent_activity_indicators.dart';
+import '../services/agent_service.dart';
 import '../theme/giant_palette.dart';
 
 /// Execution history view backed by the same event list used by the chat
@@ -212,6 +213,30 @@ class AgentWorkflowScreen extends StatelessWidget {
                       _detailBlock('الملف', event['file_name'].toString()),
                     if (event['command'] != null)
                       _detailBlock('الأمر', event['command'].toString()),
+                    if (event['task_id'] != null &&
+                        {'running', 'pending'}.contains(status.toLowerCase()))
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                        child: Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: TextButton.icon(
+                            onPressed: () async {
+                              final stopped = await AgentService.instance
+                                  .cancelSubagent(event['task_id'].toString());
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(stopped
+                                      ? 'تم إرسال طلب إيقاف الوكيل الفرعي.'
+                                      : 'لم يعد هذا الوكيل قيد التنفيذ.'),
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.stop_circle_outlined, size: 17),
+                            label: const Text('إيقاف هذا الوكيل'),
+                          ),
+                        ),
+                      ),
                     if (event['output'] != null && details != event['output'].toString())
                       _detailBlock('المخرجات', event['output'].toString()),
                     ...event.entries.where((entry) => !{
