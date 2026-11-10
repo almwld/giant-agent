@@ -704,6 +704,10 @@ $evidence
       ));
     }
 
+    if (allowCoder && !tasks.any((task) => task.agentType == 'coder')) {
+      throw const FormatException('Software plans must include an implementation agent.');
+    }
+
     final ids = tasks.map((task) => task.id).toSet();
     for (final task in tasks) {
       if (task.dependsOn.any((dependency) => !ids.contains(dependency)) ||
