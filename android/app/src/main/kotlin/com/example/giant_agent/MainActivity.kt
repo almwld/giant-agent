@@ -406,12 +406,17 @@ class MainActivity: FlutterActivity() {
     ) {
         runOnUiThread {
             agentEventSink?.success(mapOf(
-                "id" to id,
+                // A transition is immutable and gets a fresh ID. The caller's
+                // id remains a correlation key for the logical step only.
+                "id" to "native_event_${System.nanoTime()}_${java.util.UUID.randomUUID()}",
+                "step_id" to id,
+                "attempt_id" to requestId,
                 "request_id" to requestId,
                 "type" to eventType,
                 "title" to title,
                 "status" to status,
-                "details" to details
+                "details" to details,
+                "timestamp" to System.currentTimeMillis()
             ))
         }
     }
