@@ -360,6 +360,7 @@ class AgentKernel {
     }
     final requestId = 'resume_${parentRequestId}_${taskId}_${DateTime.now().microsecondsSinceEpoch}';
     _activeRequestId = requestId;
+    _activeSubagentId = taskId;
     _cancellationRequested = false;
     _models.beginAgentRequest(requestId);
     try {
@@ -410,6 +411,7 @@ class AgentKernel {
     } finally {
       _models.endAgentRequest(requestId);
       _activeRequestId = null;
+      if (_activeSubagentId == taskId) _activeSubagentId = null;
       _cancellationRequested = false;
       if (_state != AgentKernelState.failed) _state = AgentKernelState.idle;
     }
@@ -945,9 +947,9 @@ $evidence
 
   Future<bool> cancelSubagent(String taskId) async {
     final orchestrator = _activeSubagentOrchestrator;
-    if (orchestrator == null || !orchestrator.cancelTask(taskId)) {
-      return false;
-    }
+    final scheduledChild = orchestrator != null && orchestrator.cancelTask(taskId);
+    final recoveredChild = _activeSubagentId == taskId;
+    if (!scheduledChild && !recoveredChild) return false;
     _emit(
       requestId: _activeRequestId ?? 'runtime',
       taskId: taskId,
