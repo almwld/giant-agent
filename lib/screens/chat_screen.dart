@@ -1490,9 +1490,12 @@ class _ChatScreenState extends State<ChatScreen> {
                 ],
                 onChanged: busy ? null : (value) async {
                   if (value == null) return;
+                  final legacyEndpointConflict =
+                      value == ModelProviderMode.openRouter &&
+                      await OpenAICompatibleProvider.instance.hasLegacyNonOpenRouterEndpoint();
                   final savedKey = value == ModelProviderMode.gemini
                       ? await GeminiProvider.instance.getApiKey()
-                      : value == ModelProviderMode.openRouter
+                      : value == ModelProviderMode.openRouter && !legacyEndpointConflict
                           ? await OpenAICompatibleProvider.instance.getApiKey()
                           : null;
                   final savedModel = value == ModelProviderMode.gemini
