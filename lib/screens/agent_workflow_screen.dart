@@ -246,6 +246,58 @@ class AgentWorkflowScreen extends StatelessWidget {
                           ),
                         ),
                       ),
+                    if (event['task_id'] != null &&
+                        latestSubagentEvent[event['task_id'].toString()] == event['id']?.toString() &&
+                        {'interrupted', 'failed'}.contains(status.toLowerCase()))
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                        child: Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: OutlinedButton.icon(
+                            onPressed: () async {
+                              final disposition = await showDialog<String>(
+                                context: context,
+                                builder: (dialogContext) => AlertDialog(
+                                  backgroundColor: GiantPalette.surface,
+                                  title: const Text('استئناف الوكيل الفرعي', style: TextStyle(color: Colors.white)),
+                                  content: const Text(
+                                    'قد تكون بعض العمليات قد نُفذت قبل الانقطاع. افحص آثارها أولاً، ثم اختر كيف تريد المتابعة.',
+                                    style: TextStyle(color: Colors.white70),
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(dialogContext, 'verified_no_side_effects'),
+                                      child: const Text('تحققت: لا توجد آثار جانبية'),
+                                    ),
+                                    FilledButton(
+                                      onPressed: () => Navigator.pop(dialogContext, 'user_authorized_retry'),
+                                      child: const Text('أوافق على الاستئناف بعد مراجعة الحالة'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                              if (disposition == null || !context.mounted) return;
+                              try {
+                                await AgentService.instance.resumeSubagent(
+                                  event['task_id'].toString(),
+                                  sideEffectDisposition: disposition,
+                                );
+                                if (!context.mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('اكتمل استئناف الوكيل الفرعي وحُفظت نتيجته.')),
+                                );
+                              } catch (error) {
+                                if (!context.mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('تعذر استئناف الوكيل: $error')),
+                                );
+                              }
+                            },
+                            icon: const Icon(Icons.restart_alt_rounded, size: 17),
+                            label: const Text('مراجعة الحالة واستئناف الوكيل'),
+                          ),
+                        ),
+                      ),
                     if (event['output'] != null && details != event['output'].toString())
                       _detailBlock('المخرجات', event['output'].toString()),
                     ...event.entries.where((entry) => !{
