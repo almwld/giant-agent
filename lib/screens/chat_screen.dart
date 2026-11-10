@@ -1381,8 +1381,17 @@ class _ChatScreenState extends State<ChatScreen> {
       _isLoading = _pendingChatRequests > 0;
     });
     await _saveMessage(response, false, requestId: requestId);
-    // Keep the generated answer visible in chat while its Arabic audio plays.
-    await _voiceOutput.speak(response);
+    // The text reply is already rendered; audio playback starts without
+    // blocking the chat or changing the active conversation.
+    try {
+      await _voiceOutput.speak(response);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تعذر تشغيل الصوت. تحقق من تثبيت صوت اللغة العربية على الجهاز.')),
+        );
+      }
+    }
     _scrollToBottom();
   }
 
@@ -2970,25 +2979,24 @@ class _ChatScreenState extends State<ChatScreen> {
                       _composerIconButton(
                         icon: _isLoading && _controller.text.trim().isEmpty
                             ? Icons.stop_rounded
-                            : Icons.arrow_upward_rounded,
+                            : (_controller.text.trim().isNotEmpty
+                                ? Icons.arrow_upward_rounded
+                                : (_isListening ? Icons.graphic_eq_rounded : Icons.mic_none_rounded)),
                         tooltip: _isLoading && _controller.text.trim().isEmpty
                             ? 'إيقاف الوكيل'
-                            : (_isLoading ? 'إضافة الطلب إلى قائمة الانتظار' : 'إرسال الرسالة'),
+                            : (_controller.text.trim().isNotEmpty
+                                ? 'إرسال الرسالة'
+                                : (_isListening ? 'إيقاف التحدث' : 'بدء التحدث بالعربية')),
                         background: _isLoading && _controller.text.trim().isEmpty
-                            ? Colors.white : GiantPalette.primary,
+                            ? Colors.white
+                            : (_isListening ? GiantPalette.primary : GiantPalette.primary),
                         foreground: _isLoading && _controller.text.trim().isEmpty
                             ? const Color(0xFF18181B) : Colors.white,
                         onPressed: _isLoading && _controller.text.trim().isEmpty
-                            ? _cancelAgent : _sendMessage,
+                            ? _cancelAgent
+                            : (_controller.text.trim().isNotEmpty
+                                ? _sendMessage : _toggleVoiceInput),
                         prominent: true,
-                      ),
-                      const SizedBox(width: 8),
-                      _composerIconButton(
-                        icon: _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
-                        tooltip: _isListening ? 'إيقاف الإدخال الصوتي' : 'الإملاء الصوتي',
-                        foreground: _isListening ? Colors.white : GiantPalette.muted,
-                        background: _isListening ? GiantPalette.primary : GiantPalette.border,
-                        onPressed: _toggleVoiceInput,
                       ),
                       const SizedBox(width: 8),
                       Expanded(
