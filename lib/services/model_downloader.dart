@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
@@ -9,28 +8,41 @@ class ModelDownloader {
     {'name': 'TinyLlama', 'url': 'https://huggingface.co/TheBloke/TinyLlama-1.1B-GGUF/resolve/main/tinyllama-1.1b.Q4_K_M.gguf', 'size': '600 MB'},
     {'name': 'Gemma-2B', 'url': 'https://huggingface.co/google/gemma-2b-it-GGUF/resolve/main/gemma-2b-it-q4_K_M.gguf', 'size': '1.5 GB'},
   ];
-  
+
   static Future<bool> downloadModel(String url, String name, Function(double) onProgress) async {
+    final client = http.Client();
+    File? partial;
     try {
-      final dir = await getExternalStorageDirectory();
-      final modelsDir = Directory('${dir?.path}/Download/models/');
-      if (!await modelsDir.exists()) await modelsDir.create(recursive: true);
-      
-      final response = await http.Client().get(Uri.parse(url));
+      final directory = await getExternalStorageDirectory();
+      if (directory == null) return false;
+      final modelsDir = Directory('${directory.path}/Download/models');
+      await modelsDir.create(recursive: true);
+      final response = await client.send(http.Request('GET', Uri.parse(url)));
+      if (response.statusCode < 200 || response.statusCode >= 300) return false;
       final total = response.contentLength ?? 0;
       var downloaded = 0;
-      final file = File('${modelsDir.path}/$name.gguf');
-      final sink = file.openWrite();
-      
-      await for (final chunk in response.stream) {
-        sink.add(chunk);
-        downloaded += chunk.length;
-        onProgress(downloaded / total);
+      partial = File('${modelsDir.path}/$name.gguf.part');
+      final sink = partial.openWrite();
+      try {
+        await for (final chunk in response.stream) {
+          sink.add(chunk);
+          downloaded += chunk.length;
+          if (total > 0) onProgress(downloaded / total);
+        }
+        await sink.flush();
+      } finally {
+        await sink.close();
       }
-      await sink.close();
+      final target = File('${modelsDir.path}/$name.gguf');
+      if (await target.exists()) await target.delete();
+      await partial.rename(target.path);
+      onProgress(1);
       return true;
-    } catch (e) {
+    } catch (_) {
+      if (partial != null && await partial.exists()) await partial.delete();
       return false;
+    } finally {
+      client.close();
     }
   }
 }
