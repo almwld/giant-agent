@@ -35,6 +35,14 @@
   `ModelService`; role-based tool permissions remain enforced. A process death
   during resume is reconciled back to an interrupted state and requires a new
   explicit authorization.
+- Durable requests and explicit child recovery now acquire an Android foreground
+  service for the duration of active work. The native notification is updated
+  with the current lifecycle step, and a reference count prevents one queued
+  request from stopping the service while another remains active.
+- If Android recreates the foreground service after process death, its
+  notification explicitly requests recovery; it never claims that model work
+  resumed. SQLite reconciliation marks in-flight requests/children interrupted
+  and requires explicit user authorization before child execution resumes.
 - When worker results contain failed or skipped tasks, the coordinator may
   request one bounded evidence-driven repair plan. The repair batch receives
   unique IDs, does not automatically rerun completed tasks, and cannot loop
@@ -61,8 +69,10 @@ Kimi Agent Swarm. Remaining work includes:
 1. Richer subagent management: pause/resume controls and explicit child-level
    retry policy for completed work. The Timeline now exposes explicit recovery
    for interrupted/failed children with a side-effect review decision.
-3. Detached/background execution with Android lifecycle guarantees and durable
-   notification/progress behavior.
+3. A dedicated headless Flutter execution engine with lifecycle ownership
+   independent of the Activity. Current foreground execution keeps the app
+   process important and reports progress, while process death is recovered
+   safely rather than replayed; it is not yet a detached headless runtime.
 4. True parallel model execution. It must not be enabled by creating duplicate
    LlamaService/JNI runtimes or bypassing the shared runtime lock.
 5. End-to-end device validation of tool permissions, cancellation, restart
