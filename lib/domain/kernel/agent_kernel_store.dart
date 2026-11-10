@@ -509,7 +509,6 @@ class AgentKernelStore {
         {
           'id': id,
           'request_id': requestId,
-          'task_id': event['task_id']?.toString(),
           'type': type,
           'status': event['status']?.toString() ?? 'pending',
           'payload_json': jsonEncode(event),
