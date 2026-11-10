@@ -60,6 +60,7 @@ class OutputEngine {
     }
 
     final children = await _store.subagentsForRequest(requestId);
+    final childFailures = children.where((child) => child['status'] != 'completed').length;
     for (final child in children) {
       final childResult = child['last_result']?.toString() ?? '';
       if (child['status'] != 'completed' || childResult.trim().isEmpty) continue;
@@ -171,8 +172,8 @@ class OutputEngine {
     final verifiedCount = artifacts.where((item) => item['verified'] == true).length;
     final missingCount = artifacts.length - verifiedCount;
     final hasFinalText = finalText.trim().isNotEmpty;
-    final verified = hasFinalText && missingCount == 0 && requestStatus == 'completed';
-    final summary = 'حُفظ ${artifacts.length} مخرجاً؛ تحقق ${verifiedCount}، وغير المتحقق ${missingCount}.';
+    final verified = hasFinalText && missingCount == 0 && childFailures == 0 && requestStatus == 'completed';
+    final summary = 'حُفظ ${artifacts.length} مخرجاً؛ تحقق ${verifiedCount}، وغير المتحقق ${missingCount}؛ الوكلاء غير المكتملين: ${childFailures}.';
     _emit(requestId, verified ? 'output_collection_completed' : 'output_collection_partial',
         verified ? 'اكتملت منظومة المخرجات والتحقق منها' : 'المخرجات جزئية وتحتاج مراجعة',
         verified ? 'completed' : 'interrupted',
@@ -181,6 +182,7 @@ class OutputEngine {
           'artifact_count': artifacts.length,
           'verified_count': verifiedCount,
           'unverified_count': missingCount,
+          'incomplete_child_count': childFailures,
           'artifact_ids': artifacts.map((item) => item['id']).toList(),
         });
     return OutputCollectionResult(
