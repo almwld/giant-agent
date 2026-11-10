@@ -30,6 +30,20 @@ void main() {
       );
     });
 
+    test('rejects allow-listed tools with invalid arguments', () async {
+      final service = ReflexionService(
+        generate: (_) async => '{"tool":"read_file","args":{}}',
+      );
+      await expectLater(
+        service.generateFix(
+          originalGoal: 'Read a file',
+          failedAction: 'read_file',
+          errorMessage: 'not found',
+        ),
+        throwsFormatException,
+      );
+    });
+
     test('rejects malformed model output', () async {
       final service = ReflexionService(generate: (_) async => 'I will try another action.');
       await expectLater(
