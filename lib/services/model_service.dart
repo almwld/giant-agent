@@ -32,6 +32,10 @@ class ModelService {
   int _toolEventSequence = 0;
   static const Object _requestIdZoneKey = #giantAgentRequestId;
   static const Object _parallelProviderZoneKey = #giantAgentParallelProvider;
+  static const Object _taskIdZoneKey = #giantAgentTaskId;
+  static const Object _agentTypeZoneKey = #giantAgentAgentType;
+  String get _activeTaskId => Zone.current[_taskIdZoneKey] as String? ?? '';
+  String get _activeAgentType => Zone.current[_agentTypeZoneKey] as String? ?? '';
   String get _activeRequestId =>
       Zone.current[_requestIdZoneKey] as String? ?? _fallbackRequestId;
 
@@ -64,6 +68,8 @@ class ModelService {
       'id': 'tool_${_activeRequestId}_event_$sequence',
       'request_id': _activeRequestId,
       'attempt_id': _activeRequestId,
+      'task_id': _activeTaskId,
+      'agent_type': _activeAgentType,
       'step_id': stepId ?? 'tool_${_activeRequestId}_$sequence',
       'sequence': sequence,
       'type': type,
@@ -366,6 +372,8 @@ class ModelService {
     Set<String>? allowedTools,
     bool Function()? shouldCancel,
     String? requestId,
+    String? taskId,
+    String? agentType,
   }) async {
     final mode = await ModelProviderSettings.instance.getMode();
     final parallelProvider = mode == ModelProviderMode.openRouter;
@@ -398,6 +406,8 @@ class ModelService {
     final zoneValues = <Object, Object?>{
       _requestIdZoneKey: requestId ?? _fallbackRequestId,
       _parallelProviderZoneKey: parallelProvider,
+      _taskIdZoneKey: taskId ?? '',
+      _agentTypeZoneKey: agentType ?? '',
     };
     if (parallelProvider) {
       _parallelExecutions++;
