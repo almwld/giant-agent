@@ -1035,7 +1035,16 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
-    await TaskManager().recordResumeIntent(taskId);
+    try {
+      await TaskManager().recordResumeIntent(taskId);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تعذر تسجيل طلب الاستئناف بأمان: $error')),
+        );
+      }
+      return;
+    }
 
     final completedTools = _agentSteps.where((event) =>
       event['status'] == 'completed' &&
