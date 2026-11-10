@@ -9,6 +9,7 @@ on:
       - integration/giant-agent-stabilization
       - fix/openrouter-only-provider-policy
       - feat/voice-orb-in-chat-session
+      - test/gain-pty-emulator-smoke
       - feat/chat-bubble-resize-teal-toasts
   pull_request:
     branches:
@@ -119,15 +120,80 @@ jobs:
               exit 1
             }
           }
+          verify_native dist/giant-agent-universal.apk arm64-v8a
+          verify_native dist/giant-agent-universal.apk armeabi-v7a
+          verify_native dist/giant-agent-universal.apk x86_64
           verify_native dist/app-arm64-v8a-release.apk arm64-v8a
           verify_native dist/app-armeabi-v7a-release.apk armeabi-v7a
           verify_native dist/app-x86_64-release.apk x86_64
-          unzip -l dist/giant-agent-universal.apk | grep -q "assets/flutter_assets/assets/animations/voice_orb.json"
           for apk in dist/*.apk; do
-            unzip -p "$apk" classes.dex 2>/dev/null | strings | grep -q "GainPtyBridge" || {
-              echo "GainPtyBridge class not found in $apk"
+            unzip -l "$apk" | grep -q "assets/flutter_assets/assets/animations/voice_orb.json" || {
+              echo "Voice orb Lottie asset missing from $apk"
               exit 1
             }
+            dex_found=false
+            while IFS= read -r dex; do
+              if unzip -p "$apk" "$dex" 2>/dev/null | strings | grep -q "GainPtyBridge"; then
+                dex_found=true
+                break
+              fi
+            done < <(unzip -Z1 "$apk" | grep -E '^classes([0-9]+)?\\.dex
+
+      - name: Verify APK outputs and checksums
+        run: |
+          set -e
+          test -s dist/giant-agent-universal.apk
+          test -s dist/app-arm64-v8a-release.apk
+          test -s dist/app-armeabi-v7a-release.apk
+          test -s dist/app-x86_64-release.apk
+          echo "APK files produced:"
+          ls -lh dist/*.apk
+          sha256sum dist/*.apk | tee dist/SHA256SUMS.txt
+
+      - name: 📤 Upload universal APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: giant-agent-universal-release
+          path: dist/giant-agent-universal.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: 📤 Upload arm64-v8a
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-arm64-v8a-release
+          path: dist/app-arm64-v8a-release.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: 📤 Upload armeabi-v7a
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-armeabi-v7a-release
+          path: dist/app-armeabi-v7a-release.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: 📤 Upload x86_64
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-x86_64-release
+          path: dist/app-x86_64-release.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: 📤 Upload SHA256 checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: giant-agent-sha256-checksums
+          path: dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+)
+            if [ "$dex_found" != true ]; then
+              echo "GainPtyBridge reference not found in any DEX file in $apk"
+              exit 1
+            fi
           done
 
       - name: Verify APK outputs and checksums
@@ -180,3 +246,42 @@ jobs:
           path: dist/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 30
+
+
+  gain-pty-emulator:
+    name: Android emulator Gain PTY smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Python for Chaquopy
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.16.0'
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run cold-launch and Gain PTY smoke test on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          script: flutter test integration_test/gain_pty_emulator_smoke_test.dart -d emulator-5554
