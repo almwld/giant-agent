@@ -1,263 +1,319 @@
-import 'dart:io';
-import 'dart:convert';
-import 'package:path_provider/path_provider.dart';
-import 'package:archive/archive.dart';
+import '../models/task_model.dart';
 
+typedef TaskPlanner = Future<List<TaskStep>> Function(String description);
+typedef TaskStepExecutor = Future<TaskExecutionResult> Function(
+  TaskModel task,
+  TaskStep step,
+);
+typedef TaskStepVerifier = Future<TaskVerificationResult> Function(
+  TaskModel task,
+  TaskStep step,
+  TaskExecutionResult result,
+);
+typedef TaskVerifier = Future<TaskVerificationResult> Function(TaskModel task);
+
+class TaskExecutionResult {
+  const TaskExecutionResult({
+    required this.ok,
+    this.output = const {},
+    this.error,
+  });
+
+  final bool ok;
+  final Map<String, dynamic> output;
+  final String? error;
+}
+
+class TaskVerificationResult {
+  const TaskVerificationResult({
+    required this.verified,
+    this.evidence = '',
+    this.reason,
+  });
+
+  final bool verified;
+  final String evidence;
+  final String? reason;
+}
+
+/// In-memory orchestration core. It deliberately fails closed until real
+/// planner, executor, and independent verification callbacks are configured.
+/// Persistence, retries, and parallel execution are separate follow-up work.
 class TaskManager {
   static final TaskManager _instance = TaskManager._internal();
+
   factory TaskManager() => _instance;
+
   TaskManager._internal();
-  
-  List<Map<String, dynamic>> _tasks = [];
-  String _currentTask = '';
-  
-  // إنشاء مهمة جديدة
-  Future<Map<String, dynamic>> createTask(String description) async {
-    final taskId = DateTime.now().millisecondsSinceEpoch.toString();
-    final task = {
-      'id': taskId,
-      'description': description,
-      'status': 'planning',
-      'steps': [],
-      'created_at': DateTime.now().toIso8601String(),
-    };
-    
-    // تحليل المهمة وتقسيمها إلى خطوات
-    task['steps'] = await _analyzeAndPlan(description);
+
+  TaskManager.forTesting({
+    TaskPlanner? planner,
+    TaskStepExecutor? executor,
+    TaskStepVerifier? stepVerifier,
+    TaskVerifier? verifier,
+  })  : _planner = planner,
+        _executor = executor,
+        _stepVerifier = stepVerifier,
+        _verifier = verifier;
+
+  TaskPlanner? _planner;
+  TaskStepExecutor? _executor;
+  TaskStepVerifier? _stepVerifier;
+  TaskVerifier? _verifier;
+  final List<TaskModel> _tasks = [];
+  final Set<String> _runningTaskIds = {};
+  String _currentTaskId = '';
+
+  void configureRuntime({
+    required TaskPlanner planner,
+    required TaskStepExecutor executor,
+    required TaskStepVerifier stepVerifier,
+    required TaskVerifier verifier,
+  }) {
+    if (_runningTaskIds.isNotEmpty) {
+      throw StateError('Cannot replace the runtime while a task is executing.');
+    }
+    _planner = planner;
+    _executor = executor;
+    _stepVerifier = stepVerifier;
+    _verifier = verifier;
+  }
+
+  Future<TaskModel> createTask(String description, {TaskPriority priority = TaskPriority.medium}) async {
+    final text = description.trim();
+    final task = TaskModel(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      title: _taskTitle(text),
+      description: text,
+      priority: priority,
+      status: TaskStatus.planning,
+      createdAt: DateTime.now(),
+    );
     _tasks.add(task);
-    _currentTask = taskId;
-    
+    _currentTaskId = task.id;
+
+    if (text.isEmpty) {
+      task.status = TaskStatus.failed;
+      task.error = 'Task description cannot be empty.';
+      return task;
+    }
+    final planner = _planner;
+    if (planner == null) {
+      task.status = TaskStatus.blocked;
+      task.error = 'No real planner is configured; no plan was fabricated.';
+      return task;
+    }
+
+    try {
+      final plan = await planner(text);
+      _validatePlan(plan);
+      task.steps.addAll(plan);
+      task.status = TaskStatus.pending;
+    } catch (error) {
+      task.status = TaskStatus.failed;
+      task.error = 'Planning failed: $error';
+    }
     return task;
   }
-  
-  Future<List<Map<String, dynamic>>> _analyzeAndPlan(String description) async {
-    final steps = <Map<String, dynamic>>[];
-    final lower = description.toLowerCase();
-    
-    if (lower.contains('موقع') || lower.contains('website') || lower.contains('html')) {
-      steps.addAll([
-        {'step': 1, 'action': 'تحليل متطلبات الموقع', 'type': 'analysis', 'status': 'pending'},
-        {'step': 2, 'action': 'تصميم هيكل الموقع', 'type': 'design', 'status': 'pending'},
-        {'step': 3, 'action': 'كتابة كود HTML/CSS/JS', 'type': 'code', 'status': 'pending'},
-        {'step': 4, 'action': 'اختبار الموقع', 'type': 'test', 'status': 'pending'},
-        {'step': 5, 'action': 'تجميع الملفات', 'type': 'package', 'status': 'pending'},
-      ]);
-    } else if (lower.contains('تطبيق') || lower.contains('app') || lower.contains('flutter')) {
-      steps.addAll([
-        {'step': 1, 'action': 'تحليل متطلبات التطبيق', 'type': 'analysis', 'status': 'pending'},
-        {'step': 2, 'action': 'تصميم واجهة المستخدم', 'type': 'design', 'status': 'pending'},
-        {'step': 3, 'action': 'كتابة كود التطبيق', 'type': 'code', 'status': 'pending'},
-        {'step': 4, 'action': 'اختبار التطبيق', 'type': 'test', 'status': 'pending'},
-        {'step': 5, 'action': 'تجميع المشروع', 'type': 'package', 'status': 'pending'},
-      ]);
-    } else if (lower.contains('تحليل') || lower.contains('data') || lower.contains('بيانات')) {
-      steps.addAll([
-        {'step': 1, 'action': 'جمع البيانات', 'type': 'collection', 'status': 'pending'},
-        {'step': 2, 'action': 'تنظيف البيانات', 'type': 'cleaning', 'status': 'pending'},
-        {'step': 3, 'action': 'تحليل البيانات', 'type': 'analysis', 'status': 'pending'},
-        {'step': 4, 'action': 'إنشاء تقرير', 'type': 'report', 'status': 'pending'},
-        {'step': 5, 'action': 'تصدير النتائج', 'type': 'export', 'status': 'pending'},
-      ]);
-    } else {
-      steps.addAll([
-        {'step': 1, 'action': 'فهم المهمة', 'type': 'analysis', 'status': 'pending'},
-        {'step': 2, 'action': 'تخطيط التنفيذ', 'type': 'planning', 'status': 'pending'},
-        {'step': 3, 'action': 'تنفيذ المهمة', 'type': 'execution', 'status': 'pending'},
-        {'step': 4, 'action': 'مراجعة النتائج', 'type': 'review', 'status': 'pending'},
-        {'step': 5, 'action': 'تسليم المخرجات', 'type': 'delivery', 'status': 'pending'},
-      ]);
+
+  Future<Map<String, dynamic>> executeNextStep(String taskId) async {
+    final task = _findTask(taskId);
+    if (task == null) return _failure('Task not found.', status: 'not_found');
+    if (task.status == TaskStatus.completed) {
+      return {'ok': true, 'status': task.status.name, 'message': 'Task already completed.'};
     }
-    
-    return steps;
-  }
-  
-  // تنفيذ الخطوة التالية
-  Future<Map<String, dynamic>> executeNextStep() async {
-    final task = _tasks.firstWhere((t) => t['id'] == _currentTask, orElse: () => {});
-    if (task.isEmpty) return {'error': 'لا توجد مهمة نشطة'};
-    
-    final pendingStep = task['steps'].firstWhere((s) => s['status'] == 'pending', orElse: () => null);
-    if (pendingStep == null) {
-      return await _finalizeTask(task);
+    if (task.status == TaskStatus.failed || task.status == TaskStatus.blocked || task.status == TaskStatus.cancelled) {
+      return _failure(task.error ?? 'Task is not executable.', status: task.status.name);
     }
-    
-    pendingStep['status'] = 'in_progress';
-    final result = await _executeStep(pendingStep, task['description']);
-    pendingStep['status'] = 'completed';
-    pendingStep['result'] = result;
-    
-    return {
-      'step': pendingStep['step'],
-      'action': pendingStep['action'],
-      'result': result,
-      'remaining': task['steps'].where((s) => s['status'] == 'pending').length,
-    };
-  }
-  
-  Future<String> _executeStep(Map<String, dynamic> step, String description) async {
-    switch(step['type']) {
-      case 'code':
-        return await _generateCode(description);
-      case 'package':
-        return await _packageProject(description);
-      case 'report':
-        return await _generateReport(description);
-      case 'export':
-        return await _exportResults(description);
-      default:
-        return '✅ تم تنفيذ: ${step['action']}';
+    if (!_runningTaskIds.add(taskId)) {
+      return _failure('Another step for this task is already running.', status: 'in_progress');
+    }
+
+    try {
+      final executor = _executor;
+      final stepVerifier = _stepVerifier;
+      final verifier = _verifier;
+      if (executor == null || stepVerifier == null || verifier == null) {
+        task.status = TaskStatus.blocked;
+        task.error = 'Execution is blocked until real execution and verification adapters are configured.';
+        return _failure(task.error!, status: task.status.name);
+      }
+
+      final pending = task.steps.where((step) => step.status == TaskStepStatus.pending).toList();
+      if (pending.isEmpty) {
+        if (task.steps.any((step) => step.status != TaskStepStatus.completed)) {
+          task.status = TaskStatus.blocked;
+          task.error = 'No runnable step remains; unresolved dependencies prevent completion.';
+          return _failure(task.error!, status: task.status.name);
+        }
+        return await _verifyTask(task, verifier);
+      }
+
+      final completedIds = task.steps
+          .where((step) => step.status == TaskStepStatus.completed)
+          .map((step) => step.id)
+          .toSet();
+      TaskStep? step;
+      for (final candidate in pending) {
+        if (candidate.dependencies.every(completedIds.contains)) {
+          step = candidate;
+          break;
+        }
+      }
+      if (step == null) {
+        task.status = TaskStatus.blocked;
+        task.error = 'No pending step is runnable from the completed dependency set.';
+        return _failure(task.error!, status: task.status.name);
+      }
+
+      task.status = TaskStatus.inProgress;
+      step
+        ..status = TaskStepStatus.inProgress
+        ..attempts++
+        ..startedAt = DateTime.now()
+        ..error = null;
+      final stopwatch = Stopwatch()..start();
+      try {
+        final result = await executor(task, step);
+        if (!result.ok) {
+          throw StateError(result.error ?? 'Executor reported failure.');
+        }
+        step
+          ..status = TaskStepStatus.verifying
+          ..output = result.output;
+        final verification = await stepVerifier(task, step, result);
+        if (!verification.verified || verification.evidence.trim().isEmpty) {
+          throw StateError(verification.reason ?? 'Step verification returned no positive evidence.');
+        }
+        step
+          ..status = TaskStepStatus.completed
+          ..evidence = verification.evidence;
+      } catch (error) {
+        step
+          ..status = TaskStepStatus.failed
+          ..error = error.toString();
+        task
+          ..status = TaskStatus.failed
+          ..error = 'Step ${step.id} failed: $error';
+        return _failure(task.error!, status: task.status.name, stepId: step.id);
+      } finally {
+        stopwatch.stop();
+        step
+          ..finishedAt = DateTime.now()
+          ..durationMs = stopwatch.elapsedMilliseconds;
+      }
+
+      if (task.steps.every((item) => item.status == TaskStepStatus.completed)) {
+        return await _verifyTask(task, verifier, lastStepId: step.id);
+      }
+      return {
+        'ok': true,
+        'status': task.status.name,
+        'step_id': step.id,
+        'step_status': step.status.name,
+        'remaining': task.steps.where((item) => item.status == TaskStepStatus.pending).length,
+        'evidence': step.evidence,
+      };
+    } finally {
+      _runningTaskIds.remove(taskId);
     }
   }
-  
-  Future<String> _generateCode(String description) async {
-    final dir = await getExternalStorageDirectory();
-    final projectDir = Directory('${dir?.path}/generated_project');
-    await projectDir.create(recursive: true);
-    
-    // إنشاء ملفات المشروع
-    final mainFile = File('${projectDir.path}/main.py');
-    await mainFile.writeAsString(_generatePythonCode(description));
-    
-    final readmeFile = File('${projectDir.path}/README.md');
-    await readmeFile.writeAsString('# Generated Project\n\n$description\n\nCreated by Giant Agent X');
-    
-    return '✅ تم إنشاء كود المشروع في ${projectDir.path}';
-  }
-  
-  String _generatePythonCode(String description) {
-    return '''
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-\"\"\"
-$description
-Generated by Giant Agent X
-\"\"\"
 
-import os
-import json
-from datetime import datetime
-
-def main():
-    print("🚀 Giant Agent X - Project Generator")
-    print("=" * 50)
-    print(f"📋 المشروع: $description")
-    print(f"📅 التاريخ: {datetime.now()}")
-    print("=" * 50)
-    
-    # إنشاء هيكل المشروع
-    folders = ['src', 'data', 'output', 'tests']
-    for folder in folders:
-        os.makedirs(folder, exist_ok=True)
-        print(f"✅ تم إنشاء مجلد: {folder}")
-    
-    # إنشاء ملف التكوين
-    config = {
-        'project_name': '$description',
-        'version': '1.0.0',
-        'created_at': datetime.now().isoformat(),
-        'author': 'Giant Agent X'
+  Future<Map<String, dynamic>> _verifyTask(
+    TaskModel task,
+    TaskVerifier verifier, {
+    String? lastStepId,
+  }) async {
+    task.status = TaskStatus.verifying;
+    try {
+      final result = await verifier(task);
+      if (!result.verified || result.evidence.trim().isEmpty) {
+        throw StateError(result.reason ?? 'Task verification returned no positive evidence.');
+      }
+      task
+        ..status = TaskStatus.completed
+        ..completedAt = DateTime.now()
+        ..verificationEvidence = result.evidence
+        ..error = null;
+      return {
+        'ok': true,
+        'status': task.status.name,
+        'step_id': lastStepId,
+        'verification_evidence': result.evidence,
+        'task': task.toJson(),
+      };
+    } catch (error) {
+      task
+        ..status = TaskStatus.failed
+        ..error = 'Final verification failed: $error';
+      return _failure(task.error!, status: task.status.name, stepId: lastStepId);
     }
-    
-    with open('config.json', 'w') as f:
-        json.dump(config, f, indent=2, ensure_ascii=False)
-    
-    print("\\n✅ تم إنشاء المشروع بنجاح!")
-    print("📁 هيكل المشروع جاهز للاستخدام")
+  }
 
-if __name__ == "__main__":
-    main()
-''';
-  }
-  
-  Future<String> _packageProject(String description) async {
-    final dir = await getExternalStorageDirectory();
-    final projectDir = Directory('${dir?.path}/generated_project');
-    final outputDir = Directory('${dir?.path}/output');
-    await outputDir.create(recursive: true);
-    
-    final zipPath = '${outputDir.path}/project_${DateTime.now().millisecondsSinceEpoch}.zip';
-    
-    // إنشاء ملف ZIP
-    final encoder = ZipFileEncoder();
-    encoder.create(zipPath);
-    await encoder.addDirectory(projectDir);
-    await encoder.close();
-    
-    return '✅ تم تجميع المشروع في: $zipPath';
-  }
-  
-  Future<String> _generateReport(String description) async {
-    final dir = await getExternalStorageDirectory();
-    final reportPath = '${dir?.path}/report_${DateTime.now().millisecondsSinceEpoch}.md';
-    final report = '''
-# تقرير المشروع
+  void _validatePlan(List<TaskStep> steps) {
+    if (steps.isEmpty) throw const FormatException('Planner returned an empty plan.');
+    final ids = steps.map((step) => step.id).toList();
+    if (ids.any((id) => id.trim().isEmpty) || ids.toSet().length != ids.length) {
+      throw const FormatException('Plan step IDs must be non-empty and unique.');
+    }
+    final knownIds = ids.toSet();
+    for (final step in steps) {
+      if (step.action.trim().isEmpty || step.type.trim().isEmpty) {
+        throw FormatException('Step ${step.id} must have an action and type.');
+      }
+      if (step.dependencies.any((dependency) => !knownIds.contains(dependency) || dependency == step.id)) {
+        throw FormatException('Step ${step.id} has an unknown or self dependency.');
+      }
+    }
 
-**الوصف:** $description
-**التاريخ:** ${DateTime.now()}
-**المنتج:** Giant Agent X
+    final remaining = steps.map((step) => step.id).toSet();
+    final resolved = <String>{};
+    while (remaining.isNotEmpty) {
+      final ready = steps
+          .where((step) => remaining.contains(step.id) && step.dependencies.every(resolved.contains))
+          .map((step) => step.id)
+          .toList();
+      if (ready.isEmpty) throw const FormatException('Plan contains a dependency cycle.');
+      resolved.addAll(ready);
+      remaining.removeAll(ready);
+    }
+  }
 
-## الملخص التنفيذي
-تم تنفيذ المهمة بنجاح وفقاً للمتطلبات المحددة.
+  TaskModel? _findTask(String id) {
+    for (final task in _tasks) {
+      if (task.id == id) return task;
+    }
+    return null;
+  }
 
-## النتائج
-- اكتملت جميع الخطوات بنجاح
-- تم إنشاء المخرجات المطلوبة
-- جاهز للتسليم النهائي
+  Map<String, dynamic> _failure(String message, {required String status, String? stepId}) => {
+        'ok': false,
+        'status': status,
+        'step_id': stepId,
+        'error': message,
+      };
 
-## المرفقات
-- ملفات المشروع
-- التوثيق الكامل
-''';
-    
-    await File(reportPath).writeAsString(report);
-    return '✅ تم إنشاء التقرير: $reportPath';
+  String _taskTitle(String description) =>
+      description.length > 48 ? '${description.substring(0, 48)}…' : description;
+
+  String get currentTaskId => _currentTaskId;
+
+  String getProgress(String taskId) {
+    final task = _findTask(taskId);
+    if (task == null) return 'لا توجد مهمة';
+    final total = task.steps.length;
+    if (total == 0) return '0/0 (${task.status.name})';
+    final completed = task.steps.where((step) => step.status == TaskStepStatus.completed).length;
+    return '$completed/$total (${(completed / total * 100).toStringAsFixed(0)}%)';
   }
-  
-  Future<String> _exportResults(String description) async {
-    final dir = await getExternalStorageDirectory();
-    final exportPath = '${dir?.path}/results_${DateTime.now().millisecondsSinceEpoch}.json';
-    
-    final results = {
-      'project': description,
-      'timestamp': DateTime.now().toIso8601String(),
-      'status': 'completed',
-      'generated_by': 'Giant Agent X',
-    };
-    
-    await File(exportPath).writeAsString(json.encode(results));
-    return '✅ تم تصدير النتائج: $exportPath';
-  }
-  
-  Future<Map<String, dynamic>> _finalizeTask(Map<String, dynamic> task) async {
-    final dir = await getExternalStorageDirectory();
-    task['status'] = 'completed';
-    task['completed_at'] = DateTime.now().toIso8601String();
-    
-    // إنشاء ملف الإخراج النهائي
-    final outputPath = '${dir?.path}/final_output_${task['id']}.json';
-    await File(outputPath).writeAsString(json.encode(task));
-    
-    return {
-      'status': 'completed',
-      'message': '✅ تم إكمال المهمة بنجاح!',
-      'output_file': outputPath,
-      'task_summary': task,
-    };
-  }
-  
-  String getProgress() {
-    final task = _tasks.firstWhere((t) => t['id'] == _currentTask, orElse: () => {});
-    if (task.isEmpty) return 'لا توجد مهمة نشطة';
-    
-    final completed = task['steps'].where((s) => s['status'] == 'completed').length;
-    final total = task['steps'].length;
-    return 'تقدم: $completed/$total (${(completed/total*100).toStringAsFixed(0)}%)';
-  }
-  
-  List<Map<String, dynamic>> getTasks() => _tasks;
-  
+
+  List<TaskModel> getTasks() => List.unmodifiable(_tasks);
+
   void clearTasks() {
+    if (_runningTaskIds.isNotEmpty) {
+      throw StateError('Cannot clear tasks while execution is in progress.');
+    }
     _tasks.clear();
-    _currentTask = '';
+    _currentTaskId = '';
   }
 }

@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - feat/sehatak-brand-identity
   pull_request:
     branches:
       - main
@@ -52,6 +53,9 @@ jobs:
 
       - name: Install dependencies
         run: flutter pub get
+
+      - name: Run automated tests
+        run: flutter test
 
       - name: Build universal release APK
         run: |
