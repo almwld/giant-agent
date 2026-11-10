@@ -1,5 +1,6 @@
 /// A truthful, serializable event emitted by the agent orchestration layer.
-/// It contains user-safe execution metadata, never private chain-of-thought.
+/// Event IDs identify transitions; step IDs correlate transitions belonging to
+/// one logical operation. Events never contain private chain-of-thought.
 class AgentTimelineEvent {
   const AgentTimelineEvent({
     required this.id,
@@ -8,6 +9,9 @@ class AgentTimelineEvent {
     required this.title,
     required this.status,
     required this.timestamp,
+    this.stepId,
+    this.attemptId,
+    this.sequence,
     this.details,
   });
 
@@ -17,15 +21,44 @@ class AgentTimelineEvent {
   final String title;
   final String status;
   final DateTime timestamp;
+  final String? stepId;
+  final String? attemptId;
+  final int? sequence;
   final String? details;
 
   Map<String, dynamic> toMap() => <String, dynamic>{
         'id': id,
         'request_id': requestId,
+        'attempt_id': attemptId ?? requestId,
         'type': type,
         'title': title,
         'status': status,
-        'timestamp': timestamp.toIso8601String(),
+        'timestamp': timestamp.toUtc().toIso8601String(),
+        if (stepId != null && stepId!.isNotEmpty) 'step_id': stepId,
+        if (sequence != null) 'sequence': sequence,
         if (details != null && details!.isNotEmpty) 'details': details,
       };
+
+  factory AgentTimelineEvent.fromMap(Map<String, dynamic> map) {
+    final rawTimestamp = map['timestamp'];
+    final timestamp = rawTimestamp is DateTime
+        ? rawTimestamp
+        : rawTimestamp is int
+            ? DateTime.fromMillisecondsSinceEpoch(rawTimestamp, isUtc: true)
+            : DateTime.tryParse(rawTimestamp?.toString() ?? '') ??
+                DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+    final rawSequence = map['sequence'];
+    return AgentTimelineEvent(
+      id: map['id']?.toString() ?? '',
+      requestId: (map['request_id'] ?? map['requestId'])?.toString() ?? '',
+      attemptId: map['attempt_id']?.toString(),
+      stepId: (map['step_id'] ?? map['stepId'])?.toString(),
+      sequence: rawSequence is num ? rawSequence.toInt() : int.tryParse(rawSequence?.toString() ?? ''),
+      type: map['type']?.toString() ?? 'unknown',
+      title: map['title']?.toString() ?? '',
+      status: map['status']?.toString() ?? 'pending',
+      timestamp: timestamp,
+      details: map['details']?.toString(),
+    );
+  }
 }
