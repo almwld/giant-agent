@@ -109,11 +109,12 @@ class GeminiProvider {
             'temperature': temperature,
           },
         });
-      final streamed = await client.send(request).timeout(requestTimeout);
-      if (streamed.isRedirect) {
-        throw StateError('أعاد Google Gemini توجيه HTTP ${streamed.statusCode}. تحقق من عنوان الخدمة والاتصال.');
-      }
-      final response = await http.Response.fromStream(streamed).timeout(requestTimeout);
+      final response = await client.send(request).then((streamed) {
+        if (streamed.isRedirect) {
+          throw StateError('أعاد Google Gemini توجيه HTTP ${streamed.statusCode}. تحقق من عنوان الخدمة والاتصال.');
+        }
+        return http.Response.fromStream(streamed);
+      }).timeout(requestTimeout);
       final dynamic decoded;
       try {
         decoded = jsonDecode(response.body);
