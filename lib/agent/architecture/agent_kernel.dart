@@ -613,6 +613,8 @@ ${dependencyContext.isEmpty ? 'لا توجد تبعيات سابقة.' : depende
             shouldCancel: () =>
                 _cancellationRequested || isTaskCancelled(),
             requestId: requestId,
+            taskId: task.id,
+            agentType: task.agentType,
           )).trim();
         } finally {
           _activeSubagentIds.remove(task.id);
