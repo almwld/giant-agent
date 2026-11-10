@@ -246,13 +246,6 @@ class ModelService {
     return result;
   }
 
-  Future<Map<String, dynamic>> _executeTool(
-    Map<String, dynamic> payload, {
-    String? stepId,
-    Set<String>? allowedTools,
-  }) => _withToolLock(() => _executeToolUnlocked(
-        payload, stepId: stepId, allowedTools: allowedTools));
-
   Future<Map<String, dynamic>> _executeToolUnlocked(
     Map<String, dynamic> payload, {
     String? stepId,
