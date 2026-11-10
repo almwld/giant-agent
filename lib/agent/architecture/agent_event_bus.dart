@@ -10,8 +10,17 @@ class AgentEventBus {
   final StreamController<Map<String, dynamic>> _controller =
       StreamController<Map<String, dynamic>>.broadcast();
   int _fallbackSequence = 0;
+  final Map<String, String> _requestSessions = <String, String>{};
 
   Stream<Map<String, dynamic>> get events => _controller.stream;
+
+  void bindRequest(String requestId, String sessionId) {
+    if (requestId.isNotEmpty && sessionId.isNotEmpty) {
+      _requestSessions[requestId] = sessionId;
+    }
+  }
+
+  void unbindRequest(String requestId) => _requestSessions.remove(requestId);
 
   void publish(Map<dynamic, dynamic> source) {
     final event = _jsonSafeMap(source);
@@ -20,6 +29,9 @@ class AgentEventBus {
     if (id.isEmpty) {
       event['id'] = 'bus_${DateTime.now().microsecondsSinceEpoch}_${++_fallbackSequence}';
     }
+    final requestId = event['request_id']?.toString() ?? '';
+    final sessionId = _requestSessions[requestId];
+    if (sessionId != null) event.putIfAbsent('session_id', () => sessionId);
     event.putIfAbsent('timestamp', () => now);
     event.putIfAbsent('type', () => 'unknown');
     event.putIfAbsent('status', () => 'pending');
