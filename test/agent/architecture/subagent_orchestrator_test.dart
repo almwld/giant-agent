@@ -51,6 +51,36 @@ void main() {
     expect(results.map((r) => r.status), ['failed', 'skipped']);
   });
 
+  test('can cancel one active child without cancelling its siblings', () async {
+    final started = Completer<void>();
+    final release = Completer<void>();
+    late SubagentOrchestrator orchestrator;
+    orchestrator = SubagentOrchestrator(
+      parentRequestId: 'request-targeted-cancel',
+      conversationId: 'chat-targeted-cancel',
+      maxConcurrency: 1,
+      onEvent: (_) {},
+      execute: (task, dependencies, isCancelled) async {
+        started.complete();
+        await release.future;
+        if (isCancelled()) {
+          throw const SubagentInterrupted('targeted cancellation');
+        }
+        return 'finished';
+      },
+    );
+    final run = orchestrator.run([
+      const SubagentTask(id: 'active', title: 'Active', prompt: 'Active'),
+      const SubagentTask(id: 'pending', title: 'Pending', prompt: 'Pending'),
+    ]);
+    await started.future;
+    expect(orchestrator.cancelTask('active'), isTrue);
+    expect(orchestrator.cancelTask('unknown'), isFalse);
+    release.complete();
+    final results = await run;
+    expect(results.map((result) => result.status), ['cancelled', 'completed']);
+  });
+
   test('records interrupted workers distinctly from failures', () async {
     final orchestrator = SubagentOrchestrator(
       parentRequestId: 'request-interrupted',
