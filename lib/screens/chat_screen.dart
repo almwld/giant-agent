@@ -1458,7 +1458,7 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() => _voiceOrbState = AgentState.speaking);
     }
     try {
-      await _voiceOutput.speak(response);
+      await _voiceOutput.speak(response, waitForCompletion: _voiceRequestActive);
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1737,7 +1737,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     final available = await _speech.initialize(
-      onStatus: (status) {
+      onStatus: (_) {
         if (!mounted) return;
         final listening = _speech.isListening;
         setState(() => _isListening = listening);
@@ -3324,29 +3324,29 @@ class _ChatScreenState extends State<ChatScreen> {
                     textDirection: TextDirection.ltr,
                     children: [
                       _composerIconButton(
-                        icon: _isLoading && _controller.text.trim().isEmpty
-                            ? Icons.stop_rounded
-                            : (_voiceOrbVisible
-                                ? Icons.graphic_eq_rounded
+                        icon: _voiceOrbVisible
+                            ? Icons.graphic_eq_rounded
+                            : (_isLoading && _controller.text.trim().isEmpty
+                                ? Icons.stop_rounded
                                 : (_controller.text.trim().isNotEmpty
                                     ? Icons.arrow_upward_rounded
                                     : (_isListening ? Icons.graphic_eq_rounded : Icons.mic_none_rounded))),
-                        tooltip: _isLoading && _controller.text.trim().isEmpty
-                            ? 'إيقاف الوكيل'
-                            : (_voiceOrbVisible
-                                ? 'إيقاف المساعد الصوتي'
+                        tooltip: _voiceOrbVisible
+                            ? 'إيقاف المساعد الصوتي'
+                            : (_isLoading && _controller.text.trim().isEmpty
+                                ? 'إيقاف الوكيل'
                                 : (_controller.text.trim().isNotEmpty
                                     ? 'إرسال الرسالة'
                                     : 'بدء التحدث')),
-                        background: _isLoading && _controller.text.trim().isEmpty
+                        background: !_voiceOrbVisible && _isLoading && _controller.text.trim().isEmpty
                             ? Colors.white
                             : GiantPalette.primary,
-                        foreground: _isLoading && _controller.text.trim().isEmpty
+                        foreground: !_voiceOrbVisible && _isLoading && _controller.text.trim().isEmpty
                             ? const Color(0xFF18181B) : Colors.white,
-                        onPressed: _isLoading && _controller.text.trim().isEmpty
-                            ? _cancelAgent
-                            : (_voiceOrbVisible
-                                ? _stopVoiceInteraction
+                        onPressed: _voiceOrbVisible
+                            ? _stopVoiceInteraction
+                            : (_isLoading && _controller.text.trim().isEmpty
+                                ? _cancelAgent
                                 : (_controller.text.trim().isNotEmpty
                                     ? _sendMessage : _toggleVoiceInput)),
                         prominent: true,
