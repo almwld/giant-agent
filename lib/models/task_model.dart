@@ -8,6 +8,7 @@ enum TaskStatus {
   completed,
   failed,
   blocked,
+  interrupted,
   cancelled,
 }
 
@@ -18,6 +19,7 @@ enum TaskStepStatus {
   completed,
   failed,
   blocked,
+  interrupted,
   cancelled,
 }
 
