@@ -203,6 +203,14 @@ class ModelService {
     return true;
   }
 
+  Future<Map<String, dynamic>> inspectWorkspaceFile({required String path}) async {
+    final result = await _agentTools.invokeMapMethod<String, dynamic>('inspectWorkspaceFile', {'path': path});
+    if (result == null || result['ok'] != true) {
+      throw PlatformException(code: 'WORKSPACE_FILE_INSPECT_FAILED', message: 'Unable to verify workspace artifact.');
+    }
+    return result;
+  }
+
   Future<Map<String, dynamic>> readImagePreview({required String path}) async {
     final result = await _agentTools.invokeMapMethod<String, dynamic>('readImagePreview', {'path': path});
     if (result == null || result['ok'] != true || result['base64'] == null) {
