@@ -1,5 +1,6 @@
 import '../agent/architecture/agent_kernel.dart' as execution;
 import '../agent/architecture/agent_timeline_event.dart';
+import '../agent/architecture/agent_event_bus.dart';
 import '../domain/kernel/agent_kernel.dart' as durable;
 import '../domain/kernel/agent_kernel_store.dart';
 import 'model_service.dart';
@@ -14,11 +15,13 @@ class AgentService {
   AgentService._()
       : _executionKernel = execution.AgentKernel.instance,
         _models = ModelService(),
-        _durableKernel = durable.AgentKernel(
-          store: AgentKernelStore(),
-          executor: _executeWithSharedRuntime,
-        ),
-        _initializeExecutionRuntime = true;
+        _store = AgentKernelStore(),
+        _initializeExecutionRuntime = true {
+    _durableKernel = durable.AgentKernel(
+      store: _store,
+      executor: _executeWithSharedRuntime,
+    );
+  }
 
   /// Injectable seam for contract tests. Production callers use [instance].
   AgentService.withExecutor({
@@ -26,15 +29,20 @@ class AgentService {
     required AgentKernelStore store,
   })  : _executionKernel = execution.AgentKernel.instance,
         _models = ModelService(),
-        _durableKernel = durable.AgentKernel(store: store, executor: executor),
-        _initializeExecutionRuntime = false;
+        _store = store,
+        _initializeExecutionRuntime = false {
+    _durableKernel = durable.AgentKernel(store: store, executor: executor);
+  }
 
   static final AgentService instance = AgentService._();
 
   final execution.AgentKernel _executionKernel;
   final ModelService _models;
-  final durable.AgentKernel _durableKernel;
+  late final durable.AgentKernel _durableKernel;
+  final AgentKernelStore _store;
   final bool _initializeExecutionRuntime;
+  StreamSubscription<Map<String, dynamic>>? _eventSubscription;
+  Future<void> _journalTail = Future<void>.value();
   Future<void>? _initialization;
   bool _initialized = false;
   static int _requestSequence = 0;
@@ -42,13 +50,18 @@ class AgentService {
   static Future<String> _executeWithSharedRuntime(
     KernelRequestRecord request,
   ) async {
-    final response = await execution.AgentKernel.instance.execute(
-      execution.AgentRequest(
-        id: request.id,
-        prompt: request.prompt,
-        conversationId: request.conversationId,
-      ),
-    );
+    late final execution.AgentResponse response;
+    try {
+      response = await execution.AgentKernel.instance.execute(
+        execution.AgentRequest(
+          id: request.id,
+          prompt: request.prompt,
+          conversationId: request.conversationId,
+        ),
+      );
+    } finally {
+      await instance._flushExecutionJournal();
+    }
     final output = response.output;
     if (_isInterruptedOutput(output)) {
       throw durable.KernelRequestInterrupted(output);
@@ -80,9 +93,23 @@ class AgentService {
     return shared;
   }
 
+  void _attachExecutionJournal() {
+    _eventSubscription ??= AgentEventBus.instance.events.listen((event) {
+      _journalTail = _journalTail
+          .then((_) => _store.appendRequestEvent(event))
+          .catchError((Object _) {
+        // Request completion remains owned by the durable kernel. A failed
+        // supplemental timeline write must not corrupt the shared runtime.
+      });
+    });
+  }
+
+  Future<void> _flushExecutionJournal() => _journalTail;
+
   Future<void> _initialize() async {
     // The execution runtime must be ready before queued durable work is drained.
     if (_initializeExecutionRuntime) await _executionKernel.initialize();
+    _attachExecutionJournal();
     await _durableKernel.initialize();
     _initialized = true;
   }
