@@ -91,6 +91,11 @@ class OpenAICompatibleProvider {
     return Uri.parse('$defaultBaseUrl/chat/completions');
   }
 
+  /// Decode JSON from raw response bytes without relying on a server charset header.
+  static dynamic decodeJsonResponse(List<int> bodyBytes) {
+    return jsonDecode(utf8.decode(bodyBytes, allowMalformed: false));
+  }
+
   static String extractText(Map<String, dynamic> decoded) {
     final choices = decoded['choices'];
     if (choices is! List || choices.isEmpty || choices.first is! Map) {
@@ -153,7 +158,7 @@ class OpenAICompatibleProvider {
 
       final dynamic decoded;
       try {
-        decoded = jsonDecode(utf8.decode(response.bodyBytes, allowMalformed: false));
+        decoded = decodeJsonResponse(response.bodyBytes);
       } on FormatException {
         throw StateError(
           'أعاد OpenRouter استجابة غير JSON (HTTP ${response.statusCode}).',
