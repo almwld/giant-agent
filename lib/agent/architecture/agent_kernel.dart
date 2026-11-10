@@ -8,6 +8,7 @@ import '../../services/planner_service.dart';
 import 'agent_timeline_event.dart';
 import 'agent_event_bus.dart';
 import 'fifo_task_queue.dart';
+import 'subagent_orchestrator.dart';
 
 /// Lifecycle states exposed by the agent orchestration layer.
 enum AgentKernelState {
@@ -64,6 +65,7 @@ class AgentKernel {
   Future<void>? _initialization;
   int _eventSequence = 0;
   bool _cancellationRequested = false;
+  SubagentOrchestrator? _activeSubagentOrchestrator;
   final FifoTaskQueue _requestQueue = FifoTaskQueue();
   int get queuedRequestCount => _requestQueue.pendingCount;
 
@@ -340,130 +342,203 @@ class AgentKernel {
     }
 
     final plan = _planner.createPlan(prompt);
+    final tasks = <SubagentTask>[];
+    for (var index = 0; index < plan.length; index++) {
+      final step = plan[index];
+      final number = step['step'] as int;
+      final role = switch (index) {
+        0 || 1 => 'explore',
+        2 => 'plan',
+        3 => 'coder',
+        _ => 'reviewer',
+      };
+      final dependencies = switch (index) {
+        0 || 1 => const <String>[],
+        2 => <String>['${requestId}_agent_1', '${requestId}_agent_2']
+            .where((id) => tasks.any((task) => task.id == id))
+            .toList(growable: false),
+        _ => <String>['${requestId}_agent_${number - 1}'],
+      };
+      tasks.add(SubagentTask(
+        id: '${requestId}_agent_$number',
+        title: 'الوكيل $role — الخطوة $number',
+        prompt: step['action'] as String,
+        agentType: role,
+        dependsOn: dependencies,
+      ));
+    }
+
     _emit(
       requestId: requestId,
       type: 'plan_created',
-      title: 'تم إنشاء خطة تنفيذ منظمة',
+      title: 'تم إنشاء خطة وتوزيعها على وكلاء فرعيين',
       status: 'completed',
-      details: jsonEncode(plan),
+      details: jsonEncode(tasks.map((task) => <String, Object?>{
+        'task_id': task.id,
+        'agent_type': task.agentType,
+        'title': task.title,
+        'depends_on': task.dependsOn,
+      }).toList()),
     );
 
-    final results = <Map<String, String>>[];
-    for (final step in plan) {
-      if (_cancellationRequested) {
-        return 'تم إيقاف المهمة بعد ${results.length} من ${plan.length} خطوات.';
-      }
+    final orchestrator = SubagentOrchestrator(
+      parentRequestId: requestId,
+      conversationId: conversationId,
+      // The current llama.cpp JNI context is mutable and protected by one FIFO
+      // lock. Keep one inference worker until the runtime supports isolated
+      // parallel contexts; task state and dependency scheduling are independent.
+      maxConcurrency: 1,
+      onEvent: (event) {
+        final taskId = event['task_id']?.toString() ?? '';
+        _emit(
+          requestId: requestId,
+          eventId: taskId,
+          type: event['type']?.toString() ?? 'subagent_event',
+          title: event['title']?.toString() ?? 'تحديث الوكيل الفرعي',
+          status: event['status']?.toString() ?? 'pending',
+          details: event['details']?.toString(),
+        );
+      },
+      execute: (task, dependencyResults) async {
+        if (_cancellationRequested) {
+          throw const SubagentInterrupted('أوقف المستخدم تنفيذ الوكلاء الفرعيين.');
+        }
 
-      final number = step['step'] as int;
-      final action = step['action'] as String;
-      _emit(
-        requestId: requestId,
-        eventId: 'kernel_${requestId}_step_$number',
-        type: 'step_started',
-        title: 'الخطوة $number: $action',
-        status: 'running',
-        details: 'بدأ تنفيذ الخطوة بواسطة النموذج المحلي والأدوات المتاحة.',
-      );
+        final dependencyContext = dependencyResults.entries.map((entry) {
+          final result = entry.value;
+          return '''
+نتيجة المهمة السابقة ${entry.key}:
+الحالة: ${result.status}
+${result.output ?? result.error ?? 'لا توجد نتيجة نصية.'}
+''';
+        }).join('\n');
 
-      final previous = results.isEmpty
-          ? 'لا توجد نتائج سابقة.'
-          : results
-              .map((item) =>
-                  'الخطوة: ${item['action']}\nالنتيجة: ${item['result']}')
-              .join('\n\n');
-      final stepPrompt = '''
-المهمة الأصلية:
+        final allowedTools = switch (task.agentType) {
+          'explore' || 'plan' || 'reviewer' =>
+            const <String>{'read_file', 'list_files'},
+          'coder' => const <String>{
+              'create_file',
+              'read_file',
+              'write_file',
+              'list_files',
+              'execute_python',
+              'gain_terminal',
+            },
+          _ => const <String>{'read_file', 'list_files'},
+        };
+
+        final isolatedConversationId =
+            '${conversationId}::subagent::${task.id}';
+        final subagentPrompt = '''
+أنت وكيل فرعي مستقل من نوع ${task.agentType}.
+المهمة الأصلية للمستخدم:
 $prompt
 
-الخطة:
-${plan.map((item) => '${item['step']}. ${item['action']}').join('\n')}
+المهمة المسندة إليك:
+${task.prompt}
 
-الخطوة الحالية ($number/${plan.length}):
-$action
+نتائج الوكلاء السابقين:
+${dependencyContext.isEmpty ? 'لا توجد تبعيات سابقة.' : dependencyContext}
 
-نتائج الخطوات السابقة:
-$previous
-
-نفّذ هذه الخطوة فقط. لا تكرر التخطيط ولا تنفذ الخطوات اللاحقة.
-استخدم الأدوات المحلية عند الحاجة. لا تدّع نجاح أي تعديل أو تشغيل دون نتيجة أداة فعلية.
-أعد نتيجة هذه الخطوة بوضوح، واذكر ما تعذر تنفيذه.
+قواعد التنفيذ:
+- اعمل داخل نطاق المهمة المسندة فقط ولا تنشئ وكلاء فرعيين.
+- هذا سياق معزول؛ لا تفترض أنك ترى سجل المحادثة الرئيسي.
+- استخدم الأدوات المسموح بها فقط، ولا تدّع تنفيذ عملية دون نتيجة أداة مؤكدة.
+- وكيل explore وplan وreviewer للقراءة والتحليل فقط؛ لا تعدّل الملفات.
+- وكيل coder يمكنه تعديل مساحة العمل، وأوامر الطرفية تظل خاضعة لموافقة المستخدم.
+- أعد نتيجة عملية موجزة، والأدلة، والملفات أو الأدوات التي استخدمتها، وما تعذر إنجازه.
+- لا تعرض التفكير الداخلي التفصيلي.
 ''';
 
-      final output = (await _models.processInput(
-        stepPrompt,
-        conversationId: conversationId,
-        persistTurn: false,
-      )).trim();
+        final output = (await _models.processInput(
+          subagentPrompt,
+          conversationId: isolatedConversationId,
+          persistTurn: false,
+          allowedTools: allowedTools,
+        )).trim();
 
-      if (_cancellationRequested || _isCancelledOutput(output) ||
-          _isIncompleteOutput(output)) {
-        _emit(
-          requestId: requestId,
-          eventId: 'kernel_${requestId}_step_$number',
-          type: 'step_interrupted',
-          title: 'توقفت الخطوة $number قبل اكتمالها',
-          status: 'interrupted',
-          details: output,
-        );
+        if (_cancellationRequested || _isCancelledOutput(output)) {
+          throw const SubagentInterrupted('تم إيقاف الوكيل الفرعي أثناء التنفيذ.');
+        }
+        if (_isIncompleteOutput(output)) {
+          throw SubagentInterrupted(output);
+        }
+        if (_isFailureOutput(output)) {
+          throw StateError(output.isEmpty
+              ? 'The subagent runtime returned an empty response.'
+              : output);
+        }
         return output;
-      }
-      if (_isFailureOutput(output)) {
-        _emit(
-          requestId: requestId,
-          eventId: 'kernel_${requestId}_step_$number',
-          type: 'step_failed',
-          title: 'فشلت الخطوة $number',
-          status: 'failed',
-          details: output,
-        );
-        throw StateError(output.isEmpty
-            ? 'The local model returned an empty step result.'
-            : output);
-      }
+      },
+    );
 
-      results.add({'action': action, 'result': output});
-      final visibleOutput =
-          output.length > 1200 ? '${output.substring(0, 1200)}…' : output;
-      _emit(
-        requestId: requestId,
-        eventId: 'kernel_${requestId}_step_$number',
-        type: 'step_completed',
-        title: 'اكتملت الخطوة $number',
-        status: 'completed',
-        details: visibleOutput,
-      );
+    _activeSubagentOrchestrator = orchestrator;
+    late final List<SubagentResult> results;
+    try {
+      results = await orchestrator.run(tasks);
+    } finally {
+      if (identical(_activeSubagentOrchestrator, orchestrator)) {
+        _activeSubagentOrchestrator = null;
+      }
     }
 
-    if (_cancellationRequested) {
-      return 'تم إيقاف المهمة قبل إعداد الإجابة النهائية.';
+    if (_cancellationRequested ||
+        results.any((result) =>
+            result.status == 'cancelled' || result.status == 'interrupted')) {
+      return 'تم إيقاف المهمة قبل اكتمال جميع الوكلاء الفرعيين. اكتملت ${results.where((result) => result.status == 'completed').length} من ${results.length} مهام.';
     }
+
+    final completed = results.where((result) => result.status == 'completed').toList();
+    if (completed.isEmpty) {
+      final failures = results
+          .where((result) => result.status == 'failed')
+          .map((result) => '${result.taskId}: ${result.error}')
+          .join('\n');
+      throw StateError('لم يتمكن أي وكيل فرعي من إكمال المهمة. $failures');
+    }
+
+    _emit(
+      requestId: requestId,
+      type: 'subagent_collection_completed',
+      title: 'تم جمع نتائج الوكلاء الفرعيين',
+      status: 'completed',
+      details: 'نجح ${completed.length} من ${results.length} وكلاء؛ الفاشل والمتجاوز موضح في سجل المهمة.',
+    );
 
     _emit(
       requestId: requestId,
       eventId: 'kernel_${requestId}_synthesis',
       type: 'synthesis_started',
-      title: 'مراجعة النتائج وإعداد الإجابة النهائية',
+      title: 'يراجع الوكيل الرئيسي النتائج ويعد الإجابة النهائية',
       status: 'running',
     );
-    final evidence = results
-        .asMap()
-        .entries
-        .map((entry) =>
-            '${entry.key + 1}. ${entry.value['action']}\n${entry.value['result']}')
-        .join('\n\n');
+
+    final evidence = results.map((result) {
+      final task = tasks.firstWhere((item) => item.id == result.taskId);
+      return '''
+الوكيل: ${task.agentType}
+المهمة: ${task.prompt}
+الحالة: ${result.status}
+النتيجة:
+${result.output ?? result.error ?? 'لم تُنتج نتيجة.'}
+''';
+    }).join('\n---\n');
+
     final finalOutput = await _models.processInput(
       '''
 المهمة الأصلية: $prompt
 
-نتائج التنفيذ:
+نتائج الوكلاء الفرعيين:
 $evidence
 
 اكتب الإجابة النهائية اعتماداً على النتائج أعلاه فقط.
 لا تنفذ أدوات جديدة في هذه المرحلة، ولا تضف نتائج غير موجودة.
-ميّز بين ما تم تنفيذه فعلياً وما لم يكتمل أو لم يمكن التحقق منه.
+ميّز بوضوح بين ما نُفذ فعلياً وما فشل أو تم تجاوزه أو لم يمكن التحقق منه.
+إذا كانت بعض المهام فاشلة، قدم نتيجة جزئية مع بيان الفجوات ولا تصف المهمة بأنها مكتملة بالكامل.
 ''',
       conversationId: conversationId,
       persistTurn: false,
+      allowedTools: const <String>{},
     );
     final normalizedFinal = finalOutput.trim();
     if (_cancellationRequested ||
@@ -477,7 +552,9 @@ $evidence
         status: 'interrupted',
         details: normalizedFinal,
       );
-    } else if (_isFailureOutput(normalizedFinal)) {
+      return normalizedFinal;
+    }
+    if (_isFailureOutput(normalizedFinal)) {
       _emit(
         requestId: requestId,
         eventId: 'kernel_${requestId}_synthesis',
@@ -486,21 +563,22 @@ $evidence
         status: 'failed',
         details: normalizedFinal,
       );
-    } else {
-      await AgentMemoryService.instance.saveTurn(
-        prompt,
-        normalizedFinal,
-        conversationId: conversationId,
-      );
-      _emit(
-        requestId: requestId,
-        eventId: 'kernel_${requestId}_synthesis',
-        type: 'synthesis_completed',
-        title: 'اكتملت مراجعة النتائج',
-        status: 'completed',
-        details: 'تم إعداد الإجابة النهائية من نتائج الخطوات المسجلة.',
-      );
+      throw StateError(normalizedFinal);
     }
+
+    await AgentMemoryService.instance.saveTurn(
+      prompt,
+      normalizedFinal,
+      conversationId: conversationId,
+    );
+    _emit(
+      requestId: requestId,
+      eventId: 'kernel_${requestId}_synthesis',
+      type: 'synthesis_completed',
+      title: 'اكتملت مراجعة النتائج',
+      status: 'completed',
+      details: 'تم إعداد الإجابة النهائية من مخرجات الوكلاء المسجلة.',
+    );
     return normalizedFinal;
   }
 
@@ -508,6 +586,7 @@ $evidence
     if (!isExecuting) return false;
     final requestId = _activeRequestId ?? 'runtime';
     _cancellationRequested = true;
+    _activeSubagentOrchestrator?.cancel();
     _state = AgentKernelState.cancelling;
     _emit(
       requestId: requestId,
