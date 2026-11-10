@@ -237,8 +237,11 @@ jobs:
       - name: Run cold-launch and Gain PTY smoke test on Android emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 34
+          api-level: 30
           target: google_apis
           arch: x86_64
           profile: pixel_2
+          emulator-boot-timeout: 600000
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot -wipe-data
+          disable-animations: true
           script: flutter test integration_test/gain_pty_emulator_smoke_test.dart -d emulator-5554
