@@ -103,6 +103,28 @@ jobs:
           flutter build apk --release --target-platform android-x64
           cp build/app/outputs/flutter-apk/app-release.apk dist/app-x86_64-release.apk
 
+      - name: Verify Gain PTY JNI and Lottie assets inside APKs
+        run: |
+          set -euo pipefail
+          verify_native() {
+            apk="$1"
+            abi="$2"
+            unzip -l "$apk" | grep -q "lib/$abi/libgain_pty.so" || {
+              echo "Missing Gain PTY native library for $abi in $apk"
+              exit 1
+            }
+          }
+          verify_native dist/app-arm64-v8a-release.apk arm64-v8a
+          verify_native dist/app-armeabi-v7a-release.apk armeabi-v7a
+          verify_native dist/app-x86_64-release.apk x86_64
+          unzip -l dist/giant-agent-universal.apk | grep -q "assets/flutter_assets/assets/animations/voice_orb.json"
+          for apk in dist/*.apk; do
+            unzip -p "$apk" classes.dex 2>/dev/null | strings | grep -q "GainPtyBridge" || {
+              echo "GainPtyBridge class not found in $apk"
+              exit 1
+            }
+          done
+
       - name: Verify APK outputs and checksums
         run: |
           set -e
