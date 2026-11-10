@@ -6,6 +6,7 @@ void main() {
   test('runs independent agents concurrently and respects dependencies', () async {
     final active = <String>{};
     var peak = 0;
+    var dependencyOutput = '';
     final events = <Map<String, Object?>>[];
     final orchestrator = SubagentOrchestrator(
       parentRequestId: 'request-1',
@@ -13,6 +14,9 @@ void main() {
       maxConcurrency: 2,
       onEvent: events.add,
       execute: (task, dependencies) async {
+        if (task.id == 'synthesis') {
+          dependencyOutput = dependencies['research']!.output!;
+        }
         active.add(task.id);
         if (active.length > peak) peak = active.length;
         await Future<void>.delayed(const Duration(milliseconds: 15));
@@ -28,7 +32,9 @@ void main() {
     expect(peak, 2);
     expect(results.map((r) => r.status), ['completed', 'completed', 'completed']);
     expect(results.last.output, 'result-synthesis');
+    expect(dependencyOutput, 'result-research');
     expect(events.map((e) => e['type']), contains('subagent_completed'));
+    expect(events.every((event) => event['request_id'] == 'request-1'), isTrue);
   });
 
   test('skips dependent agents when a prerequisite fails', () async {
@@ -43,6 +49,27 @@ void main() {
       const SubagentTask(id: 'second', title: 'Second', prompt: 'Second', dependsOn: ['first']),
     ]);
     expect(results.map((r) => r.status), ['failed', 'skipped']);
+  });
+
+  test('records interrupted workers distinctly from failures', () async {
+    final orchestrator = SubagentOrchestrator(
+      parentRequestId: 'request-interrupted',
+      conversationId: 'chat-interrupted',
+      onEvent: (_) {},
+      execute: (task, dependencies) async {
+        throw const SubagentInterrupted('cancelled at safe boundary');
+      },
+    );
+    final results = await orchestrator.run([
+      const SubagentTask(
+        id: 'worker',
+        title: 'Worker',
+        prompt: 'Work',
+        agentType: 'explore',
+      ),
+    ]);
+    expect(results.single.status, 'interrupted');
+    expect(results.single.error, 'cancelled at safe boundary');
   });
 
   test('rejects duplicate ids, unknown dependencies and dependency cycles', () {
