@@ -2,6 +2,10 @@
 
 ## Implemented in this branch
 
+- Complex requests first receive a tool-free structured delegation pass from
+  the selected model. The JSON task graph is validated (roles, IDs, dependency
+  references, cycles, task count and prompt bounds) before execution. Invalid
+  output falls back to the deterministic PlannerService plan.
 - The planner's multi-step requests are dispatched as child-agent tasks rather
   than executed by one generic sequential loop.
 - Child identities are stable within a parent request and carry an agent role:
@@ -34,8 +38,9 @@ and is tested independently.
 This is an integrated first implementation, not a claim of feature parity with
 Kimi Agent Swarm. Remaining work includes:
 
-1. Model-driven dynamic delegation and replanning instead of the current
-   deterministic PlannerService task templates.
+1. Iterative replanning: the current model-generated plan is created once at
+   request start. The parent does not yet revise the graph dynamically in
+   response to intermediate worker findings or spawn follow-up agents.
 2. Persisted child-task snapshots and safe child-level recovery/resume after
    process restart. Current request recovery deliberately marks interrupted
    work instead of replaying side effects.
