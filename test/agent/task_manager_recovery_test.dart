@@ -172,6 +172,13 @@ void main() {
         'task_completed',
       ]),
     );
+    final db = await store.database;
+    expect(
+      db.update('agent_events', {'status': 'tampered'}),
+      throwsA(anything),
+    );
+    expect(db.delete('agent_events'), throwsA(anything));
+
     final homeTask = await manager.createTask(
       'مهمة الشاشة الرئيسية',
       conversationId: 'home',
