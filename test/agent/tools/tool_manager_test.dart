@@ -8,7 +8,7 @@ void main() {
     test('exposes only tools implemented by the runtime', () {
       expect(
         registry.getAvailableTools(),
-        ['create_file', 'read_file', 'write_file', 'execute_python'],
+        ['create_file', 'read_file', 'write_file', 'list_files', 'execute_python'],
       );
       expect(registry.supports('delete_file'), isFalse);
       expect(registry.supports('execute_python'), isTrue);
@@ -20,6 +20,7 @@ void main() {
       expect(catalogue, contains('read_file'));
       expect(catalogue, contains('write_file'));
       expect(catalogue, contains('execute_python'));
+      expect(catalogue, contains('list_files'));
       expect(catalogue, contains('\n'));
       expect(catalogue, isNot(contains(r'\n  مثال:')));
     });
