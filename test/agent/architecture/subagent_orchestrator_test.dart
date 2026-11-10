@@ -61,7 +61,7 @@ void main() {
       maxConcurrency: 1,
       onEvent: (_) {},
       execute: (task, dependencies, isCancelled) async {
-        started.complete();
+        if (!started.isCompleted) started.complete();
         await release.future;
         if (isCancelled()) {
           throw const SubagentInterrupted('targeted cancellation');
