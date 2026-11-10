@@ -72,7 +72,14 @@ class _AgentOsShellState extends State<AgentOsShell> {
     final dark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      body: IndexedStack(\n        index: _index,\n        children: List<Widget>.generate(\n          _pages.length,\n          (i) => _pages[i] ?? SizedBox.shrink(key: ValueKey('deferred-tab-$i')),\n        ),\n      ),
+      body: IndexedStack(
+        index: _index,
+        children: List<Widget>.generate(
+          _pages.length,
+          (i) => _pages[i] ??
+              SizedBox.shrink(key: ValueKey('deferred-tab-$i')),
+        ),
+      ),
       bottomNavigationBar: SafeArea(
         top: false,
         minimum: const EdgeInsets.fromLTRB(12, 0, 12, 9),
