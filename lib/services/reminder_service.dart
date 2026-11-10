@@ -79,7 +79,7 @@ class ReminderService {
         reminder['title'],
         reminder['description'],
       );
-      await completeReminder(reminder['id']);
+      await completeReminder((reminder['id'] as num).toInt());
     }
   }
   
