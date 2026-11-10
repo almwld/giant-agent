@@ -79,7 +79,7 @@ class AgentKernelStore {
     await Directory(directory.path).create(recursive: true);
     return openDatabase(
       '${directory.path}/giant_agent_kernel.db',
-      version: 2,
+      version: 3,
       onConfigure: (db) async {
         await db.execute('PRAGMA foreign_keys = ON');
         await db.execute('PRAGMA journal_mode = WAL');
@@ -111,16 +111,22 @@ class AgentKernelStore {
             row_id INTEGER PRIMARY KEY AUTOINCREMENT,
             id TEXT NOT NULL UNIQUE,
             request_id TEXT,
+            task_id TEXT,
             type TEXT NOT NULL,
             status TEXT NOT NULL,
             payload_json TEXT NOT NULL,
             created_at TEXT NOT NULL,
-            FOREIGN KEY(request_id) REFERENCES agent_requests(id)
+            FOREIGN KEY(request_id) REFERENCES agent_requests(id),
+            FOREIGN KEY(task_id) REFERENCES agent_tasks(id)
           )
         ''');
         await db.execute('''
           CREATE INDEX idx_agent_events_request
           ON agent_events(request_id, row_id)
+        ''');
+        await db.execute('''
+          CREATE INDEX idx_agent_events_task
+          ON agent_events(task_id, row_id)
         ''');
         await db.execute("""
           CREATE TRIGGER agent_events_no_update
@@ -136,6 +142,10 @@ class AgentKernelStore {
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) await _createTaskTable(db);
+        if (oldVersion < 3) {
+          await db.execute('ALTER TABLE agent_events ADD COLUMN task_id TEXT REFERENCES agent_tasks(id)');
+          await db.execute('CREATE INDEX IF NOT EXISTS idx_agent_events_task ON agent_events(task_id, row_id)');
+        }
       },
     );
   }
@@ -251,6 +261,76 @@ class AgentKernelStore {
         });
       }
     });
+  }
+
+  /// Atomically updates the task projection and appends lifecycle events.
+  /// Event rows are immutable; task snapshots are only a query-friendly projection.
+  Future<void> saveTaskWithEvents(
+    Map<String, dynamic> task, {
+    required List<Map<String, Object?>> events,
+  }) async {
+    final id = task['id']?.toString() ?? '';
+    if (id.isEmpty) throw ArgumentError.value(task, 'task', 'Task id is required.');
+    final now = DateTime.now().toUtc().toIso8601String();
+    final values = <String, Object?>{
+      'id': id,
+      'conversation_id': task['conversation_id']?.toString() ?? 'global',
+      'status': task['status']?.toString() ?? 'pending',
+      'payload_json': jsonEncode(task),
+      'created_at': task['created_at']?.toString() ?? now,
+      'updated_at': task['updated_at']?.toString() ?? now,
+    };
+    final db = await database;
+    await db.transaction((txn) async {
+      final changed = await txn.update(
+        'agent_tasks',
+        values,
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      if (changed == 0) await txn.insert('agent_tasks', values);
+      for (final event in events) {
+        await _appendTaskEvent(
+          txn,
+          id,
+          event['type']! as String,
+          event['status']! as String,
+          (event['payload'] as Map?)?.cast<String, Object?>() ?? const {},
+          now,
+        );
+      }
+    });
+  }
+
+  Future<List<KernelEventRecord>> taskEvents(String taskId) async {
+    final rows = await (await database).query(
+      'agent_events',
+      where: 'task_id = ?',
+      whereArgs: [taskId],
+      orderBy: 'row_id ASC',
+    );
+    return rows.map((row) => KernelEventRecord(
+      id: row['id']! as String,
+      requestId: row['request_id'] as String?,
+      type: row['type']! as String,
+      status: row['status']! as String,
+      payload: (jsonDecode(row['payload_json']! as String) as Map)
+          .cast<String, Object?>(),
+      createdAt: DateTime.parse(row['created_at']! as String),
+    )).toList(growable: false);
+  }
+
+  Future<void> appendTaskEvent(
+    String taskId,
+    String type,
+    String status, {
+    Map<String, Object?> payload = const {},
+  }) async {
+    final db = await database;
+    final now = DateTime.now().toUtc().toIso8601String();
+    await db.transaction((txn) => _appendTaskEvent(
+      txn, taskId, type, status, payload, now,
+    ));
   }
 
   Future<void> clearTasks() async =>
@@ -413,6 +493,25 @@ class AgentKernelStore {
           .cast<String, Object?>(),
       createdAt: DateTime.parse(row['created_at']! as String),
     )).toList(growable: false);
+  }
+
+  Future<void> _appendTaskEvent(
+    Transaction txn,
+    String taskId,
+    String type,
+    String status,
+    Map<String, Object?> payload,
+    String timestamp,
+  ) async {
+    await txn.insert('agent_events', {
+      'id': '${taskId}_${type}_${DateTime.now().microsecondsSinceEpoch}',
+      'request_id': null,
+      'task_id': taskId,
+      'type': type,
+      'status': status,
+      'payload_json': jsonEncode(payload),
+      'created_at': timestamp,
+    });
   }
 
   Future<void> _appendEvent(
