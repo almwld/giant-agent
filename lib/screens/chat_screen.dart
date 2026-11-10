@@ -1663,7 +1663,7 @@ class _ChatScreenState extends State<ChatScreen> {
               if (mode == ModelProviderMode.zeroConfig) ...[
                 const SizedBox(height: 12),
                 const Text(
-                  'اتصال Pollinations المباشر بدون مفتاح أو معرّف نموذج. يُستخدم للمحادثة النصية فقط؛ وضع الوكيل والأدوات غير متاحين عبر هذا المسار.',
+                  'اتصال Pollinations المباشر دون مفتاح أو معرّف نموذج. تُرسل رسائلك إلى مزوّد خارجي؛ استخدمه للمحادثة النصية فقط، ولا ترسل بيانات حساسة. وضع الوكيل والأدوات غير متاحين عبر هذا المسار.',
                   style: TextStyle(color: GiantPalette.muted, fontSize: 12),
                 ),
               ],
