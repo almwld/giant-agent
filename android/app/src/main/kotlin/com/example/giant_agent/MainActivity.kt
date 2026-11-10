@@ -135,8 +135,8 @@ class MainActivity: FlutterActivity() {
                         require(content.toByteArray(Charsets.UTF_8).size <= 1024 * 1024) {
                             "File content exceeds the 1 MB limit."
                         }
-                        val file = resolveAgentFile(relativePath)
-                        require(file.isFile) { "Only existing workspace files can be edited." }
+                        val file = resolveAgentFile(relativePath, textWorkspaceExtensions)
+                        require(file.isFile) { "Only existing text/code workspace files can be edited." }
                         file.writeText(content, Charsets.UTF_8)
                         emitAgentFileUpdated(relativePath, content, eventId)
                         result.success(mapOf("ok" to true, "path" to relativePath))
@@ -165,7 +165,7 @@ class MainActivity: FlutterActivity() {
                     val eventId = "tool_${System.nanoTime()}"
                     emitAgentToolStart(eventId, "read_file", relativePath)
                     try {
-                        val file = resolveAgentFile(relativePath)
+                        val file = resolveAgentFile(relativePath, textWorkspaceExtensions)
                         require(file.isFile && file.canRead()) { "File does not exist or cannot be read." }
                         require(file.length() <= 1024 * 1024) { "File exceeds the 1 MB read limit." }
                         val content = file.readText(Charsets.UTF_8)
@@ -591,15 +591,27 @@ class MainActivity: FlutterActivity() {
         }
     }
 
-    private fun resolveAgentFile(relativePath: String): File {
+    private val textWorkspaceExtensions = setOf(
+        "dart", "md", "txt", "json", "yaml", "yml", "html", "css", "js", "kt", "java",
+        "cpp", "h", "c", "cc", "hpp", "ts", "tsx", "jsx", "py", "go", "rs", "sql",
+        "sh", "xml", "toml", "gradle"
+    )
+    private val workspaceExtensions = textWorkspaceExtensions + setOf(
+        "png", "jpg", "jpeg", "webp", "gif", "bmp", "svg", "pdf", "doc", "docx",
+        "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "zip"
+    )
+
+    private fun resolveAgentFile(
+        relativePath: String,
+        allowedExtensions: Set<String> = workspaceExtensions
+    ): File {
         require(relativePath.isNotBlank()) { "File path is required." }
         require(!relativePath.startsWith("/") && !relativePath.startsWith("\\")) { "Absolute paths are not allowed." }
         require(!relativePath.contains("\\") && relativePath.split("/").none { it.isBlank() || it == "." || it == ".." }) {
             "Invalid relative path."
         }
-        val allowed = setOf("dart", "md", "txt", "json", "yaml", "yml", "html", "css", "js", "kt", "java", "cpp", "h")
         val name = relativePath.substringAfterLast("/")
-        require(name.substringAfterLast(".", "").lowercase() in allowed) { "File extension is not allowed." }
+        require(name.substringAfterLast(".", "").lowercase() in allowedExtensions) { "File extension is not allowed." }
         val root = File(filesDir, "agent_workspace").apply { mkdirs() }.canonicalFile
         val candidate = File(root, relativePath)
         val canonical = candidate.canonicalFile
@@ -680,9 +692,9 @@ class MainActivity: FlutterActivity() {
 
     private fun createAgentFile(relativePath: String, content: String): Pair<String, String> {
         require(content.toByteArray(Charsets.UTF_8).size <= 1024 * 1024) { "File content exceeds the 1 MB limit." }
-        val target = resolveAgentFile(relativePath)
+        val target = resolveAgentFile(relativePath, textWorkspaceExtensions)
         target.parentFile?.mkdirs()
-        val canonical = resolveAgentFile(relativePath)
+        val canonical = resolveAgentFile(relativePath, textWorkspaceExtensions)
         require(!canonical.exists()) { "A file with this path already exists." }
         canonical.writeText(content, Charsets.UTF_8)
         return Pair(relativePath, canonical.name)
