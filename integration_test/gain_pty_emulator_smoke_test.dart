@@ -12,8 +12,10 @@ void main() {
 
   testWidgets('cold launch renders Flutter UI and Gain PTY executes a shell command',
       (tester) async {
+    print('PTY_SMOKE: launch app');
     await app.main();
     await tester.pump();
+    print('PTY_SMOKE: first Flutter frame rendered');
 
     // A visible Flutter frame must be rendered before asynchronous startup
     // services finish; this guards against returning to a black launch window.
@@ -41,12 +43,16 @@ void main() {
         if (!observed.isCompleted && output.toString().contains(marker)) {
           observed.complete();
         }
+      }, onError: (Object error, StackTrace stack) {
+        if (!observed.isCompleted) observed.completeError(error, stack);
       });
+      print('PTY_SMOKE: event stream subscribed');
 
       final available = await method
           .invokeMethod<bool>('available')
           .timeout(const Duration(seconds: 5));
       expect(available, isTrue, reason: '/dev/ptmx and the Gain JNI library must be available.');
+      print('PTY_SMOKE: native PTY available');
 
       handle = await method.invokeMethod<int>(
         'start',
@@ -58,6 +64,7 @@ void main() {
       ).timeout(const Duration(seconds: 8));
       expect(handle, isNotNull);
       expect(handle, greaterThan(0));
+      print('PTY_SMOKE: shell session started handle=$handle');
 
       final command = 'echo $marker\\n';
       final bytes = Uint8List.fromList(utf8.encode(command));
@@ -69,17 +76,21 @@ void main() {
         },
       ).timeout(const Duration(seconds: 5));
       expect(written, bytes.length);
+      print('PTY_SMOKE: command written');
 
       await observed.future.timeout(const Duration(seconds: 8));
       expect(output.toString(), contains(marker));
+      print('PTY_SMOKE: command output received');
     } finally {
       if (handle != null) {
+        print('PTY_SMOKE: stopping shell session');
         await method.invokeMethod<void>(
           'stop',
           <String, Object>{'handle': handle},
-        );
+        ).timeout(const Duration(seconds: 5));
+        print('PTY_SMOKE: shell session stopped');
       }
-      await subscription?.cancel();
+      await subscription?.cancel().timeout(const Duration(seconds: 2));
     }
   });
 }
