@@ -3,7 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core/theme.dart';
 import 'screens/welcome_screen.dart';
-import 'screens/chat_screen.dart';
+import 'screens/agentos_shell.dart';
 import 'services/app_preferences.dart';
 
 Future<void> main() async {
@@ -28,10 +28,7 @@ class MyApp extends StatelessWidget {
         title: 'Giant Agent',
         debugShowCheckedModeBanner: false,
         locale: preferences.locale,
-        supportedLocales: const [
-          Locale('ar'),
-          Locale('en'),
-        ],
+        supportedLocales: const [Locale('ar'), Locale('en')],
         localizationsDelegates: const [
           GlobalMaterialLocalizations.delegate,
           GlobalWidgetsLocalizations.delegate,
@@ -40,7 +37,7 @@ class MyApp extends StatelessWidget {
         themeMode: preferences.themeMode,
         theme: AppTheme.lightTheme,
         darkTheme: AppTheme.darkTheme,
-        home: showSplash ? const WelcomeScreen() : const ChatScreen(),
+        home: showSplash ? const WelcomeScreen() : const AgentOsShell(),
       ),
     );
   }

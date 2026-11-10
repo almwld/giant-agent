@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../core/theme.dart';
-import 'chat_screen.dart';
+import 'agentos_shell.dart';
 
 class WelcomeScreen extends StatefulWidget {
   const WelcomeScreen({super.key});
@@ -22,7 +22,7 @@ class _WelcomeScreenState extends State<WelcomeScreen>
     Timer(const Duration(milliseconds: 1600), () {
       if (mounted) {
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const ChatScreen()),
+          MaterialPageRoute(builder: (_) => const AgentOsShell()),
         );
       }
     });
@@ -56,37 +56,23 @@ class _WelcomeScreenState extends State<WelcomeScreen>
                     color: AppTheme.surface,
                     borderRadius: BorderRadius.circular(30),
                   ),
-                  child: Icon(
-                    Icons.auto_awesome_rounded,
-                    size: 56,
-                    color: AppTheme.primary,
-                  ),
+                  child: const Icon(Icons.auto_awesome_rounded, size: 56, color: AppTheme.primary),
                 ),
                 const SizedBox(height: 28),
                 const Text(
                   'Giant Agent',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 30,
-                    fontWeight: FontWeight.w800,
-                  ),
+                  style: TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w800),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   'الوكيل الذكي المحلي',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(.8),
-                    fontSize: 15,
-                  ),
+                  style: TextStyle(color: Colors.white.withOpacity(.8), fontSize: 15),
                 ),
                 const SizedBox(height: 32),
                 const SizedBox(
                   width: 22,
                   height: 22,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                 ),
               ],
             ),
