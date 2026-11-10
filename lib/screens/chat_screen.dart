@@ -25,6 +25,7 @@ import '../services/github_repository_service.dart';
 import '../services/cloud_storage_service.dart';
 import '../services/web_search_service.dart';
 import '../agent/task_manager.dart';
+import '../agent/architecture/agent_event_bus.dart';
 import '../theme/giant_palette.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -45,8 +46,6 @@ class _ChatScreenState extends State<ChatScreen> {
   static const EventChannel _agentEvents = EventChannel('giant_agent_stream');
   static const MethodChannel _fileReceiver = MethodChannel('file_receiver');
   StreamSubscription<dynamic>? _agentEventSubscription;
-  StreamSubscription<dynamic>? _kernelEventSubscription;
-  StreamSubscription<Map<String, dynamic>>? _toolEventSubscription;
   final List<Map<String, dynamic>> _agentSteps = [];
   String _activeAgentRequestId = '';
   final Set<String> _collapsedTimelineIds = <String>{};
@@ -318,25 +317,35 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     _initDatabase();
-    _toolEventSubscription = _modelService.toolEvents.listen(_handleAgentEvent);
-    _kernelEventSubscription = AgentService.instance.events.listen(
-      (event) => _handleAgentEvent(event.toMap()),
-      onError: (Object error) {
-        if (!mounted) return;
-        _handleAgentEvent({
-          'id': 'kernel_stream_error_${DateTime.now().microsecondsSinceEpoch}',
-          'type': 'orchestration_error',
-          'title': 'تعذر استقبال أحداث التنسيق',
-          'status': 'failed',
-          'details': error.toString(),
-        });
-      },
-    );
-    _agentEventSubscription = _agentEvents.receiveBroadcastStream().listen(
+    // The screen consumes exactly one event stream. ModelService and the
+    // kernel publish directly; the Android EventChannel is bridged into it.
+    _agentEventSubscription = AgentEventBus.instance.events.listen(
       _handleAgentEvent,
       onError: (Object error) {
         if (!mounted) return;
-        setState(() { _agentSteps.add({'id': 'stream_error_${DateTime.now().millisecondsSinceEpoch}', 'title': 'تعذر استقبال أحداث الوكيل', 'status': 'failed', 'details': error.toString()}); });
+        AgentEventBus.instance.publish({
+          'id': 'event_bus_error_${DateTime.now().microsecondsSinceEpoch}',
+          'type': 'orchestration_error',
+          'title': 'تعذر استقبال أحداث الوكيل',
+          'status': 'failed',
+          'details': error.toString(),
+          'request_id': _activeAgentRequestId,
+        });
+      },
+    );
+    _agentEvents.receiveBroadcastStream().listen(
+      (event) {
+        if (event is Map) AgentEventBus.instance.publish(event);
+      },
+      onError: (Object error) {
+        AgentEventBus.instance.publish({
+          'id': 'native_stream_error_${DateTime.now().microsecondsSinceEpoch}',
+          'type': 'orchestration_error',
+          'title': 'تعذر استقبال أحداث المحرك الأصلي',
+          'status': 'failed',
+          'details': error.toString(),
+          'request_id': _activeAgentRequestId,
+        });
       },
     );
   }
@@ -1802,8 +1811,6 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void dispose() {
     _agentEventSubscription?.cancel();
-    _kernelEventSubscription?.cancel();
-    _toolEventSubscription?.cancel();
     _speech.stop();
     _controller.dispose();
     _scrollController.dispose();
