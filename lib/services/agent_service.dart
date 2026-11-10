@@ -133,10 +133,32 @@ class AgentService {
     // The execution runtime must be ready before queued durable work is drained.
     if (_initializeExecutionRuntime) await _executionKernel.initialize();
     _attachExecutionJournal();
+    // Running requests are reconciled as interrupted; only never-started queued
+    // requests may continue automatically, under a foreground service.
+    await _store.reconcileAfterProcessRestart();
+    if (await _store.hasActiveRequests()) {
+      await AgentBackgroundExecutionService.instance.beginTask(
+        'متابعة قائمة المهام المحفوظة بعد إعادة تشغيل التطبيق',
+      );
+      unawaited(_releaseRecoveredQueueForegroundWhenIdle());
+    }
     await _durableKernel.initialize();
     // Interrupted child work is made visible for explicit recovery, never replayed.
     await _store.reconcileInterruptedSubagents();
     _initialized = true;
+  }
+
+  Future<void> _releaseRecoveredQueueForegroundWhenIdle() async {
+    try {
+      while (await _store.hasActiveRequests()) {
+        await Future<void>.delayed(const Duration(seconds: 1));
+      }
+    } catch (error) {
+      // Keep the service alive only while the durable queue can be observed.
+      debugPrint('GiantAgent recovered queue monitor failed: $error');
+    } finally {
+      await AgentBackgroundExecutionService.instance.endTask();
+    }
   }
 
   Future<String> runTask(
