@@ -301,19 +301,23 @@ class MainActivity: FlutterActivity() {
                 "shareWorkspace" -> {
                     aiExecutor.execute {
                         try {
+                            val requestedPaths = call.argument<List<String>>("paths").orEmpty().distinct()
+                            require(requestedPaths.isNotEmpty() && requestedPaths.size <= 100) {
+                                "Select between 1 and 100 generated files to share."
+                            }
                             val workspace = File(filesDir, "agent_workspace").apply { mkdirs() }.canonicalFile
-                            val exportFile = File(cacheDir, "giant-agent-workspace.zip")
+                            val exportFile = File(cacheDir, "giant-agent-task-outputs.zip")
                             var count = 0
                             ZipOutputStream(FileOutputStream(exportFile)).use { zip ->
-                                workspace.walkTopDown().filter { it.isFile }.forEach { file ->
+                                requestedPaths.forEach { relativePath ->
+                                    val file = resolveAgentFile(relativePath)
+                                    require(file.isFile && file.canRead()) { "Output file is missing: $relativePath" }
                                     val canonical = file.canonicalFile
-                                    require(canonical.path.startsWith(workspace.path + File.separator)) {
-                                        "Workspace contains a path outside its root."
+                                    require(canonical.path.startsWith(workspace.path + File.separator) &&
+                                        canonical.absolutePath == file.absolutePath) {
+                                        "Output file escapes the workspace or uses a symbolic link."
                                     }
-                                    require(canonical.absolutePath == file.absolutePath) {
-                                        "Symbolic links are not included in workspace exports."
-                                    }
-                                    zip.putNextEntry(ZipEntry(file.relativeTo(workspace).invariantSeparatorsPath))
+                                    zip.putNextEntry(ZipEntry(canonical.relativeTo(workspace).invariantSeparatorsPath))
                                     file.inputStream().use { input -> input.copyTo(zip) }
                                     zip.closeEntry()
                                     count++
@@ -328,32 +332,12 @@ class MainActivity: FlutterActivity() {
                                     putExtra(Intent.EXTRA_STREAM, uri)
                                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                 }
-                                startActivity(Intent.createChooser(send, "مشاركة مخرجات Giant Agent"))
+                                startActivity(Intent.createChooser(send, "مشاركة مخرجات المهمة المحددة"))
                                 result.success(mapOf("ok" to true, "files" to count))
                             }
                         } catch (t: Throwable) {
                             runOnUiThread { result.error("WORKSPACE_SHARE_FAILED", t.message ?: "Workspace sharing failed.", null) }
                         }
-                    }
-                }
-                "openWorkspaceFile" -> {
-                    try {
-                        val relativePath = call.argument<String>("path").orEmpty()
-                        val file = resolveAgentFile(relativePath)
-                        require(file.isFile && file.canRead()) { "Workspace file does not exist or cannot be read." }
-                        val uri = FileProvider.getUriForFile(
-                            this@MainActivity, "$packageName.fileprovider", file
-                        )
-                        val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(file.extension.lowercase())
-                            ?: "application/octet-stream"
-                        val view = Intent(Intent.ACTION_VIEW).apply {
-                            setDataAndType(uri, mime)
-                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        }
-                        startActivity(Intent.createChooser(view, "فتح ${file.name}"))
-                        result.success(true)
-                    } catch (t: Throwable) {
-                        result.error("WORKSPACE_FILE_OPEN_FAILED", t.message ?: "Unable to open workspace file.", null)
                     }
                 }
                 "readImagePreview" -> {
