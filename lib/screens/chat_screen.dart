@@ -23,9 +23,7 @@ import 'dart:convert';
 import 'package:speech_to_text/speech_to_text.dart';
 import '../services/voice_output_service.dart';
 import '../services/openai_compatible_provider.dart';
-import '../services/gemini_provider.dart';
 import '../services/model_provider_settings.dart';
-import '../services/providers/zero_config_provider.dart';
 import '../services/github_repository_service.dart';
 import '../services/cloud_storage_service.dart';
 import '../services/web_search_service.dart';
@@ -1061,7 +1059,6 @@ class _ChatScreenState extends State<ChatScreen> {
       _models = _modelService.getModels();
       _activeModel = _modelService.getActiveModel();
       _externalProviderEnabled = remoteEnabled;
-      if (selectedMode == ModelProviderMode.zeroConfig) _agentModeEnabled = false;
     });
   }
 
@@ -1289,12 +1286,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _setAgentMode(bool enabled) async {
     if (_isLoading) return;
-    if (enabled && await ModelProviderSettings.instance.getMode() == ModelProviderMode.zeroConfig) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('وضع الوكيل والأدوات غير مدعومين في المزود المجاني التلقائي.')),
-      );
-      return;
-    }
     setState(() => _agentModeEnabled = enabled);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('giant_agent_mode_enabled', enabled);
@@ -1606,8 +1597,7 @@ class _ChatScreenState extends State<ChatScreen> {
       }
 
       final providerMode = await ModelProviderSettings.instance.getMode();
-      if (providerMode == ModelProviderMode.gemini ||
-          providerMode == ModelProviderMode.openRouter) {
+      if (providerMode == ModelProviderMode.openRouter) {
         try {
           final visualAnalysis = await _modelService.processImage(storedImage);
           response = 'الفهم البصري بواسطة النموذج متعدد الوسائط:\n$visualAnalysis'
@@ -1616,8 +1606,8 @@ class _ChatScreenState extends State<ChatScreen> {
           response = '$localOcr\n\nتعذر تحليل الصورة بواسطة النموذج السحابي: $error';
         }
       } else {
-        response = '$localOcr\n\nلتحليل محتوى الصورة وفهم المشهد، فعّل نموذجاً يدعم الرؤية عبر Gemini أو OpenRouter. '
-            'النموذج المحلي الحالي والمزوّد المجاني التلقائي مخصصان للنص فقط.';
+        response = '$localOcr\n\nلتحليل محتوى الصورة وفهم المشهد، فعّل نموذج OpenRouter يدعم الرؤية. '
+            'النموذج المحلي الحالي مخصص للنص فقط.';
       }
       if (!mounted) return;
       setState(() {
@@ -1708,19 +1698,18 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _openExternalProviderDialog() async {
     final settings = ModelProviderSettings.instance;
     var mode = await settings.getMode();
+    final legacyEndpointConflict =
+        mode == ModelProviderMode.openRouter &&
+        await OpenAICompatibleProvider.instance.hasLegacyNonOpenRouterEndpoint();
     final keyController = TextEditingController(
-      text: mode == ModelProviderMode.gemini
-          ? (await GeminiProvider.instance.getApiKey() ?? '')
-          : mode == ModelProviderMode.openRouter
-              ? (await OpenAICompatibleProvider.instance.getApiKey() ?? '')
-              : '',
+      text: mode == ModelProviderMode.openRouter && !legacyEndpointConflict
+          ? (await OpenAICompatibleProvider.instance.getApiKey() ?? '')
+          : '',
     );
     final modelController = TextEditingController(
-      text: mode == ModelProviderMode.gemini
-          ? await GeminiProvider.instance.getModel()
-          : mode == ModelProviderMode.openRouter
-              ? await OpenAICompatibleProvider.instance.getModel()
-              : '',
+      text: mode == ModelProviderMode.openRouter
+          ? await OpenAICompatibleProvider.instance.getModel()
+          : OpenAICompatibleProvider.defaultModel,
     );
     var busy = false;
     var error = '';
@@ -1734,116 +1723,102 @@ class _ChatScreenState extends State<ChatScreen> {
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, updateDialog) => AlertDialog(
           backgroundColor: GiantPalette.surface,
-          title: const Text('اختيار محرك الذكاء الاصطناعي',
-              style: TextStyle(color: Colors.white)),
+          title: const Text(
+            'اختيار محرك الذكاء الاصطناعي',
+            style: TextStyle(color: Colors.white),
+          ),
           content: SingleChildScrollView(
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              DropdownButtonFormField<ModelProviderMode>(
-                value: mode,
-                decoration: const InputDecoration(
-                  labelText: 'مصدر التوليد',
-                  border: OutlineInputBorder(),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<ModelProviderMode>(
+                  value: mode,
+                  decoration: const InputDecoration(
+                    labelText: 'مصدر التوليد',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: ModelProviderMode.local,
+                      child: Text('محلي — GGUF'),
+                    ),
+                    DropdownMenuItem(
+                      value: ModelProviderMode.openRouter,
+                      child: Text('سحابي — OpenRouter فقط'),
+                    ),
+                  ],
+                  onChanged: busy ? null : (value) async {
+                    if (value == null) return;
+                    final conflict = value == ModelProviderMode.openRouter &&
+                        await OpenAICompatibleProvider.instance
+                            .hasLegacyNonOpenRouterEndpoint();
+                    final savedKey = value == ModelProviderMode.openRouter && !conflict
+                        ? await OpenAICompatibleProvider.instance.getApiKey()
+                        : null;
+                    final savedModel = value == ModelProviderMode.openRouter
+                        ? await OpenAICompatibleProvider.instance.getModel()
+                        : OpenAICompatibleProvider.defaultModel;
+                    if (!dialogContext.mounted) return;
+                    updateDialog(() {
+                      mode = value;
+                      keyController.text = savedKey ?? '';
+                      modelController.text = savedModel;
+                      error = conflict
+                          ? 'تم تعطيل عنوان API قديم غير تابع لـ OpenRouter. أدخل مفتاح OpenRouter الرسمي.'
+                          : '';
+                    });
+                  },
                 ),
-                items: const [
-                  DropdownMenuItem(
-                    value: ModelProviderMode.local,
-                    child: Text('محلي — GGUF'),
+                if (mode == ModelProviderMode.openRouter) ...[
+                  const SizedBox(height: 12),
+                  const Text(
+                    'الاتصال السحابي الوحيد المدعوم هو OpenRouter الرسمي عبر https://openrouter.ai/api/v1. يُحفظ المفتاح مشفراً على الجهاز.',
+                    style: TextStyle(color: GiantPalette.muted, fontSize: 12),
                   ),
-                  DropdownMenuItem(
-                    value: ModelProviderMode.openRouter,
-                    child: Text('سحابي — OpenRouter'),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: keyController,
+                    obscureText: true,
+                    autocorrect: false,
+                    decoration: const InputDecoration(
+                      labelText: 'OpenRouter API Key',
+                      border: OutlineInputBorder(),
+                    ),
                   ),
-                  DropdownMenuItem(
-                    value: ModelProviderMode.gemini,
-                    child: Text('سحابي — Google Gemini'),
-                  ),
-                  DropdownMenuItem(
-                    value: ModelProviderMode.zeroConfig,
-                    child: Text('مجاني تلقائي — بدون مفتاح'),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: modelController,
+                    autocorrect: false,
+                    decoration: InputDecoration(
+                      labelText: 'معرّف نموذج OpenRouter',
+                      hintText: OpenAICompatibleProvider.defaultModel,
+                      border: const OutlineInputBorder(),
+                    ),
                   ),
                 ],
-                onChanged: busy ? null : (value) async {
-                  if (value == null) return;
-                  final legacyEndpointConflict =
-                      value == ModelProviderMode.openRouter &&
-                      await OpenAICompatibleProvider.instance.hasLegacyNonOpenRouterEndpoint();
-                  final savedKey = value == ModelProviderMode.gemini
-                      ? await GeminiProvider.instance.getApiKey()
-                      : value == ModelProviderMode.openRouter && !legacyEndpointConflict
-                          ? await OpenAICompatibleProvider.instance.getApiKey()
-                          : null;
-                  final savedModel = value == ModelProviderMode.gemini
-                      ? await GeminiProvider.instance.getModel()
-                      : value == ModelProviderMode.openRouter
-                          ? await OpenAICompatibleProvider.instance.getModel()
-                          : '';
-                  if (!dialogContext.mounted) return;
-                  updateDialog(() {
-                    mode = value;
-                    keyController.text = savedKey ?? '';
-                    if (savedModel.isNotEmpty) modelController.text = savedModel;
-                    error = '';
-                  });
-                },
-              ),
-              if (mode == ModelProviderMode.zeroConfig) ...[
-                const SizedBox(height: 12),
-                const Text(
-                  'اتصال Pollinations المباشر دون مفتاح أو معرّف نموذج. تُرسل رسائلك إلى مزوّد خارجي؛ استخدمه للمحادثة النصية فقط، ولا ترسل بيانات حساسة. وضع الوكيل والأدوات غير متاحين عبر هذا المسار.',
-                  style: TextStyle(color: GiantPalette.muted, fontSize: 12),
-                ),
-              ],
-              if (mode != ModelProviderMode.local && mode != ModelProviderMode.zeroConfig) ...[
-                const SizedBox(height: 12),
-                Text(
-                  mode == ModelProviderMode.gemini
-                      ? 'يستخدم Gemini Native API عبر generateContent. لا تضع عنوان Google في خانة OpenRouter.'
-                      : 'يُسمح باتصال OpenRouter الرسمي فقط. يُحفظ المفتاح مشفراً على الجهاز.',
-                  style: const TextStyle(color: GiantPalette.muted, fontSize: 12),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: keyController,
-                  obscureText: true,
-                  autocorrect: false,
-                  decoration: InputDecoration(
-                    labelText: mode == ModelProviderMode.gemini
-                        ? 'Gemini API Key'
-                        : 'OpenRouter API Key',
-                    border: const OutlineInputBorder(),
+                if (error.isNotEmpty)
+                  Text(
+                    error,
+                    style: const TextStyle(color: Colors.redAccent, fontSize: 12),
                   ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: modelController,
-                  autocorrect: false,
-                  decoration: InputDecoration(
-                    labelText: 'معرّف النموذج',
-                    hintText: mode == ModelProviderMode.gemini
-                        ? GeminiProvider.defaultModel
-                        : OpenAICompatibleProvider.defaultModel,
-                    border: const OutlineInputBorder(),
-                  ),
-                ),
+                if (busy) const LinearProgressIndicator(),
               ],
-              if (error.isNotEmpty)
-                Text(error, style: const TextStyle(color: Colors.redAccent, fontSize: 12)),
-              if (busy) const LinearProgressIndicator(),
-            ]),
+            ),
           ),
           actions: [
             TextButton(
               onPressed: busy ? null : () async {
                 await OpenAICompatibleProvider.instance.disconnect();
-                await GeminiProvider.instance.disconnect();
                 await settings.setMode(ModelProviderMode.local);
                 if (mounted) setState(() => _externalProviderEnabled = false);
                 if (dialogContext.mounted) Navigator.pop(dialogContext);
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('تم فصل المزوّدات السحابية.')),
-                );
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('تم فصل OpenRouter والعودة إلى الوضع المحلي.')),
+                  );
+                }
               },
-              child: const Text('فصل المزوّدات'),
+              child: const Text('فصل OpenRouter'),
             ),
             TextButton(
               onPressed: busy ? null : () => Navigator.pop(dialogContext),
@@ -1858,59 +1833,35 @@ class _ChatScreenState extends State<ChatScreen> {
                       await settings.setMode(ModelProviderMode.local);
                       break;
                     case ModelProviderMode.openRouter:
-                      if (keyController.text.trim().isNotEmpty) {
-                        await OpenAICompatibleProvider.instance.configure(
-                          apiKey: keyController.text,
-                          model: modelController.text,
-                          baseUrl: OpenAICompatibleProvider.defaultBaseUrl,
-                          enable: true,
-                        );
-                      } else {
-                        await OpenAICompatibleProvider.instance.setEnabled(true);
-                      }
+                      await OpenAICompatibleProvider.instance.configure(
+                        apiKey: keyController.text,
+                        model: modelController.text,
+                        baseUrl: OpenAICompatibleProvider.defaultBaseUrl,
+                        enable: true,
+                      );
                       await settings.setMode(ModelProviderMode.openRouter);
-                      break;
-                    case ModelProviderMode.gemini:
-                      if (keyController.text.trim().isNotEmpty) {
-                        await GeminiProvider.instance.configure(
-                          apiKey: keyController.text,
-                          model: modelController.text,
-                          enable: true,
-                        );
-                      } else {
-                        await GeminiProvider.instance.setEnabled(true);
-                      }
-                      await settings.setMode(ModelProviderMode.gemini);
-                      break;
-                    case ModelProviderMode.zeroConfig:
-                      await settings.setMode(ModelProviderMode.zeroConfig);
-                      await ZeroConfigProvider.instance.testConnection();
                       break;
                   }
                   if (mounted) {
                     setState(() {
-                      _externalProviderEnabled = mode != ModelProviderMode.local;
-                      if (mode == ModelProviderMode.zeroConfig) _agentModeEnabled = false;
+                      _externalProviderEnabled = mode == ModelProviderMode.openRouter;
                     });
                   }
-                  if (mode == ModelProviderMode.zeroConfig) {
-                    final prefs = await SharedPreferences.getInstance();
-                    await prefs.setBool('giant_agent_mode_enabled', false);
-                  }
                   if (dialogContext.mounted) Navigator.pop(dialogContext);
-                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(switch (mode) {
-                      ModelProviderMode.local => 'تم اختيار النموذج المحلي.',
-                      ModelProviderMode.openRouter => 'تم اختيار OpenRouter: ${modelController.text.trim()}',
-                      ModelProviderMode.gemini => 'تم اختيار Gemini: ${modelController.text.trim()}',
-                      ModelProviderMode.zeroConfig => 'تم حفظ المزود المجاني واختبار الاتصال بنجاح.',
-                    })),
-                  );
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(mode == ModelProviderMode.local
+                            ? 'تم اختيار النموذج المحلي.'
+                            : 'تم اختيار OpenRouter: ${modelController.text.trim()}'),
+                      ),
+                    );
+                  }
                 } catch (e) {
                   updateDialog(() { busy = false; error = e.toString(); });
                 }
               },
-              child: Text(mode == ModelProviderMode.zeroConfig ? 'حفظ واختبار' : 'حفظ واستخدام'),
+              child: const Text('حفظ واستخدام'),
             ),
           ],
         ),
@@ -2169,7 +2120,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ? await OpenAICompatibleProvider.instance.getModel()
         : _activeModel['name']?.toString();
     if (!mounted) return;
-    final provider = openRouterEnabled ? 'خارجي (OpenAI-compatible)' : 'محلي (GGUF)';
+    final provider = openRouterEnabled ? 'OpenRouter (سحابي)' : 'محلي (GGUF)';
     final selectedModel = modelName?.isNotEmpty == true
         ? modelName!
         : 'لم يتم تحديد نموذج';
