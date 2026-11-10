@@ -50,7 +50,7 @@ class AgentBackgroundExecutionService {
   }
 
   String _short(String value, int limit) {
-    final normalized = value.trim().replaceAll(RegExp(r'\\s+'), ' ');
+    final normalized = value.trim().replaceAll(RegExp(r'\s+'), ' ');
     if (normalized.length <= limit) return normalized;
     return '${normalized.substring(0, limit)}…';
   }
