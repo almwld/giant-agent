@@ -146,8 +146,6 @@ class TaskManager {
     return Map<String, dynamic>.from(steps.first as Map);
   }
 
-  /// Marks a task as running when execution is owned by ChatScreen/AgentKernel.
-  /// This keeps the persisted task lifecycle in sync without executing it twice.
   /// Records an explicit user decision to resume an ambiguous task.
   /// This does not execute anything; the caller must request confirmation first.
   Future<void> recordResumeIntent(String taskId) async {
@@ -165,6 +163,8 @@ class TaskManager {
     );
   }
 
+  /// Marks the task as running and journals the transition before model execution.
+  /// Resuming a paused/failed task requires a preceding explicit resume intent.
   Future<void> markRunning(String taskId, {String? requestId}) async {
     await _ensureLoaded();
     if (_executing && _currentTask != taskId) {
@@ -175,7 +175,13 @@ class TaskManager {
     if (task['status'] == 'completed' || task['status'] == 'cancelled') {
       throw StateError('لا يمكن تشغيل مهمة منتهية.');
     }
-    final isResume = task['status'] == 'paused';
+    final isResume = task['status'] == 'paused' || task['status'] == 'failed';
+    if (isResume) {
+      final priorEvents = await _store.taskEvents(taskId);
+      if (priorEvents.isEmpty || priorEvents.last.type != 'task_resume_requested') {
+        throw StateError('يجب تسجيل موافقة صريحة على الاستئناف أولاً.');
+      }
+    }
     _currentTask = taskId;
     _executing = true;
     final step = _firstStep(task);
@@ -341,6 +347,7 @@ class TaskManager {
         .trim();
     if (checkpoint.isNotEmpty) task['resume_context'] = checkpoint;
     task['status'] = 'pending';
+    task['resume_authorized'] = true;
     task.remove('error');
     task.remove('recovery_note');
     task['updated_at'] = DateTime.now().toIso8601String();
@@ -389,6 +396,7 @@ class TaskManager {
     }
 
     _executing = true;
+    final isResume = task.remove('resume_authorized') == true;
     final step = (task['steps'] as List).first as Map<String, dynamic>;
     task['status'] = 'running';
     task['started_at'] ??= DateTime.now().toIso8601String();
@@ -397,9 +405,12 @@ class TaskManager {
     try {
       await _store.saveTaskWithEvents(task, events: [
         {
-          'type': 'task_started',
+          'type': isResume ? 'task_resumed' : 'task_started',
           'status': 'running',
-          'payload': <String, Object?>{'execution_path': 'task_manager'},
+          'payload': <String, Object?>{
+            'execution_path': 'task_manager',
+            if (isResume) 'resume_authorized': true,
+          },
         },
         {
           'type': 'step_started',
