@@ -60,9 +60,7 @@ class MainActivity: FlutterActivity() {
                             result.success(true)
                         }
                         "stop" -> {
-                            startService(Intent(this, AgentForegroundService::class.java).apply {
-                                action = AgentForegroundService.ACTION_STOP
-                            })
+                            dispatchBackgroundService(AgentForegroundService.ACTION_STOP, null, null)
                             result.success(true)
                         }
                         else -> result.notImplemented()
