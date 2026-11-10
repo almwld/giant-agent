@@ -6,13 +6,17 @@ import 'screens/chat_screen.dart';
 import 'services/app_preferences.dart';
 import 'services/notification_service.dart';
 import 'services/reminder_service.dart';
-import 'theme/giant_palette.dart';
+import 'services/agent_service.dart';
+import 'agent/task_manager.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await AppPreferences.instance.load();
   await NotificationService.init();
   await ReminderService().init();
+  // Reconcile durable request and task state before exposing the UI.
+  await AgentService.instance.initialize();
+  await TaskManager().initialize();
   final prefs = await SharedPreferences.getInstance();
   final showSplash = !(prefs.getBool('giant_has_launched') ?? false);
   if (showSplash) await prefs.setBool('giant_has_launched', true);
@@ -48,17 +52,17 @@ class MyApp extends StatelessWidget {
         theme: ThemeData(
           brightness: Brightness.light,
           colorScheme: ColorScheme.fromSeed(
-            seedColor: GiantPalette.primary,
+            seedColor: const Color(0xFF6558D3),
             brightness: Brightness.light,
           ),
-          scaffoldBackgroundColor: const Color(0xFFF7F8FA),
-          canvasColor: const Color(0xFFF7F8FA),
+          scaffoldBackgroundColor: const Color(0xFFF5F6FA),
+          canvasColor: const Color(0xFFF5F6FA),
           useMaterial3: true,
           appBarTheme: const AppBarTheme(
             centerTitle: false,
             elevation: 0,
-            backgroundColor: Color(0xFFF7F8FA),
-            foregroundColor: Color(0xFF18181B),
+            backgroundColor: Color(0xFFF5F6FA),
+            foregroundColor: Color(0xFF20212A),
           ),
           cardTheme: CardTheme(
             color: Colors.white,
@@ -71,20 +75,20 @@ class MyApp extends StatelessWidget {
         darkTheme: ThemeData(
           brightness: Brightness.dark,
           colorScheme: ColorScheme.fromSeed(
-            seedColor: GiantPalette.primaryLight,
+            seedColor: const Color(0xFF8D82FF),
             brightness: Brightness.dark,
           ),
-          scaffoldBackgroundColor: GiantPalette.background,
-          canvasColor: GiantPalette.background,
+          scaffoldBackgroundColor: const Color(0xFF10131B),
+          canvasColor: const Color(0xFF10131B),
           useMaterial3: true,
           appBarTheme: const AppBarTheme(
             centerTitle: false,
             elevation: 0,
-            backgroundColor: GiantPalette.background,
-            foregroundColor: GiantPalette.text,
+            backgroundColor: Color(0xFF10131B),
+            foregroundColor: Color(0xFFF4F5FA),
           ),
           cardTheme: CardTheme(
-            color: GiantPalette.surface,
+            color: const Color(0xFF1B202C),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(18),
             ),
