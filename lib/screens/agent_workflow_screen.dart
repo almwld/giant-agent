@@ -125,6 +125,9 @@ class AgentWorkflowScreen extends StatelessWidget {
             padding: const EdgeInsets.all(14),
             children: [
               _summaryCard(rows),
+              if (ordered.any((event) => event['type'] == 'output_artifact_available'))
+                _outputArtifactsCard(ordered.where((event) =>
+                    event['type'] == 'output_artifact_available').toList(growable: false), context),
               const Padding(
                 padding: EdgeInsets.fromLTRB(4, 16, 4, 9),
                 child: Text('التسلسل الكامل لتنفيذ الوكيل', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700)),
@@ -337,6 +340,98 @@ class AgentWorkflowScreen extends StatelessWidget {
     );
   }
 
+
+  Widget _outputArtifactsCard(
+    List<Map<String, dynamic>> rows,
+    BuildContext context,
+  ) {
+    final latest = <String, Map<String, dynamic>>{};
+    for (final row in rows) {
+      final id = row['artifact_id']?.toString() ?? '';
+      if (id.isNotEmpty) latest[id] = row;
+    }
+    final artifacts = latest.values.toList(growable: false);
+    final verified = artifacts.where((item) => item['verified'] == true).length;
+    return Container(
+      margin: const EdgeInsets.only(top: 14),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: GiantPalette.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: GiantPalette.primaryLight.withOpacity(.3)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.inventory_2_outlined, color: GiantPalette.primaryLight, size: 19),
+          const SizedBox(width: 8),
+          const Expanded(child: Text('مخرجات المهمة', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700))),
+          Text('$verified/${artifacts.length} تم التحقق', style: const TextStyle(color: GiantPalette.success, fontSize: 11)),
+        ]),
+        const SizedBox(height: 10),
+        ...artifacts.map((artifact) {
+          final kind = artifact['kind']?.toString() ?? 'file';
+          final path = artifact['file_path']?.toString();
+          final preview = artifact['preview']?.toString() ?? '';
+          final isVerified = artifact['verified'] == true;
+          final icon = kind == 'image' ? Icons.image_outlined
+              : kind == 'binary_document' ? Icons.picture_as_pdf_outlined
+              : kind == 'code_or_text' ? Icons.code_rounded
+              : Icons.description_outlined;
+          return Container(
+            margin: const EdgeInsets.only(top: 8),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: GiantPalette.background,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: (isVerified ? GiantPalette.success : const Color(0xFFFBBF24)).withOpacity(.25)),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Icon(icon, color: isVerified ? GiantPalette.success : const Color(0xFFFBBF24), size: 17),
+                const SizedBox(width: 8),
+                Expanded(child: Text(artifact['title']?.toString() ?? 'مخرج', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 12))),
+                Icon(isVerified ? Icons.verified_rounded : Icons.warning_amber_rounded,
+                    color: isVerified ? GiantPalette.success : const Color(0xFFFBBF24), size: 16),
+              ]),
+              if (path != null && path.isNotEmpty) ...[
+                const SizedBox(height: 5),
+                SelectableText(path, style: const TextStyle(color: Colors.white54, fontSize: 10, fontFamily: 'monospace')),
+              ],
+              if (preview.isNotEmpty) ...[
+                const SizedBox(height: 7),
+                Text(preview, maxLines: 7, overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white70, fontSize: 11, height: 1.45)),
+              ],
+              if (!isVerified && artifact['details'] != null)
+                Padding(padding: const EdgeInsets.only(top: 5), child: Text(artifact['details'].toString(), style: const TextStyle(color: Color(0xFFFBBF24), fontSize: 10))),
+            ]),
+          );
+        }),
+        const SizedBox(height: 10),
+        Align(
+          alignment: AlignmentDirectional.centerEnd,
+          child: OutlinedButton.icon(
+            onPressed: () async {
+              try {
+                final result = await AgentService.instance.exportWorkspace();
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text('تم تجهيز حزمة مساحة العمل: ${result['path']}'),
+                ));
+              } catch (error) {
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('تعذر تصدير المخرجات: $error')),
+                );
+              }
+            },
+            icon: const Icon(Icons.download_rounded, size: 17),
+            label: const Text('تصدير ملفات مساحة العمل'),
+          ),
+        ),
+      ]),
+    );
+  }
 
   Widget _summaryCard(List<Map<String, dynamic>> rows) {
     final completed = rows.where((e) => {'completed','success'}.contains((e['status'] ?? '').toString().toLowerCase())).length;
