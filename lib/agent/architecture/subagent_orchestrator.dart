@@ -41,6 +41,7 @@ class SubagentInterrupted implements Exception {
 typedef SubagentExecutor = Future<String> Function(
   SubagentTask task,
   Map<String, SubagentResult> dependencyResults,
+  bool Function() isCancelled,
 );
 typedef SubagentEventSink = FutureOr<void> Function(Map<String, Object?> event);
 
@@ -70,12 +71,31 @@ class SubagentOrchestrator {
   final String conversationId;
   final int maxConcurrency;
   bool _cancelRequested = false;
+  final Set<String> _knownTaskIds = <String>{};
+  final Set<String> _finishedTaskIds = <String>{};
+  final Set<String> _cancelledTasks = <String>{};
 
   void cancel() => _cancelRequested = true;
 
+  bool cancelTask(String taskId) {
+    if (!_knownTaskIds.contains(taskId) || _finishedTaskIds.contains(taskId)) {
+      return false;
+    }
+    _cancelledTasks.add(taskId);
+    return true;
+  }
+
+  bool isTaskCancelled(String taskId) =>
+      _cancelRequested || _cancelledTasks.contains(taskId);
+
   Future<List<SubagentResult>> run(List<SubagentTask> tasks) async {
     _cancelRequested = false;
+    _cancelledTasks.clear();
+    _finishedTaskIds.clear();
     _validate(tasks);
+    _knownTaskIds
+      ..clear()
+      ..addAll(tasks.map((task) => task.id));
     final byId = {for (final task in tasks) task.id: task};
     final pending = tasks.map((task) => task.id).toSet();
     final results = <String, SubagentResult>{};
@@ -87,21 +107,35 @@ class SubagentOrchestrator {
         final dependencies = <String, SubagentResult>{
           for (final id in task.dependsOn) id: results[id]!,
         };
-        final output = await _execute(task, Map.unmodifiable(dependencies));
-        results[task.id] = SubagentResult(
-          taskId: task.id,
-          status: 'completed',
-          output: output,
+        final output = await _execute(
+          task,
+          Map.unmodifiable(dependencies),
+          () => isTaskCancelled(task.id),
         );
-        await _emit(task, 'subagent_completed', 'completed');
+        if (isTaskCancelled(task.id)) {
+          results[task.id] = SubagentResult(taskId: task.id, status: 'cancelled');
+          await _emit(task, 'subagent_cancelled', 'interrupted');
+        } else {
+          results[task.id] = SubagentResult(
+            taskId: task.id,
+            status: 'completed',
+            output: output,
+          );
+          await _emit(task, 'subagent_completed', 'completed');
+        }
       } on SubagentInterrupted catch (error) {
+        final cancelled = isTaskCancelled(task.id);
         results[task.id] = SubagentResult(
           taskId: task.id,
-          status: 'interrupted',
+          status: cancelled ? 'cancelled' : 'interrupted',
           error: error.message,
         );
-        await _emit(task, 'subagent_interrupted', 'interrupted',
-            details: error.message);
+        await _emit(
+          task,
+          cancelled ? 'subagent_cancelled' : 'subagent_interrupted',
+          'interrupted',
+          details: error.message,
+        );
       } catch (error) {
         results[task.id] = SubagentResult(
           taskId: task.id,
@@ -110,6 +144,8 @@ class SubagentOrchestrator {
         );
         await _emit(task, 'subagent_failed', 'failed',
             details: error.toString());
+      } finally {
+        _finishedTaskIds.add(task.id);
       }
     }
 
@@ -126,6 +162,14 @@ class SubagentOrchestrator {
         for (final task in tasks) {
           if (active.length >= maxConcurrency) break;
           if (!pending.contains(task.id)) continue;
+          if (_cancelledTasks.contains(task.id)) {
+            pending.remove(task.id);
+            results[task.id] = SubagentResult(taskId: task.id, status: 'cancelled');
+            await _emit(task, 'subagent_cancelled', 'interrupted');
+            _finishedTaskIds.add(task.id);
+            scheduled = true;
+            continue;
+          }
           final dependencyResults =
               task.dependsOn.map((id) => results[id]).toList();
           if (dependencyResults.any(
@@ -140,6 +184,7 @@ class SubagentOrchestrator {
               'interrupted',
               details: 'تعذر التنفيذ بسبب عدم اكتمال إحدى المهام السابقة.',
             );
+            _finishedTaskIds.add(task.id);
             scheduled = true;
             continue;
           }
