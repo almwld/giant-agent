@@ -484,6 +484,42 @@ class AgentKernelStore {
     return rows.isEmpty ? null : KernelRequestRecord.fromMap(rows.single);
   }
 
+  /// Appends a factual runtime/timeline event to its parent request journal.
+  /// Events are immutable and duplicate IDs are ignored during stream retries.
+  Future<void> appendRequestEvent(Map<String, dynamic> event) async {
+    final requestId = event['request_id']?.toString() ?? '';
+    if (requestId.isEmpty || requestId == 'runtime') return;
+    final id = event['id']?.toString() ?? '';
+    final type = event['type']?.toString() ?? 'unknown';
+    if (id.isEmpty) return;
+    final now = DateTime.now().toUtc().toIso8601String();
+    final createdAt = event['timestamp']?.toString() ?? now;
+    final db = await database;
+    await db.transaction((txn) async {
+      final request = await txn.query(
+        'agent_requests',
+        columns: ['id'],
+        where: 'id = ?',
+        whereArgs: [requestId],
+        limit: 1,
+      );
+      if (request.isEmpty) return;
+      await txn.insert(
+        'agent_events',
+        {
+          'id': id,
+          'request_id': requestId,
+          'task_id': event['task_id']?.toString(),
+          'type': type,
+          'status': event['status']?.toString() ?? 'pending',
+          'payload_json': jsonEncode(event),
+          'created_at': createdAt,
+        },
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
+    });
+  }
+
   Future<List<KernelEventRecord>> eventsFor(String requestId) async {
     final rows = await (await database).query(
       'agent_events',
