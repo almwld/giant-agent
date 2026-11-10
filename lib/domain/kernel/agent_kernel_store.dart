@@ -79,7 +79,7 @@ class AgentKernelStore {
     await Directory(directory.path).create(recursive: true);
     return openDatabase(
       '${directory.path}/giant_agent_kernel.db',
-      version: 3,
+      version: 4,
       onConfigure: (db) async {
         await db.execute('PRAGMA foreign_keys = ON');
         await db.execute('PRAGMA journal_mode = WAL');
@@ -138,6 +138,7 @@ class AgentKernelStore {
           BEGIN SELECT RAISE(ABORT, 'agent_events is append-only'); END
         """);
         await _createTaskTable(db);
+        await _createOutputTable(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) await _createTaskTable(db);
@@ -145,6 +146,7 @@ class AgentKernelStore {
           await db.execute('ALTER TABLE agent_events ADD COLUMN task_id TEXT');
           await db.execute('CREATE INDEX IF NOT EXISTS idx_agent_events_task ON agent_events(task_id, row_id)');
         }
+        if (oldVersion < 4) await _createOutputTable(db);
       },
     );
   }
@@ -168,6 +170,92 @@ class AgentKernelStore {
       CREATE INDEX IF NOT EXISTS idx_agent_tasks_conversation
       ON agent_tasks(conversation_id, sequence)
     ''');
+  }
+
+  static Future<void> _createOutputTable(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS agent_outputs (
+        id TEXT PRIMARY KEY,
+        request_id TEXT NOT NULL,
+        conversation_id TEXT NOT NULL,
+        task_id TEXT,
+        kind TEXT NOT NULL,
+        title TEXT NOT NULL,
+        mime_type TEXT NOT NULL,
+        file_path TEXT,
+        content TEXT,
+        preview TEXT,
+        status TEXT NOT NULL,
+        verified INTEGER NOT NULL DEFAULT 0,
+        verification_message TEXT,
+        metadata_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_agent_outputs_request
+      ON agent_outputs(request_id, created_at)
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_agent_outputs_conversation
+      ON agent_outputs(conversation_id, created_at)
+    ''');
+  }
+
+  /// Stores a durable output artifact projection, separate from the immutable event journal.
+  Future<void> saveOutputArtifact(Map<String, dynamic> artifact) async {
+    final id = artifact['id']?.toString() ?? '';
+    final requestId = artifact['request_id']?.toString() ?? '';
+    if (id.isEmpty || requestId.isEmpty) {
+      throw ArgumentError('Output artifact id and request id are required.');
+    }
+    final now = DateTime.now().toUtc().toIso8601String();
+    final metadata = artifact['metadata'] is Map
+        ? Map<String, Object?>.from(artifact['metadata'] as Map)
+        : <String, Object?>{};
+    await (await database).insert('agent_outputs', <String, Object?>{
+      'id': id,
+      'request_id': requestId,
+      'conversation_id': artifact['conversation_id']?.toString() ?? 'global',
+      'task_id': artifact['task_id']?.toString(),
+      'kind': artifact['kind']?.toString() ?? 'text',
+      'title': artifact['title']?.toString() ?? 'مخرج الوكيل',
+      'mime_type': artifact['mime_type']?.toString() ?? 'text/plain',
+      'file_path': artifact['file_path']?.toString(),
+      'content': artifact['content']?.toString(),
+      'preview': artifact['preview']?.toString(),
+      'status': artifact['status']?.toString() ?? 'available',
+      'verified': artifact['verified'] == true ? 1 : 0,
+      'verification_message': artifact['verification_message']?.toString(),
+      'metadata_json': jsonEncode(metadata),
+      'created_at': artifact['created_at']?.toString() ?? now,
+      'updated_at': now,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<List<Map<String, dynamic>>> outputsForRequest(String requestId) async {
+    final rows = await (await database).query(
+      'agent_outputs', where: 'request_id = ?', whereArgs: [requestId],
+      orderBy: 'created_at ASC, id ASC',
+    );
+    return rows.map((row) => <String, dynamic>{
+      ...row,
+      'verified': (row['verified'] as num?)?.toInt() == 1,
+      'metadata': jsonDecode(row['metadata_json']! as String),
+    }).toList(growable: false);
+  }
+
+  Future<List<Map<String, dynamic>>> outputsForConversation(String conversationId) async {
+    final rows = await (await database).query(
+      'agent_outputs', where: 'conversation_id = ?', whereArgs: [conversationId],
+      orderBy: 'created_at DESC, id ASC',
+    );
+    return rows.map((row) => <String, dynamic>{
+      ...row,
+      'verified': (row['verified'] as num?)?.toInt() == 1,
+      'metadata': jsonDecode(row['metadata_json']! as String),
+    }).toList(growable: false);
   }
 
   /// Returns task snapshots in stable creation order.
