@@ -362,7 +362,7 @@ class AgentKernel {
     try {
       final modelPlan = await _models.generateStructuredOutput(
         prompt,
-        conversationId: '${conversationId}::planner::${requestId}',
+        conversationId: '$conversationId::planner::$requestId',
         shouldCancel: () => _cancellationRequested,
       );
       if (_cancellationRequested || modelPlan.startsWith('تم إيقاف التخطيط')) {
