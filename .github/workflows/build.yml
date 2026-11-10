@@ -137,8 +137,12 @@ jobs:
                 dex_found=true
                 break
               fi
-            done < <(unzip -Z1 "$apk" | grep -E '^classes([0-9]+)?\\.dex
-
+            done < <(unzip -Z1 "$apk" | grep -E '^classes([0-9]+)?[.]dex')
+            if [ "$dex_found" != true ]; then
+              echo "GainPtyBridge reference not found in any DEX file in $apk"
+              exit 1
+            fi
+          done
       - name: Verify APK outputs and checksums
         run: |
           set -e
