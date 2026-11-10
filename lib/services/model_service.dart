@@ -671,7 +671,7 @@ $toolCatalog
           final failedAction = jsonEncode(payload);
           history
             ..write('\n\nSystem Note: Tool $toolName result: ${jsonEncode(result)}')
-            ..write('\nIndependent verification FAILED: ${verificationMessage}')
+            ..write('\nIndependent verification FAILED: $verificationMessage')
             ..write('\nDo not claim the goal is complete. Choose a different corrective tool action.\n\nAssistant:');
 
           if (reflexionAttempts >= maxReflexionAttempts) {
