@@ -334,12 +334,29 @@ class AgentKernel {
     required String taskPrompt,
     required String agentType,
     required Map<String, String> dependencyResults,
+  }) => _requestQueue.enqueue(() => _executeRecoveredSubagentAdmitted(
+    parentRequestId: parentRequestId,
+    parentPrompt: parentPrompt,
+    conversationId: conversationId,
+    taskId: taskId,
+    title: title,
+    taskPrompt: taskPrompt,
+    agentType: agentType,
+    dependencyResults: dependencyResults,
+  ));
+
+  Future<String> _executeRecoveredSubagentAdmitted({
+    required String parentRequestId,
+    required String parentPrompt,
+    required String conversationId,
+    required String taskId,
+    required String title,
+    required String taskPrompt,
+    required String agentType,
+    required Map<String, String> dependencyResults,
   }) async {
     if (taskId.trim().isEmpty || taskPrompt.trim().isEmpty) {
       throw ArgumentError('Recovered child identity and prompt are required.');
-    }
-    if (_activeRequestId != null || _requestQueue.isRunning || _requestQueue.pendingCount > 0) {
-      throw StateError('لا يمكن استئناف وكيل فرعي أثناء تنفيذ طلب آخر.');
     }
     final requestId = 'resume_${parentRequestId}_${taskId}_${DateTime.now().microsecondsSinceEpoch}';
     _activeRequestId = requestId;
