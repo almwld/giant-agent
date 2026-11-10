@@ -60,7 +60,25 @@ class OutputEngine {
     }
 
     final children = await _store.subagentsForRequest(requestId);
+    final childById = <String, Map<String, dynamic>>{
+      for (final child in children) child['id'].toString(): child,
+    };
     final childFailures = children.where((child) => child['status'] != 'completed').length;
+    final emptyChildResults = children.where((child) =>
+        child['status'] == 'completed' &&
+        (child['last_result']?.toString() ?? '').trim().isEmpty).length;
+    var dependencyFailures = 0;
+    for (final child in children) {
+      final dependencies = child['depends_on'];
+      if (dependencies is! List) continue;
+      for (final dependency in dependencies) {
+        final upstream = childById[dependency.toString()];
+        if (upstream == null || upstream['status'] != 'completed' ||
+            (upstream['last_result']?.toString() ?? '').trim().isEmpty) {
+          dependencyFailures++;
+        }
+      }
+    }
     for (final child in children) {
       final childResult = child['last_result']?.toString() ?? '';
       if (child['status'] != 'completed' || childResult.trim().isEmpty) continue;
@@ -172,8 +190,9 @@ class OutputEngine {
     final verifiedCount = artifacts.where((item) => item['verified'] == true).length;
     final missingCount = artifacts.length - verifiedCount;
     final hasFinalText = finalText.trim().isNotEmpty;
-    final verified = hasFinalText && missingCount == 0 && childFailures == 0 && requestStatus == 'completed';
-    final summary = 'حُفظ ${artifacts.length} مخرجاً؛ تحقق $verifiedCount، وغير المتحقق $missingCount؛ الوكلاء غير المكتملين: $childFailures.';
+    final verified = hasFinalText && missingCount == 0 && childFailures == 0 && emptyChildResults == 0 &&
+        dependencyFailures == 0 && requestStatus == 'completed';
+    final summary = 'حُفظ ${artifacts.length} مخرجاً؛ تحقق $verifiedCount، وغير المتحقق $missingCount؛ الوكلاء غير المكتملين: $childFailures؛ نتائجهم الفارغة: $emptyChildResults؛ تبعيات غير مكتملة: $dependencyFailures.';
     _emit(requestId, verified ? 'output_collection_completed' : 'output_collection_partial',
         verified ? 'اكتملت منظومة المخرجات والتحقق منها' : 'المخرجات جزئية وتحتاج مراجعة',
         verified ? 'completed' : 'interrupted',
@@ -183,6 +202,8 @@ class OutputEngine {
           'verified_count': verifiedCount,
           'unverified_count': missingCount,
           'incomplete_child_count': childFailures,
+          'empty_child_result_count': emptyChildResults,
+          'dependency_failure_count': dependencyFailures,
           'artifact_ids': artifacts.map((item) => item['id']).toList(),
         });
     return OutputCollectionResult(
