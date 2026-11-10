@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:giant_agent_x/services/gemini_provider.dart';
 import 'package:giant_agent_x/services/openai_compatible_provider.dart';
@@ -13,6 +15,11 @@ void main() {
 
     test('rejects path injection in model ids', () {
       expect(() => GeminiProvider.generateContentUri('../other'), throwsArgumentError);
+    });
+
+    test('decodes Arabic JSON from UTF-8 response bytes', () {
+      final bytes = utf8.encode(jsonEncode({'text': 'مرحباً بالعالم'}));
+      expect(GeminiProvider.decodeJsonResponse(bytes)['text'], 'مرحباً بالعالم');
     });
 
     test('extracts text from candidate content parts', () {
@@ -55,6 +62,11 @@ void main() {
       expect(OpenAICompatibleProvider.isOfficialBaseUrl('https://openrouter.ai/api/v1'), isTrue);
       expect(OpenAICompatibleProvider.isOfficialBaseUrl('https://api.example.com/v1'), isFalse);
       expect(OpenAICompatibleProvider.isOfficialBaseUrl('http://openrouter.ai/api/v1'), isFalse);
+    });
+
+    test('decodes Arabic JSON from UTF-8 response bytes', () {
+      final bytes = utf8.encode(jsonEncode({'text': 'مرحباً بالعالم'}));
+      expect(OpenAICompatibleProvider.decodeJsonResponse(bytes)['text'], 'مرحباً بالعالم');
     });
 
     test('extracts OpenRouter message content', () {
