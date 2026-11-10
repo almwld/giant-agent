@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 typedef KernelDatabaseProvider = Future<Database> Function();
 
@@ -199,6 +200,30 @@ class AgentKernelStore {
       );
       if (changed == 0) await txn.insert('agent_tasks', values);
     });
+  }
+
+  /// One-time compatibility migration. SharedPreferences is read only here;
+  /// all subsequent task reads and writes use SQLite exclusively.
+  Future<void> migrateLegacyTaskSnapshot() async {
+    const legacyKey = 'giant_agent.tasks.v1';
+    final preferences = await SharedPreferences.getInstance();
+    final raw = preferences.getString(legacyKey);
+    if (raw == null || raw.isEmpty) return;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return;
+      final tasks = decoded
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList(growable: false);
+      await importLegacyTasksIfEmpty(tasks);
+      final persisted = await getTasks();
+      if (persisted.isNotEmpty || tasks.isEmpty) {
+        await preferences.remove(legacyKey);
+      }
+    } on FormatException {
+      // Preserve malformed legacy data for manual recovery; never discard it.
+    }
   }
 
   Future<void> importLegacyTasksIfEmpty(
