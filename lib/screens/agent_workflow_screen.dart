@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../widgets/agent_activity_indicators.dart';
 import '../services/agent_service.dart';
@@ -402,6 +403,15 @@ class AgentWorkflowScreen extends StatelessWidget {
                 Text(preview, maxLines: 7, overflow: TextOverflow.ellipsis,
                     style: const TextStyle(color: Colors.white70, fontSize: 11, height: 1.45)),
               ],
+              if (kind == 'image' && path != null)
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: TextButton.icon(
+                    onPressed: () => _showImagePreview(context, path),
+                    icon: const Icon(Icons.visibility_outlined, size: 16),
+                    label: const Text('معاينة الصورة'),
+                  ),
+                ),
               if (!isVerified && artifact['details'] != null)
                 Padding(padding: const EdgeInsets.only(top: 5), child: Text(artifact['details'].toString(), style: const TextStyle(color: Color(0xFFFBBF24), fontSize: 10))),
             ]),
@@ -413,10 +423,10 @@ class AgentWorkflowScreen extends StatelessWidget {
           child: OutlinedButton.icon(
             onPressed: () async {
               try {
-                final result = await AgentService.instance.exportWorkspace();
+                await AgentService.instance.shareWorkspace();
                 if (!context.mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                  content: Text('تم تجهيز حزمة مساحة العمل: ${result['path']}'),
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  content: Text('تم فتح نافذة مشاركة ملفات المهمة.'),
                 ));
               } catch (error) {
                 if (!context.mounted) return;
@@ -426,11 +436,45 @@ class AgentWorkflowScreen extends StatelessWidget {
               }
             },
             icon: const Icon(Icons.download_rounded, size: 17),
-            label: const Text('تصدير ملفات مساحة العمل'),
+            label: const Text('تنزيل / مشاركة الملفات'),
           ),
         ),
       ]),
     );
+  }
+
+  Future<void> _showImagePreview(BuildContext context, String path) async {
+    try {
+      final result = await AgentService.instance.readImagePreview(path);
+      final bytes = base64Decode(result['base64'].toString());
+      if (!context.mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => Dialog(
+          backgroundColor: GiantPalette.surface,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: Text(path, style: const TextStyle(color: Colors.white70, fontSize: 11)),
+              ),
+              const SizedBox(height: 10),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 520, maxWidth: 520),
+                child: Image.memory(bytes, fit: BoxFit.contain),
+              ),
+              TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('إغلاق')),
+            ]),
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذرت معاينة الصورة: $error')),
+      );
+    }
   }
 
   Widget _summaryCard(List<Map<String, dynamic>> rows) {
