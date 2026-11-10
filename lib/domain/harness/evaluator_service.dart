@@ -1,5 +1,3 @@
-import 'dart:async';
-
 class ToolVerificationResult {
   const ToolVerificationResult({required this.passed, required this.message, this.evidence});
   final bool passed;
