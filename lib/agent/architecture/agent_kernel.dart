@@ -370,8 +370,8 @@ class AgentKernel {
         }
       }
       final dependencyContext = dependencyResults.entries.map((entry) =>
-        'نتيجة المهمة السابقة ${entry.key}:\\n${entry.value}'
-      ).join('\\n\\n');
+        'نتيجة المهمة السابقة ${entry.key}:\n${entry.value}'
+      ).join('\n\n');
       final allowedTools = switch (agentType) {
         'explore' || 'plan' || 'reviewer' => const <String>{'read_file', 'list_files'},
         'coder' => const <String>{'create_file', 'read_file', 'write_file', 'list_files', 'execute_python', 'gain_terminal'},
