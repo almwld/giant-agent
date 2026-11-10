@@ -345,53 +345,64 @@ class AgentKernel {
       return _models.processInput(prompt, conversationId: conversationId);
     }
 
-    final plan = _planner.createPlan(prompt);
     final isSoftwareTask = RegExp(
       r'(كود|برمج|تطبيق|موقع|برنامج|ملف|نظام|قاعدة|واجهة|نواة|ذاكرة|وكيل|تخطيط|استعادة|تكامل|دورة عمل|api|flutter|dart|python|javascript|software|code|app|website|project|refactor|debug|fix|kernel|memory|agent|planner|recovery|integration|workflow)',
     ).hasMatch(prompt.toLowerCase());
-    final tasks = <SubagentTask>[];
-    for (var index = 0; index < plan.length; index++) {
-      final step = plan[index];
-      final number = step['step'] as int;
-      final role = isSoftwareTask
-          ? switch (index) {
-              0 || 1 => 'explore',
-              2 => 'plan',
-              3 => 'coder',
-              _ => 'reviewer',
-            }
-          : switch (index) {
-              0 || 1 => 'explore',
-              2 => 'plan',
-              _ => 'reviewer',
-            };
-      final dependencies = switch (index) {
-        0 || 1 => const <String>[],
-        2 => <String>['${requestId}_agent_1', '${requestId}_agent_2']
-            .where((id) => tasks.any((task) => task.id == id))
-            .toList(growable: false),
-        _ => <String>['${requestId}_agent_${number - 1}'],
-      };
-      tasks.add(SubagentTask(
-        id: '${requestId}_agent_$number',
-        title: 'الوكيل $role — الخطوة $number',
-        prompt: step['action'] as String,
-        agentType: role,
-        dependsOn: dependencies,
-      ));
+
+    _emit(
+      requestId: requestId,
+      type: 'delegation_planning_started',
+      title: 'يحلل الوكيل الرئيسي المهمة ويحدد الوكلاء المناسبين',
+      status: 'running',
+    );
+
+    var planSource = 'model';
+    var tasks = <SubagentTask>[];
+    try {
+      final modelPlan = await _models.generateStructuredOutput(
+        prompt,
+        conversationId: '${conversationId}::planner::${requestId}',
+        shouldCancel: () => _cancellationRequested,
+      );
+      if (_cancellationRequested || modelPlan.startsWith('تم إيقاف التخطيط')) {
+        return 'تم إيقاف التخطيط قبل تشغيل الوكلاء الفرعيين.';
+      }
+      tasks = _parseSubagentPlan(
+        modelPlan,
+        requestId: requestId,
+        allowCoder: isSoftwareTask,
+      );
+    } catch (_) {
+      // Small local models may not reliably emit JSON. Fall back to the
+      // deterministic, validated plan rather than failing the user's task.
+      planSource = 'deterministic_fallback';
+    }
+
+    if (tasks.isEmpty) {
+      planSource = 'deterministic_fallback';
+      tasks = _fallbackSubagentPlan(
+        prompt,
+        requestId: requestId,
+        allowCoder: isSoftwareTask,
+      );
     }
 
     _emit(
       requestId: requestId,
       type: 'plan_created',
-      title: 'تم إنشاء خطة وتوزيعها على وكلاء فرعيين',
+      title: planSource == 'model'
+          ? 'أنشأ الوكيل الرئيسي خطة تفويض منظمة'
+          : 'استخدم الوكيل الرئيسي خطة احتياطية موثوقة',
       status: 'completed',
-      details: jsonEncode(tasks.map((task) => <String, Object?>{
-        'task_id': task.id,
-        'agent_type': task.agentType,
-        'title': task.title,
-        'depends_on': task.dependsOn,
-      }).toList()),
+      details: jsonEncode(<String, Object?>{
+        'source': planSource,
+        'tasks': tasks.map((task) => <String, Object?>{
+          'task_id': task.id,
+          'agent_type': task.agentType,
+          'title': task.title,
+          'depends_on': task.dependsOn,
+        }).toList(),
+      }),
     );
 
     final orchestrator = SubagentOrchestrator(
@@ -596,6 +607,198 @@ $evidence
       details: 'تم إعداد الإجابة النهائية من مخرجات الوكلاء المسجلة.',
     );
     return normalizedFinal;
+  }
+
+  List<SubagentTask> _parseSubagentPlan(
+    String raw, {
+    required String requestId,
+    required bool allowCoder,
+  }) {
+    final start = raw.indexOf('{');
+    if (start < 0) throw const FormatException('Planner returned no JSON object.');
+    var depth = 0;
+    var inString = false;
+    var escaped = false;
+    var end = -1;
+    for (var index = start; index < raw.length; index++) {
+      final character = raw[index];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (character == String.fromCharCode(92)) {
+          escaped = true;
+        } else if (character == '"') {
+          inString = false;
+        }
+        continue;
+      }
+      if (character == '"') {
+        inString = true;
+      } else if (character == '{') {
+        depth++;
+      } else if (character == '}') {
+        depth--;
+        if (depth == 0) {
+          end = index;
+          break;
+        }
+      }
+    }
+    if (end < 0) throw const FormatException('Planner JSON object is incomplete.');
+    final decoded = jsonDecode(raw.substring(start, end + 1));
+    if (decoded is! Map || decoded['tasks'] is! List) {
+      throw const FormatException('Planner JSON must contain a tasks array.');
+    }
+    final rawTasks = decoded['tasks'] as List;
+    if (rawTasks.length < 2 || rawTasks.length > 6) {
+      throw const FormatException('Planner must return between 2 and 6 tasks.');
+    }
+
+    final tasks = <SubagentTask>[];
+    final localIds = <String>{};
+    for (final item in rawTasks) {
+      if (item is! Map) throw const FormatException('Invalid task object.');
+      final id = item['id']?.toString().trim() ?? '';
+      final role = item['role']?.toString().trim().toLowerCase() ?? '';
+      final title = item['title']?.toString().trim() ?? '';
+      final taskPrompt = item['prompt']?.toString().trim() ?? '';
+      if (!RegExp(r'^[a-zA-Z0-9_-]{1,48}
+    if (!isExecuting) return false;
+    final requestId = _activeRequestId ?? 'runtime';
+    _cancellationRequested = true;
+    _activeSubagentOrchestrator?.cancel();
+    _state = AgentKernelState.cancelling;
+    _emit(
+      requestId: requestId,
+      eventId: 'kernel_${requestId}_cancellation',
+      type: 'cancellation_requested',
+      title: 'طلب إيقاف التنفيذ',
+      status: 'running',
+    );
+
+    var accepted = false;
+    try {
+      accepted = await _models.cancelGeneration();
+    } catch (_) {
+      // The orchestrator still stops at the next safe boundary.
+    }
+    _emit(
+      requestId: requestId,
+      eventId: 'kernel_${requestId}_cancellation',
+      type: 'cancellation_recorded',
+      title: 'تم تسجيل طلب الإيقاف',
+      status: 'completed',
+      details: accepted
+          ? 'قبل محرك الاستدلال إيقاف التوليد.'
+          : 'سيوقف المنسق الخطوات التالية عند أقرب نقطة آمنة.',
+    );
+    return true;
+  }
+
+  Future<Map<String, dynamic>> exportWorkspace() =>
+      _models.exportWorkspace();
+
+  Future<List<String>> listWorkspaceFiles() =>
+      _models.listWorkspaceFiles();
+}
+).hasMatch(id) ||
+          !localIds.add(id) ||
+          title.isEmpty ||
+          title.length > 100 ||
+          taskPrompt.isEmpty ||
+          taskPrompt.length > 1200) {
+        throw const FormatException('Planner task fields are invalid.');
+      }
+      if (!const {'explore', 'plan', 'coder', 'reviewer'}.contains(role) ||
+          (role == 'coder' && !allowCoder)) {
+        throw const FormatException('Planner selected a disallowed agent role.');
+      }
+      final rawDependencies = item['depends_on'] ?? const <dynamic>[];
+      if (rawDependencies is! List ||
+          rawDependencies.any((dependency) => dependency is! String)) {
+        throw const FormatException('Task dependencies must be a string list.');
+      }
+      final dependencies = rawDependencies
+          .map((dependency) => dependency.toString().trim())
+          .toList(growable: false);
+      if (dependencies.toSet().length != dependencies.length) {
+        throw const FormatException('Duplicate task dependency.');
+      }
+      tasks.add(SubagentTask(
+        id: '${requestId}_agent_$id',
+        title: 'الوكيل $role — $title',
+        prompt: taskPrompt,
+        agentType: role,
+        dependsOn: dependencies
+            .map((dependency) => '${requestId}_agent_$dependency')
+            .toList(growable: false),
+      ));
+    }
+
+    final ids = tasks.map((task) => task.id).toSet();
+    for (final task in tasks) {
+      if (task.dependsOn.any((dependency) => !ids.contains(dependency)) ||
+          task.dependsOn.contains(task.id)) {
+        throw const FormatException('Planner produced an invalid dependency graph.');
+      }
+    }
+    final visited = <String>{};
+    final visiting = <String>{};
+    void visit(String id) {
+      if (visiting.contains(id)) {
+        throw const FormatException('Planner produced a dependency cycle.');
+      }
+      if (visited.contains(id)) return;
+      visiting.add(id);
+      for (final dependency in tasks.firstWhere((task) => task.id == id).dependsOn) {
+        visit(dependency);
+      }
+      visiting.remove(id);
+      visited.add(id);
+    }
+    for (final task in tasks) {
+      visit(task.id);
+    }
+    return tasks;
+  }
+
+  List<SubagentTask> _fallbackSubagentPlan(
+    String prompt, {
+    required String requestId,
+    required bool allowCoder,
+  }) {
+    final plan = _planner.createPlan(prompt);
+    final tasks = <SubagentTask>[];
+    for (var index = 0; index < plan.length; index++) {
+      final number = plan[index]['step'] as int;
+      final role = allowCoder
+          ? switch (index) {
+              0 || 1 => 'explore',
+              2 => 'plan',
+              3 => 'coder',
+              _ => 'reviewer',
+            }
+          : switch (index) {
+              0 || 1 => 'explore',
+              2 => 'plan',
+              _ => 'reviewer',
+            };
+      final dependencies = switch (index) {
+        0 || 1 => const <String>[],
+        2 => <String>['${requestId}_agent_1', '${requestId}_agent_2']
+            .where((id) => tasks.any((task) => task.id == id))
+            .toList(growable: false),
+        _ => <String>['${requestId}_agent_${number - 1}'],
+      };
+      tasks.add(SubagentTask(
+        id: '${requestId}_agent_$number',
+        title: 'الوكيل $role — الخطوة $number',
+        prompt: plan[index]['action'] as String,
+        agentType: role,
+        dependsOn: dependencies,
+      ));
+    }
+    return tasks;
   }
 
   Future<bool> cancel() async {
