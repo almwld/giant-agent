@@ -84,6 +84,7 @@ class AgentKernel {
     required String title,
     required String status,
     String? details,
+    String? result,
     String? eventId,
     String? taskId,
     String? agentType,
@@ -104,6 +105,7 @@ class AgentKernel {
       status: status,
       timestamp: DateTime.now(),
       details: details,
+      result: result,
       taskId: taskId,
       agentType: agentType,
       taskPrompt: taskPrompt,
@@ -321,6 +323,75 @@ class AgentKernel {
   }
 
 
+  /// Executes one explicitly recovered child through the existing shared ModelService.
+  /// This never creates a second model/JNI runtime and refuses to overlap a parent request.
+  Future<String> executeRecoveredSubagent({
+    required String parentRequestId,
+    required String parentPrompt,
+    required String conversationId,
+    required String taskId,
+    required String title,
+    required String taskPrompt,
+    required String agentType,
+    required Map<String, String> dependencyResults,
+  }) async {
+    if (taskId.trim().isEmpty || taskPrompt.trim().isEmpty) {
+      throw ArgumentError('Recovered child identity and prompt are required.');
+    }
+    if (_activeRequestId != null || _requestQueue.isRunning || _requestQueue.pendingCount > 0) {
+      throw StateError('لا يمكن استئناف وكيل فرعي أثناء تنفيذ طلب آخر.');
+    }
+    final requestId = 'resume_${parentRequestId}_${taskId}_${DateTime.now().microsecondsSinceEpoch}';
+    _activeRequestId = requestId;
+    _cancellationRequested = false;
+    _models.beginAgentRequest(requestId);
+    try {
+      final providerEnabled = await OpenAICompatibleProvider.instance.isEnabled();
+      if (!providerEnabled) {
+        if (!_models.hasActiveModel() || !await _models.isModelLoaded()) {
+          throw StateError('يجب تحميل النموذج المحلي قبل استئناف الوكيل الفرعي.');
+        }
+      }
+      final dependencyContext = dependencyResults.entries.map((entry) =>
+        'نتيجة المهمة السابقة ${entry.key}:\\n${entry.value}'
+      ).join('\\n\\n');
+      final allowedTools = switch (agentType) {
+        'explore' || 'plan' || 'reviewer' => const <String>{'read_file', 'list_files'},
+        'coder' => const <String>{'create_file', 'read_file', 'write_file', 'list_files', 'execute_python', 'gain_terminal'},
+        _ => throw ArgumentError('Unknown recovered agent type: $agentType'),
+      };
+      _emit(requestId: parentRequestId, taskId: taskId, agentType: agentType,
+        taskPrompt: taskPrompt, type: 'subagent_resume_started',
+        title: 'استئناف الوكيل الفرعي: $title', status: 'running');
+      final prompt = '''أنت وكيل فرعي مستأنف من نوع $agentType.\nالمهمة الأصلية: $parentPrompt\nالمهمة المسندة: $taskPrompt\nنتائج التبعيات المكتملة:\n${dependencyContext.isEmpty ? 'لا توجد تبعيات.' : dependencyContext}\n\nقواعد الاستئناف:\n- افحص الحالة الحالية قبل أي تعديل؛ قد تكون بعض الآثار الجانبية نُفذت قبل الانقطاع.\n- لا تكرر عملية غير قابلة للعكس أو إرسالاً أو حذفاً أو دفعاً أو شراءً دون تحقق من حالتها وموافقة المستخدم عند الحاجة.\n- أكمل الجزء المتبقي فقط، ولا تفترض أن سياق النموذج السابق ما زال موجوداً.\n- استخدم الأدوات المسموح بها فقط، ولا تدّع نجاح عملية دون دليل.\n- أعد النتيجة والأدلة والملفات التي تغيرت وما بقي غير منجز.''';
+      final output = (await _models.processInput(prompt,
+        conversationId: '$conversationId::subagent::$taskId',
+        persistTurn: false, allowedTools: allowedTools,
+        shouldCancel: () => _cancellationRequested)).trim();
+      if (_cancellationRequested || _isCancelledOutput(output) || _isIncompleteOutput(output)) {
+        throw SubagentInterrupted(output.isEmpty ? 'تم إيقاف استئناف الوكيل الفرعي.' : output);
+      }
+      if (_isFailureOutput(output)) throw StateError(output);
+      _emit(requestId: parentRequestId, taskId: taskId, agentType: agentType,
+        taskPrompt: taskPrompt, type: 'subagent_resume_completed',
+        title: 'اكتمل استئناف الوكيل الفرعي: $title', status: 'completed',
+        details: output.length > 1200 ? '${output.substring(0, 1200)}…' : output,
+        result: output);
+      return output;
+    } catch (error) {
+      _emit(requestId: parentRequestId, taskId: taskId, agentType: agentType,
+        taskPrompt: taskPrompt, type: 'subagent_resume_failed',
+        title: 'تعذر استئناف الوكيل الفرعي: $title', status: 'failed',
+        details: error.toString());
+      rethrow;
+    } finally {
+      _models.endAgentRequest(requestId);
+      _activeRequestId = null;
+      _cancellationRequested = false;
+      if (_state != AgentKernelState.failed) _state = AgentKernelState.idle;
+    }
+  }
+
   bool _isCancelledOutput(String output) =>
       output.startsWith('تم إيقاف المهمة') ||
       output.startsWith('تم إيقاف تنفيذ الوكيل') ||
@@ -434,6 +505,7 @@ class AgentKernel {
           title: event['title']?.toString() ?? 'تحديث الوكيل الفرعي',
           status: event['status']?.toString() ?? 'pending',
           details: event['details']?.toString(),
+          result: event['result']?.toString(),
         );
       },
       execute: (task, dependencyResults, isTaskCancelled) async {
