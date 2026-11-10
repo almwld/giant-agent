@@ -430,7 +430,7 @@ class AgentWorkflowScreen extends StatelessWidget {
                     label: const Text('معاينة الصورة'),
                   ),
                 ),
-              if (kind == 'binary_document' && path != null)
+              if (kind != 'image' && path != null)
                 Align(
                   alignment: AlignmentDirectional.centerStart,
                   child: TextButton.icon(
@@ -472,7 +472,7 @@ class AgentWorkflowScreen extends StatelessWidget {
               }
             },
             icon: const Icon(Icons.download_rounded, size: 17),
-            label: const Text('تنزيل / مشاركة الملفات'),
+            label: const Text('مشاركة / حفظ ملفات المهمة'),
           ),
         ),
       ]),
