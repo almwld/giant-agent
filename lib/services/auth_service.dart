@@ -7,6 +7,10 @@ class AuthService {
   
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
   
+  Future<String?> getCurrentUser() => getUserName();
+
+  Future<void> signOut() => logout();
+
   // تسجيل الدخول بدون بيانات
   Future<bool> guestLogin() async {
     await _storage.write(key: 'is_logged_in', value: 'true');
