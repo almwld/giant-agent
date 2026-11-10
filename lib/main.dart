@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -55,7 +56,33 @@ class _GiantAgentBootstrapState extends State<GiantAgentBootstrap> {
       timeout: const Duration(seconds: 5),
     );
 
-    // These services are deliberately not allowed to block first paint.
+    var showSplash = false;
+    try {
+      final prefs = await SharedPreferences.getInstance()
+          .timeout(const Duration(seconds: 5));
+      showSplash = !(prefs.getBool('giant_has_launched') ?? false);
+      if (showSplash) {
+        await prefs.setBool('giant_has_launched', true)
+            .timeout(const Duration(seconds: 5));
+      }
+    } catch (error, stackTrace) {
+      debugPrint('GiantAgent startup [launch-state] failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _showSplash = showSplash;
+      _ready = true;
+    });
+
+    // The first usable screen is now on display. Restore databases, permissions
+    // and the agent runtime in the background; none of them can hold the UI
+    // behind the Android launch window or delay opening the chat.
+    unawaited(_initializeBackgroundServices());
+  }
+
+  Future<void> _initializeBackgroundServices() async {
     await _attempt(
       'notifications',
       () async { await NotificationService.init(); },
@@ -76,26 +103,6 @@ class _GiantAgentBootstrapState extends State<GiantAgentBootstrap> {
       () => TaskManager().initialize(),
       timeout: const Duration(seconds: 12),
     );
-
-    var showSplash = false;
-    try {
-      final prefs = await SharedPreferences.getInstance()
-          .timeout(const Duration(seconds: 5));
-      showSplash = !(prefs.getBool('giant_has_launched') ?? false);
-      if (showSplash) {
-        await prefs.setBool('giant_has_launched', true)
-            .timeout(const Duration(seconds: 5));
-      }
-    } catch (error, stackTrace) {
-      debugPrint('GiantAgent startup [launch-state] failed: $error');
-      debugPrintStack(stackTrace: stackTrace);
-    }
-
-    if (!mounted) return;
-    setState(() {
-      _showSplash = showSplash;
-      _ready = true;
-    });
   }
 
   @override
