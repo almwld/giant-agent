@@ -9,6 +9,7 @@ on:
       - integration/giant-agent-stabilization
       - fix/voice-terminal-approval-stabilization
       - fix/openrouter-only-provider-policy
+      - feat/voice-orb-in-chat-session
       - feat/chat-bubble-resize-teal-toasts
   pull_request:
     branches:
