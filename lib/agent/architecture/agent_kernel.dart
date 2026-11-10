@@ -6,6 +6,7 @@ import '../../services/model_service.dart';
 import '../../services/openai_compatible_provider.dart';
 import '../../services/planner_service.dart';
 import 'agent_timeline_event.dart';
+import 'agent_event_bus.dart';
 import 'fifo_task_queue.dart';
 
 /// Lifecycle states exposed by the agent orchestration layer.
@@ -83,7 +84,7 @@ class AgentKernel {
     String? eventId,
   }) {
     final sequence = ++_eventSequence;
-    _events.add(AgentTimelineEvent(
+    final event = AgentTimelineEvent(
       // Every transition receives a new identity. eventId is retained only as
       // the logical step correlation key, never as a replaceable event ID.
       id: 'kernel_${requestId}_event_$sequence',
@@ -96,7 +97,9 @@ class AgentKernel {
       status: status,
       timestamp: DateTime.now(),
       details: details,
-    ));
+    );
+    _events.add(event);
+    AgentEventBus.instance.publish(event.toMap());
   }
 
   /// Concurrent callers share one initialization future instead of racing
