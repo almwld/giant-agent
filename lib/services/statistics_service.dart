@@ -21,7 +21,7 @@ class StatisticsService {
             event_value TEXT,
             timestamp INTEGER
           )
-        ''') ?? <Map<String, Object?>>[];
+        ''');
       },
     );
   }
@@ -43,7 +43,7 @@ class StatisticsService {
       await _db?.rawQuery('''
         SELECT COUNT(*) FROM stats 
         WHERE date(timestamp/1000, 'unixepoch') = date('now')
-      ''')
+      ''') ?? <Map<String, Object?>>[]
     ) ?? 0;
     
     return {
