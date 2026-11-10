@@ -97,7 +97,7 @@ class GeminiProvider {
       final request = http.Request('POST', generateContentUri(await getModel()))
         ..followRedirects = false
         ..headers.addAll({
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json; charset=utf-8',
           'x-goog-api-key': key,
         })
         ..body = jsonEncode({
@@ -117,7 +117,7 @@ class GeminiProvider {
       }).timeout(requestTimeout);
       final dynamic decoded;
       try {
-        decoded = jsonDecode(response.body);
+        decoded = jsonDecode(utf8.decode(response.bodyBytes, allowMalformed: false));
       } on FormatException {
         throw StateError('أعاد Gemini استجابة غير JSON (HTTP ${response.statusCode}).');
       }
