@@ -99,6 +99,7 @@ class SubagentOrchestrator {
     final pending = tasks.map((task) => task.id).toSet();
     final results = <String, SubagentResult>{};
     final active = <String, Future<void>>{};
+    final activeTypes = <String, String>{};
 
     Future<void> start(SubagentTask task) async {
       try {
@@ -167,9 +168,16 @@ class SubagentOrchestrator {
         }
       } else {
         var scheduled = false;
+        final coderIsActive = activeTypes.values.contains('coder');
         for (final task in tasks) {
           if (active.length >= maxConcurrency) break;
           if (!pending.contains(task.id)) continue;
+          // Read-only workers may overlap. A coder receives an exclusive
+          // workspace lease so multi-step file edits cannot interleave with
+          // another worker's reads or writes.
+          if (coderIsActive || (task.agentType == 'coder' && active.isNotEmpty)) {
+            continue;
+          }
           if (_cancelledTasks.contains(task.id)) {
             pending.remove(task.id);
             results[task.id] = SubagentResult(taskId: task.id, status: 'cancelled');
@@ -199,6 +207,7 @@ class SubagentOrchestrator {
           if (dependencyResults.any((result) => result == null)) continue;
           pending.remove(task.id);
           await _emit(task, 'subagent_queued', 'pending');
+          activeTypes[task.id] = task.agentType;
           active[task.id] = start(task);
           scheduled = true;
         }
@@ -212,6 +221,7 @@ class SubagentOrchestrator {
         final finished = active.keys.where(results.containsKey).toList();
         for (final id in finished) {
           active.remove(id);
+          activeTypes.remove(id);
         }
       }
     }
