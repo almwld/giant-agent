@@ -21,6 +21,8 @@ import '../models/chat_session.dart';
 import 'dart:convert';
 import 'package:speech_to_text/speech_to_text.dart';
 import '../services/openai_compatible_provider.dart';
+import '../services/gemini_provider.dart';
+import '../services/model_provider_settings.dart';
 import '../services/github_repository_service.dart';
 import '../services/cloud_storage_service.dart';
 import '../services/web_search_service.dart';
@@ -829,7 +831,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void _showTerminal({Map<String, dynamic>? step}) {
     if (step == null && !_terminalHasActivity) {
       _terminal.write('\x1B[2J\x1B[H');
-      _terminal.write('\x1B[32mroot@giant-agent\x1B[0m:\x1B[34m~\x1B[0m# Waiting for commands...\r\n');
+      _terminal.write('Giant Agent — سجل مخرجات الوكيل فقط؛ هذه ليست جلسة Shell تفاعلية.\r\n');
     }
     if (step != null) {
       _terminal.write('\x1B[2J\x1B[H');
@@ -872,7 +874,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     onPressed: () {
                       _terminal.write('\x1B[2J\x1B[H');
                       _terminalHasActivity = false;
-                      _terminal.write('\x1B[32mroot@giant-agent\x1B[0m:\x1B[34m~\x1B[0m# Waiting for commands...\r\n');
+                      _terminal.write('Giant Agent — سجل مخرجات الوكيل فقط؛ هذه ليست جلسة Shell تفاعلية.\r\n');
                     },
                     icon: const Icon(Icons.delete_sweep, color: Colors.white70),
                   ),
