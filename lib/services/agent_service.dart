@@ -294,6 +294,11 @@ class AgentService {
   Future<Map<String, dynamic>> exportWorkspace() =>
       _executionKernel.exportWorkspace();
 
+  Future<bool> shareWorkspace() => _models.shareWorkspace();
+
+  Future<Map<String, dynamic>> readImagePreview(String path) =>
+      _models.readImagePreview(path: path);
+
   Future<List<String>> listWorkspaceFiles() =>
       _executionKernel.listWorkspaceFiles();
 
