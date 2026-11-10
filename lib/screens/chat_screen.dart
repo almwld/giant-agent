@@ -344,7 +344,16 @@ class _ChatScreenState extends State<ChatScreen> {
     );
     _nativeAgentEventSubscription = _agentEvents.receiveBroadcastStream().listen(
       (event) {
-        if (event is Map) AgentEventBus.instance.publish(event);
+        if (event is! Map) return;
+        final type = event['type']?.toString() ?? '';
+        // ModelService is the authoritative producer for tool lifecycle
+        // events. Native callbacks remain authoritative for tokens/statuses;
+        // dropping the mirrored native tool callbacks prevents double rows.
+        if (const {
+          'tool_start', 'tool_output', 'tool_error',
+          'file_created', 'file_updated', 'file_read',
+        }.contains(type)) return;
+        AgentEventBus.instance.publish(event);
       },
       onError: (Object error) {
         AgentEventBus.instance.publish({
