@@ -8,9 +8,11 @@ void main() {
     var peak = 0;
     final events = <Map<String, Object?>>[];
     final orchestrator = SubagentOrchestrator(
+      parentRequestId: 'request-1',
+      conversationId: 'chat-1',
       maxConcurrency: 2,
       onEvent: events.add,
-      execute: (task) async {
+      execute: (task, dependencies) async {
         active.add(task.id);
         if (active.length > peak) peak = active.length;
         await Future<void>.delayed(const Duration(milliseconds: 15));
@@ -31,8 +33,10 @@ void main() {
 
   test('skips dependent agents when a prerequisite fails', () async {
     final orchestrator = SubagentOrchestrator(
+      parentRequestId: 'request-2',
+      conversationId: 'chat-2',
       onEvent: (_) {},
-      execute: (task) async { if (task.id == 'first') throw StateError('worker failed'); return 'unexpected'; },
+      execute: (task, dependencies) async { if (task.id == 'first') throw StateError('worker failed'); return 'unexpected'; },
     );
     final results = await orchestrator.run([
       const SubagentTask(id: 'first', title: 'First', prompt: 'First'),
@@ -42,7 +46,7 @@ void main() {
   });
 
   test('rejects duplicate ids, unknown dependencies and dependency cycles', () {
-    final o = SubagentOrchestrator(onEvent: (_) {}, execute: (_) async => 'ok');
+    final o = SubagentOrchestrator(parentRequestId: 'request-3', conversationId: 'chat-3', onEvent: (_) {}, execute: (task, dependencies) async => 'ok');
     expect(() => o.run([
       const SubagentTask(id: 'x', title: 'X', prompt: 'x'),
       const SubagentTask(id: 'x', title: 'X2', prompt: 'x2'),
@@ -60,7 +64,7 @@ void main() {
     final started = Completer<void>();
     final release = Completer<void>();
     late SubagentOrchestrator o;
-    o = SubagentOrchestrator(maxConcurrency: 1, onEvent: (_) {}, execute: (_) async {
+    o = SubagentOrchestrator(parentRequestId: 'request-4', conversationId: 'chat-4', maxConcurrency: 1, onEvent: (_) {}, execute: (task, dependencies) async {
       started.complete();
       await release.future;
       return 'done';
