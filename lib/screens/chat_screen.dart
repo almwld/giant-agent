@@ -20,6 +20,7 @@ import 'settings_screen.dart';
 import '../models/chat_session.dart';
 import 'dart:convert';
 import 'package:speech_to_text/speech_to_text.dart';
+import '../services/voice_output_service.dart';
 import '../services/openai_compatible_provider.dart';
 import '../services/gemini_provider.dart';
 import '../services/model_provider_settings.dart';
@@ -63,6 +64,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final Terminal _terminal = Terminal(maxLines: 5000);
   bool _terminalHasActivity = false;
   final SpeechToText _speech = SpeechToText();
+  final VoiceOutputService _voiceOutput = VoiceOutputService.instance;
   bool _isListening = false;
   bool _webSearchEnabled = false;
   bool _includeGithubContext = false;
@@ -1379,6 +1381,8 @@ class _ChatScreenState extends State<ChatScreen> {
       _isLoading = _pendingChatRequests > 0;
     });
     await _saveMessage(response, false, requestId: requestId);
+    // Keep the generated answer visible in chat while its Arabic audio plays.
+    await _voiceOutput.speak(response);
     _scrollToBottom();
   }
 
@@ -2056,6 +2060,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _agentEventSubscription?.cancel();
     _nativeAgentEventSubscription?.cancel();
     _speech.stop();
+    _voiceOutput.stop();
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
