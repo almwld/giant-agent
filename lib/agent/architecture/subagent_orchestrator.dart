@@ -232,6 +232,8 @@ class SubagentOrchestrator {
         'task_id': task.id,
         'agent_type': task.agentType,
         'title': task.title,
+        'task_prompt': task.prompt,
+        'depends_on': task.dependsOn,
         'type': type,
         'status': status,
         if (details != null) 'details': details,
