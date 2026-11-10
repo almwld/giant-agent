@@ -5,6 +5,8 @@ import '../services/llama_service.dart';
 import '../agent/architecture/agent_event_bus.dart';
 import 'agent_memory_service.dart';
 import 'openai_compatible_provider.dart';
+import 'gemini_provider.dart';
+import 'model_provider_settings.dart';
 import '../tools/tool_manager.dart';
 
 class ModelService {
@@ -318,25 +320,29 @@ class ModelService {
     required int maxTokens,
     required double temperature,
   }) async {
-    if (await OpenAICompatibleProvider.instance.isEnabled()) {
-      return OpenAICompatibleProvider.instance.generate(
-        prompt,
-        maxTokens: maxTokens,
-        temperature: temperature,
-      );
+    final mode = await ModelProviderSettings.instance.getMode();
+    switch (mode) {
+      case ModelProviderMode.local:
+        if (!await _llama.isLoaded()) {
+          throw StateError('لم يتم تحميل نموذج GGUF المحلي. حمّل نموذجاً من قائمة النماذج أو اختر مزوّداً سحابياً.');
+        }
+        return _llama.generate(prompt, maxTokens: maxTokens, temperature: temperature);
+      case ModelProviderMode.openRouter:
+        return OpenAICompatibleProvider.instance.generate(
+          prompt, maxTokens: maxTokens, temperature: temperature,
+        );
+      case ModelProviderMode.gemini:
+        return GeminiProvider.instance.generate(
+          prompt, maxTokens: maxTokens, temperature: temperature,
+        );
     }
-    return _llama.generate(
-      prompt,
-      maxTokens: maxTokens,
-      temperature: temperature,
-    );
   }
 
   Future<String> _processInput(String input) async {
     _cancelRequested = false;
     input = _boundPrompt(input);
-    if (!hasActiveModel() && !await OpenAICompatibleProvider.instance.isEnabled()) {
-      return '⚠️ اختر نموذج GGUF محلياً أو فعّل مزوّد API خارجي متوافقاً مع OpenAI من شريط الإدخال.';
+    if (await ModelProviderSettings.instance.getMode() == ModelProviderMode.local && !await _llama.isLoaded()) {
+      return '⚠️ لم يتم تحميل نموذج GGUF المحلي. حمّل نموذجاً أو اختر OpenRouter أو Gemini من إعدادات المزوّد.';
     }
     final toolCatalog = ToolManager().promptCatalog;
     final history = StringBuffer('''أنت Giant Agent، مساعد ذكي متعدد المصادر. أجب بلغة المستخدم.
@@ -392,7 +398,7 @@ $toolCatalog
       }
       return 'وصل الوكيل إلى الحد الآمن ($maxToolCalls استدعاءات أدوات) دون إنهاء المهمة. أعد الطلب لمتابعة العمل من سياق المحادثة.';
     } catch (e) {
-      return 'تعذر تشغيل النموذج المحلي: $e';
+      return 'تعذر إكمال الطلب: $e';
     }
   }
 }
