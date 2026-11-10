@@ -9,10 +9,12 @@ class GainPtyClient {
   GainPtyClient({
     MethodChannel? methodChannel,
     EventChannel? eventChannel,
+    Stream<dynamic>? eventStream,
   })  : _methodChannel =
             methodChannel ?? const MethodChannel('giant_agent/pty'),
         _eventChannel =
-            eventChannel ?? const EventChannel('giant_agent/pty/events') {
+            eventChannel ?? const EventChannel('giant_agent/pty/events'),
+        _eventStream = eventStream {
     _decoderSubscription = _rawBytes.stream
         .transform(const Utf8Decoder(allowMalformed: true))
         .listen(_output.add, onError: _output.addError);
@@ -20,6 +22,7 @@ class GainPtyClient {
 
   final MethodChannel _methodChannel;
   final EventChannel _eventChannel;
+  final Stream<dynamic>? _eventStream;
   final StreamController<List<int>> _rawBytes =
       StreamController<List<int>>.broadcast();
   final StreamController<String> _output =
@@ -66,7 +69,7 @@ class GainPtyClient {
 
     // Listen before native start: the shell may emit bytes before MethodChannel
     // returns the session handle.
-    _eventSubscription ??= _eventChannel.receiveBroadcastStream().listen(
+    _eventSubscription ??= (_eventStream ?? _eventChannel.receiveBroadcastStream()).listen(
       (dynamic value) {
         if (value is! Map) return;
         final event = Map<dynamic, dynamic>.from(value);
@@ -143,12 +146,30 @@ class GainPtyClient {
       throw StateError('Gain PTY session is not running.');
     }
     if (bytes.isEmpty) return;
-    final written = await _methodChannel.invokeMethod<int>(
-      'write',
-      <String, Object>{'handle': handle, 'input': bytes},
-    );
-    if (written != bytes.length) {
-      throw StateError('PTY accepted ${written ?? 0}/${bytes.length} bytes; input was not retried.');
+    var offset = 0;
+    var attempts = 0;
+    while (offset < bytes.length) {
+      final remaining = Uint8List.sublistView(bytes, offset);
+      final written = await _methodChannel.invokeMethod<int>(
+        'write',
+        <String, Object>{'handle': handle, 'input': remaining},
+      );
+      if (written == null || written <= 0 || written > remaining.length) {
+        await stop();
+        throw StateError(
+          'PTY accepted $offset/${bytes.length} bytes; the remaining input was not sent. The session was stopped to avoid a partial command lingering in the shell.',
+        );
+      }
+      // Retry only the unsent suffix. Never resend bytes already accepted by
+      // the PTY, because that could duplicate a command or keystroke.
+      offset += written;
+      attempts++;
+      if (offset < bytes.length && attempts >= 3) {
+        await stop();
+        throw StateError(
+          'PTY accepted $offset/${bytes.length} bytes after $attempts writes. The session was stopped to avoid a partial command lingering in the shell.',
+        );
+      }
     }
   }
 
