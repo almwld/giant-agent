@@ -134,7 +134,9 @@ class AgentService {
           .catchError((Object _) {});
       _journalTail = _journalTail
           .then((_) async {
-        if ((event['task_id']?.toString() ?? '').isNotEmpty) {
+        final eventType = event['type']?.toString() ?? '';
+        if ((event['task_id']?.toString() ?? '').isNotEmpty &&
+            eventType.startsWith('subagent_')) {
           await _store.recordSubagentEvent(event);
         }
         await _store.appendRequestEvent(event);
