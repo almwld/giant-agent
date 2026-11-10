@@ -150,6 +150,7 @@ void main() {
       'uncertain',
     );
 
+    await manager.recordResumeIntent('task-recovery-1');
     await manager.markRunning('task-recovery-1');
     await manager.markCompleted('task-recovery-1', 'النتيجة النهائية');
     final completed = manager.getTasks().single;
@@ -166,7 +167,8 @@ void main() {
         'step_started',
         'step_interrupted',
         'task_paused',
-        'task_started',
+        'task_resume_requested',
+        'task_resumed',
         'step_started',
         'step_completed',
         'task_completed',
