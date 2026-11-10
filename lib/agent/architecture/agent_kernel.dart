@@ -454,7 +454,7 @@ ${result.output ?? result.error ?? 'لا توجد نتيجة نصية.'}
         };
 
         final isolatedConversationId =
-            '${conversationId}::subagent::${task.id}';
+            '$conversationId::subagent::${task.id}';
         final subagentPrompt = '''
 أنت وكيل فرعي مستقل من نوع ${task.agentType}.
 المهمة الأصلية للمستخدم:
