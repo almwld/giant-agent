@@ -136,6 +136,9 @@ class AgentService {
     // Running requests are reconciled as interrupted; only never-started queued
     // requests may continue automatically, under a foreground service.
     await _store.reconcileAfterProcessRestart();
+    // Reconcile child snapshots before the durable kernel starts draining the
+    // queue, so newly launched children cannot be mistaken for old work.
+    await _store.reconcileInterruptedSubagents();
     if (await _store.hasActiveRequests()) {
       await AgentBackgroundExecutionService.instance.beginTask(
         'متابعة قائمة المهام المحفوظة بعد إعادة تشغيل التطبيق',
@@ -143,8 +146,6 @@ class AgentService {
       unawaited(_releaseRecoveredQueueForegroundWhenIdle());
     }
     await _durableKernel.initialize();
-    // Interrupted child work is made visible for explicit recovery, never replayed.
-    await _store.reconcileInterruptedSubagents();
     _initialized = true;
   }
 
