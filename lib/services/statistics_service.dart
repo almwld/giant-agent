@@ -21,7 +21,7 @@ class StatisticsService {
             event_value TEXT,
             timestamp INTEGER
           )
-        ''');
+        ''') ?? <Map<String, Object?>>[];
       },
     );
   }
@@ -36,7 +36,7 @@ class StatisticsService {
   
   Future<Map<String, dynamic>> getStatistics() async {
     final totalEvents = Sqflite.firstIntValue(
-      await _db?.rawQuery('SELECT COUNT(*) FROM stats')
+      await _db?.rawQuery('SELECT COUNT(*) FROM stats') ?? <Map<String, Object?>>[]
     ) ?? 0;
     
     final todayEvents = Sqflite.firstIntValue(
