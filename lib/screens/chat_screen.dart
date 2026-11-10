@@ -69,6 +69,8 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _finalizingVoiceInput = false;
   bool _voiceOrbVisible = false;
   bool _voiceRequestActive = false;
+  bool _speechInitialized = false;
+  bool _voiceListenStarted = false;
   AgentState _voiceOrbState = AgentState.idle;
   bool _webSearchEnabled = false;
   bool _includeGithubContext = false;
@@ -1644,6 +1646,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _stopVoiceInteraction() async {
     _finalizingVoiceInput = true;
     _voiceRequestActive = false;
+    _voiceListenStarted = false;
     try {
       await _speech.stop();
       await _voiceOutput.stop();
@@ -1739,33 +1742,38 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _startVoiceRecognition() async {
     if (!mounted || !_voiceOrbVisible) return;
     _finalizingVoiceInput = false;
-    var voiceListeningStarted = false;
 
-    final available = await _speech.initialize(
-      onStatus: (_) {
-        if (!mounted || !_voiceOrbVisible) return;
-        final listening = _speech.isListening;
-        setState(() => _isListening = listening);
-        if (voiceListeningStarted && !listening && !_finalizingVoiceInput) {
+    var available = _speechInitialized;
+    if (!available) {
+      available = await _speech.initialize(
+        onStatus: (_) {
+          if (!mounted || !_voiceOrbVisible) return;
+          final listening = _speech.isListening;
+          setState(() => _isListening = listening);
+          if (_voiceListenStarted && !listening && !_finalizingVoiceInput) {
+            _voiceListenStarted = false;
+            setState(() {
+              _isListening = false;
+              _voiceOrbVisible = false;
+              _voiceOrbState = AgentState.idle;
+            });
+          }
+        },
+        onError: (error) {
+          if (!mounted) return;
+          _voiceListenStarted = false;
           setState(() {
             _isListening = false;
             _voiceOrbVisible = false;
-            _voiceOrbState = AgentState.idle;
+            _voiceOrbState = AgentState.error;
           });
-        }
-      },
-      onError: (error) {
-        if (!mounted) return;
-        setState(() {
-          _isListening = false;
-          _voiceOrbVisible = false;
-          _voiceOrbState = AgentState.error;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('تعذر تشغيل الإدخال الصوتي: ${error.errorMsg}')),
-        );
-      },
-    );
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('تعذر تشغيل الإدخال الصوتي: ${error.errorMsg}')),
+          );
+        },
+      );
+      _speechInitialized = available;
+    }
 
     if (!available || !mounted || !_voiceOrbVisible) {
       if (mounted && _voiceOrbVisible) {
@@ -1786,7 +1794,7 @@ class _ChatScreenState extends State<ChatScreen> {
       final arabic = locales
           .where((item) => item.localeId.toLowerCase().startsWith('ar'))
           .toList();
-      voiceListeningStarted = true;
+      _voiceListenStarted = true;
       await _speech.listen(
         localeId: arabic.isNotEmpty ? arabic.first.localeId : null,
         listenFor: const Duration(seconds: 60),
@@ -1808,7 +1816,7 @@ class _ChatScreenState extends State<ChatScreen> {
           });
           if (result.finalResult && !_finalizingVoiceInput) {
             _finalizingVoiceInput = true;
-            voiceListeningStarted = false;
+            _voiceListenStarted = false;
             _voiceRequestActive = true;
             final stopListening = _speech.stop();
             setState(() {
@@ -1851,6 +1859,7 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     } catch (error) {
       if (!mounted) return;
+      _voiceListenStarted = false;
       setState(() {
         _isListening = false;
         _voiceOrbVisible = false;
