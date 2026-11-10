@@ -1465,6 +1465,9 @@ class _ChatScreenState extends State<ChatScreen> {
     await _saveMessage(response, false, requestId: requestId);
     // The text reply is already rendered; audio playback starts without
     // blocking the chat or changing the active conversation.
+    if (mounted && _voiceOrbVisible) {
+      setState(() => _voiceOrbState = AgentState.speaking);
+    }
     try {
       await _voiceOutput.speak(response);
     } catch (_) {
@@ -1472,6 +1475,10 @@ class _ChatScreenState extends State<ChatScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('تعذر تشغيل الصوت. تحقق من تثبيت صوت اللغة العربية على الجهاز.')),
         );
+      }
+    } finally {
+      if (mounted && _voiceOrbVisible) {
+        setState(() => _voiceOrbState = AgentState.listening);
       }
     }
     _scrollToBottom();
