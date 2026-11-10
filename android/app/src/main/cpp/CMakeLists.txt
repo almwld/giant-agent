@@ -3,6 +3,11 @@ project(giant_agent_llama LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_library(log-lib log)
+
+# Gain PTY is independent from llama.cpp and is built for every configured ABI.
+add_library(gain_pty SHARED gain_pty.c)
+target_link_libraries(gain_pty ${log-lib})
+target_compile_options(gain_pty PRIVATE -Wall -Wextra -Wno-unused-parameter)
 if(ANDROID_ABI STREQUAL "arm64-v8a")
   include(FetchContent)
   FetchContent_Declare(llama_cpp
