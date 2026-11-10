@@ -497,7 +497,6 @@ $toolCatalog
               'name': action.toolName,
               'arguments': action.arguments,
             };
-            final proposedSignature = jsonEncode(proposed);
             final normalizedProposedSignature = jsonEncode(<String, dynamic>{
               'name': action.toolName,
               'arguments': action.arguments,
