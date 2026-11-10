@@ -201,8 +201,11 @@ class ModelService {
     return _llama.cancel();
   }
 
-  Future<bool> shareWorkspace() async {
-    final result = await _agentTools.invokeMapMethod<String, dynamic>('shareWorkspace');
+  Future<bool> shareWorkspace({required List<String> paths}) async {
+    if (paths.isEmpty) throw ArgumentError('Select at least one output file to share.');
+    final result = await _agentTools.invokeMapMethod<String, dynamic>(
+      'shareWorkspace', <String, Object?>{'paths': paths},
+    );
     if (result == null || result['ok'] != true) {
       throw PlatformException(code: 'WORKSPACE_SHARE_FAILED', message: result?['error']?.toString() ?? 'Workspace sharing failed.');
     }
