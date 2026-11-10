@@ -19,6 +19,9 @@
 - Cloud workers carry request-scoped Zone context for event correlation and
   cancellation. A child cancellation does not cancel its siblings; parent
   cancellation is propagated to all workers.
+- Tool/file events inherit the active child ID and agent role, so artifact
+  records and Timeline operations can be traced to the worker that produced them
+  without allowing tool events to overwrite the child's lifecycle snapshot.
 - Workspace tool effects and their independent verification share one FIFO
   critical section. This prevents concurrent file mutations from racing with
   verification, while independent cloud inference requests can overlap.
