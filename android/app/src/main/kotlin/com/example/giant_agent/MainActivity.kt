@@ -578,7 +578,7 @@ class MainActivity: FlutterActivity() {
     private val textWorkspaceExtensions = setOf(
         "dart", "md", "txt", "json", "yaml", "yml", "html", "css", "js", "kt", "java",
         "cpp", "h", "c", "cc", "hpp", "ts", "tsx", "jsx", "py", "go", "rs", "sql",
-        "sh", "xml", "toml", "gradle"
+        "sh", "xml", "toml", "gradle", "svg"
     )
     private val workspaceExtensions = textWorkspaceExtensions + setOf(
         "png", "jpg", "jpeg", "webp", "gif", "bmp", "svg", "pdf", "doc", "docx",
