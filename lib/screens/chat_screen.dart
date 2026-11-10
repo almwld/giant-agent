@@ -24,6 +24,7 @@ import '../services/voice_output_service.dart';
 import '../services/openai_compatible_provider.dart';
 import '../services/gemini_provider.dart';
 import '../services/model_provider_settings.dart';
+import '../services/providers/zero_config_provider.dart';
 import '../services/github_repository_service.dart';
 import '../services/cloud_storage_service.dart';
 import '../services/web_search_service.dart';
@@ -1577,12 +1578,16 @@ class _ChatScreenState extends State<ChatScreen> {
     final keyController = TextEditingController(
       text: mode == ModelProviderMode.gemini
           ? (await GeminiProvider.instance.getApiKey() ?? '')
-          : (await OpenAICompatibleProvider.instance.getApiKey() ?? ''),
+          : mode == ModelProviderMode.openRouter
+              ? (await OpenAICompatibleProvider.instance.getApiKey() ?? '')
+              : '',
     );
     final modelController = TextEditingController(
       text: mode == ModelProviderMode.gemini
           ? await GeminiProvider.instance.getModel()
-          : await OpenAICompatibleProvider.instance.getModel(),
+          : mode == ModelProviderMode.openRouter
+              ? await OpenAICompatibleProvider.instance.getModel()
+              : '',
     );
     var busy = false;
     var error = '';
@@ -1619,6 +1624,10 @@ class _ChatScreenState extends State<ChatScreen> {
                     value: ModelProviderMode.gemini,
                     child: Text('سحابي — Google Gemini'),
                   ),
+                  DropdownMenuItem(
+                    value: ModelProviderMode.zeroConfig,
+                    child: Text('مجاني تلقائي — بدون مفتاح'),
+                  ),
                 ],
                 onChanged: busy ? null : (value) async {
                   if (value == null) return;
@@ -1644,7 +1653,14 @@ class _ChatScreenState extends State<ChatScreen> {
                   });
                 },
               ),
-              if (mode != ModelProviderMode.local) ...[
+              if (mode == ModelProviderMode.zeroConfig) ...[
+                const SizedBox(height: 12),
+                const Text(
+                  'اتصال Pollinations المباشر بدون مفتاح أو معرّف نموذج. يُستخدم للمحادثة النصية فقط؛ وضع الوكيل والأدوات غير متاحين عبر هذا المسار.',
+                  style: TextStyle(color: GiantPalette.muted, fontSize: 12),
+                ),
+              ],
+              if (mode != ModelProviderMode.local && mode != ModelProviderMode.zeroConfig) ...[
                 const SizedBox(height: 12),
                 Text(
                   mode == ModelProviderMode.gemini
@@ -1733,6 +1749,10 @@ class _ChatScreenState extends State<ChatScreen> {
                       }
                       await settings.setMode(ModelProviderMode.gemini);
                       break;
+                    case ModelProviderMode.zeroConfig:
+                      await settings.setMode(ModelProviderMode.zeroConfig);
+                      await ZeroConfigProvider.instance.testConnection();
+                      break;
                   }
                   if (mounted) {
                     setState(() => _externalProviderEnabled = mode != ModelProviderMode.local);
@@ -1743,13 +1763,14 @@ class _ChatScreenState extends State<ChatScreen> {
                       ModelProviderMode.local => 'تم اختيار النموذج المحلي.',
                       ModelProviderMode.openRouter => 'تم اختيار OpenRouter: ${modelController.text.trim()}',
                       ModelProviderMode.gemini => 'تم اختيار Gemini: ${modelController.text.trim()}',
+                      ModelProviderMode.zeroConfig => 'تم حفظ المزود المجاني واختبار الاتصال بنجاح.',
                     })),
                   );
                 } catch (e) {
                   updateDialog(() { busy = false; error = e.toString(); });
                 }
               },
-              child: const Text('حفظ واستخدام'),
+              child: Text(mode == ModelProviderMode.zeroConfig ? 'حفظ واختبار' : 'حفظ واستخدام'),
             ),
           ],
         ),
