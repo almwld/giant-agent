@@ -466,16 +466,16 @@ class AgentWorkflowScreen extends StatelessWidget {
               onPressed: () async {
                 try {
                   await AgentService.instance.shareWorkspace(exportPaths);
-                if (!context.mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                  content: Text('تم فتح نافذة مشاركة ملفات المهمة.'),
-                ));
-              } catch (error) {
-                if (!context.mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('تعذر تصدير المخرجات: $error')),
-                );
-              }
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('تم فتح نافذة مشاركة ملفات المهمة.'),
+                  ));
+                } catch (error) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('تعذر تصدير المخرجات: $error')),
+                  );
+                }
               },
               icon: const Icon(Icons.download_rounded, size: 17),
               label: const Text('مشاركة / حفظ ملفات المهمة المحددة'),
