@@ -44,7 +44,7 @@ class TaskManager {
     // Compatibility import is isolated in the data layer. TaskManager itself
     // never reads or writes SharedPreferences.
     await _store.migrateLegacyTaskSnapshot();
-    await TaskRecoveryEngine(_store).recoverInterruptedTasks();
+    await RecoveryEngine(_store).recoverInterruptedTasks();
     final persisted = await _store.getTasks();
     _tasks
       ..clear()
