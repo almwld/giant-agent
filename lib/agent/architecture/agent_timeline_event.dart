@@ -15,6 +15,8 @@ class AgentTimelineEvent {
     this.details,
     this.taskId,
     this.agentType,
+    this.taskPrompt,
+    this.dependsOn = const <String>[],
   });
 
   final String id;
@@ -29,6 +31,8 @@ class AgentTimelineEvent {
   final String? details;
   final String? taskId;
   final String? agentType;
+  final String? taskPrompt;
+  final List<String> dependsOn;
 
   Map<String, dynamic> toMap() => <String, dynamic>{
         'id': id,
@@ -43,6 +47,8 @@ class AgentTimelineEvent {
         if (details != null && details!.isNotEmpty) 'details': details,
         if (taskId != null && taskId!.isNotEmpty) 'task_id': taskId,
         if (agentType != null && agentType!.isNotEmpty) 'agent_type': agentType,
+        if (taskPrompt != null && taskPrompt!.isNotEmpty) 'task_prompt': taskPrompt,
+        if (dependsOn.isNotEmpty) 'depends_on': dependsOn,
       };
 
   factory AgentTimelineEvent.fromMap(Map<String, dynamic> map) {
@@ -67,6 +73,8 @@ class AgentTimelineEvent {
       details: map['details']?.toString(),
       taskId: map['task_id']?.toString(),
       agentType: map['agent_type']?.toString(),
+      taskPrompt: map['task_prompt']?.toString(),
+      dependsOn: (map['depends_on'] as List?)?.map((item) => item.toString()).toList(growable: false) ?? const <String>[],
     );
   }
 }
