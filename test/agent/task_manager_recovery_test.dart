@@ -58,7 +58,7 @@ void main() {
       databaseProvider: () => databaseFactoryFfi.openDatabase(
         inMemoryDatabasePath,
         options: OpenDatabaseOptions(
-          version: 2,
+          version: 3,
           onCreate: (db, version) async {
             await db.execute('''
               CREATE TABLE agent_requests (
@@ -81,11 +81,22 @@ void main() {
                 row_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 id TEXT NOT NULL UNIQUE,
                 request_id TEXT,
+                task_id TEXT,
                 type TEXT NOT NULL,
                 status TEXT NOT NULL,
                 payload_json TEXT NOT NULL,
                 created_at TEXT NOT NULL
               )
+            ''');
+            await db.execute('''
+              CREATE TRIGGER agent_events_no_update
+              BEFORE UPDATE ON agent_events
+              BEGIN SELECT RAISE(ABORT, 'agent_events is append-only'); END
+            ''');
+            await db.execute('''
+              CREATE TRIGGER agent_events_no_delete
+              BEFORE DELETE ON agent_events
+              BEGIN SELECT RAISE(ABORT, 'agent_events is append-only'); END
             ''');
             await db.execute('''
               CREATE TABLE agent_tasks (
@@ -108,7 +119,7 @@ void main() {
     final recovered = manager.getTasks().single;
     expect(recovered['status'], 'paused');
     expect(recovered['recovery_note'], isNotEmpty);
-    expect((recovered['steps'] as List).single['status'], 'pending');
+    expect((recovered['steps'] as List).single['status'], 'uncertain');
     expect(manager.getProgress(), 'متوقف مؤقتاً — قابل للاستئناف');
 
     final preferences = await SharedPreferences.getInstance();
@@ -121,7 +132,12 @@ void main() {
     expect(persistedTask['id'], 'task-recovery-1');
     expect(persistedTask['status'], 'paused');
 
-    await manager.markRunning('task-recovery-1');
+    final recoveryEvents = await store.taskEvents('task-recovery-1');
+    expect(recoveryEvents.map((event) => event.type), contains('task_interrupted_on_restart'));
+    expect(recoveryEvents.last.payload['replay'], false);
+    expect(recoveryEvents.last.payload['policy'], 'manual_reconciliation');
+
+    await manager.markRunning('task-recovery-1', requestId: 'request-recovery-1');
     expect(manager.getTasks().single['status'], 'running');
 
     await manager.markInterrupted(
@@ -131,7 +147,7 @@ void main() {
     expect(manager.getTasks().single['status'], 'paused');
     expect(
       (manager.getTasks().single['steps'] as List).single['status'],
-      'pending',
+      'uncertain',
     );
 
     await manager.markRunning('task-recovery-1');
@@ -141,6 +157,21 @@ void main() {
     expect(completed['result'], 'النتيجة النهائية');
     expect((completed['steps'] as List).single['status'], 'completed');
 
+    final lifecycleEvents = await store.taskEvents('task-recovery-1');
+    expect(
+      lifecycleEvents.map((event) => event.type),
+      containsAllInOrder([
+        'task_interrupted_on_restart',
+        'task_started',
+        'step_started',
+        'step_interrupted',
+        'task_paused',
+        'task_started',
+        'step_started',
+        'step_completed',
+        'task_completed',
+      ]),
+    );
     final homeTask = await manager.createTask(
       'مهمة الشاشة الرئيسية',
       conversationId: 'home',
