@@ -39,6 +39,11 @@
   service for the duration of active work. The native notification is updated
   with the current lifecycle step, and a reference count prevents one queued
   request from stopping the service while another remains active.
+- `AgentRuntime` retains the Activity's single `FlutterEngine` at process scope;
+  `MainActivity` reuses it after Activity recreation and does not destroy it on detach.
+  This keeps the same Dart isolate and shared `ModelService`/`LlamaService` facade
+  alive while the foreground service protects the process. No second inference
+  runtime is created for background work.
 - If Android recreates the foreground service after process death, its
   notification explicitly requests recovery; it never claims that model work
   resumed. SQLite reconciliation marks in-flight requests/children interrupted
@@ -69,10 +74,10 @@ Kimi Agent Swarm. Remaining work includes:
 1. Richer subagent management: pause/resume controls and explicit child-level
    retry policy for completed work. The Timeline now exposes explicit recovery
    for interrupted/failed children with a side-effect review decision.
-3. A dedicated headless Flutter execution engine with lifecycle ownership
-   independent of the Activity. Current foreground execution keeps the app
-   process important and reports progress, while process death is recovered
-   safely rather than replayed; it is not yet a detached headless runtime.
+3. Device/OEM-specific background restrictions, force-stop behavior, and
+   battery-optimization behavior still require deployment validation. A force
+   stop or process death terminates active inference; SQLite recovery then marks
+   it interrupted and requires explicit user action rather than replaying it.
 4. True parallel model execution. It must not be enabled by creating duplicate
    LlamaService/JNI runtimes or bypassing the shared runtime lock.
 5. End-to-end device validation of tool permissions, cancellation, restart
