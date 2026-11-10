@@ -346,9 +346,13 @@ class AgentKernel {
       return _models.processInput(prompt, conversationId: conversationId);
     }
 
-    final isSoftwareTask = RegExp(
-      r'(كود|برمج|تطبيق|موقع|برنامج|ملف|نظام|قاعدة|واجهة|نواة|ذاكرة|وكيل|تخطيط|استعادة|تكامل|دورة عمل|api|flutter|dart|python|javascript|software|code|app|website|project|refactor|debug|fix|kernel|memory|agent|planner|recovery|integration|workflow)',
+    final softwareScope = RegExp(
+      r'(كود|تطبيق|موقع|برنامج|مستودع|نظام|قاعدة|واجهة|نواة|api|flutter|dart|javascript|software|code|app|website|project|repository|kernel|agent|workflow)',
     ).hasMatch(prompt.toLowerCase());
+    final implementationIntent = RegExp(
+      r'(برمج|أنشئ|انشئ|ابن|طور|نفذ|صمم|اكتب كود|أصلح|اصلح|عدّل|عدل|ادمج|حدّث|حدث|واصل|اكمل|أكمل|استكمل|implement|create|build|develop|refactor|debug|fix|write code|integrate|modify|complete|finish)',
+    ).hasMatch(prompt.toLowerCase());
+    final isSoftwareTask = softwareScope && implementationIntent;
 
     _emit(
       requestId: requestId,
