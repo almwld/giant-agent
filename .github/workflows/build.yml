@@ -7,12 +7,14 @@ on:
       - feat/integrated-agent-completion
       - feat/consolidate-sqlite-runtime-v2
       - integration/giant-agent-stabilization
+      - fix/voice-terminal-approval-stabilization
       - feat/chat-bubble-resize-teal-toasts
   pull_request:
     branches:
       - main
       - feat/integrated-agent-completion
       - feat/consolidate-sqlite-runtime-v2
+      - integration/giant-agent-stabilization
   workflow_dispatch:
 
 permissions:
