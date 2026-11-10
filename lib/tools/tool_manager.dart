@@ -72,7 +72,10 @@ class ToolManager {
 
   /// Text inserted into the model system prompt from the same definitions
   /// used by runtime validation.
-  String get promptCatalog => _definitions
+  String get promptCatalog => promptCatalogFor(getAvailableTools().toSet());
+
+  String promptCatalogFor(Set<String> allowedTools) => _definitions
+      .where((tool) => allowedTools.contains(tool.name))
       .map((tool) => '- ${tool.name}: ${tool.description}\n  مثال: ${tool.example}')
       .join('\n');
 }
