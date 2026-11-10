@@ -355,15 +355,79 @@ class _AiVoiceAssistantScreenState extends State<AiVoiceAssistantScreen> {
   bool get _isArabic =>
       AppPreferences.instance.locale.languageCode == 'ar';
 
+  late final Future<bool> Function(String command)? _previousTerminalApproval;
+
   @override
   void initState() {
     super.initState();
+    // The chat screen may be underneath this route and owns the previous
+    // approval handler. Install a voice-screen handler while this route is
+    // active, then restore the previous owner when this route is disposed.
+    _previousTerminalApproval = _modelService.requestTerminalApproval;
+    _modelService.requestTerminalApproval = _requestTerminalApproval;
     _agentController = AgentController();
     _agentController.initialize();
   }
 
+  Future<bool> _requestTerminalApproval(String command) async {
+    if (!mounted) return false;
+    final approved = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('السماح بتنفيذ أمر طرفية؟'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'سيُنفذ النص التالي حرفياً داخل Android shell بصلاحيات التطبيق الحالية. لا توجد صلاحيات root. لا توافق إلا إذا كنت تفهم الأمر ومصدره.',
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF111827),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: SelectableText(
+                    command,
+                    style: const TextStyle(
+                      color: Colors.greenAccent,
+                      fontFamily: 'monospace',
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('رفض'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('تنفيذ هذا الأمر مرة واحدة'),
+          ),
+        ],
+      ),
+    );
+    return approved == true && mounted;
+  }
+
   @override
   void dispose() {
+    // Do not erase a newer handler installed by another active route.
+    if (_modelService.requestTerminalApproval == _requestTerminalApproval) {
+      _modelService.requestTerminalApproval = _previousTerminalApproval;
+    }
     _agentController.dispose();
     _textController.dispose();
     _scrollController.dispose();
