@@ -295,7 +295,7 @@ class AgentService {
             await _store.completeInterruptedRequest(parent.id, finalText);
             return finalText;
           }
-          return '$finalText\\n\\nلم تُغلق المهمة بعد: ${collection.summary}';
+          return '$finalText\n\nلم تُغلق المهمة بعد: ${collection.summary}';
         }
         await _outputEngine.finalize(
           requestId: parent.id,
