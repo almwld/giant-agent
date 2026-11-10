@@ -287,9 +287,9 @@ class OutputEngine {
 
   String _kindFor(String path) {
     final ext = _extension(path);
-    if ({'png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'}.contains(ext)) return 'image';
+    if ({'png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'}.contains(ext)) return 'image';
     if ({'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp'}.contains(ext)) return 'binary_document';
-    if ({'dart', 'py', 'js', 'ts', 'tsx', 'jsx', 'html', 'css', 'json', 'xml', 'yaml', 'yml', 'sql', 'sh', 'kt', 'java', 'swift', 'go', 'rs', 'c', 'cpp', 'h', 'md', 'txt', 'csv', 'toml', 'gradle'}.contains(ext)) return 'code_or_text';
+    if ({'dart', 'py', 'js', 'ts', 'tsx', 'jsx', 'html', 'css', 'json', 'xml', 'yaml', 'yml', 'sql', 'sh', 'kt', 'java', 'swift', 'go', 'rs', 'c', 'cpp', 'h', 'md', 'txt', 'csv', 'toml', 'gradle', 'svg'}.contains(ext)) return 'code_or_text';
     return 'file';
   }
 
