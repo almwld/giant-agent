@@ -3,30 +3,47 @@ import 'package:giant_agent_x/services/openai_compatible_provider.dart';
 
 void main() {
   group('OpenAICompatibleProvider.chatCompletionsUri', () {
-    test('appends chat completions to a versioned base URL', () {
+    test('builds the official OpenRouter chat completions endpoint', () {
       expect(
-        OpenAICompatibleProvider.chatCompletionsUri('https://api.example.com/v1'),
-        Uri.parse('https://api.example.com/v1/chat/completions'),
+        OpenAICompatibleProvider.chatCompletionsUri(OpenAICompatibleProvider.defaultBaseUrl),
+        Uri.parse('https://openrouter.ai/api/v1/chat/completions'),
       );
     });
 
-    test('does not duplicate an existing chat completions path', () {
+    test('rejects arbitrary OpenAI-compatible providers', () {
       expect(
-        OpenAICompatibleProvider.chatCompletionsUri(
-          'https://api.example.com/v1/chat/completions/',
-        ),
-        Uri.parse('https://api.example.com/v1/chat/completions'),
+        () => OpenAICompatibleProvider.chatCompletionsUri('https://api.example.com/v1'),
+        throwsArgumentError,
       );
     });
 
-    test('supports providers with a custom API prefix', () {
+    test('rejects Gemini native endpoint from the OpenRouter adapter', () {
       expect(
-        OpenAICompatibleProvider.chatCompletionsUri(
+        () => OpenAICompatibleProvider.chatCompletionsUri(
           'https://generativelanguage.googleapis.com/v1beta/openai',
         ),
-        Uri.parse(
-          'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
-        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('extracts plain text response content', () {
+      expect(
+        OpenAICompatibleProvider.extractText({
+          'choices': [{'message': {'content': 'Hello'}}]
+        }),
+        'Hello',
+      );
+    });
+
+    test('extracts multimodal text parts', () {
+      expect(
+        OpenAICompatibleProvider.extractText({
+          'choices': [{'message': {'content': [
+            {'type': 'text', 'text': 'first'},
+            {'type': 'text', 'text': 'second'},
+          ]}}]
+        }),
+        'first\nsecond',
       );
     });
   });
