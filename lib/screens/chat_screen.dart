@@ -993,6 +993,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _models = _modelService.getModels();
       _activeModel = _modelService.getActiveModel();
       _externalProviderEnabled = remoteEnabled;
+      if (selectedMode == ModelProviderMode.zeroConfig) _agentModeEnabled = false;
     });
   }
 
@@ -1220,6 +1221,12 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _setAgentMode(bool enabled) async {
     if (_isLoading) return;
+    if (enabled && await ModelProviderSettings.instance.getMode() == ModelProviderMode.zeroConfig) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('وضع الوكيل والأدوات غير مدعومين في المزود المجاني التلقائي.')),
+      );
+      return;
+    }
     setState(() => _agentModeEnabled = enabled);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('giant_agent_mode_enabled', enabled);
@@ -1755,7 +1762,14 @@ class _ChatScreenState extends State<ChatScreen> {
                       break;
                   }
                   if (mounted) {
-                    setState(() => _externalProviderEnabled = mode != ModelProviderMode.local);
+                    setState(() {
+                      _externalProviderEnabled = mode != ModelProviderMode.local;
+                      if (mode == ModelProviderMode.zeroConfig) _agentModeEnabled = false;
+                    });
+                  }
+                  if (mode == ModelProviderMode.zeroConfig) {
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.setBool('giant_agent_mode_enabled', false);
                   }
                   if (dialogContext.mounted) Navigator.pop(dialogContext);
                   if (mounted) ScaffoldMessenger.of(context).showSnackBar(
