@@ -82,9 +82,15 @@ class AgentKernel {
     String? details,
     String? eventId,
   }) {
+    final sequence = ++_eventSequence;
     _events.add(AgentTimelineEvent(
-      id: eventId ?? 'kernel_${requestId}_${++_eventSequence}',
+      // Every transition receives a new identity. eventId is retained only as
+      // the logical step correlation key, never as a replaceable event ID.
+      id: 'kernel_${requestId}_event_$sequence',
       requestId: requestId,
+      attemptId: requestId,
+      stepId: eventId ?? '${requestId}_$type',
+      sequence: sequence,
       type: type,
       title: title,
       status: status,
