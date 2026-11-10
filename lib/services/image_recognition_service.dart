@@ -2,8 +2,8 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'arabic_ocr_service.dart';
 
-/// On-device OCR bridge. ML Kit's bundled recognizer is Latin-script only;
-/// it does not provide Arabic OCR or semantic image understanding.
+/// Combines bundled ML Kit Latin OCR/image labels with local Arabic Tesseract OCR.
+/// OCR extracts visible text; image labels remain probabilistic classifications.
 class ImageRecognitionService {
   static const MethodChannel _channel = MethodChannel('giant_agent/tools');
 
@@ -49,8 +49,8 @@ class ImageRecognitionService {
         '${lines.isEmpty ? '' : '\n\nتفاصيل الأسطر:\n$lines'}'
         '${labels.isEmpty ? '' : '\n\nتصنيفات المحتوى البصري:\n$labels'}'
         '${warnings.isEmpty ? '' : '\n\nتنبيهات المحركات:\n- ${warnings.join('\n- ')}'}'
-        '\n\nحدود التحليل: OCR الحالي للنصوص اللاتينية فقط. '
-        'التصنيفات مؤشرات احتمالية من نموذج محلي ولا تمثل وصفًا تفصيليًا أو إثباتًا لمحتوى الصورة.';
+        '\n\nحدود التحليل: يدعم OCR المحلي النصوص العربية واللاتينية، وقد تتأثر الدقة بجودة الصورة والخط والإضاءة. '
+        'التصنيفات مؤشرات احتمالية من نموذج محلي وليست وصفاً تفصيلياً أو إثباتاً لمحتوى الصورة.';
   }
 
   static Future<String> extractTextFromImage(File imageFile) async {
