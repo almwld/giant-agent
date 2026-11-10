@@ -17,13 +17,42 @@ class AgentOsShell extends StatefulWidget {
 class _AgentOsShellState extends State<AgentOsShell> {
   int _index = 0;
 
-  static const _pages = <Widget>[
-    AgentDashboardPage(),
-    AgentWorkflowPage(),
-    ChatScreen(),
-    AgentStatusPage(),
-    AgentIntegrationsPage(),
-  ];
+  // Keep inactive tabs unmounted. Several screens query native model and
+  // workspace channels in initState; mounting every tab during the first
+  // frame can overload startup and delay the first visible screen.
+  late final List<Widget?> _pages;
+
+  @override
+  void initState() {
+    super.initState();
+    _pages = List<Widget?>.filled(5, null);
+    _pages[0] = const AgentDashboardPage();
+  }
+
+  Widget _createPage(int index) {
+    switch (index) {
+      case 0:
+        return const AgentDashboardPage();
+      case 1:
+        return const AgentWorkflowPage();
+      case 2:
+        return const ChatScreen();
+      case 3:
+        return const AgentStatusPage();
+      case 4:
+        return const AgentIntegrationsPage();
+      default:
+        return const AgentDashboardPage();
+    }
+  }
+
+  void _selectPage(int index) {
+    if (index == _index) return;
+    setState(() {
+      _index = index;
+      _pages[index] ??= _createPage(index);
+    });
+  }
 
   static const _icons = <IconData>[
     Icons.grid_view_rounded,
@@ -43,7 +72,7 @@ class _AgentOsShellState extends State<AgentOsShell> {
     final dark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      body: IndexedStack(index: _index, children: _pages),
+      body: IndexedStack(\n        index: _index,\n        children: List<Widget>.generate(\n          _pages.length,\n          (i) => _pages[i] ?? SizedBox.shrink(key: ValueKey('deferred-tab-$i')),\n        ),\n      ),
       bottomNavigationBar: SafeArea(
         top: false,
         minimum: const EdgeInsets.fromLTRB(12, 0, 12, 9),
@@ -85,7 +114,7 @@ class _AgentOsShellState extends State<AgentOsShell> {
                       color: Colors.transparent,
                       child: InkWell(
                         borderRadius: BorderRadius.circular(17),
-                        onTap: () => setState(() => _index = i),
+                        onTap: () => _selectPage(i),
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 220),
                           curve: Curves.easeOutCubic,
