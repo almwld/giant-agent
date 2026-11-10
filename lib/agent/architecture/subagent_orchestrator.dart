@@ -168,14 +168,14 @@ class SubagentOrchestrator {
         }
       } else {
         var scheduled = false;
-        final coderIsActive = activeTypes.values.contains('coder');
         for (final task in tasks) {
           if (active.length >= maxConcurrency) break;
           if (!pending.contains(task.id)) continue;
           // Read-only workers may overlap. A coder receives an exclusive
           // workspace lease so multi-step file edits cannot interleave with
           // another worker's reads or writes.
-          if (coderIsActive || (task.agentType == 'coder' && active.isNotEmpty)) {
+          if (activeTypes.values.contains('coder') ||
+              (task.agentType == 'coder' && active.isNotEmpty)) {
             continue;
           }
           if (_cancelledTasks.contains(task.id)) {
