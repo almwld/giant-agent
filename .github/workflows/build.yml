@@ -6,6 +6,7 @@ on:
       - main
       - feat/integrated-agent-completion
       - feat/consolidate-sqlite-runtime-v2
+      - feat/chat-bubble-resize-teal-toasts
   pull_request:
     branches:
       - main
