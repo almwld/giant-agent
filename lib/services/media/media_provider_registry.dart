@@ -34,8 +34,9 @@ class MediaProviderRegistry {
       throw ArgumentError('هذه العملية تحتاج إلى ملف صورة أو فيديو مصدر.');
     }
 
+    final candidates = providersFor(request.capability);
     final provider = providerId == null
-        ? providersFor(request.capability).firstOrNull
+        ? (candidates.isEmpty ? null : candidates.first)
         : _providers[providerId];
     if (provider == null ||
         !provider.capabilities.contains(request.capability)) {
