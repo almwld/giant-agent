@@ -169,9 +169,9 @@ class TaskManager {
       task.status = TaskStatus.inProgress;
       step
         ..status = TaskStepStatus.inProgress
-        ..attempts++
         ..startedAt = DateTime.now()
         ..error = null;
+      step.attempts++;
       final stopwatch = Stopwatch()..start();
       try {
         final result = await executor(task, step);
