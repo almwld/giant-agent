@@ -8,6 +8,8 @@ import 'openai_compatible_provider.dart';
 import 'gemini_provider.dart';
 import 'model_provider_settings.dart';
 import '../tools/tool_manager.dart';
+import '../domain/harness/evaluator_service.dart';
+import '../domain/harness/reflexion_service.dart';
 
 class ModelService {
   static final ModelService _instance = ModelService._internal();
@@ -22,6 +24,14 @@ class ModelService {
   Future<void> _requestTail = Future<void>.value();
   String _activeRequestId = '';
   int _toolEventSequence = 0;
+  late final EvaluatorService _evaluator = EvaluatorService(readWorkspaceFile: readFile);
+  late final ReflexionService _reflexion = ReflexionService(
+    generate: (prompt) => _generateText(
+      _boundPrompt(prompt),
+      maxTokens: 512,
+      temperature: .1,
+    ),
+  );
 
   Stream<Map<String, dynamic>> get toolEvents => AgentEventBus.instance.events;
   void beginAgentRequest(String requestId) => _activeRequestId = requestId;
@@ -179,7 +189,10 @@ class ModelService {
     return result;
   }
 
-  Future<Map<String, dynamic>> _executeTool(Map<String, dynamic> payload) async {
+  Future<Map<String, dynamic>> _executeTool(
+    Map<String, dynamic> payload, {
+    String? stepId,
+  }) async {
     final name = payload['name']?.toString() ?? '';
     if (!ToolManager().supports(name)) {
       throw FormatException('Unsupported tool: $name');
@@ -190,7 +203,7 @@ class ModelService {
     }
     final path = args['path']?.toString() ?? '';
     final content = args['content']?.toString() ?? '';
-    final toolStepId = 'tool_step_${_activeRequestId}_${DateTime.now().microsecondsSinceEpoch}';
+    final toolStepId = stepId ?? 'tool_step_${_activeRequestId}_${DateTime.now().microsecondsSinceEpoch}';
     _emitToolEvent('tool_start', _toolStartTitle(name), toolName: name, path: path,
         content: name == 'execute_python' ? args['code']?.toString() : null, status: 'running', stepId: toolStepId);
     try {
@@ -204,6 +217,12 @@ class ModelService {
           break;
         case 'write_file':
           result = await writeFile(path: path, content: content);
+          break;
+        case 'list_files':
+          result = <String, dynamic>{
+            'ok': true,
+            'files': await listWorkspaceFiles(),
+          };
           break;
         case 'execute_python':
           result = await executePython(code: args['code']?.toString() ?? '');
@@ -239,6 +258,7 @@ class ModelService {
       case 'write_file': return 'يحدّث ملفاً موجوداً';
       case 'read_file': return 'يقرأ ملفاً من مساحة العمل';
       case 'execute_python': return 'يشغّل كود Python';
+      case 'list_files': return 'يعرض ملفات مساحة العمل';
       default: return 'ينفّذ أداة';
     }
   }
@@ -249,6 +269,7 @@ class ModelService {
       case 'write_file': return 'اكتمل تحديث الملف';
       case 'read_file': return 'اكتملت قراءة الملف';
       case 'execute_python': return 'اكتمل تنفيذ Python';
+      case 'list_files': return 'اكتمل استعراض الملفات';
       default: return 'اكتمل تنفيذ الأداة';
     }
   }
@@ -361,42 +382,159 @@ $toolCatalog
     try {
       final executedCalls = <String>{};
       const maxToolCalls = 16;
+      const maxReflexionAttempts = 3;
+      var reflexionAttempts = 0;
+      Map<String, dynamic>? pendingReflexionPayload;
+
       for (var step = 0; step < maxToolCalls; step++) {
         if (_cancelRequested) return 'تم إيقاف تنفيذ الوكيل بناءً على طلب المستخدم.';
-        final generated = await _generateText(history.toString(), maxTokens: 768, temperature: .25);
-        if (_cancelRequested) return generated.trim().isEmpty ? 'تم إيقاف التوليد.' : '${generated.trim()}\n\n[تم إيقاف التوليد]';
-        final match = RegExp(r'<tool_call>\s*(\{.*?\})\s*</tool_call>', dotAll: true).firstMatch(generated);
-        if (match == null) return generated.trim();
-        try {
-          final payload = jsonDecode(match.group(1)!) as Map<String, dynamic>;
-          final signature = jsonEncode(payload);
-          if (!executedCalls.add(signature)) {
-            return 'أوقف الوكيل تكرار استدعاء الأداة نفسه دون تقدم. راجع النتيجة السابقة وحدد خطوة مختلفة.';
+
+        Map<String, dynamic> payload;
+        if (pendingReflexionPayload != null) {
+          payload = pendingReflexionPayload;
+          pendingReflexionPayload = null;
+        } else {
+          final generated = await _generateText(history.toString(), maxTokens: 768, temperature: .25);
+          if (_cancelRequested) {
+            return generated.trim().isEmpty
+                ? 'تم إيقاف التوليد.'
+                : '${generated.trim()}\n\n[تم إيقاف التوليد]';
           }
-          final result = await _executeTool(payload);
-          if (_cancelRequested) return 'تم إيقاف الوكيل بعد اكتمال الأداة الحالية.';
-          final toolName = payload['name'];
-          final resultJson = jsonEncode(result);
-          final pythonTail = (result['output']?.toString() ?? result['error']?.toString() ?? '');
-          final boundedPythonTail = pythonTail.length > 500
-              ? '${pythonTail.substring(pythonTail.length - 500)}\n[Python output truncated to last 500 characters]'
-              : pythonTail;
-          final pythonOk = result['ok'] == true;
-          final contextResult = toolName == 'execute_python'
-              ? 'ok=$pythonOk\n$boundedPythonTail'
-              : resultJson;
-          history
-            ..write('\n\nSystem Note: $toolName execution result: ')
-            ..write(contextResult)
-            ..write('\nDo not claim success if the tool result contains ok=false. Continue the request; use another tool if required, otherwise provide the final answer.\n\nAssistant:');
-        } on PlatformException catch (e) {
-          history
-            ..write('\n\nSystem Note: Tool failed: ${e.code}: ${e.message}. Do not claim success. You may correct the arguments and retry once.\n\nAssistant:');
-        } catch (e) {
-          return 'تعذر تحليل استدعاء الأداة أو تنفيذه: $e';
+          final match = RegExp(r'<tool_call>\s*(\{.*?\})\s*</tool_call>', dotAll: true)
+              .firstMatch(generated);
+          if (match == null) return generated.trim();
+          final decoded = jsonDecode(match.group(1)!);
+          if (decoded is! Map<String, dynamic>) {
+            return 'تعذر تحليل استدعاء الأداة: يجب أن تكون البيانات كائن JSON.';
+          }
+          payload = decoded;
         }
+
+        final toolName = payload['name']?.toString() ?? '';
+        final rawArgs = payload['arguments'];
+        if (!ToolManager().supports(toolName) || rawArgs is! Map<String, dynamic>) {
+          history
+            ..write('\n\nSystem Note: Unsupported tool or invalid arguments. Use only the registered tool catalogue.\n\nAssistant:');
+          continue;
+        }
+
+        final signature = jsonEncode(payload);
+        if (!executedCalls.add(signature)) {
+          _emitToolEvent(
+            'reflexion_failed',
+            'أوقف الوكيل محاولة تكرار الإجراء نفسه',
+            toolName: toolName,
+            details: 'The proposed recovery action duplicates an action already attempted.',
+            status: 'failed',
+          );
+          return 'تعذر إكمال الهدف بأمان: اقترح محرك التأمل إجراءً مكرراً، فأوقفته آلية منع التكرار.';
+        }
+
+        final toolStepId = 'verified_step_${_activeRequestId}_${DateTime.now().microsecondsSinceEpoch}';
+        Map<String, dynamic> result;
+        try {
+          result = await _executeTool(payload, stepId: toolStepId);
+        } catch (error) {
+          result = <String, dynamic>{'ok': false, 'error': error.toString()};
+        }
+        if (_cancelRequested) return 'تم إيقاف الوكيل بعد اكتمال الأداة الحالية.';
+
+        _emitToolEvent(
+          'verification_started',
+          'يتحقق من النتيجة الفعلية',
+          toolName: toolName,
+          details: 'التحقق من أثر الأداة داخل مساحة العمل، وليس من رسالة النموذج.',
+          status: 'running',
+          stepId: toolStepId,
+        );
+        final verification = await _evaluator.verify(
+          input,
+          toolName,
+          rawArgs,
+          result,
+        );
+        _emitToolEvent(
+          verification.passed ? 'verification_passed' : 'verification_failed',
+          verification.passed ? 'اجتاز التحقق المستقل' : 'فشل التحقق المستقل',
+          toolName: toolName,
+          output: jsonEncode(verification.evidence ?? const <String, Object?>{}),
+          details: verification.message,
+          status: verification.passed ? 'completed' : 'failed',
+          stepId: toolStepId,
+        );
+
+        if (!verification.passed) {
+          final failedAction = jsonEncode(payload);
+          history
+            ..write('\n\nSystem Note: Tool $toolName result: ${jsonEncode(result)}')
+            ..write('\nIndependent verification FAILED: ${verification.message}')
+            ..write('\nDo not claim the goal is complete. Choose a different corrective tool action.\n\nAssistant:');
+
+          if (reflexionAttempts >= maxReflexionAttempts) {
+            return 'لم يتحقق الهدف بعد $maxReflexionAttempts محاولات تصحيح آمنة. آخر نتيجة: ${verification.message}';
+          }
+
+          _emitToolEvent(
+            'reflexion_started',
+            'يحلل فشل التحقق ويختار إجراءً بديلاً',
+            toolName: toolName,
+            details: 'محاولة التصحيح ${reflexionAttempts + 1} من $maxReflexionAttempts.',
+            status: 'running',
+            stepId: toolStepId,
+          );
+          try {
+            final action = await _reflexion.generateFix(
+              originalGoal: input,
+              failedAction: failedAction,
+              errorMessage: verification.message,
+            );
+            final proposed = <String, dynamic>{
+              'name': action.toolName,
+              'arguments': action.arguments,
+            };
+            final proposedSignature = jsonEncode(proposed);
+            if (proposedSignature == signature || executedCalls.contains(proposedSignature)) {
+              throw const FormatException('Reflexion proposed an action that has already been attempted.');
+            }
+            pendingReflexionPayload = proposed;
+            reflexionAttempts++;
+            _emitToolEvent(
+              'reflexion_action_proposed',
+              'اختير إجراء تصحيحي بديل',
+              toolName: action.toolName,
+              output: jsonEncode(action.arguments),
+              details: 'سيُنفذ الإجراء بعد التحقق من سماح الأداة وصحة بنية الوسائط.',
+              status: 'completed',
+              stepId: toolStepId,
+            );
+          } catch (error) {
+            _emitToolEvent(
+              'reflexion_failed',
+              'تعذر توليد إجراء تصحيحي آمن',
+              toolName: toolName,
+              details: error.toString(),
+              status: 'failed',
+              stepId: toolStepId,
+            );
+            return 'فشل التحقق من النتيجة، ولم يتمكن محرك التأمل من اقتراح إجراء بديل صالح: $error';
+          }
+          continue;
+        }
+
+        final resultJson = jsonEncode(result);
+        final pythonTail = result['output']?.toString() ?? '';
+        final boundedPythonTail = pythonTail.length > 500
+            ? '${pythonTail.substring(pythonTail.length - 500)}\n[Python output truncated to last 500 characters]'
+            : pythonTail;
+        final contextResult = toolName == 'execute_python'
+            ? 'ok=true\n$boundedPythonTail'
+            : resultJson;
+        history
+          ..write('\n\nSystem Note: $toolName result (independently verified): ')
+          ..write(contextResult)
+          ..write('\nContinue only if more work is required; never claim unverified side effects.\n\nAssistant:');
       }
-      return 'وصل الوكيل إلى الحد الآمن ($maxToolCalls استدعاءات أدوات) دون إنهاء المهمة. أعد الطلب لمتابعة العمل من سياق المحادثة.';
+      return 'وصل الوكيل إلى الحد الآمن ($maxToolCalls دورات تنفيذ/تحقق) دون إنهاء المهمة. أعد الطلب لمتابعة العمل من سياق المحادثة.';
     } catch (e) {
       return 'تعذر إكمال الطلب: $e';
     }
