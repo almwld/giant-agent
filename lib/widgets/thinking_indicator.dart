@@ -1,79 +1,79 @@
-import 'packagefltter/material.dart'
+import 'package:flutter/material.dart';
 
-class hinkingndicator extends tateflidget {
-  final tring message
+class ThinkingIndicator extends StatefulWidget {
+  final String message;
 
-  const hinkingndicator({sper.key, reqired this.message})
+  const ThinkingIndicator({super.key, required this.message});
 
-  override
-  tatehinkingndicator createtate()  _hinkingndicatortate()
+  @override
+  State<ThinkingIndicator> createState() => _ThinkingIndicatorState();
 }
 
-class _hinkingndicatortate extends tatehinkingndicator with ingleickerrovidertateixin {
-  late nimationontroller _controller
+class _ThinkingIndicatorState extends State<ThinkingIndicator> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
 
-  override
-  void inittate() {
-    sper.inittate()
-    _controller  nimationontroller(
-      dration const ration(milliseconds ),
-      vsync this,
-    )..repeat()
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    )..repeat();
   }
 
-  override
+  @override
   void dispose() {
-    _controller.dispose()
-    sper.dispose()
+    _controller.dispose();
+    super.dispose();
   }
 
-  override
-  idget bild(ildontext context) {
-    retrn ontainer(
-      margin const dgensets.all(),
-      padding const dgensets.symmetric(horizontal , vertical ),
-      decoration oxecoration(
-        color olors.grey.shade,
-        borderadis orderadis.circlar(),
-        border order.all(color olors.deeprple.shade, width ),
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.all(8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade800,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.deepPurple.shade300, width: 1),
       ),
-      child ow(
-        mainxisize ainxisize.min,
-        children 
-          nimatedilder(
-            animation _controller,
-            bilder (context, child) {
-              retrn ow(
-                children 
-                  _bildot(),
-                  const izedox(width ),
-                  _bildot(),
-                  const izedox(width ),
-                  _bildot(),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AnimatedBuilder(
+            animation: _controller,
+            builder: (context, child) {
+              return Row(
+                children: [
+                  _buildDot(0),
+                  const SizedBox(width: 4),
+                  _buildDot(1),
+                  const SizedBox(width: 4),
+                  _buildDot(2),
                 ],
-              )
+              );
             },
           ),
-          const izedox(width ),
-          ext(
+          const SizedBox(width: 12),
+          Text(
             widget.message,
-            style const exttyle(color olors.white, fontize ),
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
           ),
         ],
       ),
-    )
+    );
   }
 
-  idget _bildot(int index) {
-    final vale  (_controller.vale *  + index) % 
-    final opacity  vale    vale   - vale
-    retrn ontainer(
-      width ,
-      height ,
-      decoration oxecoration(
-        color olors.deeprple.withpacity(opacity.clamp(., .)),
-        shape oxhape.circle,
+  Widget _buildDot(int index) {
+    final value = (_controller.value * 3 + index) % 3;
+    final opacity = value < 1 ? value : 2 - value;
+    return Container(
+      width: 6,
+      height: 6,
+      decoration: BoxDecoration(
+        color: Colors.deepPurple.withOpacity(opacity.clamp(0.3, 1.0)),
+        shape: BoxShape.circle,
       ),
-    )
+    );
   }
 }

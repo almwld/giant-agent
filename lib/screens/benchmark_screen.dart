@@ -1,66 +1,66 @@
-import 'packagefltter/material.dart'
-import '../services/agent_service.dart'
+import 'package:flutter/material.dart';
+import '../services/agent_service.dart';
 
-class enchmarkcreen extends tateflidget {
-  const enchmarkcreen({sper.key})
+class BenchmarkScreen extends StatefulWidget {
+  const BenchmarkScreen({super.key});
 
-  override
-  tateenchmarkcreen createtate()  _enchmarkcreentate()
+  @override
+  State<BenchmarkScreen> createState() => _BenchmarkScreenState();
 }
 
-class _enchmarkcreentate extends tateenchmarkcreen {
-  final gentervice _agent  gentervice()
-  bool _isnning  false
-  tring _reslts  ''
+class _BenchmarkScreenState extends State<BenchmarkScreen> {
+  final AgentService _agent = AgentService();
+  bool _isRunning = false;
+  String _results = '';
 
-  trevoid _rnenchmark() async {
-    settate(() {
-      _isnning  tre
-      _reslts  ''
-    })
+  Future<void> _runBenchmark() async {
+    setState(() {
+      _isRunning = true;
+      _results = '';
+    });
     
-    final reslt  await _agent.process('benchmark')
+    final result = await _agent.process('benchmark');
     
-    settate(() {
-      _reslts  reslt
-      _isnning  false
-    })
+    setState(() {
+      _results = result;
+      _isRunning = false;
+    });
   }
 
-  override
-  idget bild(ildontext context) {
-    retrn caffold(
-      appar ppar(
-        title const ext('  '),
-        centeritle tre,
-        backgrondolor olors.deeprple,
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('⚡ اختبار الأداء'),
+        centerTitle: true,
+        backgroundColor: Colors.deepPurple,
       ),
-      body adding(
-        padding const dgensets.all(),
-        child olmn(
-          children 
-            levatedtton.icon(
-              onressed _isnning  nll  _rnenchmark,
-              icon const con(cons.speed),
-              label ext(_isnning  ' ...'  ' '),
-              style levatedtton.stylerom(
-                backgrondolor olors.deeprple,
-                minimmize const ize(doble.infinity, ),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            ElevatedButton.icon(
+              onPressed: _isRunning ? null : _runBenchmark,
+              icon: const Icon(Icons.speed),
+              label: Text(_isRunning ? 'جاري الاختبار...' : 'ابدأ الاختبار'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.deepPurple,
+                minimumSize: const Size(double.infinity, 50),
               ),
             ),
-            const izedox(height ),
-            if (_reslts.isotmpty)
-              xpanded(
-                child inglehildcrolliew(
-                  child ontainer(
-                    padding const dgensets.all(),
-                    decoration oxecoration(
-                      color olors.grey.shade,
-                      borderadis orderadis.circlar(),
+            const SizedBox(height: 20),
+            if (_results.isNotEmpty)
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade800,
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    child ext(
-                      _reslts,
-                      style const exttyle(fontamily 'monospace', fontize ),
+                    child: Text(
+                      _results,
+                      style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
                     ),
                   ),
                 ),
@@ -68,6 +68,6 @@ class _enchmarkcreentate extends tateenchmarkcreen {
           ],
         ),
       ),
-    )
+    );
   }
 }
