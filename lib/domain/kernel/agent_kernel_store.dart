@@ -249,6 +249,7 @@ class AgentKernelStore {
       'status': event['status']?.toString() ?? 'pending',
       'last_event_type': event['type']?.toString() ?? 'unknown',
       'last_details': event['details']?.toString(),
+      'last_result': event['result']?.toString() ?? previous['last_result'],
       'created_at': previous['created_at']?.toString() ?? timestamp,
       'updated_at': now,
     };
@@ -297,6 +298,152 @@ class AgentKernelStore {
           .where((task) => task['kind'] == 'subagent' &&
               task['parent_request_id'] == requestId)
           .toList(growable: false);
+
+  /// Loads one durable child-agent projection by stable task id.
+  Future<Map<String, dynamic>?> getSubagent(String taskId) async {
+    final rows = await (await database).query('agent_tasks',
+      where: 'id = ?', whereArgs: [taskId], limit: 1);
+    if (rows.isEmpty) return null;
+    final decoded = jsonDecode(rows.single['payload_json']! as String);
+    if (decoded is! Map || decoded['kind'] != 'subagent') return null;
+    return Map<String, dynamic>.from(decoded);
+  }
+
+  /// Atomically claims an interrupted child for a user-authorized resume.
+  /// The caller must explicitly classify the possible prior side effects.
+  /// Dependency outputs are reconstructed from durable completed snapshots.
+  Future<Map<String, dynamic>> claimSubagentResume(
+    String taskId, {
+    required String sideEffectDisposition,
+  }) async {
+    const allowed = {'verified_no_side_effects', 'user_authorized_retry'};
+    if (!allowed.contains(sideEffectDisposition)) {
+      throw ArgumentError.value(sideEffectDisposition, 'sideEffectDisposition',
+        'An explicit side-effect disposition is required.');
+    }
+    final db = await database;
+    final now = DateTime.now().toUtc().toIso8601String();
+    late Map<String, dynamic> claimed;
+    await db.transaction((txn) async {
+      final rows = await txn.query('agent_tasks', where: 'id = ?',
+        whereArgs: [taskId], limit: 1);
+      if (rows.isEmpty) throw StateError('الوكيل الفرعي غير موجود.');
+      final decoded = jsonDecode(rows.single['payload_json']! as String);
+      if (decoded is! Map || decoded['kind'] != 'subagent') {
+        throw StateError('السجل المحدد ليس وكيلاً فرعياً.');
+      }
+      final task = Map<String, dynamic>.from(decoded);
+      final status = task['status']?.toString();
+      if (status == 'completed' || status == 'cancelled') {
+        throw StateError('لا يمكن استئناف وكيل مكتمل أو ملغى.');
+      }
+      if (status != 'interrupted' && status != 'failed') {
+        throw StateError('الوكيل الفرعي ليس في حالة تسمح بالاستئناف: $status');
+      }
+      if ((task['prompt']?.toString() ?? '').trim().isEmpty) {
+        throw StateError('تعذر استعادة تعليمات الوكيل الفرعي الأصلية.');
+      }
+      final dependencies = (task['depends_on'] as List? ?? const [])
+          .map((value) => value.toString()).toList(growable: false);
+      final dependencyResults = <String, String>{};
+      for (final dependencyId in dependencies) {
+        final dependencyRows = await txn.query('agent_tasks',
+          where: 'id = ?', whereArgs: [dependencyId], limit: 1);
+        if (dependencyRows.isEmpty) {
+          throw StateError('تعذر إعادة بناء التبعية $dependencyId.');
+        }
+        final dependencyDecoded = jsonDecode(
+          dependencyRows.single['payload_json']! as String);
+        if (dependencyDecoded is! Map ||
+            dependencyDecoded['kind'] != 'subagent' ||
+            dependencyDecoded['parent_request_id'] != task['parent_request_id'] ||
+            dependencyDecoded['status'] != 'completed') {
+          throw StateError('التبعية $dependencyId ليست مكتملة ضمن المهمة الأصلية.');
+        }
+        final output = dependencyDecoded['last_result']?.toString() ?? '';
+        if (output.isEmpty) {
+          throw StateError('نتيجة التبعية $dependencyId غير محفوظة بالكامل.');
+        }
+        dependencyResults[dependencyId] = output;
+      }
+      final attempts = (task['resume_attempts'] as num?)?.toInt() ?? 0;
+      task['status'] = 'running';
+      task['resume_attempts'] = attempts + 1;
+      task['resume_authorized_at'] = now;
+      task['side_effect_disposition'] = sideEffectDisposition;
+      task['recovery_requires_explicit_resume'] = false;
+      task['updated_at'] = now;
+      task['dependency_results_snapshot'] = dependencyResults;
+      final values = <String, Object?>{
+        'id': taskId,
+        'conversation_id': task['conversation_id']?.toString() ?? 'global',
+        'status': 'running',
+        'payload_json': jsonEncode(task),
+        'created_at': task['created_at']?.toString() ?? now,
+        'updated_at': now,
+      };
+      await txn.update('agent_tasks', values, where: 'id = ?', whereArgs: [taskId]);
+      await _appendTaskEvent(txn, taskId, 'subagent_resume_authorized', 'running',
+        <String, Object?>{
+          'authorization': 'explicit_user_action',
+          'side_effect_disposition': sideEffectDisposition,
+          'resume_attempt': attempts + 1,
+          'dependencies_reconstructed': dependencies,
+          'automatic_replay': false,
+        }, now);
+      claimed = task;
+    });
+    return claimed;
+  }
+
+  /// Persists the terminal/interrupted state of a resumed child and full output.
+  Future<void> finishSubagentResume(
+    String taskId, {
+    String? result,
+    String? error,
+    required String status,
+  }) async {
+    if (!{'completed', 'failed', 'interrupted'}.contains(status)) {
+      throw ArgumentError.value(status, 'status');
+    }
+    final db = await database;
+    final now = DateTime.now().toUtc().toIso8601String();
+    await db.transaction((txn) async {
+      final rows = await txn.query('agent_tasks', where: 'id = ?',
+        whereArgs: [taskId], limit: 1);
+      if (rows.isEmpty) throw StateError('الوكيل الفرعي غير موجود.');
+      final decoded = jsonDecode(rows.single['payload_json']! as String);
+      if (decoded is! Map || decoded['kind'] != 'subagent' || decoded['status'] != 'running') {
+        throw StateError('لا توجد محاولة استئناف نشطة لهذا الوكيل.');
+      }
+      final task = Map<String, dynamic>.from(decoded)
+        ..['status'] = status
+        ..['updated_at'] = now
+        ..['last_event_type'] = 'subagent_resume_$status';
+      if (result != null) task['last_result'] = result;
+      if (error != null) task['last_error'] = error;
+      if (status == 'completed') {
+        task['completed_at'] = now;
+        task.remove('last_error');
+        task['recovery_requires_explicit_resume'] = false;
+      } else {
+        task['recovery_requires_explicit_resume'] = true;
+      }
+      await txn.update('agent_tasks', <String, Object?>{
+        'id': taskId,
+        'conversation_id': task['conversation_id']?.toString() ?? 'global',
+        'status': status,
+        'payload_json': jsonEncode(task),
+        'created_at': task['created_at']?.toString() ?? now,
+        'updated_at': now,
+      }, where: 'id = ?', whereArgs: [taskId]);
+      await _appendTaskEvent(txn, taskId, 'subagent_resume_$status', status,
+        <String, Object?>{
+          if (result != null) 'result': result,
+          if (error != null) 'error': error,
+        }, now);
+    });
+  }
 
   /// One-time compatibility migration. SharedPreferences is read only here;
   /// all subsequent task reads and writes use SQLite exclusively.
