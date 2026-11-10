@@ -66,7 +66,7 @@ void main() {
       expect(handle, greaterThan(0));
       print('PTY_SMOKE: shell session started handle=$handle');
 
-      final command = 'echo $marker\\n';
+      final command = 'echo $marker\n';
       final bytes = Uint8List.fromList(utf8.encode(command));
       final written = await method.invokeMethod<int>(
         'write',
