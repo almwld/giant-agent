@@ -13,6 +13,7 @@ class AgentTimelineEvent {
     this.attemptId,
     this.sequence,
     this.details,
+    this.result,
     this.taskId,
     this.agentType,
     this.taskPrompt,
@@ -29,6 +30,7 @@ class AgentTimelineEvent {
   final String? attemptId;
   final int? sequence;
   final String? details;
+  final String? result;
   final String? taskId;
   final String? agentType;
   final String? taskPrompt;
@@ -45,6 +47,7 @@ class AgentTimelineEvent {
         if (stepId != null && stepId!.isNotEmpty) 'step_id': stepId,
         if (sequence != null) 'sequence': sequence,
         if (details != null && details!.isNotEmpty) 'details': details,
+        if (result != null && result!.isNotEmpty) 'result': result,
         if (taskId != null && taskId!.isNotEmpty) 'task_id': taskId,
         if (agentType != null && agentType!.isNotEmpty) 'agent_type': agentType,
         if (taskPrompt != null && taskPrompt!.isNotEmpty) 'task_prompt': taskPrompt,
@@ -71,6 +74,7 @@ class AgentTimelineEvent {
       status: map['status']?.toString() ?? 'pending',
       timestamp: timestamp,
       details: map['details']?.toString(),
+      result: map['result']?.toString(),
       taskId: map['task_id']?.toString(),
       agentType: map['agent_type']?.toString(),
       taskPrompt: map['task_prompt']?.toString(),
