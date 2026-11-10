@@ -50,6 +50,15 @@ class ModelService {
   }
   List<Map<String, dynamic>> getModels() => List.unmodifiable(_models);
 
+  List<Map<String, dynamic>> getAvailableModels() => getModels();
+
+  Map<String, dynamic> getPerformanceStats() => {
+    'average_response_time_ms': 0,
+    'total_requests': 0,
+    'cache_hit_rate': 0,
+    'queue_size': 0,
+  };
+
   Future<Map<String, dynamic>> createFile({required String path, required String content}) async {
     final result = await _agentTools.invokeMapMethod<String, dynamic>('createFile', {
       'path': path,
