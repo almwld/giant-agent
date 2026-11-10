@@ -66,7 +66,7 @@ class OutputEngine {
       if (child['status'] != 'completed' || childResult.trim().isEmpty) continue;
       final taskId = child['id']?.toString() ?? '';
       final artifact = _artifact(
-        id: 'output_${requestId}_child_${taskId}',
+        id: 'output_${requestId}_child_$taskId',
         requestId: requestId,
         conversationId: conversationId,
         taskId: taskId,
@@ -173,7 +173,7 @@ class OutputEngine {
     final missingCount = artifacts.length - verifiedCount;
     final hasFinalText = finalText.trim().isNotEmpty;
     final verified = hasFinalText && missingCount == 0 && childFailures == 0 && requestStatus == 'completed';
-    final summary = 'حُفظ ${artifacts.length} مخرجاً؛ تحقق ${verifiedCount}، وغير المتحقق ${missingCount}؛ الوكلاء غير المكتملين: ${childFailures}.';
+    final summary = 'حُفظ ${artifacts.length} مخرجاً؛ تحقق $verifiedCount، وغير المتحقق $missingCount؛ الوكلاء غير المكتملين: $childFailures.';
     _emit(requestId, verified ? 'output_collection_completed' : 'output_collection_partial',
         verified ? 'اكتملت منظومة المخرجات والتحقق منها' : 'المخرجات جزئية وتحتاج مراجعة',
         verified ? 'completed' : 'interrupted',
