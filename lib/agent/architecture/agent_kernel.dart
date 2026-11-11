@@ -571,7 +571,7 @@ ${result.output ?? result.error ?? 'لا توجد نتيجة نصية.'}
         final orchestrationTools = const <String>{
           'create_subagent', 'spawn_subagent', 'delete_subagent',
           'check_subagent_status', 'send_message', 'wait_for_message',
-          'update_goal',
+          'ask_user', 'update_goal',
         };
         final allowedTools = switch (task.agentType) {
           'explore' || 'plan' || 'reviewer' => <String>{
@@ -605,7 +605,7 @@ ${dependencyContext.isEmpty ? 'لا توجد تبعيات سابقة.' : depende
 قواعد التنفيذ:
 - اعمل داخل نطاق المهمة المسندة فقط. يمكنك إنشاء وكلاء فرعيين عند الحاجة باستخدام create_subagent ثم spawn_subagent.
 - لا تتجاوز حدود 8 وكلاء إجمالاً وعمق تداخل 2، ولا تبدأ تابعاً قبل اكتمال تبعياته.
-- استخدم send_message وwait_for_message للتنسيق مع الوكلاء، وcheck_subagent_status لمتابعة الحالة، وupdate_goal لتحديث الهدف المشترك.
+- استخدم send_message وwait_for_message للتنسيق مع الوكلاء، وcheck_subagent_status لمتابعة الحالة، وask_user لطلب معلومة لازمة من المستخدم، وupdate_goal لتحديث الهدف المشترك.
 - استخدم الأدوات المسموح بها فقط، ولا تدّع تنفيذ عملية دون نتيجة أداة مؤكدة.
 - وكيل explore وplan وreviewer للقراءة والتحليل فقط؛ لا تعدّل الملفات.
 - وكيل coder يمكنه تعديل مساحة العمل، وأوامر الطرفية تظل خاضعة لموافقة المستخدم.
@@ -627,6 +627,7 @@ ${dependencyContext.isEmpty ? 'لا توجد تبعيات سابقة.' : depende
             taskId: task.id,
             agentType: task.agentType,
             subagentOrchestrator: orchestrator,
+            userVisibleSessionId: conversationId,
           )).trim();
         } finally {
           _activeSubagentIds.remove(task.id);
