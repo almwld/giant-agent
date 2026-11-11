@@ -833,7 +833,6 @@ $prompt
     if (shouldCancel?.call() == true) {
       return 'تم إيقاف تنفيذ الوكيل بناءً على طلب المستخدم.';
     }
-    final parallelProvider = Zone.current[_parallelProviderZoneKey] == true;
     bool isCancelled() => shouldCancel?.call() == true || _cancelRequested;
     input = _boundPrompt(input);
     if (await ModelProviderSettings.instance.getMode() == ModelProviderMode.local && !await _llama.isLoaded()) {
