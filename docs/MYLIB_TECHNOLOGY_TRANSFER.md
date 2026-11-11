@@ -23,14 +23,14 @@ Mylib contains decompiled Android/Kotlin sources and extracted assets from Kimi 
 |---:|---|---|
 | 1 | `default` | Internal model/tool routing; not exposed as a user tool. |
 | 2 | `lbs_tool` | Not transferred: no location provider or permission-backed location service is configured. |
-| 3 | `fetch_urls` | Not yet transferred: a safe bounded HTTP fetch adapter with redirect/SSRF controls is still required. |
+| 3 | `fetch_urls` | Implemented through the visible WebView session; bounded to five HTTP(S) URLs. |
 | 4 | `generate_slides_outline` | Implemented using the selected shared model; returns structured JSON and is verified. |
-| 5 | `visit` | Not yet transferred as browser automation; workspace WebView is a preview, not a remote browser controller. |
-| 6 | `click` | Not yet transferred; requires a browser-session DOM/controller contract. |
-| 7 | `input` | Not yet transferred; requires a browser-session DOM/controller contract. |
-| 8 | `find` | Partial concept only; local workspace/file search is separate from browser DOM search. |
-| 9 | `scrollup` | Not yet transferred; requires a browser-session controller. |
-| 10 | `scrolldown` | Not yet transferred; requires a browser-session controller. |
+| 5 | `visit` | Implemented through the user-visible agent browser dialog. |
+| 6 | `click` | Implemented by visible-text matching; buttons and mutating actions require user approval. |
+| 7 | `input` | Implemented through CSS selectors; password/payment/secret fields require user approval and forms are not auto-submitted. |
+| 8 | `find` | Implemented as text search in the current browser page with a context snippet. |
+| 9 | `scrollup` | Implemented through the visible browser controller. |
+| 10 | `scrolldown` | Implemented through the visible browser controller. |
 | 11 | `python` | Implemented through the embedded Chaquopy runtime. |
 | 12 | `todo_read` | Implemented using durable TaskManager records scoped to the current conversation. |
 | 13 | `todo_write` | Implemented as a durable pending task; it does not auto-start execution. |
@@ -39,13 +39,13 @@ Mylib contains decompiled Android/Kotlin sources and extracted assets from Kimi 
 | 16 | `read_file` | Implemented through the constrained native workspace bridge. |
 | 17 | `edit_file` | Mapped to verified `write_file`; only existing allowed text/code files can be changed. |
 | 18 | `write_file` | Implemented through the constrained native workspace bridge. |
-| 19 | `browser_click` | Not yet transferred; browser controller is absent. |
-| 20 | `browser_find` | Not yet transferred; browser controller is absent. |
-| 21 | `browser_input` | Not yet transferred; browser controller is absent. |
-| 22 | `browser_visit` | Not yet transferred; browser controller is absent. |
-| 23 | `browser_state` | Not yet transferred; browser controller is absent. |
-| 24 | `browser_scroll_up` | Not yet transferred; browser controller is absent. |
-| 25 | `browser_scroll_down` | Not yet transferred; browser controller is absent. |
+| 19 | `browser_click` | Implemented with user approval for button/mutating clicks. |
+| 20 | `browser_find` | Implemented as current-page text search. |
+| 21 | `browser_input` | Implemented; sensitive fields require explicit user approval. |
+| 22 | `browser_visit` | Implemented through the visible agent browser dialog. |
+| 23 | `browser_state` | Implemented; returns current URL, title and bounded visible text. |
+| 24 | `browser_scroll_up` | Implemented through the visible browser controller. |
+| 25 | `browser_scroll_down` | Implemented through the visible browser controller. |
 | 26 | `browser_screenshot` | Not yet transferred; no capture-capable agent browser session exists. |
 | 27 | `screenshot_web_full_page` | Not yet transferred; requires browser capture and stitching support. |
 | 28 | `find_asset_bbox` | Not yet transferred; requires a connected vision/asset-localization provider. |
@@ -85,7 +85,7 @@ Mylib contains decompiled Android/Kotlin sources and extracted assets from Kimi 
 ## Giant Agent foundations reused (no duplicate runtime)
 
 - One shared `LlamaService.instance` / `ModelService`; local child execution is serialized. Cloud OpenRouter execution remains on the existing streaming provider.
-- MCP Streamable HTTP client with structured content/resource results and explicit approval for non-read-only remote tools.
+- MCP Streamable HTTP client with structured content/resource results and explicit approval for non-read-only remote tools.\n- User-visible WebView browser session for URL navigation, text search, visible-text click, CSS form input and scrolling; local/private URL destinations and non-HTTP schemes are blocked.
 - Per-invocation `tool_call_id` and cancellation registry.
 - Durable SQLite task/request/event/subagent journal and restart recovery.
 - Existing Gain PTY bridge, explicit terminal approval, Python runtime and workspace path constraints.
