@@ -8,7 +8,7 @@ void main() {
     test('exposes only tools implemented by the runtime', () {
       expect(
         registry.getAvailableTools(),
-        ['create_file', 'read_file', 'edit_file', 'write_file', 'list_files', 'execute_python', 'mcp_read_resource', 'mcp_call', 'create_subagent', 'spawn_subagent', 'delete_subagent', 'check_subagent_status', 'send_message', 'wait_for_message', 'ask_user', 'update_goal', 'web_search', 'task', 'todo_read', 'todo_write', 'memory_space_insert', 'memory_space_update', 'memory_space_delete', 'memory_space_edits', 'generate_speech', 'get_available_voices', 'get_data_source', 'get_data_source_desc', 'generate_slides_outline', 'slides_generator', 'fetch_urls', 'visit', 'click', 'input', 'find', 'scrollup', 'scrolldown', 'browser_visit', 'browser_click', 'browser_find', 'browser_input', 'browser_state', 'browser_scroll_up', 'browser_scroll_down', 'image_search', 'search_image_by_text', 'search_image_by_image', 'generate_image', 'edit_image', 'generate_sound_effects', 'find_asset_bbox', 'crop_and_replicate_assets_in_image', 'dmail', 'show_widget', 'gain_terminal'],
+        ['create_file', 'read_file', 'edit_file', 'write_file', 'list_files', 'ipython', 'reset_ipython', 'execute_python', 'mcp_read_resource', 'mcp_call', 'create_subagent', 'spawn_subagent', 'delete_subagent', 'check_subagent_status', 'send_message', 'wait_for_message', 'ask_user', 'update_goal', 'web_search', 'task', 'todo_read', 'todo_write', 'memory_space_insert', 'memory_space_update', 'memory_space_delete', 'memory_space_edits', 'generate_speech', 'get_available_voices', 'get_data_source', 'get_data_source_desc', 'generate_slides_outline', 'slides_generator', 'fetch_urls', 'visit', 'click', 'input', 'find', 'scrollup', 'scrolldown', 'browser_visit', 'browser_click', 'browser_find', 'browser_input', 'browser_state', 'browser_scroll_up', 'browser_scroll_down', 'image_search', 'search_image_by_text', 'search_image_by_image', 'generate_image', 'edit_image', 'generate_sound_effects', 'find_asset_bbox', 'crop_and_replicate_assets_in_image', 'dmail', 'show_widget', 'gain_terminal'],
       );
       expect(registry.supports('delete_file'), isFalse);
       expect(registry.supports('execute_python'), isTrue);
@@ -18,6 +18,8 @@ void main() {
       expect(registry.supports('ask_user'), isTrue);
       expect(registry.supports('update_goal'), isTrue);
       expect(registry.supports('task'), isTrue);
+      expect(registry.supports('ipython'), isTrue);
+      expect(registry.supports('reset_ipython'), isTrue);
       expect(registry.supports('web_search'), isTrue);
       expect(registry.supports('memory_space_insert'), isTrue);
       expect(registry.supports('generate_speech'), isTrue);
@@ -51,6 +53,8 @@ void main() {
       expect(catalogue, contains('ask_user'));
       expect(catalogue, contains('update_goal'));
       expect(catalogue, contains('task'));
+      expect(catalogue, contains('ipython'));
+      expect(catalogue, contains('reset_ipython'));
       expect(catalogue, contains('web_search'));
       expect(catalogue, contains('todo_read'));
       expect(catalogue, contains('todo_write'));
