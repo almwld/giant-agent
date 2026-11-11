@@ -166,11 +166,11 @@ class _ChatScreenState extends State<ChatScreen> {
       if (path != null && path.isNotEmpty) _processSharedFilePath(path);
       return;
     }
-    if (step['tool_name'] == 'execute_python' || step['tool_name'] == 'gain_terminal') {
+    if (step['tool_name'] == 'execute_python' || step['tool_name'] == 'ipython' || step['tool_name'] == 'gain_terminal') {
       _terminalHasActivity = true;
       final type = step['type']?.toString();
       if (type == 'tool_start') {
-        _terminal.write('\r\n\x1B[33m>>> ${step['tool_name'] == 'gain_terminal' ? 'Gain terminal' : 'Python execution'} started\x1B[0m\r\n');
+        _terminal.write('\r\n\x1B[33m>>> ${step['tool_name'] == 'gain_terminal' ? 'Gain terminal' : step['tool_name'] == 'ipython' ? 'IPython REPL' : 'Python execution'} started\x1B[0m\r\n');
         final code = step['content']?.toString() ?? step['command']?.toString() ?? '';
         if (code.isNotEmpty) _terminal.write('\x1B[90m$code\x1B[0m\r\n');
       } else if (type == 'tool_output') {
