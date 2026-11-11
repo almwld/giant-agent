@@ -800,6 +800,22 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
             'powerpoint_file_created': false,
           };
           break;
+        case 'lbs_tool':
+          final approvalHandler = requestUserInput;
+          if (approvalHandler == null ||
+              await approvalHandler(
+                question: 'هل تسمح بمشاركة موقعك الحالي مع الوكيل لهذه المهمة؟ سيطلب Android إذن الموقع أثناء استخدام التطبيق فقط.',
+                choices: const <String>['السماح', 'إلغاء'],
+              ) != 'السماح') {
+            result = <String, dynamic>{'ok': true, 'cancelled': true, 'location_accessed': false};
+            break;
+          }
+          final location = await _agentTools.invokeMapMethod<String, dynamic>('getCurrentLocation');
+          result = location ?? <String, dynamic>{
+            'ok': false,
+            'error': 'Native location provider returned no result.',
+          };
+          break;
         case 'fetch_urls':
           final rawUrls = args['urls'];
           if (rawUrls is! List || rawUrls.isEmpty || rawUrls.length > 5 ||
