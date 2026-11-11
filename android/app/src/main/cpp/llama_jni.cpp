@@ -46,13 +46,13 @@ struct GenerationStateGuard {
     GenerationStateGuard() {
         g_cancel_requested.store(false, std::memory_order_relaxed);
         g_timeout_requested.store(false, std::memory_order_relaxed);
-        g_last_token_ms.store(monotonicMillis(), std::memory_order_release);
+        g_last_progress_ms.store(monotonicMillis(), std::memory_order_release);
         g_generation_active.store(true, std::memory_order_release);
         watchdog = std::thread([this]() {
             constexpr int64_t kIdleTimeoutMs = 15000;
             while (!stop_watchdog.load(std::memory_order_acquire)) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(250));
-                if (monotonicMillis() - g_last_token_ms.load(std::memory_order_acquire) >= kIdleTimeoutMs) {
+                if (monotonicMillis() - g_last_progress_ms.load(std::memory_order_acquire) >= kIdleTimeoutMs) {
                     g_timeout_requested.store(true, std::memory_order_release);
                     g_cancel_requested.store(true, std::memory_order_release);
                     break;
@@ -99,7 +99,7 @@ size_t completeUtf8Prefix(const std::string & value) {
 
 void emitToken(JNIEnv * env, jobject callback, jmethodID method, const std::string & bytes) {
     if (bytes.empty()) return;
-    g_last_token_ms.store(monotonicMillis(), std::memory_order_release);
+    g_last_progress_ms.store(monotonicMillis(), std::memory_order_release);
     if (!callback || !method) return;
     jstring piece = env->NewStringUTF(bytes.c_str());
     if (!piece) { if (env->ExceptionCheck()) env->ExceptionClear(); return; }
