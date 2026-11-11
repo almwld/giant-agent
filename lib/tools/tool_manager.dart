@@ -84,7 +84,7 @@ class ToolManager {
     ),
     AgentToolDefinition(
       name: 'wait_for_message',
-      description: 'انتظر رسالة واردة إلى الوكيل الحالي لمدة محدودة لا تتجاوز 60 ثانية.',
+      description: 'استقبل رسالة واردة إلى الوكيل الحالي. في OpenRouter ينتظر حتى 60 ثانية؛ في النموذج المحلي المتسلسل يستقبل الرسائل الموجودة فوراً دون حبس المحرك ومنع الوكيل المرسل من العمل.',
       example: '{"name":"wait_for_message","arguments":{"timeout_seconds":20}}',
     ),
     AgentToolDefinition(
