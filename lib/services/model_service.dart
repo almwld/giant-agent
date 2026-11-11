@@ -56,8 +56,17 @@ class ModelService {
   );
 
   Stream<Map<String, dynamic>> get toolEvents => AgentEventBus.instance.events;
-  void beginAgentRequest(String requestId) => _fallbackRequestId = requestId;
-  void endAgentRequest(String requestId) { if (_fallbackRequestId == requestId) _fallbackRequestId = ''; }
+  void beginAgentRequest(String requestId) {
+    _fallbackRequestId = requestId;
+    _cancelRequested = false;
+  }
+
+  void endAgentRequest(String requestId) {
+    if (_fallbackRequestId == requestId) {
+      _fallbackRequestId = '';
+      _cancelRequested = false;
+    }
+  }
 
   void _emitToolEvent(String type, String title, {
     String? toolName,
@@ -207,6 +216,8 @@ class ModelService {
 
   Future<bool> cancelGeneration() async {
     _cancelRequested = true;
+    final mode = await ModelProviderSettings.instance.getMode();
+    if (mode == ModelProviderMode.openRouter) return true;
     return _llama.cancel();
   }
 
@@ -594,6 +605,7 @@ $prompt
     String prompt, {
     required int maxTokens,
     required double temperature,
+    bool Function()? shouldCancel,
   }) async {
     final mode = await ModelProviderSettings.instance.getMode();
     switch (mode) {
@@ -607,7 +619,7 @@ $prompt
           prompt,
           maxTokens: maxTokens,
           temperature: temperature,
-          isCancelled: () => _cancelRequested,
+          isCancelled: () => _cancelRequested || shouldCancel?.call() == true,
           onDelta: (delta) {
             AgentEventBus.instance.publish(<String, dynamic>{
               'id': 'stream_${_activeRequestId}_${DateTime.now().microsecondsSinceEpoch}',
@@ -634,7 +646,7 @@ $prompt
       return 'تم إيقاف تنفيذ الوكيل بناءً على طلب المستخدم.';
     }
     final parallelProvider = Zone.current[_parallelProviderZoneKey] == true;
-    bool isCancelled() => shouldCancel?.call() == true || (!parallelProvider && _cancelRequested);
+    bool isCancelled() => shouldCancel?.call() == true || _cancelRequested;
     if (!parallelProvider) _cancelRequested = false;
     input = _boundPrompt(input);
     if (await ModelProviderSettings.instance.getMode() == ModelProviderMode.local && !await _llama.isLoaded()) {
@@ -675,7 +687,12 @@ $toolCatalog
           payload = pendingReflexionPayload;
           pendingReflexionPayload = null;
         } else {
-          final generated = await _generateText(history.toString(), maxTokens: 768, temperature: .25);
+          final generated = await _generateText(
+            history.toString(),
+            maxTokens: 768,
+            temperature: .25,
+            shouldCancel: isCancelled,
+          );
           if (isCancelled()) {
             return generated.trim().isEmpty
                 ? 'تم إيقاف التوليد.'
@@ -885,6 +902,15 @@ $toolCatalog
       }
       return 'وصل الوكيل إلى الحد الآمن ($maxToolCalls دورات تنفيذ/تحقق) دون إنهاء المهمة. أعد الطلب لمتابعة العمل من سياق المحادثة.';
     } catch (e) {
+      if (_cancelRequested || shouldCancel?.call() == true) {
+        _emitToolEvent(
+          'generation_interrupted',
+          'تم إيقاف التوليد',
+          details: 'تم إيقاف تدفق المزوّد بناءً على طلب المستخدم.',
+          status: 'interrupted',
+        );
+        return 'تم إيقاف التوليد بناءً على طلب المستخدم.';
+      }
       return 'تعذر إكمال الطلب: $e';
     }
   }
