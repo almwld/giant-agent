@@ -18,12 +18,12 @@ This tranche connects the model-facing tool loop to the active in-memory subagen
 - Maximum nesting depth two.
 - Roles remain `explore`, `plan`, `coder`, and `reviewer`.
 - A spawned child cannot start until declared dependencies have completed successfully.
-- Existing concurrency rules remain: local llama.cpp execution is single-worker; OpenRouter uses the existing bounded parallel path; coder workers hold the exclusive workspace lease.
+- Existing concurrency rules remain: local llama.cpp execution is single-worker; OpenRouter uses the existing bounded parallel path; coder workers hold the exclusive workspace lease. Consequently, `wait_for_message` blocks only in OpenRouter mode; local mode drains messages already delivered and returns immediately rather than deadlocking the sole inference worker.
 - Child workers use the same ModelService and existing tool implementations. No second model/JNI runtime is constructed.
 - Cancellation is task-scoped and the event journal remains append-only.
 
 ## User interaction
 
-The `ask_user` tool publishes a request event through the existing event bus. It is for non-secret information only and does not replace terminal or MCP action approvals. ChatScreen presents a text-entry dialog and submits the response through a request-ID-correlated broker. The broker persists request/answer/timeout/cancellation events through the existing journal path and bounds waits to three minutes. It does not treat an empty answer or a dismissed dialog as approval.
+On explicit resume after interruption, messages previously sent to the worker are reconstructed from the parent request journal and included in its recovery prompt. The `ask_user` tool publishes a request event through the existing event bus. It is for non-secret information only and does not replace terminal or MCP action approvals. ChatScreen presents a text-entry dialog and submits the response through a request-ID-correlated broker. The broker persists request/answer/timeout/cancellation events through the existing journal path and bounds waits to three minutes. It does not treat an empty answer or a dismissed dialog as approval.
 
 The existing service-level create/spawn/status/soft-delete APIs remain available for recovery and external callers. Informational message and goal events preserve the worker's current lifecycle state in the durable task projection. The new model-facing tools operate against the active orchestrator so a worker can add children without enqueueing behind and deadlocking the parent request.
