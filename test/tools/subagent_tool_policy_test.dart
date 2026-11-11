@@ -51,11 +51,13 @@ void main() {
       String parent,
       Map<String, dynamic> arguments,
       String toolCallId,
+      bool Function()? isCancelled,
     ) async {
       observed
         ..['parent'] = parent
         ..['arguments'] = arguments
-        ..['tool_call_id'] = toolCallId;
+        ..['tool_call_id'] = toolCallId
+        ..['is_cancelled'] = isCancelled?.call() ?? false;
       return <String, dynamic>{'ok': true};
     }
 
@@ -73,12 +75,14 @@ void main() {
       parentRequestId: 'parent-42',
       arguments: const <String, dynamic>{'id': 'child-7'},
       toolCallId: 'call-9',
+      isCancelled: () => true,
     );
 
     expect(result['ok'], isTrue);
     expect(observed['parent'], 'parent-42');
     expect(observed['arguments'], {'id': 'child-7'});
     expect(observed['tool_call_id'], 'call-9');
+    expect(observed['is_cancelled'], isTrue);
   });
 
   test('rejects subagent calls without parent identity or known operation', () async {
