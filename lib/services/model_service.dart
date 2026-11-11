@@ -14,6 +14,7 @@ import '../tools/terminal_tool_coordinator.dart';
 import '../domain/harness/evaluator_service.dart';
 import '../domain/harness/reflexion_service.dart';
 import '../domain/mcp/mcp_client.dart';
+import '../domain/mcp/mcp_client.dart';
 
 class ModelService {
   static final ModelService _instance = ModelService._internal();
@@ -26,6 +27,7 @@ class ModelService {
   bool _isLoading = false;
   bool _cancelRequested = false;
   Future<bool> Function(String command)? requestTerminalApproval;
+  Future<bool> Function(String serverId, McpRemoteTool tool, Map<String, dynamic> arguments)? requestMcpApproval;
   final GainTerminalTool _gainTerminal = GainTerminalTool();
   Future<void> _requestTail = Future<void>.value();
   Future<void> _toolTail = Future<void>.value();
@@ -311,6 +313,19 @@ class ModelService {
           final remoteArguments = args['arguments'];
           if (serverId.isEmpty || remoteToolName.isEmpty || remoteArguments is! Map<String, dynamic>) {
             throw const FormatException('mcp_call requires server_id, tool_name and an arguments object.');
+          }
+          final remoteTool = await McpClient.instance.findTool(serverId, remoteToolName);
+          if (remoteTool.annotations['readOnlyHint'] != true) {
+            final approval = requestMcpApproval;
+            if (approval == null ||
+                !await approval(serverId, remoteTool, remoteArguments)) {
+              result = <String, dynamic>{
+                'ok': false,
+                'denied': true,
+                'error': 'MCP tool requires explicit user approval; no approval was granted.',
+              };
+              break;
+            }
           }
           final mcpResult = await McpClient.instance.callTool(
             serverId: serverId,
