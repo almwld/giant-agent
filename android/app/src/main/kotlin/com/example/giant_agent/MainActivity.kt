@@ -298,6 +298,58 @@ class MainActivity: FlutterActivity() {
                         }
                     }
                 }
+                "executePythonRepl" -> {
+                    val code = call.argument<String>("code").orEmpty()
+                    val sessionId = call.argument<String>("sessionId").orEmpty()
+                    require(sessionId.matches(Regex("[A-Za-z0-9_-]{1,128}"))) {
+                        "Invalid Python REPL session id."
+                    }
+                    val eventId = "ipython_${System.nanoTime()}"
+                    emitPythonEvent("tool_start", code, null, "running", eventId, "ipython")
+                    aiExecutor.execute {
+                        try {
+                            if (!Python.isStarted()) Python.start(AndroidPlatform(this))
+                            val workspace = File(filesDir, "agent_workspace").apply { mkdirs() }.canonicalPath
+                            val pyResult = Python.getInstance().getModule("sandbox")
+                                .callAttr("run_repl", code, workspace, sessionId)
+                            val status = pyResult.get("status")?.toString() ?: "error"
+                            val output = pyResult.get("output")?.toString() ?: ""
+                            val error = pyResult.get("error")?.toString() ?: ""
+                            val ok = status == "success"
+                            emitPythonEvent(if (ok) "tool_output" else "tool_error", code,
+                                if (ok) output else error, if (ok) "completed" else "failed", eventId, "ipython")
+                            runOnUiThread {
+                                result.success(mapOf("ok" to ok, "output" to output, "error" to error, "session_id" to sessionId))
+                            }
+                        } catch (t: Throwable) {
+                            val message = t.message ?: "Python REPL failed"
+                            emitPythonEvent("tool_error", code, message, "failed", eventId, "ipython")
+                            runOnUiThread { result.success(mapOf("ok" to false, "output" to "", "error" to message, "session_id" to sessionId)) }
+                        }
+                    }
+                }
+                "resetPythonRepl" -> {
+                    val sessionId = call.argument<String>("sessionId").orEmpty()
+                    require(sessionId.matches(Regex("[A-Za-z0-9_-]{1,128}"))) {
+                        "Invalid Python REPL session id."
+                    }
+                    aiExecutor.execute {
+                        try {
+                            if (!Python.isStarted()) Python.start(AndroidPlatform(this))
+                            val reset = Python.getInstance().getModule("sandbox")
+                                .callAttr("reset_repl", sessionId)
+                            runOnUiThread {
+                                result.success(mapOf(
+                                    "ok" to (reset.get("ok")?.toString()?.toBoolean() ?: false),
+                                    "reset" to (reset.get("reset")?.toString()?.toBoolean() ?: false),
+                                    "session_id" to sessionId
+                                ))
+                            }
+                        } catch (t: Throwable) {
+                            runOnUiThread { result.success(mapOf("ok" to false, "error" to (t.message ?: "Python REPL reset failed"))) }
+                        }
+                    }
+                }
                 "shareWorkspace" -> {
                     aiExecutor.execute {
                         try {
@@ -561,12 +613,12 @@ class MainActivity: FlutterActivity() {
         }
     }
 
-    private fun emitPythonEvent(type: String, code: String, output: String?, status: String, eventId: String) {
+    private fun emitPythonEvent(type: String, code: String, output: String?, status: String, eventId: String, toolName: String = "execute_python") {
         runOnUiThread {
             agentEventSink?.success(mapOf(
                 "id" to eventId,
                 "type" to type,
-                "tool_name" to "execute_python",
+                "tool_name" to toolName,
                 "title" to if (type == "tool_start") "تشغيل Python" else if (type == "tool_output") "مخرجات Python" else "خطأ Python",
                 "content" to code,
                 "output" to output,
