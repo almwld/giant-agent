@@ -48,6 +48,10 @@ class McpClient {
     }
     final uri = _validateEndpoint(endpoint);
     final cleanName = name.trim();
+    final cleanToken = bearerToken?.trim();
+    if (cleanToken != null && (cleanToken.length > 8192 || RegExp(r'[\\r\\n]').hasMatch(cleanToken))) {
+      throw ArgumentError.value(bearerToken, 'bearerToken', 'Bearer token is invalid or too long.');
+    }
     if (cleanName.isEmpty || cleanName.length > 100) {
       throw ArgumentError.value(name, 'name', 'Server name must be 1-100 characters.');
     }
@@ -57,7 +61,7 @@ class McpClient {
       id: normalizedId,
       name: cleanName,
       endpoint: uri.toString(),
-      bearerToken: bearerToken?.trim().isEmpty == true ? null : bearerToken?.trim(),
+      bearerToken: cleanToken?.isEmpty == true ? null : cleanToken,
     ));
     await _writeServers(updated);
     _sessions.remove(normalizedId);
@@ -108,7 +112,10 @@ class McpClient {
 
   Future<McpServerConfig> _server(String id) async {
     for (final server in await servers()) {
-      if (server.id == id) return server;
+      if (server.id == id) {
+        _validateEndpoint(server.endpoint);
+        return server;
+      }
     }
     throw StateError('MCP server is not configured: $id');
   }
