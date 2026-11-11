@@ -927,7 +927,6 @@ class _ChatScreenState extends State<ChatScreen> {
     return AdvancedTimelineWidget(
       events: events,
       title: 'Agent execution timeline',
-      onCancelTool: (toolCallId) async { await _cancelAgent(); },
     );
   }
 
