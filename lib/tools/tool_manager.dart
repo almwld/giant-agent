@@ -284,6 +284,11 @@ class ToolManager {
       example: '{"name":"crop_and_replicate_assets_in_image","arguments":{"input_path":"images/screen.png","prompt":"Extract the icon and create a clean transparent copy"}}',
     ),
     AgentToolDefinition(
+      name: 'show_widget',
+      description: 'عرض عنصر واجهة منظم في سجل تنفيذ الجلسة. الأنواع المدعومة: metric, progress, table, list, notice. لا يقبل HTML أو JavaScript.',
+      example: '{"name":"show_widget","arguments":{"widget_type":"metric","title":"Build status","payload":{"label":"APK count","value":4}}}',
+    ),
+    AgentToolDefinition(
       name: 'gain_terminal',
       description: 'تنفيذ أمر واحد في Android shell بصلاحيات التطبيق فقط؛ يتطلب موافقة المستخدم الصريحة على نص الأمر حرفياً قبل التنفيذ.',
       example: '{"name":"gain_terminal","arguments":{"command":"pwd && ls","timeout_seconds":30}}',
