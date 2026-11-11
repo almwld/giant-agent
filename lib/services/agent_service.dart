@@ -140,6 +140,9 @@ class AgentService {
           dependsOn: (rawDependencies as List? ?? const [])
               .map((value) => value.toString()).toList(growable: false),
           toolCallId: toolCallId,
+          description: arguments['description']?.toString() ?? '',
+          iconUrl: arguments['icon_url']?.toString() ?? '',
+          motto: arguments['motto']?.toString() ?? '',
         );
         return <String, dynamic>{'ok': true, 'subagent': child};
       },
@@ -330,6 +333,9 @@ class AgentService {
     String agentType = 'explore',
     List<String> dependsOn = const <String>[],
     String toolCallId = '',
+    String description = '',
+    String iconUrl = '',
+    String motto = '',
   }) async {
     await initialize();
     final id = taskId.trim();
@@ -338,8 +344,15 @@ class AgentService {
     if (id.isEmpty || cleanTitle.isEmpty || cleanPrompt.isEmpty) {
       throw ArgumentError('Subagent id, title and prompt are required.');
     }
-    if (cleanPrompt.length > 12000 || cleanTitle.length > 160) {
-      throw ArgumentError('Subagent title or prompt exceeds the supported limit.');
+    if (cleanPrompt.length > 12000 || cleanTitle.length > 160 ||
+        description.length > 1200 || motto.length > 200 || iconUrl.length > 2048) {
+      throw ArgumentError('Subagent metadata exceeds the supported limits.');
+    }
+    if (iconUrl.isNotEmpty) {
+      final uri = Uri.tryParse(iconUrl);
+      if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) {
+        throw ArgumentError('Subagent icon_url must be an absolute HTTPS URL.');
+      }
     }
     if (!const {'explore', 'plan', 'coder', 'reviewer'}.contains(agentType)) {
       throw ArgumentError('Unknown subagent type: $agentType');
@@ -367,21 +380,28 @@ class AgentService {
       }
     }
     final now = DateTime.now().toUtc().toIso8601String();
-    await _store.recordSubagentEvent(<String, dynamic>{
+    AgentEventBus.instance.publish(<String, dynamic>{
       'id': 'subagent_created_${id}_${DateTime.now().microsecondsSinceEpoch}',
       'request_id': parentRequestId,
       'session_id': parent.conversationId,
       'task_id': id,
       'agent_type': agentType,
+      'agent_index': children.length,
       'title': cleanTitle,
       'task_prompt': cleanPrompt,
+      'description': description,
+      'icon_url': iconUrl,
+      'motto': motto,
+      'is_async': false,
       'depends_on': dependsOn,
       'type': 'subagent_created',
       'status': 'pending',
+      'progress_percent': 0,
       if (toolCallId.isNotEmpty) 'tool_call_id': toolCallId,
       'details': 'Created and durably registered; execution has not started.',
       'timestamp': now,
     });
+    await _flushExecutionJournal();
     final created = await _store.getSubagent(id);
     if (created == null || created['status'] != 'pending') {
       throw StateError('Subagent creation was not durably confirmed.');
