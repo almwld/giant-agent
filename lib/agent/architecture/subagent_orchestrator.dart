@@ -141,8 +141,17 @@ class SubagentOrchestrator {
   }
 
   bool cancelTask(String taskId) {
-    if (!_tasks.containsKey(taskId) || _results.containsKey(taskId)) return false;
+    final task = _tasks[taskId];
+    if (task == null || _results.containsKey(taskId)) return false;
     _cancelledTasks.add(taskId);
+    // A created-but-not-spawned or queued child can be cancelled immediately;
+    // active workers observe the task-scoped cancellation callback.
+    if (!_active.containsKey(taskId)) {
+      _pending.remove(taskId);
+      _results[taskId] = SubagentResult(taskId: taskId, status: 'cancelled');
+      unawaited(_emit(task, 'subagent_cancelled', 'cancelled',
+          details: 'Cancellation requested before worker execution.'));
+    }
     return true;
   }
 
