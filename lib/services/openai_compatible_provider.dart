@@ -202,6 +202,118 @@ class OpenAICompatibleProvider {
     }
   }
 
+  /// Incremental OpenRouter SSE generation using this provider singleton.
+  Future<String> generateStreaming(
+    String prompt, {
+    int maxTokens = 768,
+    double temperature = 0.25,
+    void Function(String delta)? onDelta,
+    bool Function()? isCancelled,
+  }) async {
+    final key = (await getApiKey())?.trim();
+    if (key == null || key.isEmpty || !await isEnabled()) {
+      throw StateError('OpenRouter غير مفعّل أو لا يوجد مفتاح محفوظ.');
+    }
+    final client = http.Client();
+    final parser = ServerSentEventParser();
+    final output = StringBuffer();
+    try {
+      final request = http.Request('POST', chatCompletionsUri(defaultBaseUrl))
+        ..followRedirects = false
+        ..headers.addAll({
+          'Authorization': 'Bearer $key',
+          'Content-Type': 'application/json; charset=utf-8',
+          'Accept': 'text/event-stream',
+          'HTTP-Referer': 'https://github.com/almwld/giant-agent',
+          'X-Title': 'Giant Agent',
+        })
+        ..body = jsonEncode({
+          'model': await getModel(),
+          'messages': [{'role': 'user', 'content': prompt}],
+          'max_tokens': maxTokens,
+          'temperature': temperature,
+          'stream': true,
+        });
+      final response = await client.send(request).timeout(requestTimeout);
+      if (response.isRedirect) {
+        throw StateError('رفض OpenRouter إعادة توجيه HTTP ${response.statusCode}.');
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final body = await response.stream.bytesToString();
+        String detail = body;
+        try {
+          final decoded = jsonDecode(body);
+          if (decoded is Map) {
+            final error = decoded['error'];
+            detail = error is Map
+                ? error['message']?.toString() ?? body
+                : error?.toString() ?? body;
+          }
+        } catch (_) {}
+        throw StateError('OpenRouter streaming HTTP ${response.statusCode}: $detail');
+      }
+      final contentType = response.headers['content-type']?.toLowerCase() ?? '';
+      if (!contentType.contains('text/event-stream')) {
+        throw StateError('OpenRouter لم يُرجع قناة SSE صالحة (Content-Type: $contentType).');
+      }
+      await for (final bytes in response.stream.timeout(requestTimeout)) {
+        if (isCancelled?.call() == true) throw const _OpenRouterStreamInterrupted();
+        for (final event in parser.add(bytes)) {
+          if (event.data.trim() == '[DONE]') return output.toString();
+          final dynamic decoded;
+          try {
+            decoded = jsonDecode(event.data);
+          } on FormatException {
+            throw StateError('أرسل OpenRouter حدث SSE غير صالح بصيغة JSON.');
+          }
+          if (decoded is! Map) continue;
+          if (decoded['error'] != null) {
+            throw StateError('OpenRouter streaming error: ${decoded['error']}');
+          }
+          final choices = decoded['choices'];
+          if (choices is! List || choices.isEmpty || choices.first is! Map) continue;
+          final delta = (choices.first as Map)['delta'];
+          if (delta is! Map) continue;
+          final content = delta['content'];
+          final textDelta = content is String
+              ? content
+              : content is List
+                  ? content.whereType<Map>().map((part) => part['text']?.toString() ?? '').join()
+                  : '';
+          if (textDelta.isNotEmpty) {
+            output.write(textDelta);
+            onDelta?.call(textDelta);
+          }
+        }
+      }
+      for (final event in parser.close()) {
+        if (event.data.trim() == '[DONE]') break;
+        final decoded = jsonDecode(event.data);
+        if (decoded is Map && decoded['choices'] is List) {
+          final choices = decoded['choices'] as List;
+          if (choices.isNotEmpty && choices.first is Map) {
+            final delta = (choices.first as Map)['delta'];
+            final content = delta is Map ? delta['content'] : null;
+            if (content is String && content.isNotEmpty) {
+              output.write(content);
+              onDelta?.call(content);
+            }
+          }
+        }
+      }
+      if (isCancelled?.call() == true) throw const _OpenRouterStreamInterrupted();
+      if (output.isEmpty) throw StateError('انتهى تدفق OpenRouter دون محتوى نصي.');
+      return output.toString();
+    } on _OpenRouterStreamInterrupted {
+      throw StateError('تم إيقاف تدفق OpenRouter بناءً على طلب المستخدم.');
+    } on TimeoutException {
+      throw TimeoutException('انتهت مهلة تدفق OpenRouter بعد ${requestTimeout.inSeconds} ثانية.');
+    } finally {
+      client.close();
+    }
+  }
+
+
   Future<String> generate(
     String prompt, {
     int maxTokens = 768,
