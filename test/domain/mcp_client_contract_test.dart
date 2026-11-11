@@ -21,6 +21,7 @@ void main() {
       final tool = McpRemoteTool.fromJson({
         'name': 'search',
         'description': 'Search indexed documents',
+        'annotations': {'readOnlyHint': true, 'destructiveHint': false},
         'inputSchema': {
           'type': 'object',
           'required': ['query'],
@@ -28,6 +29,7 @@ void main() {
         },
       });
       expect(tool.name, 'search');
+      expect(tool.annotations['readOnlyHint'], isTrue);
       expect(tool.inputSchema['required'], ['query']);
       expect((tool.inputSchema['properties'] as Map)['query']['type'], 'string');
     });
@@ -48,6 +50,7 @@ void main() {
       });
       expect(result.textPreview, 'first\nsecond');
       expect(result.structuredContent?['count'], 2);
+      expect(result.toJson()['_meta'], isNull);
     });
   });
 }
