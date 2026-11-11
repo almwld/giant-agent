@@ -48,15 +48,15 @@ Mylib contains decompiled Android/Kotlin sources and extracted assets from Kimi 
 | 25 | `browser_scroll_down` | Implemented through the visible browser controller. |
 | 26 | `browser_screenshot` | Not yet transferred; no capture-capable agent browser session exists. |
 | 27 | `screenshot_web_full_page` | Not yet transferred; requires browser capture and stitching support. |
-| 28 | `find_asset_bbox` | Not yet transferred; requires a connected vision/asset-localization provider. |
-| 29 | `crop_and_replicate_assets_in_image` | Not yet transferred; requires a real image-editing provider. |
+| 28 | `find_asset_bbox` | Provider adapter implemented; requires a connected vision/asset-localization provider to return bounds. |
+| 29 | `crop_and_replicate_assets_in_image` | Provider adapter implemented; requires a connected image-editing provider. |
 | 30 | `web_search` | Implemented through WebSearchService (DuckDuckGo HTML results). |
-| 31 | `image_search` | Not yet transferred as image search; ordinary web search is not represented as image search. |
-| 32 | `search_image_by_text` | Not yet transferred; requires an image-search provider. |
-| 33 | `search_image_by_image` | Not yet transferred; requires reverse-image-search provider support. |
-| 34 | `generate_image` | Not yet transferred; media registry is an adapter boundary and has no image provider registered by default. |
+| 31 | `image_search` | Provider adapter implemented; no image-search provider is connected by default. |
+| 32 | `search_image_by_text` | Provider adapter implemented; requires a connected image-search provider. |
+| 33 | `search_image_by_image` | Provider adapter implemented; requires a connected reverse-image-search provider and source image. |
+| 34 | `generate_image` | Provider adapter implemented; media registry has no image provider registered by default. |
 | 35 | `generate_speech` | Implemented as on-device TTS playback; it does not claim to create a downloadable audio file. |
-| 36 | `generate_sound_effects` | Not yet transferred; no sound-effects generation engine/provider is connected. |
+| 36 | `generate_sound_effects` | Provider adapter implemented; no sound-effects engine/provider is connected by default. |
 | 37 | `get_available_voices` | Implemented using voices exposed by the device TTS engine. |
 | 38 | `get_data_source` | Implemented as a safe list of configured MCP servers (credentials excluded). |
 | 39 | `get_data_source_desc` | Implemented by initializing a selected MCP server and reading its tools/resources. |
