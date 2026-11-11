@@ -676,9 +676,12 @@ class AgentKernelStore {
   }
 
   Future<List<KernelEventRecord>> taskEvents(String taskId) async {
+    // Child-local journal rows have a null request_id. Parent-request
+    // timeline mirrors carry the same task_id but belong to eventsFor(request)
+    // and must not be duplicated in this child-specific replay stream.
     final rows = await (await database).query(
       'agent_events',
-      where: 'task_id = ?',
+      where: 'task_id = ? AND request_id IS NULL',
       whereArgs: [taskId],
       orderBy: 'row_id ASC',
     );
