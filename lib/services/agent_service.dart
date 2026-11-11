@@ -248,7 +248,29 @@ class AgentService {
   /// append-only audit history. Pending/running children cannot be dismissed.
   Future<bool> dismissSubagent(String taskId) async {
     await initialize();
-    return _store.dismissSubagent(taskId);
+    final child = await _store.getSubagent(taskId);
+    if (child == null) return false;
+    if (child['is_dismissed'] == true) return true;
+    final status = child['status']?.toString() ?? 'unknown';
+    if (status == 'pending' || status == 'running') return false;
+    final requestId = child['parent_request_id']?.toString() ?? '';
+    if (requestId.isEmpty) return false;
+    AgentEventBus.instance.publish(<String, dynamic>{
+      'id': 'subagent_dismissed_${taskId}_${DateTime.now().microsecondsSinceEpoch}',
+      'request_id': requestId,
+      'session_id': child['conversation_id']?.toString() ?? 'global',
+      'task_id': taskId,
+      'agent_type': child['agent_type']?.toString() ?? 'unknown',
+      'title': child['title']?.toString() ?? taskId,
+      'task_prompt': child['prompt']?.toString() ?? '',
+      'depends_on': child['depends_on'] ?? const <String>[],
+      'type': 'subagent_dismissed',
+      'status': status,
+      'details': 'Dismissed from active management; audit history retained.',
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+    });
+    await _flushExecutionJournal();
+    return (await _store.getSubagent(taskId))?['is_dismissed'] == true;
   }
 
   /// Resumes one interrupted child only after an explicit user decision about
