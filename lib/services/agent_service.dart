@@ -126,7 +126,7 @@ class AgentService {
 
   void _configureSubagentToolBridge() {
     SubagentToolBridge.instance.configure(
-      create: (parentRequestId, arguments, toolCallId) async {
+      create: (parentRequestId, arguments, toolCallId, _) async {
         final rawDependencies = arguments['depends_on'];
         if (rawDependencies != null && rawDependencies is! List) {
           throw const FormatException('depends_on must be an array of child task ids.');
@@ -146,13 +146,14 @@ class AgentService {
         );
         return <String, dynamic>{'ok': true, 'subagent': child};
       },
-      spawn: (parentRequestId, arguments, toolCallId) async {
+      spawn: (parentRequestId, arguments, toolCallId, isCancelled) async {
         final taskId = arguments['task_id']?.toString() ?? '';
         try {
           final child = await spawnSubagent(
             taskId,
             expectedParentRequestId: parentRequestId,
             toolCallId: toolCallId,
+            isCancelled: isCancelled,
           );
           final completed = child['status'] == 'completed' &&
               (child['last_result']?.toString() ?? '').trim().isNotEmpty;
@@ -166,7 +167,7 @@ class AgentService {
           return <String, dynamic>{'ok': false, 'error': error.toString()};
         }
       },
-      check: (parentRequestId, arguments, _) async {
+      check: (parentRequestId, arguments, _, __) async {
         final taskId = arguments['task_id']?.toString() ?? '';
         final child = await checkSubagentStatus(
           taskId,
@@ -177,7 +178,7 @@ class AgentService {
         }
         return <String, dynamic>{'ok': true, 'subagent': child};
       },
-      delete: (parentRequestId, arguments, _) async {
+      delete: (parentRequestId, arguments, _, __) async {
         final taskId = arguments['task_id']?.toString() ?? '';
         final deleted = await deleteSubagent(
           taskId,
@@ -189,7 +190,7 @@ class AgentService {
           if (!deleted) 'error': 'The child was not found, belongs to another parent, or is still active.',
         };
       },
-      list: (parentRequestId, _, __) async => <String, dynamic>{
+      list: (parentRequestId, _, __, ___) async => <String, dynamic>{
         'ok': true,
         'subagents': await listSubagents(parentRequestId),
       },
@@ -415,9 +416,13 @@ class AgentService {
     String taskId, {
     String? expectedParentRequestId,
     String toolCallId = '',
+    bool Function()? isCancelled,
   }) async {
     await initialize();
     final id = taskId.trim();
+    if (isCancelled?.call() == true) {
+      throw StateError('Subagent spawn was cancelled before execution.');
+    }
     if (id.isEmpty) throw ArgumentError('Subagent id is required.');
     if (!_spawningSubagents.add(id)) {
       throw StateError('Subagent $id is already being spawned.');
@@ -457,6 +462,9 @@ class AgentService {
       }
       // The parent request already owns the foreground execution service.
       // Do not release it when this nested child finishes.
+      if (isCancelled?.call() == true) {
+        throw StateError('Subagent spawn was cancelled before inference started.');
+      }
       await _executionKernel.executeDynamicSubagent(
         parentRequestId: parent.id,
         conversationId: parent.conversationId,
@@ -466,6 +474,7 @@ class AgentService {
         agentType: child['agent_type']?.toString() ?? 'explore',
         dependencyResults: dependencyResults,
         toolCallId: toolCallId,
+        isCancelled: isCancelled,
       );
       await _flushExecutionJournal();
       final completed = await _store.getSubagent(id);
