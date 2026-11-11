@@ -34,7 +34,7 @@ Mylib contains decompiled Android/Kotlin sources and extracted assets from Kimi 
 | 11 | `python` | Implemented through the embedded Chaquopy runtime. |
 | 12 | `todo_read` | Implemented using durable TaskManager records scoped to the current conversation. |
 | 13 | `todo_write` | Implemented as a durable pending task; it does not auto-start execution. |
-| 14 | `ipython` | Implemented as a bounded conversation-scoped persistent REPL over the same restricted Chaquopy sandbox; sessions are isolated, expire after one hour idle and are capped at four. |
+| 14 | `ipython` | Implemented as an IPython-style persistent variable REPL over the same restricted Chaquopy sandbox (not the full IPython kernel/magics); sessions are isolated, expire after one hour idle, are capped at four and reset on app-process restart. |
 | 15 | `shell` | Implemented through Gain PTY with explicit command approval. |
 | 16 | `read_file` | Implemented through the constrained native workspace bridge. |
 | 17 | `edit_file` | Implemented as a separate model-facing alias to verified `write_file`; only existing allowed text/code files can be changed. |
