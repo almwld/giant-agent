@@ -363,6 +363,7 @@ class AgentKernel {
   Future<String> executeDynamicSubagent({
     required String parentRequestId,
     required String conversationId,
+    required String parentPrompt,
     required String taskId,
     required String title,
     required String taskPrompt,
@@ -407,8 +408,11 @@ class AgentKernel {
       status: 'running',
     );
     try {
-      final prompt = '''أنت وكيل فرعي تابع للطلب الحالي من نوع $agentType.
-المهمة: $taskPrompt
+      final prompt = '''أنت وكيل فرعي تابع للطلب الرئيسي التالي:
+$parentPrompt
+
+نوعك: $agentType
+المهمة المسندة: $taskPrompt
 نتائج التبعيات المكتملة:
 ${dependencyContext.isEmpty ? 'لا توجد تبعيات.' : dependencyContext}
 
