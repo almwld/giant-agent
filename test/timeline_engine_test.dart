@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:giant_agent/core/timeline_engine.dart';
-import 'package:giant_agent/core/tool_cancellation_manager.dart';
+import '../lib/core/timeline_engine.dart';
+import '../lib/core/tool_cancellation_manager.dart';
 
 void main() {
   group('TimelineEngine', () {
