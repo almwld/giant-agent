@@ -184,6 +184,11 @@ class ToolManager {
       example: '{"name":"slides_generator","arguments":{"path":"presentations/overview.html","title":"Overview","slides":[{"title":"Goal","body":"Key points"}]}}',
     ),
     AgentToolDefinition(
+      name: 'lbs_tool',
+      description: 'طلب موقع المستخدم الحالي بعد موافقته داخل التطبيق ثم إذن Android؛ يعمل أثناء استخدام التطبيق فقط ولا يطلب تتبعاً في الخلفية.',
+      example: '{"name":"lbs_tool","arguments":{}}',
+    ),
+    AgentToolDefinition(
       name: 'fetch_urls',
       description: 'فتح ما يصل إلى خمسة روابط HTTP(S) في جلسة المتصفح المرئية وجلب عنوان الصفحة ونصها.',
       example: '{"name":"fetch_urls","arguments":{"urls":["https://example.com"]}}',
