@@ -557,6 +557,9 @@ $checkpoint
     return accepted;
   }
 
+  String get currentTaskId => _currentTask;
+  bool get isExecuting => _executing;
+
   String getProgress() {
     final task = _tasks.cast<Map<String, dynamic>>().firstWhere(
       (item) => item['id'] == _currentTask,
