@@ -134,17 +134,20 @@ class McpClient {
     if (negotiated == null || negotiated.isEmpty) {
       throw const FormatException('MCP initialize response omitted protocolVersion.');
     }
+    if (negotiated != _protocolVersion) {
+      throw UnsupportedError('MCP server selected unsupported protocol version: $negotiated');
+    }
     session.protocolVersion = negotiated;
     session.serverInfo = result['serverInfo'] is Map
         ? Map<String, dynamic>.from(result['serverInfo'] as Map)
         : <String, dynamic>{};
     session.initialized = true;
-    _sessions[serverId] = session;
 
     await _post(session, <String, dynamic>{
       'jsonrpc': '2.0',
       'method': 'notifications/initialized',
     }, allowAccepted: true);
+    _sessions[serverId] = session;
     return Map<String, dynamic>.unmodifiable(session.serverInfo);
   }
 
