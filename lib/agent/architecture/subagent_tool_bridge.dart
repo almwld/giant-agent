@@ -7,6 +7,7 @@ typedef SubagentToolHandler = Future<Map<String, dynamic>> Function(
   String parentRequestId,
   Map<String, dynamic> arguments,
   String toolCallId,
+  bool Function()? isCancelled,
 );
 
 class SubagentToolBridge {
@@ -39,6 +40,7 @@ class SubagentToolBridge {
     required String parentRequestId,
     required Map<String, dynamic> arguments,
     required String toolCallId,
+    bool Function()? isCancelled,
   }) async {
     final parent = parentRequestId.trim();
     if (parent.isEmpty) {
@@ -55,6 +57,14 @@ class SubagentToolBridge {
     if (handler == null) {
       throw StateError('Subagent tool bridge is not configured for "$name".');
     }
-    return handler(parent, Map<String, dynamic>.unmodifiable(arguments), toolCallId);
+    if (isCancelled?.call() == true) {
+      throw StateError('Subagent tool call was cancelled before dispatch.');
+    }
+    return handler(
+      parent,
+      Map<String, dynamic>.unmodifiable(arguments),
+      toolCallId,
+      isCancelled,
+    );
   }
 }
