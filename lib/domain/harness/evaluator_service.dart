@@ -82,6 +82,25 @@ class EvaluatorService {
           message: passed ? 'Workspace listing returned a structured file list.' : 'Workspace listing did not return a file list.',
           evidence: <String, Object?>{'file_count': files is List ? files.length : 0},
         );
+      case 'mcp_call':
+        final envelope = toolResult['mcp_result'];
+        final content = envelope is Map ? envelope['content'] : null;
+        final structured = envelope is Map ? envelope['structuredContent'] : null;
+        final passed = toolResult['ok'] == true &&
+            envelope is Map &&
+            (content is List || structured is Map);
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed
+              ? 'MCP transport verification passed: the remote server returned a typed result envelope. Remote business effects are not independently asserted.'
+              : 'MCP verification failed: the remote server did not return a valid typed result envelope.',
+          evidence: <String, Object?>{
+            'transport_result_received': passed,
+            'content_blocks': content is List ? content.length : 0,
+            'has_structured_content': structured is Map,
+            'remote_effect_independently_asserted': false,
+          },
+        );
       case 'execute_python':
         final output = toolResult['output']?.toString() ?? '';
         final error = toolResult['error']?.toString() ?? '';
