@@ -284,6 +284,11 @@ class ToolManager {
       example: '{"name":"crop_and_replicate_assets_in_image","arguments":{"input_path":"images/screen.png","prompt":"Extract the icon and create a clean transparent copy"}}',
     ),
     AgentToolDefinition(
+      name: 'dmail',
+      description: 'استرجاع مقتطفات من المحادثات المحلية السابقة عبر البحث الدلالي بالكلمات المفتاحية؛ لا يرسل بريداً إلكترونياً.',
+      example: '{"name":"dmail","arguments":{"query":"previous discussion about MCP streaming","limit":5}}',
+    ),
+    AgentToolDefinition(
       name: 'show_widget',
       description: 'عرض عنصر واجهة منظم في سجل تنفيذ الجلسة. الأنواع المدعومة: metric, progress, table, list, notice. لا يقبل HTML أو JavaScript.',
       example: '{"name":"show_widget","arguments":{"widget_type":"metric","title":"Build status","payload":{"label":"APK count","value":4}}}',
