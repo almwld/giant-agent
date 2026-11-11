@@ -25,16 +25,43 @@ void main() {
       },
     );
     final results = await orchestrator.run([
-      const SubagentTask(id: 'research', title: 'Research', prompt: 'Research'),
-      const SubagentTask(id: 'audit', title: 'Audit', prompt: 'Audit'),
-      const SubagentTask(id: 'synthesis', title: 'Synthesis', prompt: 'Synthesize', dependsOn: ['research', 'audit']),
+      const SubagentTask(id: 'research', title: 'Research', prompt: 'Research', agentType: 'explore'),
+      const SubagentTask(id: 'audit', title: 'Audit', prompt: 'Audit', agentType: 'reviewer'),
+      const SubagentTask(id: 'synthesis', title: 'Synthesis', prompt: 'Synthesize', agentType: 'plan', dependsOn: ['research', 'audit']),
     ]);
     expect(peak, 2);
     expect(results.map((r) => r.status), ['completed', 'completed', 'completed']);
     expect(results.last.output, 'result-synthesis');
     expect(dependencyOutput, 'result-research');
     expect(events.map((e) => e['type']), contains('subagent_completed'));
+    expect(events.where((event) => event['type'] == 'subagent_created'), hasLength(3));
+    expect(events.take(3).every((event) => event['type'] == 'subagent_created'), isTrue);
     expect(events.every((event) => event['request_id'] == 'request-1'), isTrue);
+  });
+
+  test('coder workers hold an exclusive workspace lease', () async {
+    final active = <String>{};
+    var peak = 0;
+    final orchestrator = SubagentOrchestrator(
+      parentRequestId: 'request-coder-lease',
+      conversationId: 'chat-coder-lease',
+      maxConcurrency: 3,
+      onEvent: (_) {},
+      execute: (task, dependencies, isCancelled) async {
+        active.add(task.id);
+        if (active.length > peak) peak = active.length;
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+        active.remove(task.id);
+        return 'done';
+      },
+    );
+    final results = await orchestrator.run([
+      const SubagentTask(id: 'coder', title: 'Coder', prompt: 'Edit files', agentType: 'coder'),
+      const SubagentTask(id: 'explore', title: 'Explore', prompt: 'Inspect files', agentType: 'explore'),
+      const SubagentTask(id: 'review', title: 'Review', prompt: 'Review changes', agentType: 'reviewer'),
+    ]);
+    expect(peak, 1);
+    expect(results.map((result) => result.status), everyElement('completed'));
   });
 
   test('can execute a bounded repair batch after an initial batch', () async {
