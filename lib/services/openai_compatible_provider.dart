@@ -4,8 +4,13 @@ import 'dart:io';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
+import 'streaming/server_sent_event_parser.dart';
 
 /// OpenRouter-only OpenAI-compatible adapter. Arbitrary base URLs are rejected.
+class _OpenRouterStreamInterrupted implements Exception {
+  const _OpenRouterStreamInterrupted();
+}
+
 class OpenAICompatibleProvider {
   OpenAICompatibleProvider._();
 
@@ -195,6 +200,185 @@ class OpenAICompatibleProvider {
       client.close();
     }
   }
+
+  /// Incremental OpenRouter SSE generation using this provider singleton.
+  Future<String> generateStreaming(
+    String prompt, {
+    int maxTokens = 768,
+    double temperature = 0.25,
+    void Function(String delta)? onDelta,
+    bool Function()? isCancelled,
+  }) async {
+    final key = (await getApiKey())?.trim();
+    if (key == null || key.isEmpty || !await isEnabled()) {
+      throw StateError('OpenRouter غير مفعّل أو لا يوجد مفتاح محفوظ.');
+    }
+    if (isCancelled?.call() == true) throw const _OpenRouterStreamInterrupted();
+
+    final client = http.Client();
+    final parser = ServerSentEventParser();
+    final output = StringBuffer();
+    try {
+      final request = http.Request('POST', chatCompletionsUri(defaultBaseUrl))
+        ..followRedirects = false
+        ..headers.addAll({
+          'Authorization': 'Bearer $key',
+          'Content-Type': 'application/json; charset=utf-8',
+          'Accept': 'text/event-stream',
+          'HTTP-Referer': 'https://github.com/almwld/giant-agent',
+          'X-Title': 'Giant Agent',
+        })
+        ..body = jsonEncode({
+          'model': await getModel(),
+          'messages': [{'role': 'user', 'content': prompt}],
+          'max_tokens': maxTokens,
+          'temperature': temperature,
+          'stream': true,
+        });
+      final sendFuture = client.send(request);
+      final sendCancellationPoll = Timer.periodic(const Duration(milliseconds: 100), (_) {
+        if (isCancelled?.call() == true) client.close();
+      });
+      late final http.StreamedResponse response;
+      try {
+        response = await sendFuture.timeout(requestTimeout);
+      } catch (error) {
+        if (isCancelled?.call() == true) {
+          throw StateError('تم إيقاف تدفق OpenRouter بناءً على طلب المستخدم.');
+        }
+        rethrow;
+      } finally {
+        sendCancellationPoll.cancel();
+      }
+      if (response.isRedirect) {
+        throw StateError('رفض OpenRouter إعادة توجيه HTTP ${response.statusCode}.');
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final body = await response.stream.bytesToString();
+        String detail = body;
+        try {
+          final decoded = jsonDecode(body);
+          if (decoded is Map) {
+            final error = decoded['error'];
+            detail = error is Map
+                ? error['message']?.toString() ?? body
+                : error?.toString() ?? body;
+          }
+        } catch (_) {}
+        throw StateError('OpenRouter streaming HTTP ${response.statusCode}: $detail');
+      }
+      final contentType = response.headers['content-type']?.toLowerCase() ?? '';
+      if (!contentType.contains('text/event-stream')) {
+        throw StateError('OpenRouter لم يُرجع قناة SSE صالحة (Content-Type: $contentType).');
+      }
+
+      final completed = Completer<void>();
+      late final StreamSubscription<List<int>> subscription;
+      Timer? idleTimer;
+      void resetIdleTimer() {
+        idleTimer?.cancel();
+        idleTimer = Timer(requestTimeout, () {
+          if (!completed.isCompleted) {
+            completed.completeError(TimeoutException(
+              'انتهت مهلة عدم وصول بيانات من OpenRouter بعد ${requestTimeout.inSeconds} ثانية.',
+            ));
+            unawaited(subscription.cancel());
+          }
+        });
+      }
+      var receivedDone = false;
+
+      void consumeEvents(List<ServerSentEvent> events) {
+        for (final event in events) {
+          if (completed.isCompleted) return;
+          if (event.data.trim() == '[DONE]') {
+            receivedDone = true;
+            completed.complete();
+            unawaited(subscription.cancel());
+            return;
+          }
+          final dynamic decoded;
+          try {
+            decoded = jsonDecode(event.data);
+          } on FormatException {
+            throw StateError('أرسل OpenRouter حدث SSE غير صالح بصيغة JSON.');
+          }
+          if (decoded is! Map) continue;
+          if (decoded['error'] != null) {
+            throw StateError('OpenRouter streaming error: ${decoded['error']}');
+          }
+          final choices = decoded['choices'];
+          if (choices is! List || choices.isEmpty || choices.first is! Map) continue;
+          final delta = (choices.first as Map)['delta'];
+          if (delta is! Map) continue;
+          final content = delta['content'];
+          final textDelta = content is String
+              ? content
+              : content is List
+                  ? content.whereType<Map>().map((part) => part['text']?.toString() ?? '').join()
+                  : '';
+          if (textDelta.isNotEmpty) {
+            output.write(textDelta);
+            onDelta?.call(textDelta);
+          }
+        }
+      }
+
+      resetIdleTimer();
+      subscription = response.stream.listen(
+        (bytes) {
+          resetIdleTimer();
+          try {
+            if (isCancelled?.call() == true) {
+              if (!completed.isCompleted) completed.completeError(const _OpenRouterStreamInterrupted());
+              unawaited(subscription.cancel());
+              return;
+            }
+            consumeEvents(parser.add(bytes));
+          } catch (error, stack) {
+            if (!completed.isCompleted) completed.completeError(error, stack);
+            unawaited(subscription.cancel());
+          }
+        },
+        onError: (Object error, StackTrace stack) {
+          if (!completed.isCompleted) completed.completeError(error, stack);
+        },
+        onDone: () {
+          try {
+            if (!receivedDone) consumeEvents(parser.close());
+            if (!completed.isCompleted) completed.complete();
+          } catch (error, stack) {
+            if (!completed.isCompleted) completed.completeError(error, stack);
+          }
+        },
+        cancelOnError: true,
+      );
+      final cancellationPoll = Timer.periodic(const Duration(milliseconds: 100), (_) {
+        if (isCancelled?.call() == true && !completed.isCompleted) {
+          completed.completeError(const _OpenRouterStreamInterrupted());
+          unawaited(subscription.cancel());
+        }
+      });
+      try {
+        await completed.future;
+      } finally {
+        cancellationPoll.cancel();
+        idleTimer?.cancel();
+        await subscription.cancel();
+      }
+
+      if (isCancelled?.call() == true) throw const _OpenRouterStreamInterrupted();
+      if (output.isEmpty) throw StateError('انتهى تدفق OpenRouter دون محتوى نصي.');
+      return output.toString();
+    } on _OpenRouterStreamInterrupted {
+      throw StateError('تم إيقاف تدفق OpenRouter بناءً على طلب المستخدم.');
+    } on TimeoutException {
+      throw TimeoutException('انتهت مهلة تدفق OpenRouter بعد ${requestTimeout.inSeconds} ثانية.');
+    } finally {
+      client.close();
+    }
+  }
+
 
   Future<String> generate(
     String prompt, {

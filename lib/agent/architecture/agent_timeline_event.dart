@@ -10,6 +10,7 @@ class AgentTimelineEvent {
     required this.status,
     required this.timestamp,
     this.stepId,
+    this.toolCallId,
     this.attemptId,
     this.sequence,
     this.details,
@@ -27,6 +28,7 @@ class AgentTimelineEvent {
   final String status;
   final DateTime timestamp;
   final String? stepId;
+  final String? toolCallId;
   final String? attemptId;
   final int? sequence;
   final String? details;
@@ -45,6 +47,7 @@ class AgentTimelineEvent {
         'status': status,
         'timestamp': timestamp.toUtc().toIso8601String(),
         if (stepId != null && stepId!.isNotEmpty) 'step_id': stepId,
+        if (toolCallId != null && toolCallId!.isNotEmpty) 'tool_call_id': toolCallId,
         if (sequence != null) 'sequence': sequence,
         if (details != null && details!.isNotEmpty) 'details': details,
         if (result != null && result!.isNotEmpty) 'result': result,
@@ -68,6 +71,7 @@ class AgentTimelineEvent {
       requestId: (map['request_id'] ?? map['requestId'])?.toString() ?? '',
       attemptId: (map['attempt_id'] ?? map['request_id'] ?? map['requestId'])?.toString(),
       stepId: (map['step_id'] ?? map['stepId'])?.toString(),
+      toolCallId: (map['tool_call_id'] ?? map['toolCallId'])?.toString(),
       sequence: rawSequence is num ? rawSequence.toInt() : int.tryParse(rawSequence?.toString() ?? ''),
       type: map['type']?.toString() ?? 'unknown',
       title: map['title']?.toString() ?? '',

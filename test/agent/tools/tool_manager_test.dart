@@ -8,7 +8,7 @@ void main() {
     test('exposes only tools implemented by the runtime', () {
       expect(
         registry.getAvailableTools(),
-        ['create_file', 'read_file', 'write_file', 'list_files', 'execute_python', 'gain_terminal'],
+        ['create_file', 'read_file', 'write_file', 'list_files', 'execute_python', 'mcp_read_resource', 'mcp_call', 'gain_terminal'],
       );
       expect(registry.supports('delete_file'), isFalse);
       expect(registry.supports('execute_python'), isTrue);

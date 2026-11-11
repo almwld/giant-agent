@@ -48,6 +48,16 @@ class ToolManager {
       example: '{"name":"execute_python","arguments":{"code":"for i in range(1, 4):\n    print(i)"}}',
     ),
     AgentToolDefinition(
+      name: 'mcp_read_resource',
+      description: 'قراءة مورد أو ملف من خادم MCP باستخدام URI مطلق أعاده الخادم أو أحد أدواته.',
+      example: '{"name":"mcp_read_resource","arguments":{"server_id":"workspace","uri":"file:///report.pdf"}}',
+    ),
+    AgentToolDefinition(
+      name: 'mcp_call',
+      description: 'استدعاء أداة مكتشفة من خادم MCP متصل. استخدم server_id وtool_name كما يظهران في قائمة أدوات MCP، وأرسل arguments وفق مخطط الأداة.',
+      example: '{"name":"mcp_call","arguments":{"server_id":"workspace","tool_name":"search","arguments":{"query":"..."}}}',
+    ),
+    AgentToolDefinition(
       name: 'gain_terminal',
       description: 'تنفيذ أمر واحد في Android shell بصلاحيات التطبيق فقط؛ يتطلب موافقة المستخدم الصريحة على نص الأمر حرفياً قبل التنفيذ.',
       example: '{"name":"gain_terminal","arguments":{"command":"pwd && ls","timeout_seconds":30}}',

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import '../services/llama_service.dart';
 import '../agent/architecture/agent_event_bus.dart';
+import '../agent/architecture/tool_call_registry.dart';
 import 'agent_memory_service.dart';
 import 'openai_compatible_provider.dart';
 import 'model_provider_settings.dart';
@@ -12,6 +13,7 @@ import '../tools/gain_terminal_tool.dart';
 import '../tools/terminal_tool_coordinator.dart';
 import '../domain/harness/evaluator_service.dart';
 import '../domain/harness/reflexion_service.dart';
+import '../domain/mcp/mcp_client.dart';
 
 class ModelService {
   static final ModelService _instance = ModelService._internal();
@@ -24,12 +26,14 @@ class ModelService {
   bool _isLoading = false;
   bool _cancelRequested = false;
   Future<bool> Function(String command)? requestTerminalApproval;
+  Future<bool> Function(String serverId, McpRemoteTool tool, Map<String, dynamic> arguments)? requestMcpApproval;
   final GainTerminalTool _gainTerminal = GainTerminalTool();
   Future<void> _requestTail = Future<void>.value();
   Future<void> _toolTail = Future<void>.value();
   String _fallbackRequestId = '';
   int _parallelExecutions = 0;
   int _toolEventSequence = 0;
+  final ToolCallRegistry _toolCalls = ToolCallRegistry();
   static const Object _requestIdZoneKey = #giantAgentRequestId;
   static const Object _parallelProviderZoneKey = #giantAgentParallelProvider;
   static const Object _taskIdZoneKey = #giantAgentTaskId;
@@ -43,16 +47,26 @@ class ModelService {
     readWorkspaceFile: (path) => readFile(path: path),
   );
   late final ReflexionService _reflexion = ReflexionService(
-    generate: (prompt) => _generateText(
+    generate: (String prompt, {bool Function()? shouldCancel}) => _generateText(
       _boundPrompt(prompt),
       maxTokens: 512,
       temperature: .1,
+      shouldCancel: shouldCancel,
     ),
   );
 
   Stream<Map<String, dynamic>> get toolEvents => AgentEventBus.instance.events;
-  void beginAgentRequest(String requestId) => _fallbackRequestId = requestId;
-  void endAgentRequest(String requestId) { if (_fallbackRequestId == requestId) _fallbackRequestId = ''; }
+  void beginAgentRequest(String requestId) {
+    _fallbackRequestId = requestId;
+    _cancelRequested = false;
+  }
+
+  void endAgentRequest(String requestId) {
+    if (_fallbackRequestId == requestId) {
+      _fallbackRequestId = '';
+      _cancelRequested = false;
+    }
+  }
 
   void _emitToolEvent(String type, String title, {
     String? toolName,
@@ -62,6 +76,7 @@ class ModelService {
     String? details,
     String? status,
     String? stepId,
+    String? toolCallId,
   }) {
     final sequence = ++_toolEventSequence;
     AgentEventBus.instance.publish({
@@ -71,6 +86,7 @@ class ModelService {
       'task_id': _activeTaskId,
       'agent_type': _activeAgentType,
       'step_id': stepId ?? 'tool_${_activeRequestId}_$sequence',
+      'tool_call_id': toolCallId,
       'sequence': sequence,
       'type': type,
       'title': title,
@@ -196,8 +212,12 @@ class ModelService {
     return result;
   }
 
+  bool cancelToolCall(String toolCallId) => _toolCalls.cancel(toolCallId);
+
   Future<bool> cancelGeneration() async {
     _cancelRequested = true;
+    final mode = await ModelProviderSettings.instance.getMode();
+    if (mode == ModelProviderMode.openRouter) return true;
     return _llama.cancel();
   }
 
@@ -259,6 +279,7 @@ class ModelService {
     Map<String, dynamic> payload, {
     String? stepId,
     Set<String>? allowedTools,
+    bool Function()? isCancelled,
   }) async {
     final name = payload['name']?.toString() ?? '';
     if (!ToolManager().supports(name) ||
@@ -296,6 +317,59 @@ class ModelService {
           break;
         case 'execute_python':
           result = await executePython(code: args['code']?.toString() ?? '');
+          break;
+        case 'mcp_read_resource':
+          final serverId = args['server_id']?.toString() ?? '';
+          final resourceUri = args['uri']?.toString() ?? '';
+          if (serverId.isEmpty || resourceUri.isEmpty) {
+            throw const FormatException('mcp_read_resource requires server_id and uri.');
+          }
+          final resourceResult = await McpClient.instance.readResource(
+            serverId: serverId,
+            uri: resourceUri,
+            isCancelled: isCancelled,
+          );
+          result = <String, dynamic>{
+            'ok': true,
+            'resource_result': resourceResult,
+          };
+          break;
+        case 'mcp_call':
+          final serverId = args['server_id']?.toString() ?? '';
+          final remoteToolName = args['tool_name']?.toString() ?? '';
+          final remoteArguments = args['arguments'];
+          if (serverId.isEmpty || remoteToolName.isEmpty || remoteArguments is! Map<String, dynamic>) {
+            throw const FormatException('mcp_call requires server_id, tool_name and an arguments object.');
+          }
+          final remoteTool = await McpClient.instance.findTool(serverId, remoteToolName);
+          final readOnlyHint = remoteTool.annotations['readOnlyHint'] == true &&
+              remoteTool.annotations['destructiveHint'] != true &&
+              remoteTool.annotations['openWorldHint'] != true;
+          if (!readOnlyHint) {
+            final approval = requestMcpApproval;
+            if (approval == null ||
+                !await approval(serverId, remoteTool, remoteArguments)) {
+              result = <String, dynamic>{
+                'ok': false,
+                'denied': true,
+                'error': 'MCP tool requires explicit user approval; no approval was granted.',
+              };
+              break;
+            }
+          }
+          final mcpResult = await McpClient.instance.callTool(
+            serverId: serverId,
+            toolName: remoteToolName,
+            arguments: remoteArguments,
+            isCancelled: isCancelled,
+          );
+          result = <String, dynamic>{
+            'ok': !mcpResult.isError,
+            'isError': mcpResult.isError,
+            'textPreview': mcpResult.textPreview,
+            'mcp_result': mcpResult.toJson(),
+            if (mcpResult.structuredContent != null) 'structuredContent': mcpResult.structuredContent,
+          };
           break;
         case 'gain_terminal':
           final approval = requestTerminalApproval;
@@ -479,12 +553,21 @@ ${context.isEmpty ? '' : 'سياق مختصر:\n$context\n'}
 هدف المستخدم:
 $prompt
 ''';
-      final output = await _generateText(
-        _boundPrompt(completePrompt),
-        maxTokens: 1024,
-        temperature: .1,
-      );
-      if (shouldCancel?.call() == true) {
+      late final String output;
+      try {
+        output = await _generateText(
+          _boundPrompt(completePrompt),
+          maxTokens: 1024,
+          temperature: .1,
+          shouldCancel: shouldCancel,
+        );
+      } catch (_) {
+        if (_cancelRequested || shouldCancel?.call() == true) {
+          return 'تم إيقاف التخطيط بناءً على طلب المستخدم.';
+        }
+        rethrow;
+      }
+      if (_cancelRequested || shouldCancel?.call() == true) {
         return 'تم إيقاف التخطيط بناءً على طلب المستخدم.';
       }
       return output.trim();
@@ -531,6 +614,7 @@ $prompt
     String prompt, {
     required int maxTokens,
     required double temperature,
+    bool Function()? shouldCancel,
   }) async {
     final mode = await ModelProviderSettings.instance.getMode();
     switch (mode) {
@@ -540,8 +624,24 @@ $prompt
         }
         return _llama.generate(prompt, maxTokens: maxTokens, temperature: temperature);
       case ModelProviderMode.openRouter:
-        return OpenAICompatibleProvider.instance.generate(
-          prompt, maxTokens: maxTokens, temperature: temperature,
+        return OpenAICompatibleProvider.instance.generateStreaming(
+          prompt,
+          maxTokens: maxTokens,
+          temperature: temperature,
+          isCancelled: () => _cancelRequested || shouldCancel?.call() == true,
+          onDelta: (delta) {
+            AgentEventBus.instance.publish(<String, dynamic>{
+              'id': 'stream_${_activeRequestId}_${DateTime.now().microsecondsSinceEpoch}',
+              'request_id': _activeRequestId,
+              'attempt_id': _activeRequestId,
+              'task_id': _activeTaskId,
+              'agent_type': _activeAgentType,
+              'type': 'stream_token',
+              'content': delta,
+              'status': 'streaming',
+              'timestamp': DateTime.now().toUtc().toIso8601String(),
+            });
+          },
         );
     }
   }
@@ -555,15 +655,19 @@ $prompt
       return 'تم إيقاف تنفيذ الوكيل بناءً على طلب المستخدم.';
     }
     final parallelProvider = Zone.current[_parallelProviderZoneKey] == true;
-    bool isCancelled() => shouldCancel?.call() == true || (!parallelProvider && _cancelRequested);
+    bool isCancelled() => shouldCancel?.call() == true || _cancelRequested;
     if (!parallelProvider) _cancelRequested = false;
     input = _boundPrompt(input);
     if (await ModelProviderSettings.instance.getMode() == ModelProviderMode.local && !await _llama.isLoaded()) {
       return '⚠️ لم يتم تحميل نموذج GGUF المحلي. حمّل نموذج GGUF أو اختر OpenRouter من إعدادات المزوّد.';
     }
-    final toolCatalog = allowedTools == null
+    final baseToolCatalog = allowedTools == null
         ? ToolManager().promptCatalog
         : ToolManager().promptCatalogFor(allowedTools);
+    final remoteToolCatalog = allowedTools != null && !allowedTools.contains('mcp_call')
+        ? ''
+        : await McpClient.instance.promptCatalog(isCancelled: isCancelled);
+    final toolCatalog = '$baseToolCatalog\n$remoteToolCatalog';
     final history = StringBuffer('''أنت Giant Agent، مساعد ذكي متعدد المصادر. أجب بلغة المستخدم.
 الأدوات المتاحة فعلياً:
 $toolCatalog
@@ -592,7 +696,12 @@ $toolCatalog
           payload = pendingReflexionPayload;
           pendingReflexionPayload = null;
         } else {
-          final generated = await _generateText(history.toString(), maxTokens: 768, temperature: .25);
+          final generated = await _generateText(
+            history.toString(),
+            maxTokens: 768,
+            temperature: .25,
+            shouldCancel: isCancelled,
+          );
           if (isCancelled()) {
             return generated.trim().isEmpty
                 ? 'تم إيقاف التوليد.'
@@ -634,18 +743,40 @@ $toolCatalog
         }
 
         final toolStepId = 'verified_step_${_activeRequestId}_${DateTime.now().microsecondsSinceEpoch}';
+        final toolCallId = 'call_${_activeRequestId}_${DateTime.now().microsecondsSinceEpoch}_${++_toolEventSequence}';
+        final toolCall = _toolCalls.begin(
+          toolCallId: toolCallId,
+          requestId: _activeRequestId,
+          toolName: toolName,
+        );
         late Map<String, dynamic> result;
         late bool verificationPassed;
         late String verificationMessage;
-        await _withToolLock(() async {
+        _emitToolEvent(
+          'tool_call_started',
+          'بدأ استدعاء الأداة',
+          toolName: toolName,
+          status: 'running',
+          stepId: toolStepId,
+          toolCallId: toolCallId,
+        );
+        try {
+          await _withToolLock(() async {
           try {
+            toolCall.throwIfCancelled();
             result = await _executeToolUnlocked(
               payload,
               stepId: toolStepId,
               allowedTools: allowedTools,
+              isCancelled: () => toolCall.isCancelled || isCancelled(),
             );
           } catch (error) {
             result = <String, dynamic>{'ok': false, 'error': error.toString()};
+          }
+          if (toolCall.isCancelled) {
+            verificationPassed = false;
+            verificationMessage = 'تمت مقاطعة استدعاء الأداة المحدد.';
+            return;
           }
           if (isCancelled()) {
             verificationPassed = false;
@@ -676,9 +807,33 @@ $toolCatalog
             details: verification.message,
             status: verification.passed ? 'completed' : 'failed',
             stepId: toolStepId,
+            toolCallId: toolCallId,
           );
-        });
-        if (isCancelled()) return 'تم إيقاف الوكيل بعد اكتمال الأداة الحالية.';
+          });
+          if (toolCall.isCancelled) {
+            _emitToolEvent(
+              'tool_call_interrupted',
+              'تمت مقاطعة استدعاء الأداة',
+              toolName: toolName,
+              details: 'أُوقف هذا الاستدعاء بمعرّفه المستقل دون إيقاف الطلبات الأخرى.',
+              status: 'interrupted',
+              stepId: toolStepId,
+              toolCallId: toolCallId,
+            );
+            return 'تم إيقاف استدعاء الأداة المحدد.';
+          }
+          if (isCancelled()) return 'تم إيقاف الوكيل بعد اكتمال الأداة الحالية.';
+          _emitToolEvent(
+            'tool_call_completed',
+            'اكتمل استدعاء الأداة',
+            toolName: toolName,
+            status: 'completed',
+            stepId: toolStepId,
+            toolCallId: toolCallId,
+          );
+        } finally {
+          _toolCalls.finish(toolCallId);
+        }
 
         if (!verificationPassed) {
           final failedAction = jsonEncode(payload);
@@ -704,6 +859,7 @@ $toolCatalog
               originalGoal: input,
               failedAction: failedAction,
               errorMessage: verificationMessage,
+              shouldCancel: isCancelled,
             );
             final proposed = <String, dynamic>{
               'name': action.toolName,
@@ -728,6 +884,7 @@ $toolCatalog
               stepId: toolStepId,
             );
           } catch (error) {
+            if (isCancelled()) return 'تم إيقاف التوليد بناءً على طلب المستخدم.';
             _emitToolEvent(
               'reflexion_failed',
               'تعذر توليد إجراء تصحيحي آمن',
@@ -756,6 +913,15 @@ $toolCatalog
       }
       return 'وصل الوكيل إلى الحد الآمن ($maxToolCalls دورات تنفيذ/تحقق) دون إنهاء المهمة. أعد الطلب لمتابعة العمل من سياق المحادثة.';
     } catch (e) {
+      if (_cancelRequested || shouldCancel?.call() == true) {
+        _emitToolEvent(
+          'generation_interrupted',
+          'تم إيقاف التوليد',
+          details: 'تم إيقاف تدفق المزوّد بناءً على طلب المستخدم.',
+          status: 'interrupted',
+        );
+        return 'تم إيقاف التوليد بناءً على طلب المستخدم.';
+      }
       return 'تعذر إكمال الطلب: $e';
     }
   }

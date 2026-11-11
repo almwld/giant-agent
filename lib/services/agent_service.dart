@@ -8,6 +8,7 @@ import '../domain/kernel/subagent_recovery_coordinator.dart';
 import 'model_service.dart';
 import 'agent_background_execution_service.dart';
 import '../domain/output/output_engine.dart';
+import '../domain/mcp/mcp_client.dart';
 
 /// The sole application-facing task boundary.
 ///
@@ -97,9 +98,11 @@ class AgentService {
   }
 
   static bool _isInterruptedOutput(String output) =>
+      output.startsWith('تم إيقاف التخطيط') ||
       output.startsWith('تم إيقاف المهمة') ||
       output.startsWith('تم إيقاف تنفيذ الوكيل') ||
       output.startsWith('تم إيقاف الوكيل بعد اكتمال الأداة') ||
+      output.startsWith('تم إيقاف استدعاء الأداة المحدد') ||
       output.startsWith('تم إيقاف التوليد') ||
       output.startsWith('وصل الوكيل إلى الحد الآمن') ||
       output.startsWith('أوقف الوكيل تكرار استدعاء الأداة') ||
@@ -348,6 +351,30 @@ class AgentService {
       await AgentBackgroundExecutionService.instance.endTask();
     }
   }
+
+  /// MCP server configuration is persisted in secure storage; credentials are
+  /// never copied into timeline events or model-visible server metadata.
+  Future<List<McpServerConfig>> mcpServers() => McpClient.instance.servers();
+
+  Future<void> addMcpServer({
+    required String id,
+    required String name,
+    required String endpoint,
+    String? bearerToken,
+  }) => McpClient.instance.addServer(
+        id: id,
+        name: name,
+        endpoint: endpoint,
+        bearerToken: bearerToken,
+      );
+
+  Future<bool> removeMcpServer(String id) => McpClient.instance.removeServer(id);
+
+  Future<List<McpRemoteTool>> refreshMcpTools(String serverId) =>
+      McpClient.instance.listTools(serverId);
+
+  /// Cancels one active tool invocation by its independent tool_call_id.
+  bool cancelToolCall(String toolCallId) => _models.cancelToolCall(toolCallId);
 
   Future<bool> cancel() => _executionKernel.cancel();
 

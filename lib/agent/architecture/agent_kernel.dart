@@ -382,8 +382,8 @@ class AgentKernel {
         'نتيجة المهمة السابقة ${entry.key}:\n${entry.value}'
       ).join('\n\n');
       final allowedTools = switch (agentType) {
-        'explore' || 'plan' || 'reviewer' => const <String>{'read_file', 'list_files'},
-        'coder' => const <String>{'create_file', 'read_file', 'write_file', 'list_files', 'execute_python', 'gain_terminal'},
+        'explore' || 'plan' || 'reviewer' => const <String>{'read_file', 'list_files', 'mcp_call', 'mcp_read_resource'},
+        'coder' => const <String>{'create_file', 'read_file', 'write_file', 'list_files', 'execute_python', 'gain_terminal', 'mcp_call', 'mcp_read_resource'},
         _ => throw ArgumentError('Unknown recovered agent type: $agentType'),
       };
       _emit(requestId: parentRequestId, taskId: taskId, agentType: agentType,
@@ -431,9 +431,11 @@ class AgentKernel {
   }
 
   bool _isCancelledOutput(String output) =>
+      output.startsWith('تم إيقاف التخطيط') ||
       output.startsWith('تم إيقاف المهمة') ||
       output.startsWith('تم إيقاف تنفيذ الوكيل') ||
       output.startsWith('تم إيقاف الوكيل بعد اكتمال الأداة') ||
+      output.startsWith('تم إيقاف استدعاء الأداة المحدد') ||
       output.startsWith('تم إيقاف التوليد') ||
       output.contains('[تم إيقاف التوليد]');
 
@@ -567,7 +569,7 @@ ${result.output ?? result.error ?? 'لا توجد نتيجة نصية.'}
 
         final allowedTools = switch (task.agentType) {
           'explore' || 'plan' || 'reviewer' =>
-            const <String>{'read_file', 'list_files'},
+            const <String>{'read_file', 'list_files', 'mcp_call', 'mcp_read_resource'},
           'coder' => const <String>{
               'create_file',
               'read_file',
@@ -575,6 +577,8 @@ ${result.output ?? result.error ?? 'لا توجد نتيجة نصية.'}
               'list_files',
               'execute_python',
               'gain_terminal',
+              'mcp_call',
+              'mcp_read_resource',
             },
           _ => const <String>{'read_file', 'list_files'},
         };
