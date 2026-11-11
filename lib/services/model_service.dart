@@ -40,6 +40,8 @@ class ModelService {
   static const Object _taskIdZoneKey = #giantAgentTaskId;
   static const Object _agentTypeZoneKey = #giantAgentAgentType;
   static const Object _runtimeLockHeldZoneKey = #giantAgentRuntimeLockHeld;
+  static const Object _assistantMessageIdZoneKey = #giantAgentAssistantMessageId;
+  final Map<String, Future<void>> _assistantMessageWriteTails = <String, Future<void>>{};
   String get _activeTaskId => Zone.current[_taskIdZoneKey] as String? ?? '';
   String get _activeAgentType => Zone.current[_agentTypeZoneKey] as String? ?? '';
   String get _activeRequestId =>
@@ -473,6 +475,39 @@ class ModelService {
     }
   }
 
+  void _queueAssistantDelta(String messageId, String delta) {
+    if (messageId.isEmpty || delta.isEmpty) return;
+    final previous = _assistantMessageWriteTails[messageId] ?? Future<void>.value();
+    final next = previous
+        .catchError((Object _) {})
+        .then((_) => AgentMemoryService.instance.appendAssistantDelta(messageId, delta))
+        .catchError((Object _) {});
+    _assistantMessageWriteTails[messageId] = next;
+  }
+
+  Future<void> _flushAssistantMessageWrites(String messageId) async {
+    final pending = _assistantMessageWriteTails.remove(messageId);
+    if (pending != null) await pending;
+  }
+
+  String _assistantMessageStatus(String response) {
+    final value = response.trim();
+    if (value.isEmpty ||
+        value.startsWith('تعذر إكمال الطلب:') ||
+        value.startsWith('تعذر تحليل استدعاء الأداة') ||
+        value.startsWith('ERROR:') ||
+        value.startsWith('⚠️')) {
+      return 'failed';
+    }
+    if (value.startsWith('تم إيقاف') ||
+        value.startsWith('وصل الوكيل إلى الحد الآمن') ||
+        value.startsWith('أوقف الوكيل تكرار استدعاء الأداة') ||
+        value.contains('[تم إيقاف التوليد]')) {
+      return 'interrupted';
+    }
+    return 'complete';
+  }
+
   /// Serializes requests because llama.cpp owns one mutable native context.
   /// Concurrent calls can interleave prompts, cancellation and tool execution.
   Future<String> processInput(
@@ -487,37 +522,68 @@ class ModelService {
   }) async {
     final mode = await ModelProviderSettings.instance.getMode();
     final parallelProvider = mode == ModelProviderMode.openRouter;
+    final resolvedRequestId = requestId ?? _fallbackRequestId;
+    final assistantMessageId =
+        'assistant_${resolvedRequestId.isEmpty ? conversationId : resolvedRequestId}_${DateTime.now().microsecondsSinceEpoch}';
+    await AgentMemoryService.instance.beginAssistantMessage(
+      id: assistantMessageId,
+      conversationId: conversationId,
+      requestId: resolvedRequestId.isEmpty ? null : resolvedRequestId,
+    );
+
     Future<String> executeScoped() async {
-      if (shouldCancel?.call() == true) {
-        return 'تم إيقاف تنفيذ الوكيل بناءً على طلب المستخدم.';
-      }
-      final context = await AgentMemoryService.instance.buildContext(
-        input,
-        conversationId: conversationId,
-      );
-      if (shouldCancel?.call() == true) {
-        return 'تم إيقاف تنفيذ الوكيل بناءً على طلب المستخدم.';
-      }
-      final response = await _processInput(
-        context.isEmpty ? input : '$context\n\nطلب المستخدم: $input',
-        allowedTools: allowedTools,
-        shouldCancel: shouldCancel,
-      );
-      if (persistTurn) {
-        await AgentMemoryService.instance.saveTurn(
-          input,
-          response,
-          conversationId: conversationId,
+      try {
+        late final String response;
+        if (shouldCancel?.call() == true) {
+          response = 'تم إيقاف تنفيذ الوكيل بناءً على طلب المستخدم.';
+        } else {
+          final context = await AgentMemoryService.instance.buildContext(
+            input,
+            conversationId: conversationId,
+          );
+          if (shouldCancel?.call() == true) {
+            response = 'تم إيقاف تنفيذ الوكيل بناءً على طلب المستخدم.';
+          } else {
+            response = await _processInput(
+              context.isEmpty ? input : '$context\n\nطلب المستخدم: $input',
+              allowedTools: allowedTools,
+              shouldCancel: shouldCancel,
+            );
+          }
+        }
+        await _flushAssistantMessageWrites(assistantMessageId);
+        final messageStatus = _assistantMessageStatus(response);
+        await AgentMemoryService.instance.finishAssistantMessage(
+          id: assistantMessageId,
+          status: messageStatus,
+          content: response,
+          error: messageStatus == 'failed' ? response : null,
         );
+        if (persistTurn) {
+          await AgentMemoryService.instance.saveTurn(
+            input,
+            response,
+            conversationId: conversationId,
+          );
+        }
+        return response;
+      } catch (error) {
+        await _flushAssistantMessageWrites(assistantMessageId);
+        await AgentMemoryService.instance.finishAssistantMessage(
+          id: assistantMessageId,
+          status: 'failed',
+          error: error.toString(),
+        );
+        rethrow;
       }
-      return response;
     }
 
     final zoneValues = <Object, Object?>{
-      _requestIdZoneKey: requestId ?? _fallbackRequestId,
+      _requestIdZoneKey: resolvedRequestId,
       _parallelProviderZoneKey: parallelProvider,
       _taskIdZoneKey: taskId ?? '',
       _agentTypeZoneKey: agentType ?? '',
+      _assistantMessageIdZoneKey: assistantMessageId,
     };
     if (parallelProvider || Zone.current[_runtimeLockHeldZoneKey] == true) {
       if (parallelProvider) _parallelExecutions++;
@@ -624,25 +690,54 @@ $prompt
   Future<String> processChat(
     String input, {
     String conversationId = 'global',
-  }) {
-    return _withRuntimeLock(() async {
-      final context = await AgentMemoryService.instance.buildContext(
-        input,
-        conversationId: conversationId,
+  }) async {
+    final messageId = 'chat_${conversationId}_${DateTime.now().microsecondsSinceEpoch}';
+    await AgentMemoryService.instance.beginAssistantMessage(
+      id: messageId,
+      conversationId: conversationId,
+    );
+    try {
+      final response = await _withRuntimeLock(
+        () => runZoned(() async {
+          final context = await AgentMemoryService.instance.buildContext(
+            input,
+            conversationId: conversationId,
+          );
+          final prompt = context.isEmpty ? input : '$context\n\nرسالة المستخدم: $input';
+          return (await _generateText(
+            _boundPrompt(prompt),
+            maxTokens: 768,
+            temperature: .35,
+          )).trim();
+        }, zoneValues: <Object, Object?>{
+          _assistantMessageIdZoneKey: messageId,
+          _requestIdZoneKey: messageId,
+          _runtimeLockHeldZoneKey: true,
+        }),
       );
-      final prompt = context.isEmpty ? input : '$context\n\nرسالة المستخدم: $input';
-      final response = await _generateText(
-        _boundPrompt(prompt),
-        maxTokens: 768,
-        temperature: .35,
+      await _flushAssistantMessageWrites(messageId);
+      final status = _assistantMessageStatus(response);
+      await AgentMemoryService.instance.finishAssistantMessage(
+        id: messageId,
+        status: status,
+        content: response,
+        error: status == 'failed' ? response : null,
       );
       await AgentMemoryService.instance.saveTurn(
         input,
         response,
         conversationId: conversationId,
       );
-      return response.trim();
-    });
+      return response;
+    } catch (error) {
+      await _flushAssistantMessageWrites(messageId);
+      await AgentMemoryService.instance.finishAssistantMessage(
+        id: messageId,
+        status: 'failed',
+        error: error.toString(),
+      );
+      rethrow;
+    }
   }
 
   static const int _maxPromptCharacters = 9000;
@@ -675,12 +770,18 @@ $prompt
           temperature: temperature,
           isCancelled: () => _cancelRequested || shouldCancel?.call() == true,
           onDelta: (delta) {
+            final assistantMessageId =
+                Zone.current[_assistantMessageIdZoneKey] as String?;
+            if (assistantMessageId != null) {
+              _queueAssistantDelta(assistantMessageId, delta);
+            }
             AgentEventBus.instance.publish(<String, dynamic>{
               'id': 'stream_${_activeRequestId}_${DateTime.now().microsecondsSinceEpoch}',
               'request_id': _activeRequestId,
               'attempt_id': _activeRequestId,
               'task_id': _activeTaskId,
               'agent_type': _activeAgentType,
+              'assistant_message_id': assistantMessageId,
               'type': 'stream_token',
               'content': delta,
               'status': 'streaming',
