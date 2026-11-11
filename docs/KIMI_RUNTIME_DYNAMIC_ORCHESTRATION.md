@@ -10,6 +10,7 @@ This tranche connects the model-facing tool loop to the active in-memory subagen
 - `check_subagent_status`: returns created, pending, running, or terminal state and the result/error when available.
 - `send_message` / `wait_for_message`: exchange bounded messages between workers. Message envelopes are also written to the lifecycle timeline.
 - `update_goal`: updates the shared coordination goal; workers started afterward receive the updated goal in their task context.
+- `ask_user`: opens a correlated question dialog in the active chat, waits for the user's answer, and returns the answer to the calling worker. Requests are bound to the parent request, child task and chat session, and are cancelled or timed out safely.
 
 ## Bounds and scheduling
 
@@ -21,8 +22,8 @@ This tranche connects the model-facing tool loop to the active in-memory subagen
 - Child workers use the same ModelService and existing tool implementations. No second model/JNI runtime is constructed.
 - Cancellation is task-scoped and the event journal remains append-only.
 
-## Deliberate scope boundary
+## User interaction
 
-`ask_user` is not exposed yet. A correct implementation needs a user-facing pending-input surface in the chat UI, durable correlation from the request to that prompt, timeout/cancellation behavior, and a response API. Emitting a fake question event without a response path would falsely imply a working interaction. This remains a separate UI/runtime contract and is not claimed as complete.
+The `ask_user` tool publishes a request event through the existing event bus. ChatScreen presents a text-entry dialog and submits the response through a request-ID-correlated broker. The broker persists request/answer/timeout/cancellation events through the existing journal path and bounds waits to three minutes. It does not treat an empty answer or a dismissed dialog as approval.
 
 The existing service-level create/spawn/status/soft-delete APIs remain available for recovery and external callers. Informational message and goal events preserve the worker's current lifecycle state in the durable task projection. The new model-facing tools operate against the active orchestrator so a worker can add children without enqueueing behind and deadlocking the parent request.
