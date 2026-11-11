@@ -897,6 +897,14 @@ class MainActivity: FlutterActivity() {
             locationHandler.postDelayed(timeout, 15_000L)
             manager.requestSingleUpdate(provider, listener, Looper.getMainLooper())
         } catch (t: Throwable) {
+            pendingLocationTimeout?.let { locationHandler.removeCallbacks(it) }
+            pendingLocationTimeout = null
+            pendingLocationListener?.let {
+                try {
+                    (getSystemService(Context.LOCATION_SERVICE) as LocationManager).removeUpdates(it)
+                } catch (_: Throwable) {}
+            }
+            pendingLocationListener = null
             result.success(mapOf("ok" to false, "error" to (t.message ?: "Unable to obtain current location.")))
         }
     }
@@ -919,6 +927,7 @@ class MainActivity: FlutterActivity() {
         result: MethodChannel.Result,
         payload: Map<String, Any>
     ) {
+        if (pendingLocationListener == null && pendingLocationTimeout == null) return
         pendingLocationTimeout?.let { locationHandler.removeCallbacks(it) }
         pendingLocationTimeout = null
         pendingLocationListener?.let {
