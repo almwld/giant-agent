@@ -370,7 +370,11 @@ class AgentKernel {
     required String agentType,
     required Map<String, String> dependencyResults,
     required String toolCallId,
+    bool Function()? isCancelled,
   }) async {
+    if (isCancelled?.call() == true) {
+      throw SubagentInterrupted('تم إيقاف استدعاء تشغيل الوكيل الفرعي.');
+    }
     if (_activeRequestId != parentRequestId ||
         _state != AgentKernelState.executing) {
       throw StateError('Dynamic subagents must be spawned by their active parent request.');
@@ -429,7 +433,7 @@ ${dependencyContext.isEmpty ? 'لا توجد تبعيات.' : dependencyContext}
         conversationId: '$conversationId::subagent::$taskId',
         persistTurn: false,
         allowedTools: allowedTools,
-        shouldCancel: () =>
+        shouldCancel: () => isCancelled?.call() == true ||
             _cancellationRequested || _cancelledSubagentIds.contains(taskId),
         requestId: parentRequestId,
         taskId: taskId,
