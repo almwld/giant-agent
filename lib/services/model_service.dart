@@ -992,6 +992,14 @@ ${queuedMessages.isEmpty ? 'لا توجد رسائل.' : queuedMessages}
       case 'gain_terminal': return 'يطلب موافقة لتنفيذ أمر طرفية';
       case 'list_files': return 'يعرض ملفات مساحة العمل';
       case 'web_search': return 'يبحث على الويب';
+      case 'image_search':
+      case 'search_image_by_text': return 'يبحث عن صور عبر مزوّد الصور';
+      case 'search_image_by_image': return 'يبحث بصرياً عن صور مشابهة';
+      case 'generate_image': return 'يولّد صورة عبر مزوّد متصل';
+      case 'edit_image': return 'يحرر صورة عبر مزوّد متصل';
+      case 'generate_sound_effects': return 'يولّد مؤثرات صوتية';
+      case 'find_asset_bbox': return 'يحدد حدود الأصول في الصورة';
+      case 'crop_and_replicate_assets_in_image': return 'يقص ويعيد إنتاج الأصول';
       case 'fetch_urls': return 'يجلب صفحات الويب';
       case 'visit':
       case 'browser_visit': return 'يفتح صفحة في المتصفح';
@@ -1039,6 +1047,14 @@ ${queuedMessages.isEmpty ? 'لا توجد رسائل.' : queuedMessages}
       case 'gain_terminal': return 'اكتمل تنفيذ أمر الطرفية';
       case 'list_files': return 'اكتمل استعراض الملفات';
       case 'web_search': return 'اكتمل البحث على الويب';
+      case 'image_search':
+      case 'search_image_by_text': return 'اكتمل البحث عن الصور';
+      case 'search_image_by_image': return 'اكتمل البحث البصري';
+      case 'generate_image': return 'اكتمل توليد الصورة';
+      case 'edit_image': return 'اكتمل تحرير الصورة';
+      case 'generate_sound_effects': return 'اكتمل توليد المؤثرات';
+      case 'find_asset_bbox': return 'اكتمل تحديد حدود الأصول';
+      case 'crop_and_replicate_assets_in_image': return 'اكتمل قص الأصول وإعادة إنتاجها';
       case 'fetch_urls': return 'اكتمل جلب صفحات الويب';
       case 'visit':
       case 'browser_visit': return 'اكتمل فتح الصفحة';
