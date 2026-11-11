@@ -82,6 +82,20 @@ class EvaluatorService {
           message: passed ? 'Workspace listing returned a structured file list.' : 'Workspace listing did not return a file list.',
           evidence: <String, Object?>{'file_count': files is List ? files.length : 0},
         );
+      case 'mcp_read_resource':
+        final resource = toolResult['resource_result'];
+        final contents = resource is Map ? resource['contents'] : null;
+        final passed = toolResult['ok'] == true && contents is List;
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed
+              ? 'MCP resource verification passed: the server returned structured resource contents.'
+              : 'MCP resource verification failed: no structured contents were returned.',
+          evidence: <String, Object?>{
+            'resource_contents_received': passed,
+            'content_items': contents is List ? contents.length : 0,
+          },
+        );
       case 'mcp_call':
         final envelope = toolResult['mcp_result'];
         final content = envelope is Map ? envelope['content'] : null;
