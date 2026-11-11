@@ -1004,14 +1004,19 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<String?> _requestAgentInput({
     required String question,
     required List<String> choices,
+    bool Function()? isCancelled,
   }) async {
-    if (!mounted) return null;
+    if (!mounted || isCancelled?.call() == true) return null;
     final controller = TextEditingController();
+    BuildContext? activeDialogContext;
+    Timer? cancellationTimer;
     try {
-      return await showDialog<String>(
+      final dialog = showDialog<String>(
         context: context,
         barrierDismissible: false,
-        builder: (dialogContext) => AlertDialog(
+        builder: (dialogContext) {
+          activeDialogContext = dialogContext;
+          return AlertDialog(
           title: const Text('مطلوب توضيح من المستخدم'),
           content: SingleChildScrollView(
             child: Column(
@@ -1059,9 +1064,20 @@ class _ChatScreenState extends State<ChatScreen> {
               child: const Text('إرسال الإجابة'),
             ),
           ],
-        ),
+        );
+        },
       );
+      cancellationTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
+        final dialogContext = activeDialogContext;
+        if (isCancelled?.call() == true &&
+            dialogContext != null &&
+            dialogContext.mounted) {
+          Navigator.of(dialogContext).pop();
+        }
+      });
+      return await dialog;
     } finally {
+      cancellationTimer?.cancel();
       controller.dispose();
     }
   }
