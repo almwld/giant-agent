@@ -164,6 +164,76 @@ class ToolManager {
       example: '{"name":"slides_generator","arguments":{"path":"presentations/overview.html","title":"Overview","slides":[{"title":"Goal","body":"Key points"}]}}',
     ),
     AgentToolDefinition(
+      name: 'fetch_urls',
+      description: 'فتح ما يصل إلى خمسة روابط HTTP(S) في جلسة المتصفح المرئية وجلب عنوان الصفحة ونصها.',
+      example: '{"name":"fetch_urls","arguments":{"urls":["https://example.com"]}}',
+    ),
+    AgentToolDefinition(
+      name: 'visit',
+      description: 'فتح رابط في متصفح الوكيل المرئي.',
+      example: '{"name":"visit","arguments":{"url":"https://example.com"}}',
+    ),
+    AgentToolDefinition(
+      name: 'click',
+      description: 'النقر على رابط أو زر بحسب النص الظاهر المطابق.',
+      example: '{"name":"click","arguments":{"text":"Sign in"}}',
+    ),
+    AgentToolDefinition(
+      name: 'input',
+      description: 'إدخال قيمة في عنصر نموذج يحدده CSS selector؛ لا يرسل النموذج تلقائياً.',
+      example: '{"name":"input","arguments":{"selector":"input[name=email]","value":"user@example.com"}}',
+    ),
+    AgentToolDefinition(
+      name: 'find',
+      description: 'البحث عن نص داخل محتوى الصفحة الحالية وإرجاع مقتطف حول التطابق.',
+      example: '{"name":"find","arguments":{"query":"pricing"}}',
+    ),
+    AgentToolDefinition(
+      name: 'scrollup',
+      description: 'تمرير صفحة المتصفح المرئية إلى أعلى.',
+      example: '{"name":"scrollup","arguments":{}}',
+    ),
+    AgentToolDefinition(
+      name: 'scrolldown',
+      description: 'تمرير صفحة المتصفح المرئية إلى أسفل.',
+      example: '{"name":"scrolldown","arguments":{}}',
+    ),
+    AgentToolDefinition(
+      name: 'browser_visit',
+      description: 'فتح رابط HTTP(S) في جلسة المتصفح المرئية للمستخدم.',
+      example: '{"name":"browser_visit","arguments":{"url":"https://example.com"}}',
+    ),
+    AgentToolDefinition(
+      name: 'browser_click',
+      description: 'النقر على رابط أو زر في صفحة المتصفح بحسب النص الظاهر.',
+      example: '{"name":"browser_click","arguments":{"text":"Continue"}}',
+    ),
+    AgentToolDefinition(
+      name: 'browser_find',
+      description: 'البحث عن نص داخل الصفحة الحالية.',
+      example: '{"name":"browser_find","arguments":{"query":"terms and conditions"}}',
+    ),
+    AgentToolDefinition(
+      name: 'browser_input',
+      description: 'ملء عنصر إدخال محدد في صفحة المتصفح دون إرسال النموذج.',
+      example: '{"name":"browser_input","arguments":{"selector":"textarea[name=message]","value":"Hello"}}',
+    ),
+    AgentToolDefinition(
+      name: 'browser_state',
+      description: 'قراءة عنوان URL والعنوان ونص الصفحة الحالية.',
+      example: '{"name":"browser_state","arguments":{}}',
+    ),
+    AgentToolDefinition(
+      name: 'browser_scroll_up',
+      description: 'تمرير صفحة المتصفح المرئية إلى أعلى.',
+      example: '{"name":"browser_scroll_up","arguments":{}}',
+    ),
+    AgentToolDefinition(
+      name: 'browser_scroll_down',
+      description: 'تمرير صفحة المتصفح المرئية إلى أسفل.',
+      example: '{"name":"browser_scroll_down","arguments":{}}',
+    ),
+    AgentToolDefinition(
       name: 'gain_terminal',
       description: 'تنفيذ أمر واحد في Android shell بصلاحيات التطبيق فقط؛ يتطلب موافقة المستخدم الصريحة على نص الأمر حرفياً قبل التنفيذ.',
       example: '{"name":"gain_terminal","arguments":{"command":"pwd && ls","timeout_seconds":30}}',
