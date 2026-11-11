@@ -619,7 +619,7 @@ class MainActivity: FlutterActivity() {
                 "id" to eventId,
                 "type" to type,
                 "tool_name" to toolName,
-                "title" to if (type == "tool_start") "تشغيل Python" else if (type == "tool_output") "مخرجات Python" else "خطأ Python",
+                "title" to if (toolName == "ipython") { if (type == "tool_start") "تشغيل جلسة IPython" else if (type == "tool_output") "مخرجات IPython" else "خطأ IPython" } else if (type == "tool_start") "تشغيل Python" else if (type == "tool_output") "مخرجات Python" else "خطأ Python",
                 "content" to code,
                 "output" to output,
                 "status" to status
