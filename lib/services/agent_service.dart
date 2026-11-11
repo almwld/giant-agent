@@ -139,7 +139,7 @@ class AgentService {
           .then((_) async {
         final eventType = event['type']?.toString() ?? '';
         if ((event['task_id']?.toString() ?? '').isNotEmpty &&
-            eventType.startsWith('subagent_')) {
+            (eventType.startsWith('subagent_') || eventType.startsWith('user_input_'))) {
           await _store.recordSubagentEvent(event);
         }
         await _store.appendRequestEvent(event);
