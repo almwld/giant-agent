@@ -127,6 +127,13 @@ void main() {
       onEvent: (_) {},
       execute: (task, dependencies, isCancelled) async {
         if (task.id == 'root') {
+          await expectLater(
+            orchestrator.createTask(
+              const SubagentTask(id: 'invalid/id', title: 'Invalid', prompt: 'Invalid'),
+              creatorTaskId: 'root',
+            ),
+            throwsArgumentError,
+          );
           await orchestrator.createTask(
             const SubagentTask(id: 'child', title: 'Child', prompt: 'Child'),
             creatorTaskId: 'root',
