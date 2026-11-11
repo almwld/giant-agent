@@ -692,16 +692,32 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
           break;
         case 'click':
         case 'browser_click':
-          result = await BrowserSessionService.instance.click(
-            args['text']?.toString() ?? '',
-          );
+          final clickText = args['text']?.toString() ?? '';
+          var clickResult = await BrowserSessionService.instance.click(clickText);
+          if (clickResult['requires_confirmation'] == true) {
+            final approved = await _confirmBrowserAction(
+              'يتطلب النقر على "$clickText" موافقتك لأنه قد يغيّر حالة الصفحة أو ينفذ إجراءً.',
+            );
+            clickResult = approved
+                ? await BrowserSessionService.instance.click(clickText, allowSensitive: true)
+                : <String, dynamic>{'ok': true, 'cancelled': true, 'reason': 'user_denied'};
+          }
+          result = clickResult;
           break;
         case 'input':
         case 'browser_input':
-          result = await BrowserSessionService.instance.input(
-            args['selector']?.toString() ?? '',
-            args['value']?.toString() ?? '',
-          );
+          final selector = args['selector']?.toString() ?? '';
+          final inputValue = args['value']?.toString() ?? '';
+          var inputResult = await BrowserSessionService.instance.input(selector, inputValue);
+          if (inputResult['requires_confirmation'] == true) {
+            final approved = await _confirmBrowserAction(
+              'هذا الحقل يبدو حساساً ($selector). هل تسمح بإدخال القيمة التي طلبتها؟',
+            );
+            inputResult = approved
+                ? await BrowserSessionService.instance.input(selector, inputValue, allowSensitive: true)
+                : <String, dynamic>{'ok': true, 'cancelled': true, 'reason': 'user_denied'};
+          }
+          result = inputResult;
           break;
         case 'find':
         case 'browser_find':
@@ -764,6 +780,16 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
       }
       rethrow;
     }
+  }
+
+  Future<bool> _confirmBrowserAction(String question) async {
+    final handler = requestUserInput;
+    if (handler == null) return false;
+    final answer = await handler(
+      question: question,
+      choices: const <String>['السماح', 'إلغاء'],
+    );
+    return answer == 'السماح';
   }
 
   Future<void> _ensureBrowserSession() async {
