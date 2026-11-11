@@ -109,3 +109,26 @@ Do not create a second model/JNI runtime or a second background Dart isolate to 
 The Mylib archives were extracted and integrity-checked. All 70 GPT `.valdimodule` files were decompressed for module/source-name and symbol inspection; the Kimi asset archive and deep-scan report were inventoried and searched for the protocol descriptors above. This does not amount to a full decompilation of every native library or a claim of server-side parity.
 
 The latest pre-change Giant Agent CI run `42909088830` had 79 passing tests and one failing concurrency assertion. The failure was caused by the test's default `coder` role conflicting with the intentional exclusive workspace lease; the test and a dedicated coder-lease regression case have been updated. A fresh CI run is required to confirm the integrated branch.
+
+
+## Transfer status correction — 2026-11-12
+
+The earlier "Remaining integration work" section above is historical and predates the merged MCP/SSE work. The current Giant Agent integration branch now includes:
+
+- MCP Streamable HTTP client with secure server configuration, endpoint validation, session handling, paginated discovery, `tools/call`, and `resources/read`.
+- Typed MCP result envelopes preserving ordered content blocks, media, resource links, `structuredContent`, metadata and errors.
+- Independent `tool_call_id` identity, targeted cooperative cancellation and durable interrupted classification.
+- OpenRouter SSE streaming with incremental UTF-8-safe parsing and cancellation, through the existing provider service.
+- Durable parent requests, child snapshots, append-only journals, restart reconciliation, explicit resume authorization, output artifact persistence and verification.
+- Model-facing dynamic child lifecycle tools (`create_subagent`, `spawn_subagent`, `check_subagent_status`, `list_subagents`, `delete_subagent`) on the Kimi transfer branch, using a separate bridge and the shared local runtime.
+- Worker metadata and bounded lifecycle progress in durable snapshots.
+
+### Still not transferred / not proven
+
+- GPT's exact account-scoped conversation snapshot implementation and remote API contracts are not present as source in Mylib; Giant uses its own local conversation memory and durable request/event model.
+- Streaming deltas are currently live UI events and are excluded from the durable lifecycle journal; full resumable partial assistant-message snapshots are not yet equivalent to the GPT module symbols found in the compiled asset archive.
+- Mylib does not expose verified handler bodies or argument schemas for `send_message`, `wait_for_message`, `ask_user`, or `update_goal`. Only their operation names are visible in the Kimi registry. These remain a separate implementation tranche with explicit Giant-owned contracts.
+- Real-device validation is still required for Android foreground execution, process death, cancellation during native inference, and nested local child execution.
+- A real MCP server integration test and OAuth/stdio transports remain outside the current mobile Streamable HTTP implementation.
+
+No proprietary source code or private provider endpoint contract has been copied. The transfer is an independent implementation of observed architectural patterns.
