@@ -845,13 +845,14 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
             break;
           }
           final currentFile = await readFile(path: websitePath);
-          if (currentFile['ok'] == true && currentFile['content'] is String) {
-            await AgentMemoryService.instance.saveWorkspaceVersion(
-              websitePath,
-              currentFile['content'] as String,
-              label: 'before rollback to $versionId',
-            );
+          if (currentFile['ok'] != true || currentFile['content'] is! String) {
+            throw StateError('Rollback stopped because the current file could not be snapshotted safely.');
           }
+          await AgentMemoryService.instance.saveWorkspaceVersion(
+            websitePath,
+            currentFile['content'] as String,
+            label: 'before rollback to $versionId',
+          );
           final restored = await writeFile(
             path: websitePath,
             content: snapshot['content']?.toString() ?? '',
