@@ -44,6 +44,12 @@ class PersistentReplTests(unittest.TestCase):
         self.assertEqual(result["status"], "error")
         self.assertIn("PermissionError", result["error"])
 
+    def test_session_cache_is_bounded(self):
+        for index in range(5):
+            sandbox.run_repl("value = 1", "/tmp", "chat_%s" % index)
+        self.assertLessEqual(len(sandbox._REPL_SESSIONS), sandbox.MAX_REPL_SESSIONS)
+        self.assertNotIn("chat_0", sandbox._REPL_SESSIONS)
+
     def test_session_identifier_is_validated(self):
         result = sandbox.run_repl("print(1)", "/tmp", "../escape")
         self.assertEqual(result["status"], "error")
