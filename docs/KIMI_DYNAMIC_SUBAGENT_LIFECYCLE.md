@@ -64,3 +64,8 @@ Progress is currently emitted at known lifecycle boundaries (0% at start and 100
 - Timeline progress serialization and bounds tests.
 
 The exact Kimi dispatcher argument schemas and handler bodies remain unavailable in the Mylib export. These are Giant's explicit validated schemas and execution semantics, not a claim of wire-level equivalence.
+
+
+### Targeted cancellation correction
+
+The active `spawn_subagent` handler now receives the exact tool call's cancellation predicate. It is checked before child admission and during every child model/tool boundary. For local GGUF generation, cancelling that tool call also signals the existing native `LlamaService` cancellation entry point; it does not create a second runtime or set the parent-wide cancellation flag. Child lifecycle events retain the parent spawn call's `tool_call_id`, while tools invoked by the child receive their own IDs.
