@@ -47,10 +47,11 @@ void main() {
           {'type': 'text', 'text': 'second'},
         ],
         'structuredContent': {'count': 2},
+        '_meta': {'trace': 'round-trip'},
       });
       expect(result.textPreview, 'first\nsecond');
       expect(result.structuredContent?['count'], 2);
-      expect(result.toJson()['_meta'], isNull);
+      expect(result.toJson()['_meta']['trace'], 'round-trip');
     });
   });
 }
