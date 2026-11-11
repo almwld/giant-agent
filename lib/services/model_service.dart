@@ -22,7 +22,7 @@ import '../domain/harness/evaluator_service.dart';
 import '../domain/harness/reflexion_service.dart';
 import '../domain/mcp/mcp_client.dart';
 
-typedef AgentUserInputHandler = Future<String?> Function({required String question, required List<String> choices});
+typedef AgentUserInputHandler = Future<String?> Function({required String question, required List<String> choices, bool Function()? isCancelled});
 
 class ModelService {
   static final ModelService _instance = ModelService._internal();
@@ -235,7 +235,11 @@ class ModelService {
     return result;
   }
 
-  bool cancelToolCall(String toolCallId) => _toolCalls.cancel(toolCallId);
+  bool cancelToolCall(String toolCallId) {
+    final cancelled = _toolCalls.cancel(toolCallId);
+    if (cancelled) unawaited(_llama.cancel());
+    return cancelled;
+  }
 
   Future<bool> cancelGeneration() async {
     _cancelRequested = true;
@@ -486,6 +490,7 @@ class ModelService {
             requestId: _activeRequestId,
             agentId: agentId,
             timeoutSeconds: timeout,
+            isCancelled: isCancelled,
           );
           result = <String, dynamic>{
             'ok': true,
@@ -513,7 +518,9 @@ class ModelService {
           final answer = await handler(
             question: question,
             choices: rawChoices.map((item) => item.toString()).toList(),
+            isCancelled: isCancelled,
           );
+          if (isCancelled()) throw ToolCallInterrupted(toolCallId ?? 'ask_user');
           result = <String, dynamic>{'ok': true, 'cancelled': answer == null, if (answer != null) 'answer': answer};
           break;
         case 'update_goal':
