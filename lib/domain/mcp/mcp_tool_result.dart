@@ -57,7 +57,7 @@ class McpToolResult {
       .where((block) => block.type == 'text')
       .map((block) => block.text ?? '')
       .where((value) => value.isNotEmpty)
-      .join('\\n');
+      .join('\n');
 }
 
 class McpContentBlock {
