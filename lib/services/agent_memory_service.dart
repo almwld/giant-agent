@@ -217,6 +217,56 @@ class AgentMemoryService {
     return rows.map((row) => Map<String, dynamic>.from(row)).toList(growable: false);
   }
 
+  /// Searches prior local conversations across chat sessions, as a bounded
+  /// recall operation. Results are excerpts, not new instructions.
+  Future<List<Map<String, dynamic>>> recallChats(
+    String query, {
+    int limit = 5,
+  }) async {
+    final normalized = query.trim();
+    if (normalized.isEmpty || normalized.length > 1000) {
+      throw ArgumentError('Chat recall query must contain 1–1000 characters.');
+    }
+    final words = normalized
+        .toLowerCase()
+        .split(RegExp(r'[^\p{L}\p{N}]+', unicode: true))
+        .where((word) => word.runes.length >= 3)
+        .take(12)
+        .toSet();
+    if (words.isEmpty) return const <Map<String, dynamic>>[];
+    final db = await database;
+    final rows = await db.query(
+      'turns',
+      columns: const ['session_id', 'user_text', 'assistant_text', 'created_at'],
+      orderBy: 'created_at DESC',
+      limit: 500,
+    );
+    final matches = <Map<String, Object?>>[];
+    for (final row in rows) {
+      final user = (row['user_text'] ?? '').toString();
+      final assistant = (row['assistant_text'] ?? '').toString();
+      final text = '$user $assistant'.toLowerCase();
+      final score = words.where(text.contains).length;
+      if (score > 0) matches.add(<String, Object?>{...row, '_score': score});
+    }
+    matches.sort((a, b) {
+      final relevance = (b['_score'] as int).compareTo(a['_score'] as int);
+      if (relevance != 0) return relevance;
+      return (b['created_at'] as int).compareTo(a['created_at'] as int);
+    });
+    return matches.take(limit.clamp(1, 10).toInt()).map((row) {
+      final user = (row['user_text'] ?? '').toString();
+      final assistant = (row['assistant_text'] ?? '').toString();
+      return <String, dynamic>{
+        'conversation_id': row['session_id'],
+        'user_excerpt': user.length > 1200 ? user.substring(0, 1200) : user,
+        'assistant_excerpt': assistant.length > 1200 ? assistant.substring(0, 1200) : assistant,
+        'created_at': row['created_at'],
+        'relevance': row['_score'],
+      };
+    }).toList(growable: false);
+  }
+
   Future<String> buildContext(String query, {int limit = 3, String conversationId = 'global'}) async {
     final db = await database;
     final words = query
