@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path_provider/path_provider.dart';
 import '../services/model_service.dart';
+import '../services/agent_user_input_broker.dart';
 import '../services/agent_service.dart';
 import '../services/file_upload_service.dart';
 import '../services/agent_memory_service.dart';
@@ -55,6 +56,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final List<Map<String, dynamic>> _agentSteps = [];
   String _activeAgentRequestId = '';
   final Set<String> _collapsedTimelineIds = <String>{};
+  final Set<String> _pendingUserInputDialogIds = <String>{};
   String _streamingResponse = '';
   int _streamingShimmerStart = 0;
   String _toolStreamBuffer = '';
@@ -178,6 +180,9 @@ class _ChatScreenState extends State<ChatScreen> {
         _terminal.write('\x1B[31m${step['output']?.toString() ?? step['details']?.toString() ?? 'Python failed'}\x1B[0m\r\n');
       }
     }
+    if (step['type'] == 'user_input_requested') {
+      unawaited(_presentAgentUserInputRequest(step));
+    }
     if (step['type'] == 'stream_token') {
       // Native token callbacks are deltas. Ignore a replayed event id so a
       // reconnect/re-delivery cannot append the same chunk twice.
@@ -247,6 +252,65 @@ class _ChatScreenState extends State<ChatScreen> {
     });
     AgentWorkflowScreen.publish(_agentSteps, finalOutputText: _latestAssistantOutput);
     _scrollToBottom();
+  }
+
+  Future<void> _presentAgentUserInputRequest(Map<String, dynamic> event) async {
+    final requestId = event['input_request_id']?.toString() ??
+        event['id']?.toString() ?? '';
+    if (requestId.isEmpty || !_pendingUserInputDialogIds.add(requestId)) return;
+    final question = event['question']?.toString() ?? '';
+    final controller = TextEditingController();
+    try {
+      if (!mounted) {
+        AgentUserInputBroker.instance.submitAnswer(requestId, null);
+        return;
+      }
+      final answer = await showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('يحتاج الوكيل إلى إجابتك'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(question),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: controller,
+                  autofocus: true,
+                  minLines: 2,
+                  maxLines: 5,
+                  textInputAction: TextInputAction.newline,
+                  decoration: const InputDecoration(
+                    hintText: 'اكتب إجابتك هنا',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('إلغاء'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, controller.text),
+              child: const Text('إرسال الإجابة'),
+            ),
+          ],
+        ),
+      );
+      AgentUserInputBroker.instance.submitAnswer(requestId, answer);
+    } catch (_) {
+      AgentUserInputBroker.instance.submitAnswer(requestId, null);
+    } finally {
+      controller.dispose();
+      _pendingUserInputDialogIds.remove(requestId);
+    }
   }
 
   Future<String> _generateWithStages(String prompt, {String? requestId}) async {
