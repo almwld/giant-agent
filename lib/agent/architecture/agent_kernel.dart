@@ -772,6 +772,8 @@ $evidence
       conversationId: conversationId,
       persistTurn: false,
       allowedTools: const <String>{
+        'ipython',
+        'reset_ipython',
         'task',
         'dmail',
         'show_widget',
