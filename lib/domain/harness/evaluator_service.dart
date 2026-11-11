@@ -269,6 +269,23 @@ class EvaluatorService {
           message: passed ? 'Current browser URL, title and visible page text were read.' : 'Browser state could not be verified.',
           evidence: <String, Object?>{'url': toolResult['url'], 'title': toolResult['title']},
         );
+      case 'ipython':
+        final sessionId = toolResult['session_id']?.toString() ?? '';
+        final passed = toolResult['ok'] == true && sessionId.isNotEmpty &&
+            toolResult['output'] is String && toolResult['error'] is String;
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed ? 'Persistent Python REPL executed in the current chat-scoped session.' : 'Persistent Python REPL execution was not verified.',
+          evidence: <String, Object?>{'session_id_present': sessionId.isNotEmpty},
+        );
+      case 'reset_ipython':
+        final sessionId = toolResult['session_id']?.toString() ?? '';
+        final passed = toolResult['ok'] == true && sessionId.isNotEmpty;
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed ? 'Current chat-scoped Python REPL reset was acknowledged.' : 'Python REPL reset was not verified.',
+          evidence: <String, Object?>{'session_id_present': sessionId.isNotEmpty, 'reset': toolResult['reset'] == true},
+        );
       case 'web_search':
         final results = toolResult['results'];
         final passed = results is List;
