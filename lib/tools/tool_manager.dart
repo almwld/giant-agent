@@ -48,6 +48,16 @@ class ToolManager {
       example: '{"name":"list_files","arguments":{}}',
     ),
     AgentToolDefinition(
+      name: 'ipython',
+      description: 'تشغيل Python في جلسة REPL آمنة مستمرة ومعزولة لكل محادثة؛ المتغيرات تبقى بين الاستدعاءات ضمن حدود التنفيذ.',
+      example: '{"name":"ipython","arguments":{"code":"total = 40\\nprint(total + 2)"}}',
+    ),
+    AgentToolDefinition(
+      name: 'reset_ipython',
+      description: 'إعادة ضبط مساحة متغيرات IPython للمحادثة الحالية فقط.',
+      example: '{"name":"reset_ipython","arguments":{}}',
+    ),
+    AgentToolDefinition(
       name: 'execute_python',
       description: 'تنفيذ Python محلي مقيّد للحساب والطباعة والحلقات المحدودة؛ لا يدعم الاستيراد أو فتح الملفات أو الوصول إلى النظام.',
       example: '{"name":"execute_python","arguments":{"code":"for i in range(1, 4):\n    print(i)"}}',
