@@ -387,6 +387,99 @@ class ModelService {
             if (mcpResult.structuredContent != null) 'structuredContent': mcpResult.structuredContent,
           };
           break;
+        case 'create_subagent':
+          if (_activeTaskId.isNotEmpty) {
+            throw StateError('A child agent cannot create another child agent.');
+          }
+          final rawDependencies = args['depends_on'] ?? const <dynamic>[];
+          if (rawDependencies is! List || rawDependencies.any((item) => item is! String)) {
+            throw const FormatException('depends_on must be a list of agent ids.');
+          }
+          final created = await _subagents.create(
+            requestId: _activeRequestId,
+            conversationId: _activeConversationId,
+            id: args['id']?.toString() ?? '',
+            title: args['title']?.toString() ?? '',
+            prompt: args['prompt']?.toString() ?? '',
+            agentType: args['agent_type']?.toString() ?? 'explore',
+            dependsOn: rawDependencies.map((item) => item.toString()).toList(),
+            creatorTaskId: _activeTaskId,
+          );
+          result = <String, dynamic>{'ok': true, 'subagent': created.toMap()};
+          break;
+        case 'spawn_subagent':
+          result = await _spawnDynamicSubagent(
+            args['id']?.toString() ?? '',
+            isCancelled: isCancelled,
+          );
+          break;
+        case 'delete_subagent':
+          final agentId = args['id']?.toString() ?? '';
+          await _subagents.delete(_activeRequestId, agentId);
+          final deleted = _subagents.get(_activeRequestId, agentId);
+          result = <String, dynamic>{'ok': deleted != null && deleted.dismissed, 'subagent': deleted?.toMap()};
+          break;
+        case 'check_subagent_status':
+          final agentId = args['id']?.toString() ?? '';
+          final snapshot = _subagents.get(_activeRequestId, agentId);
+          if (snapshot == null) throw StateError('Subagent not found: $agentId');
+          result = <String, dynamic>{'ok': true, 'subagent': snapshot.toMap()};
+          break;
+        case 'send_message':
+          final agentId = args['agent_id']?.toString() ?? '';
+          await _subagents.sendMessage(
+            requestId: _activeRequestId,
+            agentId: agentId,
+            message: args['message']?.toString() ?? '',
+            senderTaskId: _activeTaskId.isEmpty ? null : _activeTaskId,
+          );
+          result = <String, dynamic>{'ok': true, 'message_queued': true, 'agent_id': agentId};
+          break;
+        case 'wait_for_message':
+          final agentId = args['agent_id']?.toString() ?? '';
+          final timeout = args['timeout_seconds'] is int ? args['timeout_seconds'] as int : 10;
+          final message = await _subagents.waitForMessage(
+            requestId: _activeRequestId,
+            agentId: agentId,
+            timeoutSeconds: timeout,
+          );
+          result = <String, dynamic>{
+            'ok': true,
+            'received': message != null,
+            if (message != null) 'message': message,
+            if (message == null) 'timed_out': true,
+          };
+          break;
+        case 'ask_user':
+          if (_activeTaskId.isNotEmpty) {
+            throw StateError('Only the coordinating agent may ask the user.');
+          }
+          final question = args['question']?.toString().trim() ?? '';
+          final rawChoices = args['choices'] ?? const <dynamic>[];
+          if (question.isEmpty || question.length > 1000 ||
+              rawChoices is! List || rawChoices.length > 6 ||
+              rawChoices.any((item) => item is! String)) {
+            throw const FormatException('ask_user requires a question and up to six string choices.');
+          }
+          final handler = requestUserInput;
+          if (handler == null) {
+            result = <String, dynamic>{'ok': false, 'error': 'User input UI is unavailable; no answer was fabricated.'};
+            break;
+          }
+          final answer = await handler(
+            question: question,
+            choices: rawChoices.map((item) => item.toString()).toList(),
+          );
+          result = <String, dynamic>{'ok': true, 'cancelled': answer == null, if (answer != null) 'answer': answer};
+          break;
+        case 'update_goal':
+          if (_activeTaskId.isNotEmpty) {
+            throw StateError('Only the coordinating agent may update the request goal.');
+          }
+          final goal = args['goal']?.toString() ?? '';
+          await _subagents.updateGoal(_activeRequestId, goal);
+          result = <String, dynamic>{'ok': true, 'goal': _subagents.currentGoal(_activeRequestId)};
+          break;
         case 'gain_terminal':
           final approval = requestTerminalApproval;
           if (approval == null) {
