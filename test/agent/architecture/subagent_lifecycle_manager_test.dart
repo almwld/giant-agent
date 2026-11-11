@@ -155,4 +155,38 @@ void main() {
     await expectLater(manager.delete('request-7', 'active'), throwsStateError);
     expect(manager.get('request-7', 'active')!.status, 'running');
   });
+  test('mailbox wait exits promptly when its exact tool call is cancelled', () async {
+    final manager = SubagentLifecycleManager(onEvent: (_) {});
+    await manager.create(
+      requestId: 'request-cancel',
+      conversationId: 'chat-cancel',
+      id: 'worker',
+      title: 'Worker',
+      prompt: 'Wait for a message',
+      agentType: 'explore',
+    );
+    var cancelled = false;
+    final waiting = manager.waitForMessage(
+      requestId: 'request-cancel',
+      agentId: 'worker',
+      timeoutSeconds: 10,
+      isCancelled: () => cancelled,
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    cancelled = true;
+    await expectLater(waiting, throwsStateError);
+
+    await manager.sendMessage(
+      requestId: 'request-cancel',
+      agentId: 'worker',
+      message: 'The cancelled waiter was removed.',
+    );
+    final next = await manager.waitForMessage(
+      requestId: 'request-cancel',
+      agentId: 'worker',
+      timeoutSeconds: 1,
+    );
+    expect(next?['message'], 'The cancelled waiter was removed.');
+  });
+
 }
