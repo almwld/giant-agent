@@ -553,13 +553,21 @@ ${context.isEmpty ? '' : 'سياق مختصر:\n$context\n'}
 هدف المستخدم:
 $prompt
 ''';
-      final output = await _generateText(
-        _boundPrompt(completePrompt),
-        maxTokens: 1024,
-        temperature: .1,
-        shouldCancel: shouldCancel,
-      );
-      if (shouldCancel?.call() == true) {
+      late final String output;
+      try {
+        output = await _generateText(
+          _boundPrompt(completePrompt),
+          maxTokens: 1024,
+          temperature: .1,
+          shouldCancel: shouldCancel,
+        );
+      } catch (_) {
+        if (_cancelRequested || shouldCancel?.call() == true) {
+          return 'تم إيقاف التخطيط بناءً على طلب المستخدم.';
+        }
+        rethrow;
+      }
+      if (_cancelRequested || shouldCancel?.call() == true) {
         return 'تم إيقاف التخطيط بناءً على طلب المستخدم.';
       }
       return output.trim();
