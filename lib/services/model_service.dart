@@ -3,7 +3,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/services.dart';
 import '../services/llama_service.dart';
-import '../agent/architecture/agent_event_bus.dart';\nimport '../agent/architecture/tool_call_registry.dart';
+import '../agent/architecture/agent_event_bus.dart';
+import '../agent/architecture/tool_call_registry.dart';
 import 'agent_memory_service.dart';
 import 'openai_compatible_provider.dart';
 import 'model_provider_settings.dart';
@@ -62,6 +63,7 @@ class ModelService {
     String? details,
     String? status,
     String? stepId,
+    String? toolCallId,
   }) {
     final sequence = ++_toolEventSequence;
     AgentEventBus.instance.publish({
