@@ -899,6 +899,20 @@ ${queuedMessages.isEmpty ? 'لا توجد رسائل.' : queuedMessages}
       case 'gain_terminal': return 'يطلب موافقة لتنفيذ أمر طرفية';
       case 'list_files': return 'يعرض ملفات مساحة العمل';
       case 'web_search': return 'يبحث على الويب';
+      case 'fetch_urls': return 'يجلب صفحات الويب';
+      case 'visit':
+      case 'browser_visit': return 'يفتح صفحة في المتصفح';
+      case 'click':
+      case 'browser_click': return 'ينقر على عنصر في الصفحة';
+      case 'input':
+      case 'browser_input': return 'يدخل قيمة في نموذج الويب';
+      case 'find':
+      case 'browser_find': return 'يبحث داخل الصفحة';
+      case 'scrollup':
+      case 'browser_scroll_up': return 'يمرر الصفحة إلى أعلى';
+      case 'scrolldown':
+      case 'browser_scroll_down': return 'يمرر الصفحة إلى أسفل';
+      case 'browser_state': return 'يقرأ حالة المتصفح';
       case 'todo_read': return 'يقرأ قائمة المهام';
       case 'todo_write': return 'يسجل مهمة محلية';
       case 'memory_space_insert': return 'يحفظ حقيقة في الذاكرة';
@@ -932,6 +946,20 @@ ${queuedMessages.isEmpty ? 'لا توجد رسائل.' : queuedMessages}
       case 'gain_terminal': return 'اكتمل تنفيذ أمر الطرفية';
       case 'list_files': return 'اكتمل استعراض الملفات';
       case 'web_search': return 'اكتمل البحث على الويب';
+      case 'fetch_urls': return 'اكتمل جلب صفحات الويب';
+      case 'visit':
+      case 'browser_visit': return 'اكتمل فتح الصفحة';
+      case 'click':
+      case 'browser_click': return 'اكتمل إجراء النقر';
+      case 'input':
+      case 'browser_input': return 'اكتمل إدخال قيمة النموذج';
+      case 'find':
+      case 'browser_find': return 'اكتمل البحث داخل الصفحة';
+      case 'scrollup':
+      case 'browser_scroll_up': return 'اكتمل التمرير إلى أعلى';
+      case 'scrolldown':
+      case 'browser_scroll_down': return 'اكتمل التمرير إلى أسفل';
+      case 'browser_state': return 'اكتملت قراءة حالة المتصفح';
       case 'todo_read': return 'اكتملت قراءة المهام';
       case 'todo_write': return 'تم تسجيل المهمة المحلية';
       case 'memory_space_insert': return 'تم حفظ الحقيقة';
