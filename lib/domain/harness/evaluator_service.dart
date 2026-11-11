@@ -203,6 +203,34 @@ class EvaluatorService {
           message: passed ? 'Connected media provider returned a structured asset or analysis result.' : 'No verified media asset/result was returned by a connected provider.',
           evidence: <String, Object?>{'asset_count': assets is List ? assets.length : 0, 'provider_id': toolResult['provider_id']},
         );
+      case 'website_version_manager':
+        final action = toolArgs['action']?.toString() ?? 'list';
+        final version = toolResult['version'];
+        final versions = toolResult['versions'];
+        final passed = action == 'snapshot'
+            ? toolResult['ok'] == true && version is Map &&
+                version['version_id'] is String && version['file_path'] == toolArgs['path']
+            : action == 'list'
+                ? toolResult['ok'] == true && versions is List
+                : false;
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed ? 'Local website file version snapshot/list operation was verified.' : 'Local website version operation was not verified.',
+          evidence: <String, Object?>{'action': action, 'version_count': versions is List ? versions.length : 0},
+        );
+      case 'website_version_manager_rollback':
+        final cancelled = toolResult['cancelled'] == true;
+        final passed = cancelled ||
+            (toolResult['ok'] == true && toolResult['verified'] == true &&
+             toolResult['path'] == toolArgs['path'] &&
+             toolResult['version_id'] == toolArgs['version_id']);
+        return ToolVerificationResult(
+          passed: passed,
+          message: cancelled ? 'Rollback was explicitly cancelled by the user.' :
+              passed ? 'Restored website file was read back and matched the selected snapshot.' :
+              'Website rollback could not be verified.',
+          evidence: <String, Object?>{'cancelled': cancelled, 'verified': toolResult['verified'] == true},
+        );
       case 'lbs_tool':
         final cancelled = toolResult['cancelled'] == true;
         final latitude = toolResult['latitude'];
