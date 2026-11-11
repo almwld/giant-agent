@@ -12,6 +12,7 @@ class ServerSentEvent {
 
 class ServerSentEventParser {
   final StringBuffer _line = StringBuffer();
+  List<int> _pendingUtf8 = <int>[];
   final List<String> _data = <String>[];
   String _event = '';
   String? _id;
@@ -21,8 +22,25 @@ class ServerSentEventParser {
 
   String get lastEventId => _lastEventId;
 
+
+  String _decodeChunk(List<int> bytes) {
+    final combined = <int>[..._pendingUtf8, ...bytes];
+    _pendingUtf8 = <int>[];
+    for (var tail = 0; tail <= 3 && tail <= combined.length; tail++) {
+      final split = combined.length - tail;
+      try {
+        final decoded = utf8.decode(combined.sublist(0, split), allowMalformed: false);
+        if (tail > 0) _pendingUtf8 = combined.sublist(split);
+        return decoded;
+      } on FormatException {
+        if (tail == 3 || tail == combined.length) rethrow;
+      }
+    }
+    throw const FormatException('Invalid UTF-8 in SSE stream.');
+  }
+
   List<ServerSentEvent> add(List<int> bytes) {
-    final text = utf8.decode(bytes, allowMalformed: false);
+    final text = _decodeChunk(bytes);
     final events = <ServerSentEvent>[];
     for (final unit in text.codeUnits) {
       if (_sawCarriageReturn) {
@@ -42,6 +60,10 @@ class ServerSentEventParser {
   }
 
   List<ServerSentEvent> close() {
+    if (_pendingUtf8.isNotEmpty) {
+      _line.write(utf8.decode(_pendingUtf8, allowMalformed: false));
+      _pendingUtf8 = <int>[];
+    }
     final events = <ServerSentEvent>[];
     if (_line.length > 0) _consumeLine(events);
     _dispatch(events);
@@ -72,6 +94,7 @@ class ServerSentEventParser {
         if (milliseconds != null && milliseconds >= 0) {
           _retry = Duration(milliseconds: milliseconds);
         }
+        break;
     }
   }
 
