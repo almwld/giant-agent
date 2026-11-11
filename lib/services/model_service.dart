@@ -1027,13 +1027,15 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
           switch (widgetType) {
             case 'metric':
               if (widgetPayload['value'] == null ||
+                  widgetPayload['value'].toString().length > 200 ||
                   (widgetPayload['label']?.toString().length ?? 0) > 120) {
                 throw const FormatException('metric requires a value and an optional short label.');
               }
               break;
             case 'progress':
               final progress = widgetPayload['value'];
-              if (progress is! num || progress < 0 || progress > 100) {
+              if (progress is! num || progress < 0 || progress > 100 ||
+                  (widgetPayload['label']?.toString().length ?? 0) > 120) {
                 throw const FormatException('progress value must be a number from 0 to 100.');
               }
               break;
