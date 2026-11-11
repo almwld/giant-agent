@@ -590,7 +590,7 @@ ${queuedMessages.isEmpty ? 'لا توجد رسائل.' : queuedMessages}
         zoneValues: <Object, Object?>{
           _requestIdZoneKey: requestId,
           _parallelProviderZoneKey: Zone.current[_parallelProviderZoneKey] == true,
-          _taskIdZoneKey: agentId,
+          _taskIdZoneKey: child.taskId,
           _agentTypeZoneKey: child.agentType,
           _conversationIdZoneKey: childConversationId,
         },
