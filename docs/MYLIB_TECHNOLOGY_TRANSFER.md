@@ -22,7 +22,7 @@ Mylib contains decompiled Android/Kotlin sources and extracted assets from Kimi 
 | # | Source identifier | Giant Agent mapping |
 |---:|---|---|
 | 1 | `default` | Internal model/tool routing; not exposed as a user tool. |
-| 2 | `lbs_tool` | Not transferred: no location provider or permission-backed location service is configured. |
+| 2 | `lbs_tool` | Implemented with in-app approval followed by Android foreground location permission; no background tracking is requested. |
 | 3 | `fetch_urls` | Implemented through the visible WebView session; bounded to five HTTP(S) URLs. |
 | 4 | `generate_slides_outline` | Implemented using the selected shared model; returns structured JSON and is verified. |
 | 5 | `visit` | Implemented through the user-visible agent browser dialog. |
@@ -85,7 +85,7 @@ Mylib contains decompiled Android/Kotlin sources and extracted assets from Kimi 
 ## Giant Agent foundations reused (no duplicate runtime)
 
 - One shared `LlamaService.instance` / `ModelService`; local child execution is serialized. Cloud OpenRouter execution remains on the existing streaming provider.
-- MCP Streamable HTTP client with structured content/resource results and explicit approval for non-read-only remote tools.\n- User-visible WebView browser session for URL navigation, text search, visible-text click, CSS form input and scrolling; local/private URL destinations and non-HTTP schemes are blocked.
+- MCP Streamable HTTP client with structured content/resource results and explicit approval for non-read-only remote tools.\n- User-visible WebView browser session for URL navigation, text search, visible-text click, CSS form input and scrolling; local/private URL destinations and non-HTTP schemes are blocked.\n- Foreground-only Android location bridge with two explicit gates (agent in-app consent and Android runtime permission); location is not collected in the background.
 - MediaProviderRegistry capability contracts for image search by text/image, image generation/editing, asset bounding boxes/cropping and sound effects. These tools fail explicitly until a real provider is registered; no image/sound generation provider is bundled.
 - Per-invocation `tool_call_id` and cancellation registry.
 - Durable SQLite task/request/event/subagent journal and restart recovery.
