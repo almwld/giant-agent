@@ -79,7 +79,7 @@ Mylib contains decompiled Android/Kotlin sources and extracted assets from Kimi 
 | 56 | `wait_for_message` | Implemented with bounded 1–30 second mailbox wait. |
 | 57 | `ask_user` | Implemented through an explicit chat-screen dialog; cancellation is an explicit result. |
 | 58 | `update_goal` | Implemented as request-scoped goal state plus a timeline event. |
-| 59 | `show_widget` | Not yet transferred: no typed widget renderer/interaction contract has been validated. |
+| 59 | `show_widget` | Implemented as validated metric/progress/table/list/notice widgets rendered in the session workflow timeline; HTML/JS payloads are rejected. |
 | 60 | `dmail` | Not mapped to email or messaging: the exact DMail semantics are not established by the inspected registry alone. |
 
 ## Giant Agent foundations reused (no duplicate runtime)
