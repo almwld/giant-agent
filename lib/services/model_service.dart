@@ -1215,7 +1215,8 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
         final dependency = _subagents.get(requestId, dependencyId)!;
         return 'نتيجة الوكيل السابق $dependencyId:\n${dependency.result ?? ''}';
       }).join('\n\n');
-      final queuedMessages = _subagents.drainMessages(requestId, agentId)
+      final drainedMessages = await _subagents.drainMessages(requestId, agentId);
+      final queuedMessages = drainedMessages
           .map((item) => item['message']?.toString() ?? '')
           .where((message) => message.isNotEmpty)
           .join('\n');
