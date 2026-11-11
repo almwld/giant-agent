@@ -67,6 +67,15 @@ class BrowserSessionService {
     return uri;
   }
 
+  bool allowsNavigation(String url) {
+    try {
+      _validateUrl(url);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   WebViewController _requireController() {
     final controller = _controller;
     if (controller == null) throw StateError('Open the visible agent browser before using browser tools.');
