@@ -43,6 +43,7 @@ void main() {
     test('joins text blocks with actual line separators and retains structured output', () {
       final result = McpToolResult.fromJson({
         'content': [
+          {'type': 'resource_link', 'uri': 'file:///tmp/report.pdf', 'name': 'report', 'mimeType': 'application/pdf'},
           {'type': 'text', 'text': 'first'},
           {'type': 'text', 'text': 'second'},
         ],
@@ -51,6 +52,8 @@ void main() {
       });
       expect(result.textPreview, 'first\nsecond');
       expect(result.structuredContent?['count'], 2);
+      expect(result.resourceLinks, hasLength(1));
+      expect(result.resourceLinks.single.uri, 'file:///tmp/report.pdf');
       expect(result.toJson()['_meta']['trace'], 'round-trip');
     });
   });
