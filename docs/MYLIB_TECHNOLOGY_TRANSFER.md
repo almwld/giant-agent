@@ -86,6 +86,7 @@ Mylib contains decompiled Android/Kotlin sources and extracted assets from Kimi 
 
 - One shared `LlamaService.instance` / `ModelService`; local child execution is serialized. Cloud OpenRouter execution remains on the existing streaming provider.
 - MCP Streamable HTTP client with structured content/resource results and explicit approval for non-read-only remote tools.\n- User-visible WebView browser session for URL navigation, text search, visible-text click, CSS form input and scrolling; local/private URL destinations and non-HTTP schemes are blocked.
+- MediaProviderRegistry capability contracts for image search by text/image, image generation/editing, asset bounding boxes/cropping and sound effects. These tools fail explicitly until a real provider is registered; no image/sound generation provider is bundled.
 - Per-invocation `tool_call_id` and cancellation registry.
 - Durable SQLite task/request/event/subagent journal and restart recovery.
 - Existing Gain PTY bridge, explicit terminal approval, Python runtime and workspace path constraints.
