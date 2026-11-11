@@ -81,6 +81,7 @@ void main() {
         'check_subagent_status': {'ok': true, 'task_id': 'worker-1', 'status': 'running'},
         'send_message': {'ok': true, 'to_task_id': 'worker-1'},
         'wait_for_message': {'ok': true, 'received': false, 'message': {}},
+        'ask_user': {'ok': true, 'answered': true, 'answer': 'Approve option A'},
         'update_goal': {'ok': true, 'goal': 'Review security'},
       };
       for (final entry in operations.entries) {
