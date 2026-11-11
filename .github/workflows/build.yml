@@ -144,15 +144,15 @@ jobs:
           ls -lh dist/*.apk
           sha256sum dist/*.apk | tee dist/SHA256SUMS.txt
 
-      # Optional cloud-device upload. Set APPETIZE_ENABLED=true and configure APPETIZE_API_TOKEN in GitHub Actions secrets.
+      # Optional cloud-device upload. Set APPETIZE_ENABLED=true and configure APPETIZE_API_KEY in GitHub Actions secrets.
       - name: Upload universal APK to Appetize
         id: appetize
         if: ${{ vars.APPETIZE_ENABLED == 'true' && github.event_name != 'pull_request' }}
         uses: appetizeio/github-action-appetize@v1.1.0
         env:
-          APPETIZE_API_TOKEN: ${{ secrets.APPETIZE_API_TOKEN }}
+          APPETIZE_API_KEY: ${{ secrets.APPETIZE_API_KEY }}
         with:
-          apiToken: ${{ secrets.APPETIZE_API_TOKEN }}
+          apiToken: ${{ secrets.APPETIZE_API_KEY }}
           publicKey: ${{ secrets.APPETIZE_PUBLIC_KEY }}
           appFile: dist/giant-agent-universal.apk
           platform: android
