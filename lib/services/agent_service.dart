@@ -449,9 +449,22 @@ class AgentService {
           try {
             final parentEvents = await _store.eventsFor(parent.id);
             final inboxMessages = parentEvents
-                .where((event) => event.type == 'subagent_message_sent' &&
-                    event.payload['to_task_id']?.toString() == taskId)
-                .map((event) => Map<String, Object?>.from(event.payload))
+                .where((event) =>
+                    (event.type == 'subagent_message_sent' &&
+                        event.payload['to_task_id']?.toString() == taskId) ||
+                    (event.type == 'user_input_answered' &&
+                        event.payload['task_id']?.toString() == taskId &&
+                        (event.payload['answer']?.toString() ?? '').trim().isNotEmpty))
+                .map((event) {
+                  if (event.type == 'user_input_answered') {
+                    return <String, Object?>{
+                      'from_task_id': 'user',
+                      'content': 'إجابة المستخدم: ${event.payload['answer']}',
+                      'input_request_id': event.payload['input_request_id'],
+                    };
+                  }
+                  return Map<String, Object?>.from(event.payload);
+                })
                 .toList(growable: false);
             return await _executionKernel.executeRecoveredSubagent(
               parentRequestId: parent.id,
