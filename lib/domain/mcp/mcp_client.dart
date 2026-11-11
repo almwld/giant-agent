@@ -18,7 +18,6 @@ class McpClient {
   static const String _protocolVersion = '2025-03-26';
   static const Duration _timeout = Duration(seconds: 45);
 
-  final http.Client _http = http.Client();
   final Map<String, _McpSession> _sessions = <String, _McpSession>{};
   final Map<String, List<McpRemoteTool>> _toolCache = <String, List<McpRemoteTool>>{};
   int _requestId = 0;
@@ -299,7 +298,21 @@ class McpClient {
       })
       ..body = jsonEncode(payload);
 
-    final streamed = await _http.send(request).timeout(_timeout);
+    final client = http.Client();
+    try {
+      final sendFuture = client.send(request);
+      final sendCancellationPoll = Timer.periodic(const Duration(milliseconds: 100), (_) {
+        if (isCancelled?.call() == true) client.close();
+      });
+      late final http.StreamedResponse streamed;
+      try {
+        streamed = await sendFuture.timeout(_timeout);
+      } catch (error) {
+        if (isCancelled?.call() == true) throw StateError('MCP request cancelled.');
+        rethrow;
+      } finally {
+        sendCancellationPoll.cancel();
+      }
     final sessionId = streamed.headers['mcp-session-id'];
     if (sessionId != null && sessionId.isNotEmpty) session.sessionId = sessionId;
     if (streamed.isRedirect) {
@@ -381,6 +394,9 @@ class McpClient {
     final decoded = jsonDecode(body);
     if (decoded is! Map) throw const FormatException('MCP response must be a JSON object.');
     return Map<String, dynamic>.from(decoded);
+    } finally {
+      client.close();
+    }
   }
 
   Map<String, dynamic> _rpcResult(Map<String, dynamic>? response) {
@@ -439,7 +455,6 @@ class McpClient {
   }
 
   void close() {
-    _http.close();
     _sessions.clear();
     _toolCache.clear();
   }
