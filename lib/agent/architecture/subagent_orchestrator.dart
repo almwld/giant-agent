@@ -189,7 +189,7 @@ class SubagentOrchestrator {
       (_inboxes[toTaskId] ??= <Map<String, Object?>>[]).add(envelope);
     }
     await _emit(_tasks[fromTaskId]!, 'subagent_message_sent', 'completed',
-        details: 'Message sent to $toTaskId.');
+        details: 'Message sent to $toTaskId.', metadata: envelope);
   }
 
   Future<Map<String, Object?>?> waitForMessage({
@@ -330,7 +330,7 @@ class SubagentOrchestrator {
   }
 
   Future<void> _emit(SubagentTask task, String type, String status,
-      {String? details, String? result}) async {
+      {String? details, String? result, Map<String, Object?> metadata = const <String, Object?>{}}) async {
     try {
       await _onEvent(<String, Object?>{
         'id': 'subagent_${parentRequestId}_${task.id}_${type}_${DateTime.now().microsecondsSinceEpoch}',
@@ -341,6 +341,9 @@ class SubagentOrchestrator {
         'title': task.title,
         'task_prompt': task.prompt,
         'depends_on': task.dependsOn,
+        if (task.parentTaskId != null) 'parent_task_id': task.parentTaskId,
+        'depth': task.depth,
+        ...metadata,
         'type': type,
         'status': status,
         if (details != null) 'details': details,
