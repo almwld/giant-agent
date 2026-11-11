@@ -800,6 +800,74 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
             'powerpoint_file_created': false,
           };
           break;
+        case 'website_version_manager':
+          final action = args['action']?.toString() ?? 'list';
+          final websitePath = args['path']?.toString() ?? '';
+          if (websitePath.trim().isEmpty) throw const FormatException('A workspace website file path is required.');
+          if (action == 'snapshot') {
+            final currentFile = await readFile(path: websitePath);
+            if (currentFile['ok'] != true || currentFile['content'] is! String) {
+              throw StateError('Cannot snapshot a file that could not be read.');
+            }
+            final snapshot = await AgentMemoryService.instance.saveWorkspaceVersion(
+              websitePath,
+              currentFile['content'] as String,
+              label: args['label']?.toString() ?? '',
+            );
+            result = <String, dynamic>{'ok': true, 'action': 'snapshot', 'version': snapshot};
+          } else if (action == 'list') {
+            result = <String, dynamic>{
+              'ok': true,
+              'action': 'list',
+              'versions': await AgentMemoryService.instance.getWorkspaceVersions(websitePath),
+            };
+          } else {
+            throw ArgumentError.value(action, 'action', 'Supported actions: snapshot, list.');
+          }
+          break;
+        case 'website_version_manager_rollback':
+          final websitePath = args['path']?.toString() ?? '';
+          final versionId = args['version_id']?.toString() ?? '';
+          if (websitePath.trim().isEmpty || versionId.trim().isEmpty) {
+            throw const FormatException('Rollback requires path and version_id.');
+          }
+          final snapshot = await AgentMemoryService.instance.getWorkspaceVersion(versionId);
+          if (snapshot == null || snapshot['file_path'] != websitePath) {
+            throw StateError('Version does not belong to the requested workspace file.');
+          }
+          final approvalHandler = requestUserInput;
+          if (approvalHandler == null ||
+              await approvalHandler(
+                question: 'هل تسمح باستعادة الملف "$websitePath" إلى النسخة ${snapshot['version_number']}؟ سيتم حفظ الحالة الحالية أولاً.',
+                choices: const <String>['السماح', 'إلغاء'],
+              ) != 'السماح') {
+            result = <String, dynamic>{'ok': true, 'cancelled': true, 'version_id': versionId};
+            break;
+          }
+          final currentFile = await readFile(path: websitePath);
+          if (currentFile['ok'] == true && currentFile['content'] is String) {
+            await AgentMemoryService.instance.saveWorkspaceVersion(
+              websitePath,
+              currentFile['content'] as String,
+              label: 'before rollback to $versionId',
+            );
+          }
+          final restored = await writeFile(
+            path: websitePath,
+            content: snapshot['content']?.toString() ?? '',
+          );
+          final postRollback = await readFile(path: websitePath);
+          final rollbackVerified = restored['ok'] == true &&
+              postRollback['ok'] == true &&
+              postRollback['content'] == snapshot['content'];
+          result = <String, dynamic>{
+            'ok': rollbackVerified,
+            'path': websitePath,
+            'version_id': versionId,
+            'cancelled': false,
+            'verified': rollbackVerified,
+          };
+          break;
         case 'lbs_tool':
           final approvalHandler = requestUserInput;
           if (approvalHandler == null ||
