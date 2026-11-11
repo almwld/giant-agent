@@ -25,7 +25,7 @@ class AgentMemoryService {
     final dir = await getApplicationDocumentsDirectory();
     _db = await openDatabase(
       '${dir.path}/giant_agent_memory.db',
-      version: 3,
+      version: 4,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE turns (
@@ -46,6 +46,18 @@ class AgentMemoryService {
             updated_at INTEGER NOT NULL
           )
         ''');
+        await db.execute('''
+          CREATE TABLE fact_edits (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            fact_key TEXT NOT NULL,
+            operation TEXT NOT NULL,
+            previous_value TEXT,
+            new_value TEXT,
+            importance INTEGER,
+            updated_at INTEGER NOT NULL
+          )
+        ''');
+        await db.execute('CREATE INDEX fact_edits_key_time ON fact_edits(fact_key, updated_at DESC)');
       },
       onUpgrade: (db, oldVersion, newVersion) =>
           migrateSchema(db, oldVersion),
@@ -74,6 +86,20 @@ class AgentMemoryService {
         updated_at INTEGER NOT NULL
       )
     ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS fact_edits (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fact_key TEXT NOT NULL,
+        operation TEXT NOT NULL,
+        previous_value TEXT,
+        new_value TEXT,
+        importance INTEGER,
+        updated_at INTEGER NOT NULL
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS fact_edits_key_time ON fact_edits(fact_key, updated_at DESC)',
+    );
     await db.execute(
       'CREATE INDEX IF NOT EXISTS turns_session_created_at ON turns(session_id, created_at DESC)',
     );
@@ -94,17 +120,101 @@ class AgentMemoryService {
   }
 
   Future<void> remember(String key, String value, {int importance = 1}) async {
+    final normalizedKey = key.trim();
+    final normalizedValue = value.trim();
+    if (normalizedKey.isEmpty || normalizedValue.isEmpty) {
+      throw ArgumentError('Memory key and value must not be empty.');
+    }
     final db = await database;
-    await db.insert(
-      'facts',
-      {
-        'fact_key': key.trim(),
-        'fact_value': value.trim(),
-        'importance': importance.clamp(1, 5),
-        'updated_at': DateTime.now().millisecondsSinceEpoch,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final score = importance.clamp(1, 5);
+    await db.transaction((txn) async {
+      final existing = await txn.query('facts',
+          where: 'fact_key = ?', whereArgs: [normalizedKey], limit: 1);
+      await txn.insert('facts', {
+        'fact_key': normalizedKey,
+        'fact_value': normalizedValue,
+        'importance': score,
+        'updated_at': now,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      await txn.insert('fact_edits', {
+        'fact_key': normalizedKey,
+        'operation': existing.isEmpty ? 'insert' : 'replace',
+        'previous_value': existing.isEmpty ? null : existing.first['fact_value'],
+        'new_value': normalizedValue,
+        'importance': score,
+        'updated_at': now,
+      });
+    });
+  }
+
+  Future<bool> updateFact(String key, String value, {int? importance}) async {
+    final normalizedKey = key.trim();
+    final normalizedValue = value.trim();
+    if (normalizedKey.isEmpty || normalizedValue.isEmpty) {
+      throw ArgumentError('Memory key and value must not be empty.');
+    }
+    final db = await database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    return db.transaction((txn) async {
+      final rows = await txn.query('facts',
+          where: 'fact_key = ?', whereArgs: [normalizedKey], limit: 1);
+      if (rows.isEmpty) return false;
+      final previous = rows.first;
+      final score = (importance ?? (previous['importance'] as int? ?? 1)).clamp(1, 5);
+      await txn.update('facts', {
+        'fact_value': normalizedValue,
+        'importance': score,
+        'updated_at': now,
+      }, where: 'fact_key = ?', whereArgs: [normalizedKey]);
+      await txn.insert('fact_edits', {
+        'fact_key': normalizedKey,
+        'operation': 'update',
+        'previous_value': previous['fact_value'],
+        'new_value': normalizedValue,
+        'importance': score,
+        'updated_at': now,
+      });
+      return true;
+    });
+  }
+
+  Future<bool> deleteFact(String key) async {
+    final normalizedKey = key.trim();
+    if (normalizedKey.isEmpty) return false;
+    final db = await database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    return db.transaction((txn) async {
+      final rows = await txn.query('facts',
+          where: 'fact_key = ?', whereArgs: [normalizedKey], limit: 1);
+      if (rows.isEmpty) return false;
+      await txn.delete('facts', where: 'fact_key = ?', whereArgs: [normalizedKey]);
+      await txn.insert('fact_edits', {
+        'fact_key': normalizedKey,
+        'operation': 'delete',
+        'previous_value': rows.first['fact_value'],
+        'new_value': null,
+        'importance': rows.first['importance'],
+        'updated_at': now,
+      });
+      return true;
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> getFacts({int limit = 100}) async {
+    final db = await database;
+    final rows = await db.query('facts',
+        orderBy: 'importance DESC, updated_at DESC',
+        limit: limit.clamp(1, 500));
+    return rows.map((row) => Map<String, dynamic>.from(row)).toList(growable: false);
+  }
+
+  Future<List<Map<String, dynamic>>> getFactEdits({int limit = 100}) async {
+    final db = await database;
+    final rows = await db.query('fact_edits',
+        orderBy: 'updated_at DESC, id DESC',
+        limit: limit.clamp(1, 500));
+    return rows.map((row) => Map<String, dynamic>.from(row)).toList(growable: false);
   }
 
   Future<String> buildContext(String query, {int limit = 3, String conversationId = 'global'}) async {
@@ -187,6 +297,7 @@ class AgentMemoryService {
     await db.transaction((txn) async {
       await txn.delete('turns');
       await txn.delete('facts');
+      await txn.delete('fact_edits');
     });
   }
 
