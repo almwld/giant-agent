@@ -667,7 +667,7 @@ $prompt
         : ToolManager().promptCatalogFor(allowedTools);
     final remoteToolCatalog = allowedTools != null && !allowedTools.contains('mcp_call')
         ? ''
-        : await McpClient.instance.promptCatalog();
+        : await McpClient.instance.promptCatalog(isCancelled: isCancelled);
     final toolCatalog = '$baseToolCatalog\n$remoteToolCatalog';
     final history = StringBuffer('''أنت Giant Agent، مساعد ذكي متعدد المصادر. أجب بلغة المستخدم.
 الأدوات المتاحة فعلياً:
