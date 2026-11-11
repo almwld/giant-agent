@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import '../services/llama_service.dart';
 import '../services/web_search_service.dart';
 import '../services/browser_session_service.dart';
+import '../services/media/media_capability.dart';
+import '../services/media/media_provider_registry.dart';
 import '../services/voice_output_service.dart';
 import '../agent/task_manager.dart';
 import '../agent/architecture/agent_event_bus.dart';
@@ -736,6 +738,56 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
         case 'browser_state':
           result = await BrowserSessionService.instance.state();
           break;
+        case 'generate_image':
+          result = await _executeMediaTool(
+            capability: MediaCapability.generateImage,
+            args: args,
+            prompt: args['prompt']?.toString() ?? '',
+          );
+          break;
+        case 'edit_image':
+          result = await _executeMediaTool(
+            capability: MediaCapability.editImage,
+            args: args,
+            prompt: args['prompt']?.toString() ?? '',
+          );
+          break;
+        case 'image_search':
+        case 'search_image_by_text':
+          result = await _executeMediaTool(
+            capability: MediaCapability.searchImagesByText,
+            args: args,
+            prompt: args['query']?.toString() ?? '',
+          );
+          break;
+        case 'search_image_by_image':
+          result = await _executeMediaTool(
+            capability: MediaCapability.searchImagesByImage,
+            args: args,
+            prompt: args['query']?.toString() ?? 'Find visually similar images.',
+          );
+          break;
+        case 'generate_sound_effects':
+          result = await _executeMediaTool(
+            capability: MediaCapability.generateSoundEffects,
+            args: args,
+            prompt: args['prompt']?.toString() ?? '',
+          );
+          break;
+        case 'find_asset_bbox':
+          result = await _executeMediaTool(
+            capability: MediaCapability.findAssetBboxes,
+            args: args,
+            prompt: args['prompt']?.toString() ?? 'Find asset bounding boxes in the source image.',
+          );
+          break;
+        case 'crop_and_replicate_assets_in_image':
+          result = await _executeMediaTool(
+            capability: MediaCapability.cropAndReplicateAssets,
+            args: args,
+            prompt: args['prompt']?.toString() ?? '',
+          );
+          break;
         case 'gain_terminal':
           final approval = requestTerminalApproval;
           if (approval == null) {
@@ -780,6 +832,47 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
       }
       rethrow;
     }
+  }
+
+  Future<Map<String, dynamic>> _executeMediaTool({
+    required MediaCapability capability,
+    required Map<String, dynamic> args,
+    required String prompt,
+  }) async {
+    final rawPaths = args['input_paths'] ??
+        (args['input_path'] is String ? <dynamic>[args['input_path']] : const <dynamic>[]);
+    if (rawPaths is! List || rawPaths.any((path) => path is! String)) {
+      throw const FormatException('input_paths must be a list of workspace image paths.');
+    }
+    final providerId = args['provider_id']?.toString();
+    final options = Map<String, Object?>.from(args)
+      ..remove('prompt')
+      ..remove('query')
+      ..remove('input_paths')
+      ..remove('input_path')
+      ..remove('provider_id');
+    final mediaResult = await MediaProviderRegistry.instance.execute(
+      MediaTaskRequest(
+        capability: capability,
+        prompt: prompt,
+        inputPaths: rawPaths.map((path) => path.toString()).toList(growable: false),
+        options: options,
+      ),
+      providerId: providerId == null || providerId.isEmpty ? null : providerId,
+    );
+    return <String, dynamic>{
+      'ok': mediaResult.assets.isNotEmpty,
+      'provider_id': mediaResult.providerId,
+      'message': mediaResult.message,
+      'assets': mediaResult.assets.map((asset) => <String, dynamic>{
+        'mime_type': asset.mimeType,
+        'local_path': asset.localPath,
+        'remote_url': asset.remoteUrl?.toString(),
+        'file_name': asset.fileName,
+        'metadata': asset.metadata,
+      }).toList(growable: false),
+      'metadata': mediaResult.metadata,
+    };
   }
 
   Future<bool> _confirmBrowserAction(String question) async {
