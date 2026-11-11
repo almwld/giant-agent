@@ -116,6 +116,33 @@ void main() {
     expect(orchestrator.parentMessages.single['content'], 'Coordinator update');
   });
 
+  test('local serialized workers can drain an already-delivered message without waiting', () async {
+    late SubagentOrchestrator orchestrator;
+    Map<String, Object?>? received;
+    orchestrator = SubagentOrchestrator(
+      parentRequestId: 'request-local-message',
+      conversationId: 'chat-local-message',
+      maxConcurrency: 1,
+      onEvent: (_) {},
+      execute: (task, dependencies, isCancelled) async {
+        if (task.id == 'sender') {
+          await orchestrator.sendMessage(
+            fromTaskId: 'sender', toTaskId: 'receiver', content: 'ready',
+          );
+        } else {
+          received = orchestrator.receiveMessageNow('receiver');
+        }
+        return 'done';
+      },
+    );
+    await orchestrator.run([
+      const SubagentTask(id: 'sender', title: 'Sender', prompt: 'Send', agentType: 'explore'),
+      const SubagentTask(id: 'receiver', title: 'Receiver', prompt: 'Receive', agentType: 'reviewer'),
+    ]);
+    expect(received?['content'], 'ready');
+    expect(orchestrator.receiveMessageNow('receiver'), isNull);
+  });
+
   test('enforces dynamic task count and nesting depth', () async {
     late SubagentOrchestrator orchestrator;
     orchestrator = SubagentOrchestrator(
