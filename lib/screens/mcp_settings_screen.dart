@@ -159,6 +159,7 @@ class _McpSettingsScreenState extends State<McpSettingsScreen> {
     if (confirmed != true) return;
     try {
       await _agent.removeMcpServer(server.id);
+      if (!mounted) return;
       setState(() {
         _tools.remove(server.id);
         _resources.remove(server.id);
