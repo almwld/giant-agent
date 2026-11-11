@@ -58,6 +58,24 @@ void main() {
       })).passed, isTrue);
   });
 
+  test('verifies structured widget publication', () async {
+    final evaluator = EvaluatorService(
+      readWorkspaceFile: (_) async => const <String, dynamic>{'ok': false},
+    );
+    final result = await evaluator.verify(
+      'show progress',
+      'show_widget',
+      const <String, dynamic>{'widget_type': 'progress'},
+      const <String, dynamic>{
+        'ok': true,
+        'widget_id': 'widget_request_1',
+        'widget_type': 'progress',
+        'title': 'Build progress',
+      },
+    );
+    expect(result.passed, isTrue);
+  });
+
   test('verifies provider-backed media assets without inventing provider output', () async {
     final evaluator = EvaluatorService(
       readWorkspaceFile: (_) async => const <String, dynamic>{'ok': false},
