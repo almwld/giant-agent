@@ -814,7 +814,7 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
         final createdPath = name == 'slides_generator' ? args['path']?.toString() ?? path : path;
         _emitToolEvent('file_created', 'تم إنشاء الملف', toolName: name, path: createdPath,
             output: output, details: 'أنشأ المحرك الملف داخل مساحة العمل فعلياً.', stepId: toolStepId);
-      } else if (ok && name == 'write_file') {
+      } else if (ok && (name == 'write_file' || name == 'edit_file')) {
         _emitToolEvent('file_updated', 'تم تحديث الملف', toolName: name, path: path,
             output: output, details: 'حُفظت التغييرات في مساحة العمل فعلياً.', stepId: toolStepId);
       }
@@ -1042,6 +1042,7 @@ ${queuedMessages.isEmpty ? 'لا توجد رسائل.' : queuedMessages}
   String _toolCompleteTitle(String name) {
     switch (name) {
       case 'create_file': return 'اكتمل إنشاء الملف';
+      case 'edit_file':
       case 'write_file': return 'اكتمل تحديث الملف';
       case 'read_file': return 'اكتملت قراءة الملف';
       case 'execute_python': return 'اكتمل تنفيذ Python';
