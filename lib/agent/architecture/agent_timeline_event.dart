@@ -70,6 +70,9 @@ class AgentTimelineEvent {
                 DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
     final rawSequence = map['sequence'];
     final rawProgress = map['progress_percent'] ?? map['progressPercent'];
+    final parsedProgress = rawProgress is num
+        ? rawProgress.toInt()
+        : int.tryParse(rawProgress?.toString() ?? '');
     return AgentTimelineEvent(
       id: map['id']?.toString() ?? '',
       requestId: (map['request_id'] ?? map['requestId'])?.toString() ?? '',
@@ -87,7 +90,7 @@ class AgentTimelineEvent {
       agentType: map['agent_type']?.toString(),
       taskPrompt: map['task_prompt']?.toString(),
       dependsOn: (map['depends_on'] as List?)?.map((item) => item.toString()).toList(growable: false) ?? const <String>[],
-      progressPercent: rawProgress is num ? rawProgress.toInt().clamp(0, 100).toInt() : int.tryParse(rawProgress?.toString() ?? ''),
+      progressPercent: parsedProgress == null ? null : parsedProgress.clamp(0, 100).toInt(),
     );
   }
 }
