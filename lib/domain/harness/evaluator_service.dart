@@ -115,6 +115,70 @@ class EvaluatorService {
             'remote_effect_independently_asserted': false,
           },
         );
+      case 'create_subagent':
+        final child = toolResult['subagent'];
+        final passed = child is Map && child['id'] == toolArgs['id'] &&
+            child['status'] == 'idle';
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed ? 'Subagent registration was persisted in the request lifecycle.' : 'Subagent registration could not be verified.',
+          evidence: <String, Object?>{'registered': passed, 'agent_id': toolArgs['id']},
+        );
+      case 'spawn_subagent':
+        final child = toolResult['subagent'];
+        final passed = child is Map && child['status'] == 'completed' &&
+            (child['result']?.toString() ?? '').trim().isNotEmpty;
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed ? 'Subagent completed and returned a durable result.' : 'Subagent did not produce a verified completed result.',
+          evidence: <String, Object?>{'completed': passed, 'agent_id': toolArgs['id']},
+        );
+      case 'delete_subagent':
+        final child = toolResult['subagent'];
+        final passed = child is Map && child['dismissed'] == true;
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed ? 'Subagent was dismissed without erasing its audit history.' : 'Subagent dismissal was not confirmed.',
+          evidence: <String, Object?>{'dismissed': passed, 'agent_id': toolArgs['id']},
+        );
+      case 'check_subagent_status':
+        final child = toolResult['subagent'];
+        final passed = child is Map && child['id'] == toolArgs['id'] && child['status'] != null;
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed ? 'Subagent status snapshot was returned.' : 'Subagent status snapshot is invalid.',
+          evidence: <String, Object?>{'snapshot_received': passed},
+        );
+      case 'send_message':
+        final passed = toolResult['message_queued'] == true &&
+            toolResult['agent_id'] == toolArgs['agent_id'];
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed ? 'Message was accepted by the target subagent mailbox.' : 'Message delivery could not be confirmed.',
+          evidence: <String, Object?>{'message_queued': passed},
+        );
+      case 'wait_for_message':
+        final passed = toolResult['received'] == true || toolResult['timed_out'] == true;
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed ? 'Mailbox wait completed; received and timeout outcomes are both explicit.' : 'Mailbox wait returned an invalid state.',
+          evidence: <String, Object?>{'received': toolResult['received'] == true, 'timed_out': toolResult['timed_out'] == true},
+        );
+      case 'ask_user':
+        final passed = toolResult.containsKey('cancelled') &&
+            (toolResult['cancelled'] == true || toolResult['answer'] is String);
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed ? 'User response or explicit cancellation was received.' : 'No user response was confirmed.',
+          evidence: <String, Object?>{'answered': toolResult['answer'] is String, 'cancelled': toolResult['cancelled'] == true},
+        );
+      case 'update_goal':
+        final passed = toolResult['goal'] == toolArgs['goal'];
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed ? 'Updated request goal was stored in the active lifecycle.' : 'Updated request goal could not be read back.',
+          evidence: <String, Object?>{'goal_updated': passed},
+        );
       case 'execute_python':
         final output = toolResult['output']?.toString() ?? '';
         final error = toolResult['error']?.toString() ?? '';
