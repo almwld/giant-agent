@@ -7,6 +7,7 @@ typedef SubagentLifecycleEventSink = FutureOr<void> Function(
 class DynamicSubagentRecord {
   DynamicSubagentRecord({
     required this.id,
+    required this.taskId,
     required this.parentRequestId,
     required this.conversationId,
     required this.title,
@@ -21,6 +22,7 @@ class DynamicSubagentRecord {
   }) : createdAt = DateTime.now().toUtc();
 
   final String id;
+  final String taskId;
   final String parentRequestId;
   final String conversationId;
   final String title;
@@ -45,6 +47,7 @@ class DynamicSubagentRecord {
 
   Map<String, Object?> toMap() => <String, Object?>{
         'id': id,
+        'task_id': taskId,
         'parent_request_id': parentRequestId,
         'conversation_id': conversationId,
         'title': title,
@@ -120,6 +123,7 @@ class SubagentLifecycleManager {
     }
     final record = DynamicSubagentRecord(
       id: id,
+      taskId: '${requestId}_dynamic_$id',
       parentRequestId: requestId,
       conversationId: conversationId,
       title: title.trim(),
@@ -308,11 +312,11 @@ class SubagentLifecycleManager {
             'id': '${type}_${record.parentRequestId}_${record.id}_${DateTime.now().microsecondsSinceEpoch}',
             'request_id': record.parentRequestId,
             'session_id': record.conversationId,
-            'task_id': record.id,
+            'task_id': record.taskId,
             'agent_type': record.agentType,
             'title': record.title,
             'task_prompt': record.prompt,
-            'depends_on': record.dependsOn,
+            'depends_on': record.dependsOn.map((id) => '${record.parentRequestId}_dynamic_$id').toList(growable: false),
             'type': type,
             'status': record.status,
             'wire_status': record.wireStatus,
