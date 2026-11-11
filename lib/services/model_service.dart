@@ -235,6 +235,26 @@ class ModelService {
     return result;
   }
 
+  void restoreSubagentLifecycle({
+    required String requestId,
+    required String conversationId,
+    required List<Map<String, Object?>> snapshots,
+    required List<Map<String, Object?>> events,
+  }) {
+    _subagents.restore(
+      requestId: requestId,
+      conversationId: conversationId,
+      snapshots: snapshots,
+      events: events,
+    );
+  }
+
+  String? currentSubagentGoal(String requestId) =>
+      _subagents.currentGoal(requestId);
+
+  List<DynamicSubagentRecord> subagentsForRequest(String requestId) =>
+      _subagents.forRequest(requestId);
+
   bool cancelToolCall(String toolCallId) {
     final cancelled = _toolCalls.cancel(toolCallId);
     if (cancelled) unawaited(_llama.cancel());
