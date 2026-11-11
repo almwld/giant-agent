@@ -85,6 +85,7 @@ class SubagentOrchestrator {
   final Map<String, Future<void>> _active = <String, Future<void>>{};
   final Map<String, String> _activeTypes = <String, String>{};
   final Set<String> _cancelledTasks = <String>{};
+  final Set<String> _dismissedTasks = <String>{};
   final Map<String, List<Map<String, Object?>>> _inboxes = {};
   final Map<String, List<Completer<Map<String, Object?>>>> _messageWaiters = {};
   String _goal = '';
@@ -157,6 +158,20 @@ class SubagentOrchestrator {
 
   bool isTaskCancelled(String taskId) => _cancelledTasks.contains(taskId);
 
+  Future<bool> deleteTask(String taskId) async {
+    final task = _tasks[taskId];
+    if (task == null) return false;
+    if (_dismissedTasks.contains(taskId)) return true;
+    final result = _results[taskId];
+    if (result == null) {
+      return cancelTask(taskId);
+    }
+    _dismissedTasks.add(taskId);
+    await _emit(task, 'subagent_dismissed', result.status,
+        details: 'Dismissed from active orchestration; result and audit history retained.');
+    return true;
+  }
+
   Map<String, Object?> status(String taskId) {
     final task = _tasks[taskId];
     if (task == null) return <String, Object?>{'task_id': taskId, 'status': 'not_found'};
@@ -167,6 +182,7 @@ class SubagentOrchestrator {
       'agent_type': task.agentType,
       'parent_task_id': task.parentTaskId,
       'depth': task.depth,
+      'is_dismissed': _dismissedTasks.contains(taskId),
       'status': result?.status ?? (_active.containsKey(taskId) ? 'running' : _pending.contains(taskId) ? 'pending' : 'created'),
       if (result?.output != null) 'result': result!.output,
       if (result?.error != null) 'error': result!.error,
@@ -234,6 +250,7 @@ class SubagentOrchestrator {
     if (_running) throw StateError('This orchestrator is already running.');
     _cancelRequested = false;
     _cancelledTasks.clear();
+    _dismissedTasks.clear();
     _results.clear();
     _tasks.clear();
     _pending.clear();
