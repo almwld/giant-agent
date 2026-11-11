@@ -1,0 +1,160 @@
+import 'dart:async';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:giant_agent_x/agent/architecture/subagent_lifecycle_manager.dart';
+
+void main() {
+  test('create registers an idle child without starting execution', () async {
+    final events = <Map<String, Object?>>[];
+    final manager = SubagentLifecycleManager(onEvent: events.add);
+
+    final child = await manager.create(
+      requestId: 'request-1',
+      conversationId: 'chat-1',
+      id: 'research',
+      title: 'Research',
+      prompt: 'Inspect the repository.',
+      agentType: 'explore',
+    );
+
+    expect(child.status, 'idle');
+    expect(child.wireStatus, 'STATUS_IDLE');
+    expect(events.single['type'], 'subagent_created');
+    expect(events.single['status'], 'idle');
+  });
+
+  test('dependencies must complete before a child can spawn', () async {
+    final manager = SubagentLifecycleManager(onEvent: (_) {});
+    await manager.create(
+      requestId: 'request-2',
+      conversationId: 'chat-2',
+      id: 'first',
+      title: 'First',
+      prompt: 'First task',
+      agentType: 'explore',
+    );
+    await manager.create(
+      requestId: 'request-2',
+      conversationId: 'chat-2',
+      id: 'second',
+      title: 'Second',
+      prompt: 'Second task',
+      agentType: 'reviewer',
+      dependsOn: const ['first'],
+    );
+
+    await expectLater(manager.start('request-2', 'second'), throwsStateError);
+    await manager.start('request-2', 'first');
+    await manager.complete('request-2', 'first', 'verified result');
+    await manager.start('request-2', 'second');
+    await manager.complete('request-2', 'second', 'review complete');
+
+    expect(manager.get('request-2', 'second')!.status, 'completed');
+    expect(manager.get('request-2', 'second')!.progressPercent, 100);
+    expect(manager.get('request-2', 'second')!.wireStatus, 'STATUS_TERMINATED');
+  });
+
+  test('rejects duplicate ids, invalid roles and unknown dependencies', () async {
+    final manager = SubagentLifecycleManager(onEvent: (_) {});
+    Future<void> create(String id, {String role = 'explore', List<String> deps = const []}) async {
+      await manager.create(
+        requestId: 'request-3',
+        conversationId: 'chat-3',
+        id: id,
+        title: id,
+        prompt: 'Task $id',
+        agentType: role,
+        dependsOn: deps,
+      );
+    }
+
+    await create('one');
+    await expectLater(create('one'), throwsStateError);
+    await expectLater(create('two', role: 'unknown'), throwsArgumentError);
+    await expectLater(create('three', deps: const ['missing']), throwsArgumentError);
+  });
+
+  test('delete is a soft dismissal and preserves terminal history', () async {
+    final events = <Map<String, Object?>>[];
+    final manager = SubagentLifecycleManager(onEvent: events.add);
+    await manager.create(
+      requestId: 'request-4',
+      conversationId: 'chat-4',
+      id: 'pending',
+      title: 'Pending',
+      prompt: 'Not started',
+      agentType: 'plan',
+    );
+
+    await manager.delete('request-4', 'pending');
+    final child = manager.get('request-4', 'pending')!;
+
+    expect(child.status, 'cancelled');
+    expect(child.dismissed, isTrue);
+    expect(events.map((event) => event['type']),
+        containsAllInOrder(['subagent_created', 'subagent_cancelled', 'subagent_dismissed']));
+  });
+
+  test('mailbox delivers queued messages and wakes a waiter', () async {
+    final manager = SubagentLifecycleManager(onEvent: (_) {});
+    await manager.create(
+      requestId: 'request-5',
+      conversationId: 'chat-5',
+      id: 'worker',
+      title: 'Worker',
+      prompt: 'Wait for instructions',
+      agentType: 'explore',
+    );
+
+    await manager.sendMessage(
+      requestId: 'request-5',
+      agentId: 'worker',
+      message: 'Inspect recovery tests.',
+    );
+    final queued = await manager.waitForMessage(
+      requestId: 'request-5',
+      agentId: 'worker',
+      timeoutSeconds: 1,
+    );
+    expect(queued?['message'], 'Inspect recovery tests.');
+
+    final pending = manager.waitForMessage(
+      requestId: 'request-5',
+      agentId: 'worker',
+      timeoutSeconds: 2,
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    await manager.sendMessage(
+      requestId: 'request-5',
+      agentId: 'worker',
+      message: 'Now inspect MCP.',
+    );
+    final delivered = await pending;
+    expect(delivered?['message'], 'Now inspect MCP.');
+  });
+
+  test('goal updates are scoped to the parent request', () async {
+    final events = <Map<String, Object?>>[];
+    final manager = SubagentLifecycleManager(onEvent: events.add);
+    await manager.updateGoal('request-6', 'Finish integration and verify tests.');
+
+    expect(manager.currentGoal('request-6'), 'Finish integration and verify tests.');
+    expect(events.single['type'], 'goal_updated');
+    expect(events.single['request_id'], 'request-6');
+  });
+
+  test('running children cannot be deleted or silently erased', () async {
+    final manager = SubagentLifecycleManager(onEvent: (_) {});
+    await manager.create(
+      requestId: 'request-7',
+      conversationId: 'chat-7',
+      id: 'active',
+      title: 'Active',
+      prompt: 'Run task',
+      agentType: 'coder',
+    );
+    await manager.start('request-7', 'active');
+    await expectLater(manager.delete('request-7', 'active'), throwsStateError);
+    expect(manager.get('request-7', 'active')!.status, 'running');
+  });
+}
