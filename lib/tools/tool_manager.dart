@@ -99,6 +99,71 @@ class ToolManager {
       example: '{"name":"update_goal","arguments":{"goal":"أكمل التكامل ثم شغّل الاختبارات"}}',
     ),
     AgentToolDefinition(
+      name: 'web_search',
+      description: 'البحث على الويب عبر DuckDuckGo وإرجاع عناوين وروابط ومقتطفات فعلية.',
+      example: '{"name":"web_search","arguments":{"query":"Flutter 3.16 release notes","limit":5}}',
+    ),
+    AgentToolDefinition(
+      name: 'todo_read',
+      description: 'قراءة المهام المحلية الدائمة للجلسة الحالية وحالاتها.',
+      example: '{"name":"todo_read","arguments":{"status":"pending"}}',
+    ),
+    AgentToolDefinition(
+      name: 'todo_write',
+      description: 'إنشاء عنصر مهمة محلي دائم دون بدء تنفيذه تلقائياً.',
+      example: '{"name":"todo_write","arguments":{"description":"مراجعة اختبارات MCP"}}',
+    ),
+    AgentToolDefinition(
+      name: 'memory_space_insert',
+      description: 'حفظ حقيقة محلية صريحة بمفتاح وقيمة وأهمية من 1 إلى 5 مع تسجيل أثر التغيير.',
+      example: '{"name":"memory_space_insert","arguments":{"key":"preferred_language","value":"Arabic","importance":3}}',
+    ),
+    AgentToolDefinition(
+      name: 'memory_space_update',
+      description: 'تحديث حقيقة محلية موجودة مع الاحتفاظ بالقيمة السابقة في سجل التعديلات.',
+      example: '{"name":"memory_space_update","arguments":{"key":"preferred_language","value":"Modern Standard Arabic"}}',
+    ),
+    AgentToolDefinition(
+      name: 'memory_space_delete',
+      description: 'حذف حقيقة محلية محددة مع تسجيل عملية الحذف؛ لا يمسح سجل المحادثات.',
+      example: '{"name":"memory_space_delete","arguments":{"key":"temporary_note"}}',
+    ),
+    AgentToolDefinition(
+      name: 'memory_space_edits',
+      description: 'عرض سجل عمليات إدخال وتحديث وحذف الحقائق المحلية.',
+      example: '{"name":"memory_space_edits","arguments":{"limit":50}}',
+    ),
+    AgentToolDefinition(
+      name: 'generate_speech',
+      description: 'قراءة نص بصوت الجهاز عبر Flutter TTS؛ لا ينشئ ملفاً صوتياً قابلاً للتنزيل.',
+      example: '{"name":"generate_speech","arguments":{"text":"مرحباً بك في Giant Agent"}}',
+    ),
+    AgentToolDefinition(
+      name: 'get_available_voices',
+      description: 'عرض أصوات TTS المثبتة والمتاحة على الجهاز.',
+      example: '{"name":"get_available_voices","arguments":{}}',
+    ),
+    AgentToolDefinition(
+      name: 'get_data_source',
+      description: 'عرض خوادم MCP التي ربطها المستخدم دون كشف رموز الوصول.',
+      example: '{"name":"get_data_source","arguments":{}}',
+    ),
+    AgentToolDefinition(
+      name: 'get_data_source_desc',
+      description: 'قراءة وصف خادم MCP وأدواته وموارده بعد تهيئة الاتصال.',
+      example: '{"name":"get_data_source_desc","arguments":{"server_id":"local_docs"}}',
+    ),
+    AgentToolDefinition(
+      name: 'generate_slides_outline',
+      description: 'إنشاء مخطط شرائح منظم باستخدام النموذج الحالي؛ لا يدّعي إنشاء PowerPoint.',
+      example: '{"name":"generate_slides_outline","arguments":{"topic":"Agent architecture","slides":8}}',
+    ),
+    AgentToolDefinition(
+      name: 'slides_generator',
+      description: 'إنشاء عرض HTML محلي قابل للتنقل من قائمة شرائح منظمة داخل مساحة العمل.',
+      example: '{"name":"slides_generator","arguments":{"path":"presentations/overview.html","title":"Overview","slides":[{"title":"Goal","body":"Key points"}]}}',
+    ),
+    AgentToolDefinition(
       name: 'gain_terminal',
       description: 'تنفيذ أمر واحد في Android shell بصلاحيات التطبيق فقط؛ يتطلب موافقة المستخدم الصريحة على نص الأمر حرفياً قبل التنفيذ.',
       example: '{"name":"gain_terminal","arguments":{"command":"pwd && ls","timeout_seconds":30}}',
