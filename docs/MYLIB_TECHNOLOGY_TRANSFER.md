@@ -80,7 +80,7 @@ Mylib contains decompiled Android/Kotlin sources and extracted assets from Kimi 
 | 57 | `ask_user` | Implemented through an explicit chat-screen dialog; cancellation is an explicit result. |
 | 58 | `update_goal` | Implemented as request-scoped goal state plus a timeline event. |
 | 59 | `show_widget` | Implemented as validated metric/progress/table/list/notice widgets rendered in the session workflow timeline; HTML/JS payloads are rejected. |
-| 60 | `dmail` | Not mapped to email or messaging: the exact DMail semantics are not established by the inspected registry alone. |
+| 60 | `dmail` | Implemented as bounded local cross-chat recall over SQLite history, matching the source strings 'recalling chats via D-Mail'; it does not send email. |
 
 ## Giant Agent foundations reused (no duplicate runtime)
 
