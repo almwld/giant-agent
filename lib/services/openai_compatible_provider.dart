@@ -214,6 +214,8 @@ class OpenAICompatibleProvider {
     if (key == null || key.isEmpty || !await isEnabled()) {
       throw StateError('OpenRouter غير مفعّل أو لا يوجد مفتاح محفوظ.');
     }
+    if (isCancelled?.call() == true) throw const _OpenRouterStreamInterrupted();
+
     final client = http.Client();
     final parser = ServerSentEventParser();
     final output = StringBuffer();
@@ -256,10 +258,20 @@ class OpenAICompatibleProvider {
       if (!contentType.contains('text/event-stream')) {
         throw StateError('OpenRouter لم يُرجع قناة SSE صالحة (Content-Type: $contentType).');
       }
-      await for (final bytes in response.stream.timeout(requestTimeout)) {
-        if (isCancelled?.call() == true) throw const _OpenRouterStreamInterrupted();
-        for (final event in parser.add(bytes)) {
-          if (event.data.trim() == '[DONE]') return output.toString();
+
+      final completed = Completer<void>();
+      late final StreamSubscription<List<int>> subscription;
+      var receivedDone = false;
+
+      void consumeEvents(List<ServerSentEvent> events) {
+        for (final event in events) {
+          if (completed.isCompleted) return;
+          if (event.data.trim() == '[DONE]') {
+            receivedDone = true;
+            completed.complete();
+            unawaited(subscription.cancel());
+            return;
+          }
           final dynamic decoded;
           try {
             decoded = jsonDecode(event.data);
@@ -286,21 +298,47 @@ class OpenAICompatibleProvider {
           }
         }
       }
-      for (final event in parser.close()) {
-        if (event.data.trim() == '[DONE]') break;
-        final decoded = jsonDecode(event.data);
-        if (decoded is Map && decoded['choices'] is List) {
-          final choices = decoded['choices'] as List;
-          if (choices.isNotEmpty && choices.first is Map) {
-            final delta = (choices.first as Map)['delta'];
-            final content = delta is Map ? delta['content'] : null;
-            if (content is String && content.isNotEmpty) {
-              output.write(content);
-              onDelta?.call(content);
+
+      subscription = response.stream.listen(
+        (bytes) {
+          try {
+            if (isCancelled?.call() == true) {
+              if (!completed.isCompleted) completed.completeError(const _OpenRouterStreamInterrupted());
+              unawaited(subscription.cancel());
+              return;
             }
+            consumeEvents(parser.add(bytes));
+          } catch (error, stack) {
+            if (!completed.isCompleted) completed.completeError(error, stack);
+            unawaited(subscription.cancel());
           }
+        },
+        onError: (Object error, StackTrace stack) {
+          if (!completed.isCompleted) completed.completeError(error, stack);
+        },
+        onDone: () {
+          try {
+            if (!receivedDone) consumeEvents(parser.close());
+            if (!completed.isCompleted) completed.complete();
+          } catch (error, stack) {
+            if (!completed.isCompleted) completed.completeError(error, stack);
+          }
+        },
+        cancelOnError: true,
+      );
+      final cancellationPoll = Timer.periodic(const Duration(milliseconds: 100), (_) {
+        if (isCancelled?.call() == true && !completed.isCompleted) {
+          completed.completeError(const _OpenRouterStreamInterrupted());
+          unawaited(subscription.cancel());
         }
+      });
+      try {
+        await completed.future.timeout(requestTimeout);
+      } finally {
+        cancellationPoll.cancel();
+        await subscription.cancel();
       }
+
       if (isCancelled?.call() == true) throw const _OpenRouterStreamInterrupted();
       if (output.isEmpty) throw StateError('انتهى تدفق OpenRouter دون محتوى نصي.');
       return output.toString();
