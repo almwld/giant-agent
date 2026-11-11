@@ -96,7 +96,7 @@ class SubagentOrchestrator {
   Future<void> createTask(SubagentTask task, {required String creatorTaskId}) async {
     if (!_running) throw StateError('Dynamic child creation is available only during an active orchestration.');
     if (_tasks.length >= maxTasks) throw StateError('The request reached its maximum of $maxTasks subagents.');
-    if (_tasks.containsKey(task.id) || task.id.trim().isEmpty || task.prompt.trim().isEmpty) {
+    if (_tasks.containsKey(task.id) || task.id.trim().isEmpty || task.title.trim().isEmpty || task.prompt.trim().isEmpty) {
       throw ArgumentError('Subagent id must be unique and prompt/title must be non-empty.');
     }
     final creator = _tasks[creatorTaskId];
