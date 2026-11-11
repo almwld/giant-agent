@@ -61,7 +61,7 @@ jobs:
       - name: Test PDF DOCX XLSX parser
         run: |
           cd android/app/src/main/python
-          python -m unittest -v test_document_parser
+          python -m unittest -v test_document_parser test_sandbox_repl
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
