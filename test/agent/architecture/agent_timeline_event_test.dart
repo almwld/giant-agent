@@ -48,7 +48,30 @@ void main() {
       expect(restored.dependsOn, ['parent-request_agent_plan']);
     });
 
-    test('omits absent optional details', () {
+
+    test('round-trips bounded subagent progress percentages', () {
+      final event = AgentTimelineEvent(
+        id: 'child-progress-1',
+        requestId: 'parent-1',
+        type: 'subagent_started',
+        title: 'بدأ الوكيل',
+        status: 'running',
+        timestamp: DateTime.utc(2026, 11, 12),
+        taskId: 'child-1',
+        progressPercent: 35,
+      );
+
+      final restored = AgentTimelineEvent.fromMap(event.toMap());
+      expect(restored.progressPercent, 35);
+      expect(
+        AgentTimelineEvent.fromMap({
+          ...event.toMap(),
+          'progress_percent': 140,
+        }).progressPercent,
+        100,
+      );
+    });
+\n    test('omits absent optional details', () {
       final event = AgentTimelineEvent(
         id: 'kernel_runtime_1',
         requestId: 'runtime',
