@@ -431,6 +431,7 @@ class AgentKernel {
   }
 
   bool _isCancelledOutput(String output) =>
+      output.startsWith('تم إيقاف التخطيط') ||
       output.startsWith('تم إيقاف المهمة') ||
       output.startsWith('تم إيقاف تنفيذ الوكيل') ||
       output.startsWith('تم إيقاف الوكيل بعد اكتمال الأداة') ||
