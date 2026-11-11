@@ -877,6 +877,23 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
             prompt: args['prompt']?.toString() ?? '',
           );
           break;
+        case 'dmail':
+          final recallQuery = args['query']?.toString() ?? '';
+          final recallLimit = args['limit'] is int
+              ? (args['limit'] as int).clamp(1, 10).toInt()
+              : 5;
+          final recalledChats = await AgentMemoryService.instance.recallChats(
+            recallQuery,
+            limit: recallLimit,
+          );
+          result = <String, dynamic>{
+            'ok': true,
+            'query': recallQuery,
+            'results': recalledChats,
+            'source': 'local_sqlite_conversation_history',
+            'email_sent': false,
+          };
+          break;
         case 'show_widget':
           final widgetType = args['widget_type']?.toString() ?? '';
           final widgetTitle = args['title']?.toString().trim() ?? '';
