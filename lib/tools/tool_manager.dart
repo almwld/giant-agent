@@ -33,6 +33,11 @@ class ToolManager {
       example: '{"name":"read_file","arguments":{"path":"index.html"}}',
     ),
     AgentToolDefinition(
+      name: 'edit_file',
+      description: 'تحديث ملف نصي موجود في مساحة العمل عبر الجسر المقيد؛ لا ينشئ ملفاً جديداً.',
+      example: '{"name":"edit_file","arguments":{"path":"lib/example.dart","content":"// revised file"}}',
+    ),
+    AgentToolDefinition(
       name: 'write_file',
       description: 'تحديث ملف موجود داخل مساحة العمل مع التحقق من المسار والحجم.',
       example: '{"name":"write_file","arguments":{"path":"index.html","content":"..."}}',
