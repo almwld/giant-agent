@@ -101,6 +101,13 @@ class SubagentOrchestrator {
     final active = <String, Future<void>>{};
     final activeTypes = <String, String>{};
 
+    // Persist the complete validated child graph before spawning any worker.
+    // This mirrors Kimi's separate create/spawn lifecycle and lets restart
+    // reconciliation see children that had not reached execution yet.
+    for (final task in tasks) {
+      await _emit(task, 'subagent_created', 'pending');
+    }
+
     Future<void> start(SubagentTask task) async {
       try {
         await _emit(task, 'subagent_started', 'running');
