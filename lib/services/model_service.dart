@@ -1090,6 +1090,7 @@ ${queuedMessages.isEmpty ? 'لا توجد رسائل.' : queuedMessages}
       case 'scrolldown':
       case 'browser_scroll_down': return 'يمرر الصفحة إلى أسفل';
       case 'browser_state': return 'يقرأ حالة المتصفح';
+      case 'task': return 'يدير مهمة محفوظة';
       case 'todo_read': return 'يقرأ قائمة المهام';
       case 'todo_write': return 'يسجل مهمة محلية';
       case 'memory_space_insert': return 'يحفظ حقيقة في الذاكرة';
@@ -1146,6 +1147,7 @@ ${queuedMessages.isEmpty ? 'لا توجد رسائل.' : queuedMessages}
       case 'scrolldown':
       case 'browser_scroll_down': return 'اكتمل التمرير إلى أسفل';
       case 'browser_state': return 'اكتملت قراءة حالة المتصفح';
+      case 'task': return 'اكتملت عملية إدارة المهمة';
       case 'todo_read': return 'اكتملت قراءة المهام';
       case 'todo_write': return 'تم تسجيل المهمة المحلية';
       case 'memory_space_insert': return 'تم حفظ الحقيقة';
