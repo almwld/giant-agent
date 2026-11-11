@@ -16,6 +16,7 @@ on:
     branches:
       - main
       - feat/kimi-subagent-orchestration
+      - feat/kimi-dynamic-subagent-lifecycle
       - feat/integrated-agent-completion
       - feat/consolidate-sqlite-runtime-v2
       - integration/giant-agent-stabilization
