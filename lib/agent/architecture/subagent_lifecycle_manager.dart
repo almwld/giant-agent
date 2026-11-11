@@ -144,6 +144,96 @@ class SubagentLifecycleManager {
         _requests[requestId]?.values ?? const <DynamicSubagentRecord>[],
       );
 
+  /// Rehydrates the request-scoped manager from the durable child snapshots
+  /// and append-only request journal after process recreation.
+  void restore({
+    required String requestId,
+    required String conversationId,
+    required List<Map<String, Object?>> snapshots,
+    required List<Map<String, Object?>> events,
+  }) {
+    if (requestId.trim().isEmpty) return;
+    final records = _requests.putIfAbsent(
+      requestId,
+      () => <String, DynamicSubagentRecord>{},
+    );
+    for (final snapshot in snapshots) {
+      final taskId = snapshot['id']?.toString() ?? '';
+      final localId = _localIdForTaskId(requestId, taskId);
+      if (localId.isEmpty || records.containsKey(localId)) continue;
+      final rawDependencies = snapshot['depends_on'];
+      final dependencies = rawDependencies is List
+          ? rawDependencies
+              .map((value) => _localIdForTaskId(requestId, value.toString()))
+              .where((value) => value.isNotEmpty)
+              .toList(growable: false)
+          : const <String>[];
+      final createdAtValue = snapshot['created_at']?.toString();
+      final parsedCreatedAt = createdAtValue == null
+          ? null
+          : DateTime.tryParse(createdAtValue);
+      final record = DynamicSubagentRecord(
+        id: localId,
+        parentRequestId: requestId,
+        conversationId: snapshot['conversation_id']?.toString() ??
+            snapshot['session_id']?.toString() ??
+            conversationId,
+        title: snapshot['title']?.toString() ?? localId,
+        prompt: snapshot['task_prompt']?.toString() ??
+            snapshot['prompt']?.toString() ??
+            '',
+        agentType: snapshot['agent_type']?.toString() ?? 'explore',
+        dependsOn: dependencies,
+        createdAt: parsedCreatedAt,
+      )
+        ..status = snapshot['status']?.toString() ?? 'interrupted'
+        ..progressPercent = snapshot['progress_percent'] is num
+            ? (snapshot['progress_percent'] as num).toInt().clamp(0, 100).toInt()
+            : null
+        ..result = snapshot['last_result']?.toString()
+        ..error = snapshot['last_details']?.toString()
+        ..dismissed = snapshot['is_dismissed'] == true;
+      records[localId] = record;
+    }
+
+    final consumedMessageIds = events
+        .where((event) => event['type'] == 'subagent_message_received')
+        .map((event) => event['message_id']?.toString() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    for (final event in events) {
+      if (event['type'] == 'goal_updated') {
+        final goal = event['goal']?.toString() ?? event['details']?.toString();
+        if (goal != null && goal.trim().isNotEmpty) _goals[requestId] = goal.trim();
+      }
+      if (event['type'] != 'subagent_message_sent') continue;
+      final messageId = event['message_id']?.toString() ?? '';
+      final message = event['message']?.toString() ?? '';
+      final recipientTaskId = event['task_id']?.toString() ??
+          event['agent_id']?.toString() ??
+          '';
+      final recipientId = _localIdForTaskId(requestId, recipientTaskId);
+      if (messageId.isEmpty || message.isEmpty || recipientId.isEmpty ||
+          consumedMessageIds.contains(messageId)) {
+        continue;
+      }
+      final key = _key(requestId, recipientId);
+      final mailbox = _mailboxes.putIfAbsent(key, () => <Map<String, Object?>>[]);
+      if (mailbox.any((item) => item['message_id'] == messageId)) continue;
+      mailbox.add(<String, Object?>{
+        'message_id': messageId,
+        'message': message,
+        'sender_task_id': event['sender_task_id'],
+        'timestamp': event['timestamp'],
+      });
+    }
+  }
+
+  String _localIdForTaskId(String requestId, String taskId) {
+    final prefix = '${requestId}_dynamic_';
+    return taskId.startsWith(prefix) ? taskId.substring(prefix.length) : '';
+  }
+
   Future<List<Map<String, Object?>>> drainMessages(
     String requestId,
     String agentId,
