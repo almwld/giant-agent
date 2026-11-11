@@ -42,6 +42,8 @@ class ModelService {
   static const Object _runtimeLockHeldZoneKey = #giantAgentRuntimeLockHeld;
   static const Object _assistantMessageIdZoneKey = #giantAgentAssistantMessageId;
   final Map<String, Future<void>> _assistantMessageWriteTails = <String, Future<void>>{};
+  final Map<String, StringBuffer> _assistantDeltaBuffers = <String, StringBuffer>{};
+  final Map<String, Timer> _assistantDeltaTimers = <String, Timer>{};
   String get _activeTaskId => Zone.current[_taskIdZoneKey] as String? ?? '';
   String get _activeAgentType => Zone.current[_agentTypeZoneKey] as String? ?? '';
   String get _activeRequestId =>
@@ -475,7 +477,7 @@ class ModelService {
     }
   }
 
-  void _queueAssistantDelta(String messageId, String delta) {
+  void _queueAssistantDeltaWrite(String messageId, String delta) {
     if (messageId.isEmpty || delta.isEmpty) return;
     final previous = _assistantMessageWriteTails[messageId] ?? Future<void>.value();
     final next = previous
@@ -485,7 +487,31 @@ class ModelService {
     _assistantMessageWriteTails[messageId] = next;
   }
 
+  void _bufferAssistantDelta(String messageId, String delta) {
+    if (messageId.isEmpty || delta.isEmpty) return;
+    final buffer = _assistantDeltaBuffers.putIfAbsent(messageId, StringBuffer.new);
+    buffer.write(delta);
+    if (buffer.length >= 512) {
+      _flushBufferedAssistantDelta(messageId);
+    } else {
+      _assistantDeltaTimers.putIfAbsent(
+        messageId,
+        () => Timer(const Duration(milliseconds: 120), () {
+          _flushBufferedAssistantDelta(messageId);
+        }),
+      );
+    }
+  }
+
+  void _flushBufferedAssistantDelta(String messageId) {
+    _assistantDeltaTimers.remove(messageId)?.cancel();
+    final buffer = _assistantDeltaBuffers.remove(messageId);
+    if (buffer == null || buffer.isEmpty) return;
+    _queueAssistantDeltaWrite(messageId, buffer.toString());
+  }
+
   Future<void> _flushAssistantMessageWrites(String messageId) async {
+    _flushBufferedAssistantDelta(messageId);
     final pending = _assistantMessageWriteTails.remove(messageId);
     if (pending != null) await pending;
   }
@@ -780,7 +806,7 @@ $prompt
             final assistantMessageId =
                 Zone.current[_assistantMessageIdZoneKey] as String?;
             if (assistantMessageId != null) {
-              _queueAssistantDelta(assistantMessageId, delta);
+              _bufferAssistantDelta(assistantMessageId, delta);
             }
             AgentEventBus.instance.publish(<String, dynamic>{
               'id': 'stream_${_activeRequestId}_${DateTime.now().microsecondsSinceEpoch}',
