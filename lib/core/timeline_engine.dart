@@ -150,10 +150,12 @@ class TimelineEventBus {
 
 class TimelineEngine {
   TimelineEngine({required this.sessionId, TimelineEventBus? bus})
-      : bus = bus ?? TimelineEventBus();
+      : bus = bus ?? TimelineEventBus(),
+        _ownsBus = bus == null;
 
   final String sessionId;
   final TimelineEventBus bus;
+  final bool _ownsBus;
   final List<AgentTimelineEvent> _events = [];
   final StreamController<List<AgentTimelineEvent>> _changes =
       StreamController<List<AgentTimelineEvent>>.broadcast();
@@ -256,6 +258,6 @@ class TimelineEngine {
     if (_disposed) return;
     _disposed = true;
     await _changes.close();
-    if (closeBus) await bus.close();
+    if (closeBus && _ownsBus) await bus.close();
   }
 }
