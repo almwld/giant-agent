@@ -206,6 +206,13 @@ class SubagentOrchestrator {
         details: 'Message sent to $toTaskId.', metadata: envelope);
   }
 
+  Map<String, Object?>? receiveMessageNow(String taskId) {
+    if (!_tasks.containsKey(taskId)) throw StateError('Unknown waiting subagent: $taskId');
+    final inbox = _inboxes[taskId];
+    if (inbox == null || inbox.isEmpty) return null;
+    return inbox.removeAt(0);
+  }
+
   Future<Map<String, Object?>?> waitForMessage({
     required String taskId,
     Duration timeout = const Duration(seconds: 30),
