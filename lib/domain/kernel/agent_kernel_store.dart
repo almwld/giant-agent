@@ -339,6 +339,11 @@ class AgentKernelStore {
       'prompt': event['task_prompt']?.toString() ?? previous['prompt'],
       'depends_on': event['depends_on'] ?? previous['depends_on'] ?? const <String>[],
       'status': eventStatus,
+      'progress_percent': event['progress_percent'] is num
+          ? (event['progress_percent'] as num).toInt().clamp(0, 100)
+          : eventStatus == 'completed'
+              ? 100
+              : previous['progress_percent'] ?? (eventStatus == 'pending' ? 0 : null),
       'last_event_type': eventType,
       'last_details': event['details']?.toString(),
       'last_result': event['result']?.toString() ?? previous['last_result'],
