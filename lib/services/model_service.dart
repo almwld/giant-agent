@@ -432,6 +432,94 @@ class ModelService {
     }
   }
 
+  Future<Map<String, dynamic>> _spawnDynamicSubagent(
+    String agentId, {
+    bool Function()? isCancelled,
+  }) async {
+    final requestId = _activeRequestId;
+    final child = _subagents.get(requestId, agentId);
+    if (child == null) throw StateError('Subagent not found: $agentId');
+    await _subagents.start(requestId, agentId);
+    try {
+      if (_cancelRequested || isCancelled?.call() == true) {
+        throw const ToolCallInterrupted('dynamic_subagent');
+      }
+      final dependencies = child.dependsOn.map((dependencyId) {
+        final dependency = _subagents.get(requestId, dependencyId)!;
+        return 'نتيجة الوكيل السابق $dependencyId:\n${dependency.result ?? ''}';
+      }).join('\n\n');
+      final queuedMessages = _subagents.drainMessages(requestId, agentId)
+          .map((item) => item['message']?.toString() ?? '')
+          .where((message) => message.isNotEmpty)
+          .join('\n');
+      final goal = _subagents.currentGoal(requestId);
+      final allowedTools = switch (child.agentType) {
+        'explore' || 'plan' || 'reviewer' => const <String>{
+            'read_file', 'list_files', 'mcp_call', 'mcp_read_resource',
+            'send_message', 'wait_for_message',
+          },
+        'coder' => const <String>{
+            'create_file', 'read_file', 'write_file', 'list_files',
+            'execute_python', 'gain_terminal', 'mcp_call', 'mcp_read_resource',
+            'send_message', 'wait_for_message',
+          },
+        _ => throw ArgumentError('Unknown subagent role: ${child.agentType}'),
+      };
+      final childConversationId = '$_activeConversationId::dynamic_subagent::$agentId';
+      final childPrompt = '''
+أنت وكيل فرعي مستقل من نوع ${child.agentType}.
+الهدف الحالي:
+${goal ?? 'الهدف الأصلي للطلب.'}
+المهمة:
+${child.prompt}
+نتائج التبعيات:
+${dependencies.isEmpty ? 'لا توجد تبعيات.' : dependencies}
+رسائل واردة:
+${queuedMessages.isEmpty ? 'لا توجد رسائل.' : queuedMessages}
+قواعد:
+- استخدم محرك النموذج والأدوات الحالية فقط؛ لا تنشئ وكيلاً فرعياً آخر.
+- explore وplan وreviewer للقراءة والتحليل فقط؛ coder وحده يعدل الملفات.
+- أوامر الطرفية تتطلب موافقة المستخدم كالمعتاد.
+- افحص الحالة قبل تكرار أي أثر جانبي، ولا تدّع نجاحاً دون نتيجة أداة.
+- أعد النتيجة والأدلة والملفات المتغيرة وما بقي غير منجز.
+- لا تعرض التفكير الداخلي.
+''';
+      final context = await AgentMemoryService.instance.buildContext(
+        childPrompt,
+        conversationId: childConversationId,
+      );
+      final output = (await runZoned(
+        () => _processInput(
+          context.isEmpty ? childPrompt : '$context\n\nمهمة الوكيل: $childPrompt',
+          allowedTools: allowedTools,
+          shouldCancel: () => _cancelRequested || isCancelled?.call() == true,
+        ),
+        zoneValues: <Object, Object?>{
+          _requestIdZoneKey: requestId,
+          _parallelProviderZoneKey: Zone.current[_parallelProviderZoneKey] == true,
+          _taskIdZoneKey: agentId,
+          _agentTypeZoneKey: child.agentType,
+          _conversationIdZoneKey: childConversationId,
+        },
+      )).trim();
+      if (_cancelRequested || isCancelled?.call() == true ||
+          output.startsWith('تم إيقاف') || output.contains('[تم إيقاف التوليد]')) {
+        await _subagents.fail(requestId, agentId, 'تم إيقاف الوكيل الفرعي.', interrupted: true);
+        return <String, dynamic>{'ok': false, 'status': 'interrupted', 'error': 'تم إيقاف الوكيل الفرعي.', 'subagent': child.toMap()};
+      }
+      if (output.isEmpty || output.startsWith('تعذر إكمال الطلب:') ||
+          output.startsWith('وصل الوكيل إلى الحد الآمن')) {
+        await _subagents.fail(requestId, agentId, output.isEmpty ? 'Empty subagent result.' : output);
+        return <String, dynamic>{'ok': false, 'status': 'failed', 'error': output.isEmpty ? 'Empty subagent result.' : output, 'subagent': child.toMap()};
+      }
+      await _subagents.complete(requestId, agentId, output);
+      return <String, dynamic>{'ok': true, 'status': 'completed', 'subagent': child.toMap()};
+    } catch (error) {
+      await _subagents.fail(requestId, agentId, error, interrupted: error is ToolCallInterrupted);
+      return <String, dynamic>{'ok': false, 'status': child.status, 'error': error.toString(), 'subagent': child.toMap()};
+    }
+  }
+
   String _toolStartTitle(String name) {
     switch (name) {
       case 'create_file': return 'ينشئ ملفاً في مساحة العمل';
