@@ -16,6 +16,7 @@ class AgentUserInputBroker {
     required String sessionId,
     required String question,
     Duration timeout = const Duration(seconds: 120),
+    bool Function()? isCancelled,
   }) async {
     final prompt = question.trim();
     if (requestId.isEmpty || taskId.isEmpty || sessionId.isEmpty ||
@@ -40,8 +41,27 @@ class AgentUserInputBroker {
       'status': 'pending',
       'timestamp': DateTime.now().toUtc().toIso8601String(),
     });
+    Timer? cancellationPoll;
+    final cancelled = Completer<void>();
+    if (isCancelled != null) {
+      cancellationPoll = Timer.periodic(const Duration(milliseconds: 250), (_) {
+        if (isCancelled() && !cancelled.isCompleted) cancelled.complete();
+      });
+    }
     try {
-      return await completer.future.timeout(timeout);
+      final answer = await Future.any<String?>(<Future<String?>>[
+        completer.future,
+        if (isCancelled != null) cancelled.future.then<String?>((_) => null),
+      ]).timeout(timeout);
+      if (cancelled.isCompleted && answer == null) {
+        AgentEventBus.instance.publish(<String, Object?>{
+          'id': '${id}_cancelled', 'input_request_id': id,
+          'request_id': requestId, 'task_id': taskId, 'session_id': sessionId,
+          'type': 'user_input_cancelled', 'title': 'أُلغي انتظار إجابة المستخدم',
+          'status': 'cancelled', 'timestamp': DateTime.now().toUtc().toIso8601String(),
+        });
+      }
+      return answer;
     } on TimeoutException {
       AgentEventBus.instance.publish(<String, Object?>{
         'id': '${id}_timeout',
@@ -56,6 +76,7 @@ class AgentUserInputBroker {
       });
       return null;
     } finally {
+      cancellationPoll?.cancel();
       _pending.remove(id);
     }
   }
