@@ -144,11 +144,20 @@ jobs:
           ls -lh dist/*.apk
           sha256sum dist/*.apk | tee dist/SHA256SUMS.txt
 
+      - name: 📤 Upload SHA256 checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: giant-agent-sha256-checksums
+          path: dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+
       # Optional cloud-device upload. Set APPETIZE_ENABLED=true and configure APPETIZE_API_KEY in GitHub Actions secrets.
       - name: Upload universal APK to Appetize
         id: appetize
         if: ${{ vars.APPETIZE_ENABLED == 'true' && github.event_name != 'pull_request' }}
         uses: appetizeio/github-action-appetize@v1.1.0
+        continue-on-error: true
         env:
           APPETIZE_API_KEY: ${{ secrets.APPETIZE_API_KEY }}
         with:
@@ -197,13 +206,5 @@ jobs:
         with:
           name: app-x86_64-release
           path: dist/app-x86_64-release.apk
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: 📤 Upload SHA256 checksums
-        uses: actions/upload-artifact@v4
-        with:
-          name: giant-agent-sha256-checksums
-          path: dist/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 30
