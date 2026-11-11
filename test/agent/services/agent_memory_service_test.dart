@@ -73,6 +73,16 @@ void main() {
           containsAll(['insert', 'update', 'delete']));
 
       await memory.saveTurn(
+        'We discussed MCP streamable HTTP and tool call cancellation.',
+        'The request-scoped tool call id is used for cancellation.',
+        conversationId: 'older-chat',
+      );
+      final recalled = await memory.recallChats('MCP streamable HTTP', limit: 5);
+      expect(recalled, hasLength(1));
+      expect(recalled.single['conversation_id'], 'older-chat');
+      expect(recalled.single['user_excerpt'], contains('MCP streamable HTTP'));
+
+      await memory.saveTurn(
         'أفضل أن تكون الإجابات بالعربية الفصحى',
         'سأستخدم العربية الفصحى في هذه الجلسة.',
         conversationId: 'session-ar',
