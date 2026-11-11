@@ -2,13 +2,21 @@ import 'dart:async';
 
 import '../agent/architecture/agent_event_bus.dart';
 
+class _PendingAgentInput {
+  _PendingAgentInput({required this.completer, required this.requestId, required this.taskId, required this.sessionId});
+  final Completer<String?> completer;
+  final String requestId;
+  final String taskId;
+  final String sessionId;
+}
+
 /// Bridges a model's ask-user tool call to the active chat UI without exposing
 /// internal reasoning or allowing a worker to silently invent user approval.
 class AgentUserInputBroker {
   AgentUserInputBroker._();
   static final AgentUserInputBroker instance = AgentUserInputBroker._();
 
-  final Map<String, Completer<String?>> _pending = <String, Completer<String?>>{};
+  final Map<String, _PendingAgentInput> _pending = <String, _PendingAgentInput>{};
 
   Future<String?> askUser({
     required String requestId,
@@ -28,7 +36,7 @@ class AgentUserInputBroker {
     }
     final id = 'user_input_${requestId}_${taskId}_${DateTime.now().microsecondsSinceEpoch}';
     final completer = Completer<String?>();
-    _pending[id] = completer;
+    _pending[id] = _PendingAgentInput(completer: completer, requestId: requestId, taskId: taskId, sessionId: sessionId);
     AgentEventBus.instance.publish(<String, Object?>{
       'id': id,
       'input_request_id': id,
@@ -82,13 +90,16 @@ class AgentUserInputBroker {
   }
 
   bool submitAnswer(String inputRequestId, String? answer) {
-    final completer = _pending[inputRequestId];
-    if (completer == null || completer.isCompleted) return false;
+    final pending = _pending[inputRequestId];
+    if (pending == null || pending.completer.isCompleted) return false;
     final normalized = answer?.trim();
-    completer.complete(normalized == null || normalized.isEmpty ? null : normalized);
+    pending.completer.complete(normalized == null || normalized.isEmpty ? null : normalized);
     AgentEventBus.instance.publish(<String, Object?>{
       'id': '${inputRequestId}_answered',
       'input_request_id': inputRequestId,
+      'request_id': pending.requestId,
+      'task_id': pending.taskId,
+      'session_id': pending.sessionId,
       'type': 'user_input_answered',
       'title': normalized == null || normalized.isEmpty
           ? 'تم إلغاء سؤال الوكيل'
