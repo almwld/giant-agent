@@ -468,6 +468,7 @@ class AgentService {
       await _executionKernel.executeDynamicSubagent(
         parentRequestId: parent.id,
         conversationId: parent.conversationId,
+        parentPrompt: parent.prompt,
         taskId: id,
         title: child['title']?.toString() ?? id,
         taskPrompt: child['prompt']?.toString() ?? '',
