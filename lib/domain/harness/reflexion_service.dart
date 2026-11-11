@@ -76,6 +76,16 @@ No markdown, explanation, or private reasoning.
           throw const FormatException('Reflexion execute_python action requires non-empty code.');
         }
         break;
+      case 'mcp_call':
+        if (!hasText('server_id') || !hasText('tool_name') || args['arguments'] is! Map) {
+          throw const FormatException('Reflexion mcp_call requires server_id, tool_name and an arguments object.');
+        }
+        break;
+      case 'mcp_read_resource':
+        if (!hasText('server_id') || !hasText('uri')) {
+          throw const FormatException('Reflexion mcp_read_resource requires server_id and uri.');
+        }
+        break;
       case 'list_files':
         if (args.isNotEmpty) {
           throw const FormatException('Reflexion list_files action does not accept arguments.');
