@@ -77,7 +77,8 @@ void main() {
       parser.add(utf8.encode('id: bad\u0000id\ndata: final'));
       final events = parser.close();
       expect(events.single.data, 'final');
-      expect(events.single.id, isNull);
+      expect(events.single.id, '');
+      expect(parser.lastEventId, '');
     });
   });
 
