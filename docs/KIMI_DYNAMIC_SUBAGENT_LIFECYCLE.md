@@ -22,3 +22,45 @@ This change adds the durable application service contract for dynamic child agen
 ## Scope boundary
 
 These are durable service-level lifecycle operations. This commit does not claim that the model-facing tool-call bridge or the separate Kimi message/wait/ask-user/update-goal contracts are complete. Those require their own request-scoped dispatch and interaction semantics and must be tested independently.
+
+
+## Model-facing integration — 2026-11-12
+
+The durable service operations are now registered as first-class model tools:
+
+- `create_subagent`: registers a pending child; does not execute it.
+- `spawn_subagent`: starts a registered child inline while its parent is suspended at the tool call.
+- `check_subagent_status`: returns a durable snapshot scoped to the active parent.
+- `list_subagents`: lists only children owned by the active parent.
+- `delete_subagent`: soft-dismisses a terminal child; it cannot remove a pending/running child.
+
+The tool bridge is a separate adapter so `ModelService` does not import `AgentService` and create a circular service dependency. Every tool invocation retains its independent `tool_call_id`; child lifecycle events carry that correlation ID into the append-only journal.
+
+### Important runtime detail: nested local inference
+
+A naive spawn implementation that enqueues a child behind the currently executing parent deadlocks: the parent is waiting for the spawn tool, while the child waits for the parent queue slot. A second deadlock occurs if the child tries to reacquire the local model lock or tool FIFO lock held by its parent.
+
+The implementation therefore:
+- Executes a model-created child inline inside the active parent request; it does not enqueue behind that parent.
+- Uses a request-scoped reentrant runtime lease so the child reuses the same process-wide `ModelService` / `LlamaService` and single JNI context.
+- Does not hold the tool FIFO lock around orchestration tools, allowing the child to call its own allowed tools.
+- Keeps child roles read-only or coder-scoped; child agents cannot recursively create/spawn/delete agents.
+- Leaves explicit crash recovery on the existing queued, user-authorized resume path.
+
+### Snapshot and event projection
+
+Durable snapshots now retain:
+- stable child ID, parent request ID, conversation ID, role and creation-order index;
+- title, description, icon URL and motto;
+- dependency IDs, status, bounded progress percentage and async marker;
+- last result, dismissal marker and immutable event history.
+
+Progress is currently emitted at known lifecycle boundaries (0% at start and 100% at verified completion). It is not an invented continuous estimate. The Kimi wire vocabulary remains distinct from Giant's richer internal states.
+
+### Validation added
+
+- Tool catalogue and parent/tool-call identity bridge contract tests.
+- Durable service integration test for model-facing create, status, list, parent isolation and event correlation.
+- Timeline progress serialization and bounds tests.
+
+The exact Kimi dispatcher argument schemas and handler bodies remain unavailable in the Mylib export. These are Giant's explicit validated schemas and execution semantics, not a claim of wire-level equivalence.
