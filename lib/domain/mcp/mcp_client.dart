@@ -236,7 +236,8 @@ class McpClient {
     }
     if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
       final body = await streamed.stream.bytesToString();
-      throw StateError('MCP HTTP ${streamed.statusCode}: ${body.substring(0, body.length.clamp(0, 2048))}');
+      final excerptLength = body.length > 2048 ? 2048 : body.length;
+      throw StateError('MCP HTTP ${streamed.statusCode}: ${body.substring(0, excerptLength)}');
     }
     if (streamed.statusCode == 202) {
       await streamed.stream.drain<void>();
