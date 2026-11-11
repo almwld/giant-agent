@@ -786,6 +786,8 @@ $evidence
         'ask_user',
         'update_goal',
         'web_search',
+        'website_version_manager',
+        'website_version_manager_rollback',
         'lbs_tool',
         'fetch_urls',
         'visit',
