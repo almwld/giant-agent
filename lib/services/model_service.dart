@@ -214,7 +214,11 @@ class ModelService {
     return result;
   }
 
-  bool cancelToolCall(String toolCallId) => _toolCalls.cancel(toolCallId);
+  bool cancelToolCall(String toolCallId) {
+    final cancelled = _toolCalls.cancel(toolCallId);
+    if (cancelled) unawaited(_llama.cancel());
+    return cancelled;
+  }
 
   Future<bool> cancelGeneration() async {
     _cancelRequested = true;
@@ -385,6 +389,7 @@ class ModelService {
             parentRequestId: _activeRequestId,
             arguments: args,
             toolCallId: toolCallId ?? '',
+            isCancelled: isCancelled,
           );
           break;
         case 'gain_terminal':
