@@ -1,4 +1,3 @@
-import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
 import '../core/timeline_engine.dart';
@@ -41,7 +40,7 @@ class TimelineDatabase {
   Future<Database> _open() async {
     final root = await getDatabasesPath();
     final db = await openDatabase(
-      p.join(root, 'giant_agent_timeline.db'),
+      '$root/giant_agent_timeline.db',
       version: 2,
       onConfigure: (db) async => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: _createSchema,
