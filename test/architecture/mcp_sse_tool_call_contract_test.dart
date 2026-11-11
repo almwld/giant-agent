@@ -59,13 +59,17 @@ void main() {
       expect(parser.lastEventId, '42');
     });
 
-    test('preserves UTF-8 characters split between network chunks', () {
-      final parser = ServerSentEventParser();
-      final bytes = utf8.encode('data: مرحبا\n\n');
-      final split = bytes.length - 2;
-      expect(parser.add(bytes.sublist(0, split)), isEmpty);
-      final events = parser.add(bytes.sublist(split));
-      expect(events.single.data, 'مرحبا');
+    test('preserves UTF-8 characters split at every network byte boundary', () {
+      final bytes = utf8.encode('data: مرحبا\\n\\n');
+      for (var split = 1; split < bytes.length; split++) {
+        final parser = ServerSentEventParser();
+        expect(parser.add(bytes.sublist(0, split)), isEmpty);
+        final events = <ServerSentEvent>[
+          ...parser.add(bytes.sublist(split)),
+          ...parser.close(),
+        ];
+        expect(events.single.data, 'مرحبا', reason: 'split at byte $split');
+      }
     });
 
     test('ignores NUL event IDs and dispatches final unterminated event', () {
