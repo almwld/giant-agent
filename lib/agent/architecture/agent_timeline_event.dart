@@ -19,6 +19,7 @@ class AgentTimelineEvent {
     this.agentType,
     this.taskPrompt,
     this.dependsOn = const <String>[],
+    this.progressPercent,
   });
 
   final String id;
@@ -37,6 +38,7 @@ class AgentTimelineEvent {
   final String? agentType;
   final String? taskPrompt;
   final List<String> dependsOn;
+  final int? progressPercent;
 
   Map<String, dynamic> toMap() => <String, dynamic>{
         'id': id,
@@ -66,6 +68,7 @@ class AgentTimelineEvent {
             : DateTime.tryParse(rawTimestamp?.toString() ?? '') ??
                 DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
     final rawSequence = map['sequence'];
+    final rawProgress = map['progress_percent'] ?? map['progressPercent'];
     return AgentTimelineEvent(
       id: map['id']?.toString() ?? '',
       requestId: (map['request_id'] ?? map['requestId'])?.toString() ?? '',
@@ -83,6 +86,7 @@ class AgentTimelineEvent {
       agentType: map['agent_type']?.toString(),
       taskPrompt: map['task_prompt']?.toString(),
       dependsOn: (map['depends_on'] as List?)?.map((item) => item.toString()).toList(growable: false) ?? const <String>[],
+      progressPercent: rawProgress is num ? rawProgress.toInt().clamp(0, 100) : int.tryParse(rawProgress?.toString() ?? ''),
     );
   }
 }
