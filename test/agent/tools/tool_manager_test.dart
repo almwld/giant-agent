@@ -17,6 +17,7 @@ void main() {
       expect(registry.supports('spawn_subagent'), isTrue);
       expect(registry.supports('ask_user'), isTrue);
       expect(registry.supports('update_goal'), isTrue);
+      expect(registry.supports('task'), isTrue);
       expect(registry.supports('web_search'), isTrue);
       expect(registry.supports('memory_space_insert'), isTrue);
       expect(registry.supports('generate_speech'), isTrue);
@@ -47,6 +48,7 @@ void main() {
       expect(catalogue, contains('wait_for_message'));
       expect(catalogue, contains('ask_user'));
       expect(catalogue, contains('update_goal'));
+      expect(catalogue, contains('task'));
       expect(catalogue, contains('web_search'));
       expect(catalogue, contains('todo_read'));
       expect(catalogue, contains('todo_write'));
