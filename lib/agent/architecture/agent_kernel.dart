@@ -530,7 +530,8 @@ class AgentKernel {
     final cloudParallelismEnabled = selectedMode == ModelProviderMode.openRouter &&
         await OpenAICompatibleProvider.instance.isEnabled();
     final workerConcurrency = cloudParallelismEnabled ? 3 : 1;
-    final orchestrator = SubagentOrchestrator(
+    late final SubagentOrchestrator orchestrator;
+    orchestrator = SubagentOrchestrator(
       parentRequestId: requestId,
       conversationId: conversationId,
       // The mutable llama.cpp JNI context remains strictly single-worker.
