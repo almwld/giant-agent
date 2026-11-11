@@ -25,7 +25,7 @@ class AgentMemoryService {
     final dir = await getApplicationDocumentsDirectory();
     _db = await openDatabase(
       '${dir.path}/giant_agent_memory.db',
-      version: 3,
+      version: 4,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE turns (
@@ -46,9 +46,21 @@ class AgentMemoryService {
             updated_at INTEGER NOT NULL
           )
         ''');
+        await _createAssistantMessagesTable(db);
       },
       onUpgrade: (db, oldVersion, newVersion) =>
           migrateSchema(db, oldVersion),
+    );
+    // A process death must never promote a partial assistant response to
+    // success. Reconcile any abandoned stream before exposing conversation state.
+    await _db!.update(
+      'assistant_messages',
+      <String, Object?>{
+        'status': 'interrupted',
+        'updated_at': DateTime.now().millisecondsSinceEpoch,
+        'error': 'Application stopped before the assistant message completed.',
+      },
+      where: "status = 'streaming'",
     );
   }
 
@@ -77,7 +89,119 @@ class AgentMemoryService {
     await db.execute(
       'CREATE INDEX IF NOT EXISTS turns_session_created_at ON turns(session_id, created_at DESC)',
     );
+    await _createAssistantMessagesTable(db);
   }
+
+  static Future<void> _createAssistantMessagesTable(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS assistant_messages (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        request_id TEXT,
+        role TEXT NOT NULL DEFAULT 'assistant',
+        status TEXT NOT NULL,
+        content TEXT NOT NULL DEFAULT '',
+        error TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        completed_at INTEGER
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS assistant_messages_session_created_at ON assistant_messages(session_id, created_at DESC)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS assistant_messages_request ON assistant_messages(request_id)',
+    );
+  }
+
+  Future<void> beginAssistantMessage({
+    required String id,
+    required String conversationId,
+    String? requestId,
+  }) async {
+    final normalizedId = id.trim();
+    final sessionId = conversationId.trim();
+    if (normalizedId.isEmpty || sessionId.isEmpty) {
+      throw ArgumentError('Assistant message id and conversation id are required.');
+    }
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await (await database).insert('assistant_messages', <String, Object?>{
+      'id': normalizedId,
+      'session_id': sessionId,
+      'request_id': requestId,
+      'role': 'assistant',
+      'status': 'streaming',
+      'content': '',
+      'created_at': now,
+      'updated_at': now,
+    });
+  }
+
+  Future<void> appendAssistantDelta(String id, String delta) async {
+    if (delta.isEmpty) return;
+    final changed = await (await database).rawUpdate(
+      "UPDATE assistant_messages SET content = substr(content || ?, 1, 50000), updated_at = ? WHERE id = ? AND status = 'streaming'",
+      <Object?>[delta, DateTime.now().millisecondsSinceEpoch, id],
+    );
+    if (changed == 0) {
+      throw StateError('Assistant message $id is not in streaming state.');
+    }
+  }
+
+  Future<void> finishAssistantMessage({
+    required String id,
+    required String status,
+    String? content,
+    String? error,
+  }) async {
+    if (!const {'complete', 'interrupted', 'failed'}.contains(status)) {
+      throw ArgumentError.value(status, 'status', 'Unsupported assistant message terminal state.');
+    }
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final values = <String, Object?>{
+      'status': status,
+      'updated_at': now,
+      'completed_at': now,
+      'error': error,
+      if (content != null)
+        'content': content.length > 50000 ? content.substring(0, 50000) : content,
+    };
+    final changed = await (await database).update(
+      'assistant_messages',
+      values,
+      where: "id = ? AND status = 'streaming'",
+      whereArgs: [id],
+    );
+    if (changed == 0) {
+      final existing = await assistantMessageById(id);
+      if (existing?['status'] != status) {
+        throw StateError('Assistant message $id was already finalized or is missing.');
+      }
+    }
+  }
+
+  Future<Map<String, Object?>?> assistantMessageById(String id) async {
+    final rows = await (await database).query(
+      'assistant_messages',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : rows.single;
+  }
+
+  Future<List<Map<String, Object?>>> assistantMessagesForConversation(
+    String conversationId, {
+    int limit = 100,
+  }) async =>
+      (await database).query(
+        'assistant_messages',
+        where: 'session_id = ?',
+        whereArgs: [conversationId],
+        orderBy: 'created_at DESC',
+        limit: limit.clamp(1, 300),
+      );
 
   Future<void> saveTurn(String userText, String assistantText, {String conversationId = 'global'}) async {
     final db = await database;
@@ -174,18 +298,21 @@ class AgentMemoryService {
     if (normalized.isEmpty) return;
     final db = await database;
     await db.delete('turns', where: 'session_id = ?', whereArgs: [normalized]);
+    await db.delete('assistant_messages', where: 'session_id = ?', whereArgs: [normalized]);
   }
 
   /// Clears every stored conversation turn while preserving explicitly saved facts.
   Future<void> clearConversationMemory() async {
     final db = await database;
     await db.delete('turns');
+    await db.delete('assistant_messages');
   }
 
   Future<void> clearAll() async {
     final db = await database;
     await db.transaction((txn) async {
       await txn.delete('turns');
+      await txn.delete('assistant_messages');
       await txn.delete('facts');
     });
   }
