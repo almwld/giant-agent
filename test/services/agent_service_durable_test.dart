@@ -196,6 +196,55 @@ void main() {
         'subagent_interrupted_on_restart');
   });
 
+  test('informational subagent messages and goal updates preserve running status', () async {
+    final store = await _store('${directory.path}/subagent-informational-events.db');
+    await store.enqueue(id: 'parent-info', prompt: 'parent', conversationId: 'chat-info');
+    await store.markRunning('parent-info');
+    await store.recordSubagentEvent({
+      'id': 'child-started-info',
+      'request_id': 'parent-info',
+      'session_id': 'chat-info',
+      'task_id': 'child-info',
+      'agent_type': 'explore',
+      'title': 'Research worker',
+      'task_prompt': 'Research',
+      'type': 'subagent_started',
+      'status': 'running',
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+    });
+    await store.recordSubagentEvent({
+      'id': 'child-message-info',
+      'request_id': 'parent-info',
+      'session_id': 'chat-info',
+      'task_id': 'child-info',
+      'type': 'subagent_message_sent',
+      'status': 'completed',
+      'from_task_id': 'child-info',
+      'to_task_id': 'sibling-info',
+      'content': 'Research is complete.',
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+    });
+    expect((await store.getSubagent('child-info'))?['status'], 'running');
+    await store.recordSubagentEvent({
+      'id': 'child-goal-info',
+      'request_id': 'parent-info',
+      'session_id': 'chat-info',
+      'task_id': 'child-info',
+      'type': 'subagent_goal_updated',
+      'status': 'completed',
+      'details': 'Prioritize security',
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+    });
+    expect((await store.getSubagent('child-info'))?['status'], 'running');
+    final journal = await store.taskEvents('child-info');
+    expect(journal.map((event) => event.type), [
+      'subagent_started',
+      'subagent_message_sent',
+      'subagent_goal_updated',
+    ]);
+    expect(journal[1].payload['content'], 'Research is complete.');
+  });
+
   test('subagent dismissal preserves audit history and blocks later resume', () async {
     final store = await _store('${directory.path}/subagent-dismissal.db');
     await store.enqueue(
