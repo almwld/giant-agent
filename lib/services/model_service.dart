@@ -557,6 +557,7 @@ $prompt
         _boundPrompt(completePrompt),
         maxTokens: 1024,
         temperature: .1,
+        shouldCancel: shouldCancel,
       );
       if (shouldCancel?.call() == true) {
         return 'تم إيقاف التخطيط بناءً على طلب المستخدم.';
