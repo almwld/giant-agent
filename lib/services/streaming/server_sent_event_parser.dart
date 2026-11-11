@@ -85,15 +85,20 @@ class ServerSentEventParser {
     switch (field) {
       case 'data':
         _data.add(value);
+        break;
       case 'event':
         _event = value;
+        break;
       case 'id':
-        if (!value.contains('\u0000')) _id = value;
+        if (!value.contains('\\u0000')) _id = value;
+        break;
       case 'retry':
         final milliseconds = int.tryParse(value);
         if (milliseconds != null && milliseconds >= 0) {
           _retry = Duration(milliseconds: milliseconds);
         }
+        break;
+      default:
         break;
     }
   }
