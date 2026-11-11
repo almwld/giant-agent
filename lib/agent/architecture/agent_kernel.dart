@@ -773,6 +773,7 @@ $evidence
       persistTurn: false,
       allowedTools: const <String>{
         'task',
+        'dmail',
         'show_widget',
         'create_subagent',
         'spawn_subagent',
