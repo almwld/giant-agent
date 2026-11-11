@@ -382,8 +382,8 @@ class AgentKernel {
         'نتيجة المهمة السابقة ${entry.key}:\n${entry.value}'
       ).join('\n\n');
       final allowedTools = switch (agentType) {
-        'explore' || 'plan' || 'reviewer' => const <String>{'read_file', 'list_files', 'mcp_call', 'mcp_read_resource'},
-        'coder' => const <String>{'create_file', 'read_file', 'write_file', 'list_files', 'execute_python', 'gain_terminal', 'mcp_call', 'mcp_read_resource'},
+        'explore' || 'plan' || 'reviewer' => const <String>{'read_file', 'list_files', 'web_search', 'mcp_call', 'mcp_read_resource'},
+        'coder' => const <String>{'create_file', 'read_file', 'write_file', 'list_files', 'web_search', 'execute_python', 'gain_terminal', 'mcp_call', 'mcp_read_resource'},
         _ => throw ArgumentError('Unknown recovered agent type: $agentType'),
       };
       _emit(requestId: parentRequestId, taskId: taskId, agentType: agentType,
@@ -569,7 +569,7 @@ ${result.output ?? result.error ?? 'لا توجد نتيجة نصية.'}
 
         final allowedTools = switch (task.agentType) {
           'explore' || 'plan' || 'reviewer' =>
-            const <String>{'read_file', 'list_files', 'mcp_call', 'mcp_read_resource'},
+            const <String>{'read_file', 'list_files', 'web_search', 'mcp_call', 'mcp_read_resource'},
           'coder' => const <String>{
               'create_file',
               'read_file',
