@@ -458,7 +458,9 @@ class McpClient {
             buffer.writeln('  resource: ${jsonEncode(resource)}');
           }
         } catch (_) {
-          // Resource listing is optional; tool discovery remains usable.
+          // Resource listing is optional; cache unsupported servers to avoid
+          // delaying every subsequent agent turn with the same failed probe.
+          _resourceCache[server.id] = const <Map<String, dynamic>>[];
         }
       } catch (error) {
         buffer.writeln('- MCP server ${_promptSafe(server.name, maxLength: 100)} unavailable: ${_promptSafe(error.toString())}');
