@@ -94,6 +94,8 @@ class SubagentOrchestrator {
   String get currentGoal => _goal;
   int get taskCount => _tasks.length;
   List<SubagentTask> get allTasks => List<SubagentTask>.unmodifiable(_tasks.values);
+  List<Map<String, Object?>> get parentMessages =>
+      List<Map<String, Object?>>.unmodifiable(_inboxes['parent'] ?? const <Map<String, Object?>>[]);
 
   Future<void> createTask(SubagentTask task, {required String creatorTaskId}) async {
     if (!_running) throw StateError('Dynamic child creation is available only during an active orchestration.');
