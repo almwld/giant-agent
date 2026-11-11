@@ -65,6 +65,7 @@ class AgentMemoryService {
             file_path TEXT NOT NULL,
             content TEXT NOT NULL,
             label TEXT NOT NULL DEFAULT '',
+            version_number INTEGER NOT NULL,
             content_length INTEGER NOT NULL,
             created_at INTEGER NOT NULL
           )
@@ -116,6 +117,7 @@ class AgentMemoryService {
         file_path TEXT NOT NULL,
         content TEXT NOT NULL,
         label TEXT NOT NULL DEFAULT '',
+        version_number INTEGER NOT NULL,
         content_length INTEGER NOT NULL,
         created_at INTEGER NOT NULL
       )
@@ -309,16 +311,17 @@ class AgentMemoryService {
     final now = DateTime.now().millisecondsSinceEpoch;
     final versionId = 'wv_${DateTime.now().microsecondsSinceEpoch}';
     return db.transaction((txn) async {
-      final countRows = await txn.rawQuery(
-        'SELECT COUNT(*) AS count FROM workspace_versions WHERE file_path = ?',
+      final versionRows = await txn.rawQuery(
+        'SELECT MAX(version_number) AS max_version FROM workspace_versions WHERE file_path = ?',
         [normalizedPath],
       );
-      final versionNumber = ((countRows.first['count'] as int?) ?? 0) + 1;
+      final versionNumber = ((versionRows.first['max_version'] as int?) ?? 0) + 1;
       await txn.insert('workspace_versions', {
         'version_id': versionId,
         'file_path': normalizedPath,
         'content': content,
         'label': label,
+        'version_number': versionNumber,
         'content_length': content.length,
         'created_at': now,
       });
@@ -344,7 +347,7 @@ class AgentMemoryService {
     final db = await database;
     final rows = await db.query(
       'workspace_versions',
-      columns: const ['version_id', 'file_path', 'label', 'content_length', 'created_at'],
+      columns: const ['version_id', 'file_path', 'label', 'version_number', 'content_length', 'created_at'],
       where: 'file_path = ?',
       whereArgs: [filePath],
       orderBy: 'created_at DESC, id DESC',
