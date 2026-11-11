@@ -483,6 +483,194 @@ class ModelService {
           await _subagents.updateGoal(_activeRequestId, goal);
           result = <String, dynamic>{'ok': true, 'goal': _subagents.currentGoal(_activeRequestId)};
           break;
+        case 'web_search':
+          final query = args['query']?.toString() ?? '';
+          final limit = args['limit'] is int ? (args['limit'] as int).clamp(1, 8).toInt() : 5;
+          final searchResults = await WebSearchService.instance.search(query, limit: limit);
+          result = <String, dynamic>{'ok': true, 'query': query, 'results': searchResults};
+          break;
+        case 'todo_read':
+          final status = args['status']?.toString();
+          final tasks = await TaskManager().getTasksForConversation(
+            _activeConversationId,
+            status: status == null || status.isEmpty ? null : status,
+          );
+          result = <String, dynamic>{'ok': true, 'tasks': tasks};
+          break;
+        case 'todo_write':
+          final description = args['description']?.toString() ?? '';
+          final task = await TaskManager().createTask(
+            description,
+            conversationId: _activeConversationId,
+          );
+          result = <String, dynamic>{'ok': true, 'task': task, 'execution_started': false};
+          break;
+        case 'memory_space_insert':
+          final memoryKey = args['key']?.toString() ?? '';
+          final memoryValue = args['value']?.toString() ?? '';
+          final importance = args['importance'] is int ? args['importance'] as int : 1;
+          await AgentMemoryService.instance.remember(
+            memoryKey, memoryValue, importance: importance,
+          );
+          result = <String, dynamic>{'ok': true, 'key': memoryKey, 'stored': true};
+          break;
+        case 'memory_space_update':
+          final memoryKey = args['key']?.toString() ?? '';
+          final memoryValue = args['value']?.toString() ?? '';
+          final importance = args['importance'] is int ? args['importance'] as int? : null;
+          final updated = await AgentMemoryService.instance.updateFact(
+            memoryKey, memoryValue, importance: importance,
+          );
+          result = <String, dynamic>{
+            'ok': updated,
+            'key': memoryKey,
+            if (!updated) 'error': 'Memory key does not exist; use memory_space_insert first.',
+          };
+          break;
+        case 'memory_space_delete':
+          final memoryKey = args['key']?.toString() ?? '';
+          final deleted = await AgentMemoryService.instance.deleteFact(memoryKey);
+          result = <String, dynamic>{
+            'ok': deleted,
+            'key': memoryKey,
+            if (!deleted) 'error': 'Memory key does not exist.',
+          };
+          break;
+        case 'memory_space_edits':
+          final limit = args['limit'] is int ? (args['limit'] as int).clamp(1, 500).toInt() : 100;
+          result = <String, dynamic>{
+            'ok': true,
+            'facts': await AgentMemoryService.instance.getFacts(limit: limit),
+            'edits': await AgentMemoryService.instance.getFactEdits(limit: limit),
+          };
+          break;
+        case 'generate_speech':
+          final speechText = args['text']?.toString() ?? '';
+          if (speechText.trim().isEmpty) throw const FormatException('Speech text must not be empty.');
+          await VoiceOutputService.instance.speak(speechText, waitForCompletion: true);
+          result = <String, dynamic>{
+            'ok': true,
+            'played': true,
+            'saved_audio_file': false,
+            'message': 'تم تشغيل النص عبر محرك TTS في الجهاز.',
+          };
+          break;
+        case 'get_available_voices':
+          result = <String, dynamic>{
+            'ok': true,
+            'voices': await VoiceOutputService.instance.getAvailableVoices(),
+          };
+          break;
+        case 'get_data_source':
+          final servers = await McpClient.instance.servers();
+          result = <String, dynamic>{
+            'ok': true,
+            'servers': servers.map((server) => <String, dynamic>{
+              'id': server.id,
+              'name': server.name,
+              'host': Uri.parse(server.endpoint).host,
+            }).toList(growable: false),
+          };
+          break;
+        case 'get_data_source_desc':
+          final serverId = args['server_id']?.toString() ?? '';
+          final servers = await McpClient.instance.servers();
+          McpServerConfig? selected;
+          for (final server in servers) {
+            if (server.id == serverId) { selected = server; break; }
+          }
+          if (selected == null) throw StateError('MCP data source is not configured: $serverId');
+          final info = await McpClient.instance.initialize(serverId, isCancelled: isCancelled);
+          final tools = await McpClient.instance.listTools(serverId, isCancelled: isCancelled);
+          final resources = await McpClient.instance.listResources(serverId, isCancelled: isCancelled);
+          result = <String, dynamic>{
+            'ok': true,
+            'server': <String, dynamic>{
+              'id': selected.id,
+              'name': selected.name,
+              'host': Uri.parse(selected.endpoint).host,
+              'server_info': info,
+            },
+            'tools': tools.map((tool) => <String, dynamic>{
+              'name': tool.name,
+              'description': tool.description,
+              'input_schema': tool.inputSchema,
+              'annotations': tool.annotations,
+            }).toList(growable: false),
+            'resources': resources,
+          };
+          break;
+        case 'generate_slides_outline':
+          final topic = args['topic']?.toString().trim() ?? '';
+          final count = args['slides'] is int ? (args['slides'] as int).clamp(3, 20).toInt() : 8;
+          if (topic.isEmpty) throw const FormatException('A slide topic is required.');
+          final outline = await _generateText(
+            _boundPrompt('''أنشئ مخطط عرض تقديمي من $count شرائح حول الموضوع التالي: $topic
+أعد JSON صالحاً فقط بالشكل {"title":"...","slides":[{"title":"...","bullets":["..."]}]}.
+اجعل المحتوى موجزاً ودقيقاً، ولا تخترع بيانات أو مصادر.'''),
+            maxTokens: 1200,
+            temperature: .2,
+            shouldCancel: isCancelled,
+          );
+          result = <String, dynamic>{'ok': outline.trim().isNotEmpty, 'outline': outline.trim()};
+          break;
+        case 'slides_generator':
+          final slidePath = args['path']?.toString() ?? '';
+          final presentationTitle = args['title']?.toString() ?? 'Giant Agent Presentation';
+          final rawSlides = args['slides'];
+          if (slidePath.trim().isEmpty || rawSlides is! List ||
+              rawSlides.isEmpty || rawSlides.length > 40 ||
+              rawSlides.any((slide) => slide is! Map)) {
+            throw const FormatException('slides_generator requires a path and 1–40 slide objects.');
+          }
+          final escape = const HtmlEscape();
+          final buffer = StringBuffer('''<!doctype html>
+<html lang="ar"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${escape.convert(presentationTitle)}</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#0b1220;color:#e5edf7;font-family:Arial,sans-serif}
+.deck{min-height:100vh;display:grid;place-items:center;padding:24px}
+.slide{display:none;width:min(1100px,96vw);min-height:min(680px,88vh);padding:clamp(24px,6vw,72px);border:1px solid #334155;border-radius:24px;background:linear-gradient(145deg,#17243a,#101827);box-shadow:0 24px 70px #0008}
+.slide.active{display:block}.slide h1{font-size:clamp(30px,5vw,56px);color:#5eead4;margin:0 0 28px}
+.slide p,.slide li{font-size:clamp(18px,2.4vw,28px);line-height:1.6}
+.controls{position:fixed;bottom:18px;left:0;right:0;display:flex;justify-content:center;gap:12px}
+button{border:0;border-radius:12px;padding:12px 20px;background:#2563eb;color:white;font-size:16px}
+.counter{position:fixed;top:18px;right:22px;color:#94a3b8}
+</style></head><body><div class="counter" id="counter"></div><main class="deck">''');
+          for (var index = 0; index < rawSlides.length; index++) {
+            final slide = Map<String, dynamic>.from(rawSlides[index] as Map);
+            final slideTitle = escape.convert(slide['title']?.toString() ?? 'Slide ${index + 1}');
+            final body = slide['body']?.toString() ?? '';
+            final bullets = slide['bullets'];
+            buffer.write('<section class="slide${index == 0 ? ' active' : ''}"><h1>$slideTitle</h1>');
+            if (bullets is List && bullets.isNotEmpty) {
+              buffer.write('<ul>');
+              for (final bullet in bullets.take(12)) {
+                buffer.write('<li>${escape.convert(bullet.toString())}</li>');
+              }
+              buffer.write('</ul>');
+            } else if (body.isNotEmpty) {
+              buffer.write('<p>${escape.convert(body)}</p>');
+            }
+            buffer.write('</section>');
+          }
+          buffer.write('''</main><nav class="controls"><button id="prev">السابق</button><button id="next">التالي</button></nav>
+<script>
+const slides=[...document.querySelectorAll('.slide')];let current=0;
+function show(n){current=Math.max(0,Math.min(slides.length-1,n));slides.forEach((s,i)=>s.classList.toggle('active',i===current));document.getElementById('counter').textContent=(current+1)+' / '+slides.length;}
+document.getElementById('prev').onclick=()=>show(current-1);document.getElementById('next').onclick=()=>show(current+1);
+document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowDown')show(current+1);if(e.key==='ArrowLeft'||e.key==='ArrowUp')show(current-1);});show(0);
+</script></body></html>''');
+          final created = await createFile(path: slidePath, content: buffer.toString());
+          result = <String, dynamic>{
+            'ok': true,
+            'path': slidePath,
+            'slide_count': rawSlides.length,
+            'created_file': created,
+            'format': 'self-contained HTML slides',
+            'powerpoint_file_created': false,
+          };
+          break;
         case 'gain_terminal':
           final approval = requestTerminalApproval;
           if (approval == null) {
