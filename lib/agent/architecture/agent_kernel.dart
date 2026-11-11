@@ -378,18 +378,64 @@ class AgentKernel {
           throw StateError('يجب تحميل النموذج المحلي قبل استئناف الوكيل الفرعي.');
         }
       }
+      final durableChildren = await _store.subagentsForRequest(parentRequestId);
+      final durableEvents = await _store.eventsFor(parentRequestId);
+      final eventPayloads = durableEvents
+          .map((event) => event.payload)
+          .toList(growable: false);
+      _models.restoreSubagentLifecycle(
+        requestId: parentRequestId,
+        conversationId: conversationId,
+        snapshots: durableChildren
+            .map((child) => Map<String, Object?>.from(child))
+            .toList(growable: false),
+        events: eventPayloads,
+      );
+      var currentGoal = parentPrompt;
+      for (final event in eventPayloads) {
+        if (event['type'] == 'goal_updated') {
+          final updated = event['goal']?.toString();
+          if (updated != null && updated.trim().isNotEmpty) {
+            currentGoal = updated.trim();
+          }
+        }
+      }
+      final incomingMessages = eventPayloads
+          .where((event) =>
+              event['type'] == 'subagent_message_sent' &&
+              event['task_id']?.toString() == taskId &&
+              (event['message']?.toString().trim().isNotEmpty ?? false))
+          .map((event) =>
+              'رسالة من ${event['sender_task_id']?.toString() ?? 'الطلب الرئيسي'}: ${event['message']}')
+          .join('\n');
       final dependencyContext = dependencyResults.entries.map((entry) =>
         'نتيجة المهمة السابقة ${entry.key}:\n${entry.value}'
       ).join('\n\n');
       final allowedTools = switch (agentType) {
-        'explore' || 'plan' || 'reviewer' => const <String>{'read_file', 'list_files', 'web_search', 'mcp_call', 'mcp_read_resource'},
-        'coder' => const <String>{'create_file', 'read_file', 'write_file', 'list_files', 'web_search', 'execute_python', 'gain_terminal', 'mcp_call', 'mcp_read_resource'},
+        'explore' || 'plan' || 'reviewer' => const <String>{
+            'read_file', 'list_files', 'web_search', 'mcp_call',
+            'mcp_read_resource', 'send_message', 'wait_for_message',
+          },
+        'coder' => const <String>{
+            'create_file', 'read_file', 'write_file', 'list_files',
+            'web_search', 'execute_python', 'gain_terminal', 'mcp_call',
+            'mcp_read_resource', 'send_message', 'wait_for_message',
+          },
         _ => throw ArgumentError('Unknown recovered agent type: $agentType'),
       };
       _emit(requestId: parentRequestId, taskId: taskId, agentType: agentType,
         taskPrompt: taskPrompt, type: 'subagent_resume_started',
         title: 'استئناف الوكيل الفرعي: $title', status: 'running');
-      final prompt = '''أنت وكيل فرعي مستأنف من نوع $agentType.\nالمهمة الأصلية: $parentPrompt\nالمهمة المسندة: $taskPrompt\nنتائج التبعيات المكتملة:\n${dependencyContext.isEmpty ? 'لا توجد تبعيات.' : dependencyContext}\n\nقواعد الاستئناف:\n- افحص الحالة الحالية قبل أي تعديل؛ قد تكون بعض الآثار الجانبية نُفذت قبل الانقطاع.\n- لا تكرر عملية غير قابلة للعكس أو إرسالاً أو حذفاً أو دفعاً أو شراءً دون تحقق من حالتها وموافقة المستخدم عند الحاجة.\n- أكمل الجزء المتبقي فقط، ولا تفترض أن سياق النموذج السابق ما زال موجوداً.\n- استخدم الأدوات المسموح بها فقط، ولا تدّع نجاح عملية دون دليل.\n- أعد النتيجة والأدلة والملفات التي تغيرت وما بقي غير منجز.''';
+      final prompt = '''أنت وكيل فرعي مستأنف من نوع $agentType.
+الهدف الأصلي: $parentPrompt
+الهدف المحدّث المعتمد: $currentGoal
+المهمة المسندة: $taskPrompt
+نتائج التبعيات المكتملة:
+${dependencyContext.isEmpty ? 'لا توجد تبعيات.' : dependencyContext}
+الرسائل الواردة المحفوظة:
+${incomingMessages.isEmpty ? 'لا توجد رسائل واردة.' : incomingMessages}
+
+قواعد الاستئناف:\n- افحص الحالة الحالية قبل أي تعديل؛ قد تكون بعض الآثار الجانبية نُفذت قبل الانقطاع.\n- لا تكرر عملية غير قابلة للعكس أو إرسالاً أو حذفاً أو دفعاً أو شراءً دون تحقق من حالتها وموافقة المستخدم عند الحاجة.\n- أكمل الجزء المتبقي فقط، ولا تفترض أن سياق النموذج السابق ما زال موجوداً.\n- استخدم الأدوات المسموح بها فقط، ولا تدّع نجاح عملية دون دليل.\n- أعد النتيجة والأدلة والملفات التي تغيرت وما بقي غير منجز.''';
       final output = (await _models.processInput(prompt,
         conversationId: '$conversationId::subagent::$taskId',
         persistTurn: false, allowedTools: allowedTools,
