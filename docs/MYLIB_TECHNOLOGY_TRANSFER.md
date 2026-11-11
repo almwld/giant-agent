@@ -34,7 +34,7 @@ Mylib contains decompiled Android/Kotlin sources and extracted assets from Kimi 
 | 11 | `python` | Implemented through the embedded Chaquopy runtime. |
 | 12 | `todo_read` | Implemented using durable TaskManager records scoped to the current conversation. |
 | 13 | `todo_write` | Implemented as a durable pending task; it does not auto-start execution. |
-| 14 | `ipython` | Not claimed: the existing Python facade does not prove a persistent IPython kernel/session. |
+| 14 | `ipython` | Implemented as a bounded conversation-scoped persistent REPL over the same restricted Chaquopy sandbox; sessions are isolated, expire after one hour idle and are capped at four. |
 | 15 | `shell` | Implemented through Gain PTY with explicit command approval. |
 | 16 | `read_file` | Implemented through the constrained native workspace bridge. |
 | 17 | `edit_file` | Implemented as a separate model-facing alias to verified `write_file`; only existing allowed text/code files can be changed. |
@@ -89,7 +89,7 @@ Mylib contains decompiled Android/Kotlin sources and extracted assets from Kimi 
 - MediaProviderRegistry capability contracts for image search by text/image, image generation/editing, asset bounding boxes/cropping and sound effects. These tools fail explicitly until a real provider is registered; no image/sound generation provider is bundled.
 - Per-invocation `tool_call_id` and cancellation registry.
 - Durable SQLite task/request/event/subagent journal and restart recovery.
-- Existing Gain PTY bridge, explicit terminal approval, Python runtime and workspace path constraints.
+- Existing Gain PTY bridge, explicit terminal approval, one-shot Python execution plus a separate persistent chat-scoped REPL (same restricted AST sandbox), and workspace path constraints.
 - Existing local memory, TTS, OCR, WebView workspace preview and output collection.
 
 ## Dynamic subagent contract implemented in this transfer
