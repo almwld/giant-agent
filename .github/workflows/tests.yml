@@ -1,0 +1,51 @@
+name: Giant Agent Tests
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, edited]
+    branches:
+      - main
+      - integration/giant-agent-stabilization
+      - feat/mylib-technology-transfer
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: giant-agent-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python-tests:
+    name: Python parser and REPL tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install parser test dependencies
+        run: python -m pip install pypdf==4.2.0 reportlab==4.2.0
+      - name: Run parser and sandbox tests
+        working-directory: android/app/src/main/python
+        run: python -m unittest -v test_document_parser test_sandbox_repl
+
+  flutter-tests:
+    name: Flutter unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.16.0'
+          channel: stable
+          cache: true
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Run Flutter tests
+        run: flutter test --no-pub
