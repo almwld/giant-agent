@@ -477,10 +477,12 @@ class McpClient {
           for (final resource in resources.take(100)) {
             buffer.writeln('  resource: ${jsonEncode(resource)}');
           }
-        } catch (_) {
-          // Resource listing is optional; cache unsupported servers to avoid
-          // delaying every subsequent agent turn with the same failed probe.
-          _resourceCache[server.id] = const <Map<String, dynamic>>[];
+        } catch (error) {
+          // Cache only an explicit JSON-RPC method-not-found response. Network
+          // failures and cancellation must remain retryable on the next turn.
+          if (isCancelled?.call() != true && error.toString().contains('-32601')) {
+            _resourceCache[server.id] = const <Map<String, dynamic>>[];
+          }
         }
       } catch (error) {
         buffer.writeln('- MCP server ${_promptSafe(server.name, maxLength: 100)} unavailable: ${_promptSafe(error.toString())}');
