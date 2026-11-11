@@ -24,6 +24,7 @@ void main() {
       final columns = await database.rawQuery('PRAGMA table_info(turns)');
       expect(columns.any((column) => column['name'] == 'session_id'), isTrue);
       expect(await database.query('facts'), isEmpty);
+      expect(await database.query('assistant_messages'), isEmpty);
 
       // A second migration pass must be safe for partially upgraded installs.
       await AgentMemoryService.migrateSchema(database, 2);
@@ -39,7 +40,7 @@ void main() {
     final database = await databaseFactoryFfi.openDatabase(
       inMemoryDatabasePath,
       options: OpenDatabaseOptions(
-        version: 3,
+        version: 4,
         onCreate: (db, version) async {
           await db.execute(
             'CREATE TABLE turns (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL DEFAULT \'global\', user_text TEXT NOT NULL, assistant_text TEXT NOT NULL, created_at INTEGER NOT NULL)',
@@ -49,6 +50,26 @@ void main() {
           );
           await db.execute(
             'CREATE INDEX turns_session_created_at ON turns(session_id, created_at DESC)',
+          );
+          await db.execute('''
+            CREATE TABLE assistant_messages (
+              id TEXT PRIMARY KEY,
+              session_id TEXT NOT NULL,
+              request_id TEXT,
+              role TEXT NOT NULL DEFAULT 'assistant',
+              status TEXT NOT NULL,
+              content TEXT NOT NULL DEFAULT '',
+              error TEXT,
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL,
+              completed_at INTEGER
+            )
+          ''');
+          await db.execute(
+            'CREATE INDEX assistant_messages_session_created_at ON assistant_messages(session_id, created_at DESC)',
+          );
+          await db.execute(
+            'CREATE INDEX assistant_messages_request ON assistant_messages(request_id)',
           );
         },
       ),
