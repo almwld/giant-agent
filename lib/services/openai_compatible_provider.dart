@@ -3,10 +3,15 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:http/http.dart' as http;\nimport 'streaming/server_sent_event_parser.dart';
+import 'package:http/http.dart' as http;
+import 'streaming/server_sent_event_parser.dart';
 
 /// OpenRouter-only OpenAI-compatible adapter. Arbitrary base URLs are rejected.
-class _OpenRouterStreamInterrupted implements Exception {\n  const _OpenRouterStreamInterrupted();\n}\n\nclass OpenAICompatibleProvider {
+class _OpenRouterStreamInterrupted implements Exception {
+  const _OpenRouterStreamInterrupted();
+}
+
+class OpenAICompatibleProvider {
   OpenAICompatibleProvider._();
 
   static final OpenAICompatibleProvider instance = OpenAICompatibleProvider._();
@@ -113,7 +118,8 @@ class _OpenRouterStreamInterrupted implements Exception {\n  const _OpenRouterSt
           .whereType<Map>()
           .map((part) => part['text']?.toString() ?? '')
           .where((part) => part.isNotEmpty)
-          .join('\n');
+          .join('
+');
       if (text.trim().isNotEmpty) return text.trim();
     }
     throw StateError('استجابة OpenRouter لا تحتوي نصاً قابلاً للعرض.');
