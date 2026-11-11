@@ -398,7 +398,7 @@ class McpClient {
   }
 
   String _promptSafe(String value, {int maxLength = 1200}) {
-    final normalized = value.replaceAll(RegExp(r'[\\r\\n\\t]+'), ' ').trim();
+    final normalized = value.replaceAll(RegExp(r'[\r\n\t]+'), ' ').trim();
     return normalized.length > maxLength
         ? '${normalized.substring(0, maxLength)}…'
         : normalized;
