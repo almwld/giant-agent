@@ -798,8 +798,9 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
       final goal = _subagents.currentGoal(requestId);
       final allowedTools = switch (child.agentType) {
         'explore' || 'plan' || 'reviewer' => const <String>{
-            'read_file', 'list_files', 'web_search', 'mcp_call', 'mcp_read_resource',
-            'send_message', 'wait_for_message',
+            'read_file', 'list_files', 'web_search', 'fetch_urls', 'visit', 'click', 'input', 'find', 'scrollup', 'scrolldown',
+            'browser_visit', 'browser_click', 'browser_find', 'browser_input', 'browser_state', 'browser_scroll_up', 'browser_scroll_down',
+            'mcp_call', 'mcp_read_resource', 'send_message', 'wait_for_message',
           },
         'coder' => const <String>{
             'create_file', 'read_file', 'write_file', 'list_files', 'web_search',
