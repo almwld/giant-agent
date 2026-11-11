@@ -3,10 +3,10 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:http/http.dart' as http;
+import 'package:http/http.dart' as http;\nimport 'streaming/server_sent_event_parser.dart';
 
 /// OpenRouter-only OpenAI-compatible adapter. Arbitrary base URLs are rejected.
-class OpenAICompatibleProvider {
+class _OpenRouterStreamInterrupted implements Exception {\n  const _OpenRouterStreamInterrupted();\n}\n\nclass OpenAICompatibleProvider {
   OpenAICompatibleProvider._();
 
   static final OpenAICompatibleProvider instance = OpenAICompatibleProvider._();
