@@ -1,9 +1,18 @@
 package com.example.giant_agent
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.content.Intent
 import android.net.Uri
 import android.webkit.MimeTypeMap
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -40,7 +49,14 @@ class MainActivity: FlutterActivity() {
     private val aiExecutor = AgentRuntime.aiExecutor
     private val llamaBridge = AgentRuntime.llamaBridge
     private var pendingModelResult: MethodChannel.Result? = null
-    companion object { private const val REQUEST_OPEN_MODEL = 7402 }
+    companion object {
+        private const val REQUEST_OPEN_MODEL = 7402
+        private const val REQUEST_LOCATION_PERMISSION = 7403
+    }
+    private var pendingLocationPermissionResult: MethodChannel.Result? = null
+    private var pendingLocationListener: LocationListener? = null
+    private var pendingLocationTimeout: Runnable? = null
+    private val locationHandler = Handler(Looper.getMainLooper())
     
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         AgentRuntime.retainFlutterEngine(flutterEngine)
@@ -272,6 +288,7 @@ class MainActivity: FlutterActivity() {
                         }
                     }
                 }
+                "getCurrentLocation" -> requestCurrentLocation(result)
                 "executePython" -> {
                     val code = call.argument<String>("code").orEmpty()
                     val eventId = "python_${System.nanoTime()}"
@@ -807,6 +824,128 @@ class MainActivity: FlutterActivity() {
             partialCopy?.delete()
             android.util.Log.e("GiantAgent", "Unable to import shared file", error)
             null
+        }
+    }
+
+    private fun hasLocationPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun requestCurrentLocation(result: MethodChannel.Result) {
+        if (pendingLocationPermissionResult != null || pendingLocationListener != null) {
+            result.success(mapOf("ok" to false, "error" to "A location request is already active."))
+            return
+        }
+        if (!hasLocationPermission()) {
+            pendingLocationPermissionResult = result
+            try {
+                requestPermissions(
+                    arrayOf(
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    ),
+                    REQUEST_LOCATION_PERMISSION
+                )
+            } catch (t: Throwable) {
+                pendingLocationPermissionResult = null
+                result.success(mapOf("ok" to false, "error" to (t.message ?: "Location permission request failed.")))
+            }
+            return
+        }
+        fetchCurrentLocation(result)
+    }
+
+    private fun fetchCurrentLocation(result: MethodChannel.Result) {
+        try {
+            val manager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+            val fineGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+            val provider = when {
+                fineGranted && manager.isProviderEnabled(LocationManager.GPS_PROVIDER) -> LocationManager.GPS_PROVIDER
+                manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER) -> LocationManager.NETWORK_PROVIDER
+                fineGranted && manager.isProviderEnabled(LocationManager.PASSIVE_PROVIDER) -> LocationManager.PASSIVE_PROVIDER
+                else -> null
+            }
+            if (provider == null) {
+                result.success(mapOf("ok" to false, "error" to "No foreground location provider is enabled."))
+                return
+            }
+            val lastKnown = try { manager.getLastKnownLocation(provider) } catch (_: SecurityException) { null }
+            if (lastKnown != null && System.currentTimeMillis() - lastKnown.time <= 120_000L) {
+                result.success(locationPayload(lastKnown, "last_known"))
+                return
+            }
+
+            val listener = object : LocationListener {
+                override fun onLocationChanged(location: Location) {
+                    finishLocationRequest(manager, result, locationPayload(location, "current"))
+                }
+                override fun onProviderEnabled(providerName: String) {}
+                override fun onProviderDisabled(providerName: String) {}
+                @Deprecated("Deprecated in Android")
+                override fun onStatusChanged(providerName: String?, status: Int, extras: Bundle?) {}
+            }
+            pendingLocationListener = listener
+            val timeout = Runnable {
+                finishLocationRequest(
+                    manager,
+                    result,
+                    mapOf("ok" to false, "error" to "Location request timed out after 15 seconds.")
+                )
+            }
+            pendingLocationTimeout = timeout
+            locationHandler.postDelayed(timeout, 15_000L)
+            manager.requestSingleUpdate(provider, listener, Looper.getMainLooper())
+        } catch (t: Throwable) {
+            result.success(mapOf("ok" to false, "error" to (t.message ?: "Unable to obtain current location.")))
+        }
+    }
+
+    private fun locationPayload(location: Location, source: String): Map<String, Any> {
+        return mapOf(
+            "ok" to true,
+            "latitude" to location.latitude,
+            "longitude" to location.longitude,
+            "accuracy_meters" to location.accuracy,
+            "provider" to (location.provider ?: "unknown"),
+            "timestamp_ms" to location.time,
+            "source" to source,
+            "background_location" to false
+        )
+    }
+
+    private fun finishLocationRequest(
+        manager: LocationManager,
+        result: MethodChannel.Result,
+        payload: Map<String, Any>
+    ) {
+        pendingLocationTimeout?.let { locationHandler.removeCallbacks(it) }
+        pendingLocationTimeout = null
+        pendingLocationListener?.let {
+            try { manager.removeUpdates(it) } catch (_: SecurityException) {}
+        }
+        pendingLocationListener = null
+        runOnUiThread { result.success(payload) }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != REQUEST_LOCATION_PERMISSION) return
+        val callback = pendingLocationPermissionResult
+        pendingLocationPermissionResult = null
+        if (callback == null) return
+        if (grantResults.any { it == PackageManager.PERMISSION_GRANTED } && hasLocationPermission()) {
+            fetchCurrentLocation(callback)
+        } else {
+            callback.success(mapOf(
+                "ok" to false,
+                "permission_denied" to true,
+                "error" to "Location permission was denied."
+            ))
         }
     }
 
