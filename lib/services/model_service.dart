@@ -298,6 +298,31 @@ class ModelService {
     return result;
   }
 
+  Future<Map<String, dynamic>> executePythonRepl({
+    required String code,
+    required String sessionId,
+  }) async {
+    final result = await _agentTools.invokeMapMethod<String, dynamic>(
+      'executePythonRepl',
+      <String, dynamic>{'code': code, 'sessionId': sessionId},
+    );
+    if (result == null) {
+      throw PlatformException(code: 'IPYTHON_FAILED', message: 'Python REPL returned no result.');
+    }
+    return result;
+  }
+
+  Future<Map<String, dynamic>> resetPythonRepl({required String sessionId}) async {
+    final result = await _agentTools.invokeMapMethod<String, dynamic>(
+      'resetPythonRepl',
+      <String, dynamic>{'sessionId': sessionId},
+    );
+    if (result == null) {
+      throw PlatformException(code: 'IPYTHON_RESET_FAILED', message: 'Python REPL reset returned no result.');
+    }
+    return result;
+  }
+
   Future<Map<String, dynamic>> _executeToolUnlocked(
     Map<String, dynamic> payload, {
     String? stepId,
@@ -338,6 +363,17 @@ class ModelService {
             'ok': true,
             'files': await listWorkspaceFiles(),
           };
+          break;
+        case 'ipython':
+          final sessionId = base64Url.encode(utf8.encode(_activeConversationId)).replaceAll('=', '');
+          result = await executePythonRepl(
+            code: args['code']?.toString() ?? '',
+            sessionId: sessionId,
+          );
+          break;
+        case 'reset_ipython':
+          final sessionId = base64Url.encode(utf8.encode(_activeConversationId)).replaceAll('=', '');
+          result = await resetPythonRepl(sessionId: sessionId);
           break;
         case 'execute_python':
           result = await executePython(code: args['code']?.toString() ?? '');
