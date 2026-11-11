@@ -37,7 +37,7 @@ Mylib contains decompiled Android/Kotlin sources and extracted assets from Kimi 
 | 14 | `ipython` | Not claimed: the existing Python facade does not prove a persistent IPython kernel/session. |
 | 15 | `shell` | Implemented through Gain PTY with explicit command approval. |
 | 16 | `read_file` | Implemented through the constrained native workspace bridge. |
-| 17 | `edit_file` | Mapped to verified `write_file`; only existing allowed text/code files can be changed. |
+| 17 | `edit_file` | Implemented as a separate model-facing alias to verified `write_file`; only existing allowed text/code files can be changed. |
 | 18 | `write_file` | Implemented through the constrained native workspace bridge. |
 | 19 | `browser_click` | Implemented with user approval for button/mutating clicks. |
 | 20 | `browser_find` | Implemented as current-page text search. |
