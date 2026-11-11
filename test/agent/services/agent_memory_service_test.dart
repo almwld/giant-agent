@@ -114,4 +114,91 @@ void main() {
       await memory.close();
     }
   });
+  test('persists streaming assistant message lifecycle and session isolation', () async {
+    sqfliteFfiInit();
+    final database = await databaseFactoryFfi.openDatabase(
+      inMemoryDatabasePath,
+      options: OpenDatabaseOptions(
+        version: 4,
+        onCreate: (db, version) async {
+          await db.execute(
+            'CREATE TABLE turns (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL DEFAULT \'global\', user_text TEXT NOT NULL, assistant_text TEXT NOT NULL, created_at INTEGER NOT NULL)',
+          );
+          await db.execute(
+            'CREATE TABLE facts (id INTEGER PRIMARY KEY AUTOINCREMENT, fact_key TEXT NOT NULL UNIQUE, fact_value TEXT NOT NULL, importance INTEGER NOT NULL DEFAULT 1, updated_at INTEGER NOT NULL)',
+          );
+          await db.execute('''
+            CREATE TABLE assistant_messages (
+              id TEXT PRIMARY KEY,
+              session_id TEXT NOT NULL,
+              request_id TEXT,
+              role TEXT NOT NULL DEFAULT 'assistant',
+              status TEXT NOT NULL,
+              content TEXT NOT NULL DEFAULT '',
+              error TEXT,
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL,
+              completed_at INTEGER
+            )
+          ''');
+          await db.execute(
+            'CREATE INDEX assistant_messages_session_created_at ON assistant_messages(session_id, created_at DESC)',
+          );
+          await db.execute(
+            'CREATE INDEX assistant_messages_request ON assistant_messages(request_id)',
+          );
+        },
+      ),
+    );
+
+    final memory = AgentMemoryService.instance;
+    memory.useDatabaseForTesting(database);
+    try {
+      await memory.beginAssistantMessage(
+        id: 'message-1',
+        conversationId: 'session-a',
+        requestId: 'request-a',
+      );
+      await memory.appendAssistantDelta('message-1', 'Hello ');
+      await memory.appendAssistantDelta('message-1', 'world');
+      final streaming = await memory.assistantMessageById('message-1');
+      expect(streaming?['status'], 'streaming');
+      expect(streaming?['content'], 'Hello world');
+
+      await memory.finishAssistantMessage(
+        id: 'message-1',
+        status: 'complete',
+        content: 'Hello world!',
+      );
+      final completed = await memory.assistantMessageById('message-1');
+      expect(completed?['status'], 'complete');
+      expect(completed?['content'], 'Hello world!');
+
+      await memory.beginAssistantMessage(
+        id: 'message-2',
+        conversationId: 'session-b',
+        requestId: 'request-b',
+      );
+      await memory.appendAssistantDelta('message-2', 'partial answer');
+      await memory.finishAssistantMessage(
+        id: 'message-2',
+        status: 'interrupted',
+        error: 'cancelled by user',
+      );
+      final interrupted = await memory.assistantMessageById('message-2');
+      expect(interrupted?['status'], 'interrupted');
+      expect(interrupted?['content'], 'partial answer');
+
+      expect(
+        (await memory.assistantMessagesForConversation('session-a')).single['id'],
+        'message-1',
+      );
+      await memory.deleteConversationMemory('session-a');
+      expect(await memory.assistantMessagesForConversation('session-a'), isEmpty);
+      expect(await memory.assistantMessageById('message-2'), isNotNull);
+    } finally {
+      await memory.close();
+    }
+  });
+
 }
