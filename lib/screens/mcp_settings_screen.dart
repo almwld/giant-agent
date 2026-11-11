@@ -123,7 +123,7 @@ class _McpSettingsScreenState extends State<McpSettingsScreen> {
       final tools = await _agent.refreshMcpTools(server.id);
       List<Map<String, dynamic>> resources = const <Map<String, dynamic>>[];
       try {
-        resources = await McpClient.instance.listResources(server.id);
+        resources = await McpClient.instance.listResources(server.id, forceRefresh: true);
       } catch (_) {
         // A server may expose tools without supporting the optional resources capability.
       }
