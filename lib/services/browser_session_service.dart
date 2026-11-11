@@ -23,6 +23,7 @@ class BrowserSessionService {
 
   void detach(WebViewController controller) {
     if (!identical(_controller, controller)) return;
+    if (!_pageLoaded.isCompleted) _pageLoaded.complete();
     _controller = null;
     _ready = Completer<void>();
     _pageLoaded = Completer<void>();
