@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:giant_agent_x/tools/tool_manager.dart';
+import 'package:giant_agent_x/agent/architecture/subagent_tool_bridge.dart';
 
 void main() {
   test('read-only subagent catalog excludes every write and execution tool', () {
