@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import '../services/llama_service.dart';
 import '../agent/architecture/agent_event_bus.dart';
 import '../agent/architecture/tool_call_registry.dart';
+import '../agent/architecture/subagent_tool_bridge.dart';
 import 'agent_memory_service.dart';
 import 'openai_compatible_provider.dart';
 import 'model_provider_settings.dart';
@@ -38,6 +39,7 @@ class ModelService {
   static const Object _parallelProviderZoneKey = #giantAgentParallelProvider;
   static const Object _taskIdZoneKey = #giantAgentTaskId;
   static const Object _agentTypeZoneKey = #giantAgentAgentType;
+  static const Object _runtimeLockHeldZoneKey = #giantAgentRuntimeLockHeld;
   String get _activeTaskId => Zone.current[_taskIdZoneKey] as String? ?? '';
   String get _activeAgentType => Zone.current[_agentTypeZoneKey] as String? ?? '';
   String get _activeRequestId =>
@@ -278,6 +280,7 @@ class ModelService {
   Future<Map<String, dynamic>> _executeToolUnlocked(
     Map<String, dynamic> payload, {
     String? stepId,
+    String? toolCallId,
     Set<String>? allowedTools,
     bool Function()? isCancelled,
   }) async {
@@ -295,7 +298,8 @@ class ModelService {
     final toolStepId = stepId ?? 'tool_step_${_activeRequestId}_${DateTime.now().microsecondsSinceEpoch}';
     if (name != 'gain_terminal') {
       _emitToolEvent('tool_start', _toolStartTitle(name), toolName: name, path: path,
-          content: name == 'execute_python' ? args['code']?.toString() : null, status: 'running', stepId: toolStepId);
+          content: name == 'execute_python' ? args['code']?.toString() : null,
+          status: 'running', stepId: toolStepId, toolCallId: toolCallId);
     }
     try {
       late final Map<String, dynamic> result;
@@ -371,6 +375,18 @@ class ModelService {
             if (mcpResult.structuredContent != null) 'structuredContent': mcpResult.structuredContent,
           };
           break;
+        case 'create_subagent':
+        case 'spawn_subagent':
+        case 'check_subagent_status':
+        case 'list_subagents':
+        case 'delete_subagent':
+          result = await SubagentToolBridge.instance.invoke(
+            name: name,
+            parentRequestId: _activeRequestId,
+            arguments: args,
+            toolCallId: toolCallId ?? '',
+          );
+          break;
         case 'gain_terminal':
           final approval = requestTerminalApproval;
           if (approval == null) {
@@ -404,13 +420,15 @@ class ModelService {
             ok ? _toolCompleteTitle(name) : 'فشل تنفيذ الأداة',
             toolName: name, path: path, output: output,
             details: ok ? null : result['error']?.toString(),
-            status: ok ? 'completed' : 'failed', stepId: toolStepId);
+            status: ok ? 'completed' : 'failed',
+            stepId: toolStepId, toolCallId: toolCallId);
       }
       return result;
     } catch (error) {
       if (name != 'gain_terminal') {
         _emitToolEvent('tool_error', 'فشل تنفيذ الأداة', toolName: name,
-            path: path, output: error.toString(), status: 'failed', stepId: toolStepId);
+            path: path, output: error.toString(), status: 'failed',
+            stepId: toolStepId, toolCallId: toolCallId);
       }
       rethrow;
     }
@@ -424,6 +442,11 @@ class ModelService {
       case 'execute_python': return 'يشغّل كود Python';
       case 'gain_terminal': return 'يطلب موافقة لتنفيذ أمر طرفية';
       case 'list_files': return 'يعرض ملفات مساحة العمل';
+      case 'create_subagent': return 'يسجل وكيلاً فرعياً دون تشغيله';
+      case 'spawn_subagent': return 'يشغّل الوكيل الفرعي المسجل';
+      case 'check_subagent_status': return 'يفحص حالة الوكيل الفرعي';
+      case 'list_subagents': return 'يعرض الوكلاء الفرعيين';
+      case 'delete_subagent': return 'يخفي الوكيل الفرعي من الإدارة';
       default: return 'ينفّذ أداة';
     }
   }
@@ -436,6 +459,11 @@ class ModelService {
       case 'execute_python': return 'اكتمل تنفيذ Python';
       case 'gain_terminal': return 'اكتمل تنفيذ أمر الطرفية';
       case 'list_files': return 'اكتمل استعراض الملفات';
+      case 'create_subagent': return 'اكتمل تسجيل الوكيل الفرعي';
+      case 'spawn_subagent': return 'اكتمل تشغيل الوكيل الفرعي';
+      case 'check_subagent_status': return 'اكتمل فحص حالة الوكيل الفرعي';
+      case 'list_subagents': return 'اكتمل عرض الوكلاء الفرعيين';
+      case 'delete_subagent': return 'اكتمل إخفاء الوكيل الفرعي';
       default: return 'اكتمل تنفيذ الأداة';
     }
   }
@@ -486,16 +514,28 @@ class ModelService {
       _taskIdZoneKey: taskId ?? '',
       _agentTypeZoneKey: agentType ?? '',
     };
-    if (parallelProvider) {
-      _parallelExecutions++;
+    if (parallelProvider || Zone.current[_runtimeLockHeldZoneKey] == true) {
+      if (parallelProvider) _parallelExecutions++;
       try {
-        return await runZoned(executeScoped, zoneValues: zoneValues);
+        return await runZoned(
+          executeScoped,
+          zoneValues: <Object, Object?>{
+            ...zoneValues,
+            _runtimeLockHeldZoneKey: true,
+          },
+        );
       } finally {
-        _parallelExecutions--;
+        if (parallelProvider) _parallelExecutions--;
       }
     }
     return _withRuntimeLock(
-      () => runZoned(executeScoped, zoneValues: zoneValues),
+      () => runZoned(
+        executeScoped,
+        zoneValues: <Object, Object?>{
+          ...zoneValues,
+          _runtimeLockHeldZoneKey: true,
+        },
+      ),
     );
   }
 
@@ -656,7 +696,6 @@ $prompt
     }
     final parallelProvider = Zone.current[_parallelProviderZoneKey] == true;
     bool isCancelled() => shouldCancel?.call() == true || _cancelRequested;
-    if (!parallelProvider) _cancelRequested = false;
     input = _boundPrompt(input);
     if (await ModelProviderSettings.instance.getMode() == ModelProviderMode.local && !await _llama.isLoaded()) {
       return '⚠️ لم يتم تحميل نموذج GGUF المحلي. حمّل نموذج GGUF أو اختر OpenRouter من إعدادات المزوّد.';
@@ -761,55 +800,73 @@ $toolCatalog
           toolCallId: toolCallId,
         );
         try {
-          await _withToolLock(() async {
-          try {
-            toolCall.throwIfCancelled();
-            result = await _executeToolUnlocked(
-              payload,
+          Future<void> executeAndVerify() async {
+            try {
+              toolCall.throwIfCancelled();
+              result = await _executeToolUnlocked(
+                payload,
+                stepId: toolStepId,
+                toolCallId: toolCallId,
+                allowedTools: allowedTools,
+                isCancelled: () => toolCall.isCancelled || isCancelled(),
+              );
+            } catch (error) {
+              result = <String, dynamic>{'ok': false, 'error': error.toString()};
+            }
+            if (toolCall.isCancelled) {
+              verificationPassed = false;
+              verificationMessage = 'تمت مقاطعة استدعاء الأداة المحدد.';
+              return;
+            }
+            if (isCancelled()) {
+              verificationPassed = false;
+              verificationMessage = 'تم الإيقاف بعد تنفيذ الأداة وقبل التحقق.';
+              return;
+            }
+            _emitToolEvent(
+              'verification_started',
+              'يتحقق من النتيجة الفعلية',
+              toolName: toolName,
+              details: 'التحقق من نتيجة الأداة وسجلها الدائم، وليس من رسالة النموذج.',
+              status: 'running',
               stepId: toolStepId,
-              allowedTools: allowedTools,
-              isCancelled: () => toolCall.isCancelled || isCancelled(),
+              toolCallId: toolCallId,
             );
-          } catch (error) {
-            result = <String, dynamic>{'ok': false, 'error': error.toString()};
+            final verification = await _evaluator.verify(
+              input,
+              toolName,
+              rawArgs,
+              result,
+            );
+            verificationPassed = verification.passed;
+            verificationMessage = verification.message;
+            _emitToolEvent(
+              verification.passed ? 'verification_passed' : 'verification_failed',
+              verification.passed ? 'اجتاز التحقق المستقل' : 'فشل التحقق المستقل',
+              toolName: toolName,
+              output: jsonEncode(verification.evidence ?? const <String, Object?>{}),
+              details: verification.message,
+              status: verification.passed ? 'completed' : 'failed',
+              stepId: toolStepId,
+              toolCallId: toolCallId,
+            );
           }
-          if (toolCall.isCancelled) {
-            verificationPassed = false;
-            verificationMessage = 'تمت مقاطعة استدعاء الأداة المحدد.';
-            return;
+
+          // A spawned child must be able to call ordinary tools while the
+          // parent is suspended at this orchestration call. Holding the tool
+          // FIFO lock across spawn would deadlock the child's own tool calls.
+          const orchestrationTools = <String>{
+            'create_subagent',
+            'spawn_subagent',
+            'check_subagent_status',
+            'list_subagents',
+            'delete_subagent',
+          };
+          if (orchestrationTools.contains(toolName)) {
+            await executeAndVerify();
+          } else {
+            await _withToolLock(executeAndVerify);
           }
-          if (isCancelled()) {
-            verificationPassed = false;
-            verificationMessage = 'تم الإيقاف بعد تنفيذ الأداة وقبل التحقق.';
-            return;
-          }
-          _emitToolEvent(
-            'verification_started',
-            'يتحقق من النتيجة الفعلية',
-            toolName: toolName,
-            details: 'التحقق من أثر الأداة داخل مساحة العمل، وليس من رسالة النموذج.',
-            status: 'running',
-            stepId: toolStepId,
-          );
-          final verification = await _evaluator.verify(
-            input,
-            toolName,
-            rawArgs,
-            result,
-          );
-          verificationPassed = verification.passed;
-          verificationMessage = verification.message;
-          _emitToolEvent(
-            verification.passed ? 'verification_passed' : 'verification_failed',
-            verification.passed ? 'اجتاز التحقق المستقل' : 'فشل التحقق المستقل',
-            toolName: toolName,
-            output: jsonEncode(verification.evidence ?? const <String, Object?>{}),
-            details: verification.message,
-            status: verification.passed ? 'completed' : 'failed',
-            stepId: toolStepId,
-            toolCallId: toolCallId,
-          );
-          });
           if (toolCall.isCancelled) {
             _emitToolEvent(
               'tool_call_interrupted',
