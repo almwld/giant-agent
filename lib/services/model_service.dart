@@ -525,14 +525,15 @@ class ModelService {
     final resolvedRequestId = requestId ?? _fallbackRequestId;
     final assistantMessageId =
         'assistant_${resolvedRequestId.isEmpty ? conversationId : resolvedRequestId}_${DateTime.now().microsecondsSinceEpoch}';
-    await AgentMemoryService.instance.beginAssistantMessage(
-      id: assistantMessageId,
-      conversationId: conversationId,
-      requestId: resolvedRequestId.isEmpty ? null : resolvedRequestId,
-    );
-
+    var messageStarted = false;
     Future<String> executeScoped() async {
       try {
+        await AgentMemoryService.instance.beginAssistantMessage(
+          id: assistantMessageId,
+          conversationId: conversationId,
+          requestId: resolvedRequestId.isEmpty ? null : resolvedRequestId,
+        );
+        messageStarted = true;
         late final String response;
         if (shouldCancel?.call() == true) {
           response = 'تم إيقاف تنفيذ الوكيل بناءً على طلب المستخدم.';
@@ -569,11 +570,13 @@ class ModelService {
         return response;
       } catch (error) {
         await _flushAssistantMessageWrites(assistantMessageId);
-        await AgentMemoryService.instance.finishAssistantMessage(
-          id: assistantMessageId,
-          status: 'failed',
-          error: error.toString(),
-        );
+        if (messageStarted) {
+          await AgentMemoryService.instance.finishAssistantMessage(
+            id: assistantMessageId,
+            status: 'failed',
+            error: error.toString(),
+          );
+        }
         rethrow;
       }
     }
@@ -692,13 +695,15 @@ $prompt
     String conversationId = 'global',
   }) async {
     final messageId = 'chat_${conversationId}_${DateTime.now().microsecondsSinceEpoch}';
-    await AgentMemoryService.instance.beginAssistantMessage(
-      id: messageId,
-      conversationId: conversationId,
-    );
+    var messageStarted = false;
     try {
       final response = await _withRuntimeLock(
         () => runZoned(() async {
+          await AgentMemoryService.instance.beginAssistantMessage(
+            id: messageId,
+            conversationId: conversationId,
+          );
+          messageStarted = true;
           final context = await AgentMemoryService.instance.buildContext(
             input,
             conversationId: conversationId,
@@ -731,11 +736,13 @@ $prompt
       return response;
     } catch (error) {
       await _flushAssistantMessageWrites(messageId);
-      await AgentMemoryService.instance.finishAssistantMessage(
-        id: messageId,
-        status: 'failed',
-        error: error.toString(),
-      );
+      if (messageStarted) {
+        await AgentMemoryService.instance.finishAssistantMessage(
+          id: messageId,
+          status: 'failed',
+          error: error.toString(),
+        );
+      }
       rethrow;
     }
   }
