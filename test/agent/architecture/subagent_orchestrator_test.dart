@@ -30,6 +30,7 @@ void main() {
     expect(executed, ['planner', 'dynamic-review']);
     expect(results.map((result) => result.status), ['completed', 'completed']);
     expect(results.last.taskId, 'dynamic-review');
+    expect(orchestrator.allTasks.map((task) => task.id), ['planner', 'dynamic-review']);
   });
 
   test('soft-deletes a completed child without erasing its result', () async {
