@@ -26,4 +26,81 @@ void main() {
     expect(catalog, isNot(contains('gain_terminal')));
     expect(ToolManager().supports('unregistered_agent_tool'), isFalse);
   });
+  test('registers the complete durable lifecycle as model-facing tools', () {
+    for (final name in const [
+      'create_subagent',
+      'spawn_subagent',
+      'check_subagent_status',
+      'list_subagents',
+      'delete_subagent',
+    ]) {
+      expect(ToolManager().supports(name), isTrue);
+      expect(ToolManager().definitionFor(name), isNotNull);
+    }
+
+    final readOnly = ToolManager().promptCatalogFor(
+      const {'read_file', 'list_files'},
+    );
+    expect(readOnly, isNot(contains('create_subagent')));
+    expect(readOnly, isNot(contains('spawn_subagent')));
+  });
+
+  test('routes lifecycle operations with parent and tool-call identity', () async {
+    final observed = <String, Object?>{};
+    Future<Map<String, dynamic>> handler(
+      String parent,
+      Map<String, dynamic> arguments,
+      String toolCallId,
+    ) async {
+      observed
+        ..['parent'] = parent
+        ..['arguments'] = arguments
+        ..['tool_call_id'] = toolCallId;
+      return <String, dynamic>{'ok': true};
+    }
+
+    final bridge = SubagentToolBridge.instance;
+    bridge.configure(
+      create: handler,
+      spawn: handler,
+      check: handler,
+      delete: handler,
+      list: handler,
+    );
+
+    final result = await bridge.invoke(
+      name: 'create_subagent',
+      parentRequestId: 'parent-42',
+      arguments: const <String, dynamic>{'id': 'child-7'},
+      toolCallId: 'call-9',
+    );
+
+    expect(result['ok'], isTrue);
+    expect(observed['parent'], 'parent-42');
+    expect(observed['arguments'], {'id': 'child-7'});
+    expect(observed['tool_call_id'], 'call-9');
+  });
+
+  test('rejects subagent calls without parent identity or known operation', () async {
+    final bridge = SubagentToolBridge.instance;
+    await expectLater(
+      bridge.invoke(
+        name: 'create_subagent',
+        parentRequestId: '',
+        arguments: const <String, dynamic>{},
+        toolCallId: 'call-empty-parent',
+      ),
+      throwsA(isA<StateError>()),
+    );
+    await expectLater(
+      bridge.invoke(
+        name: 'invented_subagent_action',
+        parentRequestId: 'parent-1',
+        arguments: const <String, dynamic>{},
+        toolCallId: 'call-unknown',
+      ),
+      throwsA(isA<StateError>()),
+    );
+  });
+
 }
