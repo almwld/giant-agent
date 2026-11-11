@@ -183,6 +183,72 @@ class EvaluatorService {
           message: passed ? 'Updated request goal was stored in the active lifecycle.' : 'Updated request goal could not be read back.',
           evidence: <String, Object?>{'goal_updated': passed},
         );
+      case 'fetch_urls':
+        final pages = toolResult['results'];
+        final passed = pages is List && pages.isNotEmpty &&
+            pages.every((page) => page is Map && page['ok'] == true);
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed ? 'All requested URLs were loaded and read from the visible browser session.' : 'One or more requested URLs failed to load.',
+          evidence: <String, Object?>{'page_count': pages is List ? pages.length : 0},
+        );
+      case 'visit':
+      case 'browser_visit':
+        final url = toolResult['url']?.toString() ?? '';
+        final passed = toolResult['ok'] == true &&
+            (url.startsWith('https://') || url.startsWith('http://'));
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed ? 'Visible browser navigated to the requested HTTP(S) page.' : 'Browser navigation was not confirmed.',
+          evidence: <String, Object?>{'url': url, 'loaded': passed},
+        );
+      case 'click':
+      case 'browser_click':
+        final passed = toolResult['ok'] == true &&
+            (toolResult['clicked'] is String || toolResult['cancelled'] == true);
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed ? 'Browser click was executed or explicitly cancelled by the user.' : 'Browser click was not confirmed.',
+          evidence: <String, Object?>{'clicked': toolResult['clicked'], 'cancelled': toolResult['cancelled'] == true},
+        );
+      case 'input':
+      case 'browser_input':
+        final passed = toolResult['ok'] == true &&
+            (toolResult['selector'] is String || toolResult['cancelled'] == true);
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed ? 'Browser field was filled or sensitive input was explicitly cancelled.' : 'Browser input was not confirmed.',
+          evidence: <String, Object?>{'selector': toolResult['selector'], 'cancelled': toolResult['cancelled'] == true},
+        );
+      case 'find':
+      case 'browser_find':
+        final passed = toolResult['ok'] == true &&
+            toolResult['query'] == toolArgs['query'];
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed ? 'Browser page text search completed.' : 'Browser text search response is invalid.',
+          evidence: <String, Object?>{'found': toolResult['found'] == true},
+        );
+      case 'scrollup':
+      case 'scrolldown':
+      case 'browser_scroll_up':
+      case 'browser_scroll_down':
+        final passed = toolResult['ok'] == true &&
+            const {'up', 'down'}.contains(toolResult['direction']);
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed ? 'Visible browser page scroll completed.' : 'Browser scroll was not confirmed.',
+          evidence: <String, Object?>{'direction': toolResult['direction']},
+        );
+      case 'browser_state':
+        final passed = toolResult['ok'] == true &&
+            (toolResult['url']?.toString().startsWith('http://') == true ||
+             toolResult['url']?.toString().startsWith('https://') == true);
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed ? 'Current browser URL, title and visible page text were read.' : 'Browser state could not be verified.',
+          evidence: <String, Object?>{'url': toolResult['url'], 'title': toolResult['title']},
+        );
       case 'web_search':
         final results = toolResult['results'];
         final passed = results is List;
