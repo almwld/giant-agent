@@ -3,6 +3,11 @@ enum MediaCapability {
   editImage,
   generateVideo,
   editVideo,
+  searchImagesByText,
+  searchImagesByImage,
+  generateSoundEffects,
+  findAssetBboxes,
+  cropAndReplicateAssets,
 }
 
 class MediaTaskRequest {
@@ -20,7 +25,10 @@ class MediaTaskRequest {
 
   bool get requiresInputMedia =>
       capability == MediaCapability.editImage ||
-      capability == MediaCapability.editVideo;
+      capability == MediaCapability.editVideo ||
+      capability == MediaCapability.searchImagesByImage ||
+      capability == MediaCapability.findAssetBboxes ||
+      capability == MediaCapability.cropAndReplicateAssets;
 }
 
 class GeneratedMediaAsset {
