@@ -312,6 +312,8 @@ class SubagentLifecycleManager {
             'id': '${type}_${record.parentRequestId}_${record.id}_${DateTime.now().microsecondsSinceEpoch}',
             'request_id': record.parentRequestId,
             'session_id': record.conversationId,
+            'chat_id': record.conversationId,
+            'agent_id': record.taskId,
             'task_id': record.taskId,
             'agent_type': record.agentType,
             'title': record.title,
