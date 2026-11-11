@@ -447,6 +447,12 @@ class AgentService {
         sideEffectDisposition: sideEffectDisposition,
         execute: ({required parent, required task, required dependencyResults}) async {
           try {
+            final parentEvents = await _store.eventsFor(parent.id);
+            final inboxMessages = parentEvents
+                .where((event) => event.type == 'subagent_message_sent' &&
+                    event.payload['to_task_id']?.toString() == taskId)
+                .map((event) => Map<String, Object?>.from(event.payload))
+                .toList(growable: false);
             return await _executionKernel.executeRecoveredSubagent(
               parentRequestId: parent.id,
               parentPrompt: parent.prompt,
@@ -456,6 +462,7 @@ class AgentService {
               taskPrompt: task['prompt']?.toString() ?? '',
               agentType: task['agent_type']?.toString() ?? 'explore',
               dependencyResults: dependencyResults,
+              inboxMessages: inboxMessages,
             );
           } finally {
             await _flushExecutionJournal();
