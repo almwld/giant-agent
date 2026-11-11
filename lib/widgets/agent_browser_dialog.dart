@@ -77,7 +77,7 @@ class _AgentBrowserDialogState extends State<AgentBrowserDialog> {
                 ],
               ),
             ),
-            const Expanded(child: WebViewWidget(controller: _controller)),
+            Expanded(child: WebViewWidget(controller: _controller)),
           ],
         ),
       ),
