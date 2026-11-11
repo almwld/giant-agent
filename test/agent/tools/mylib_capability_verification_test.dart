@@ -58,6 +58,41 @@ void main() {
       })).passed, isTrue);
   });
 
+  test('verifies provider-backed media assets without inventing provider output', () async {
+    final evaluator = EvaluatorService(
+      readWorkspaceFile: (_) async => const <String, dynamic>{'ok': false},
+    );
+    final result = await evaluator.verify(
+      'generate an image',
+      'generate_image',
+      const <String, dynamic>{'prompt': 'teal sphere'},
+      <String, dynamic>{
+        'ok': true,
+        'provider_id': 'connected-image-provider',
+        'assets': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'mime_type': 'image/png',
+            'remote_url': 'https://media.example/image.png',
+            'metadata': <String, dynamic>{},
+          },
+        ],
+      },
+    );
+    expect(result.passed, isTrue);
+
+    final unavailable = await evaluator.verify(
+      'generate an image',
+      'generate_image',
+      const <String, dynamic>{'prompt': 'teal sphere'},
+      const <String, dynamic>{
+        'ok': false,
+        'error': 'No provider is connected.',
+        'assets': <dynamic>[],
+      },
+    );
+    expect(unavailable.passed, isFalse);
+  });
+
   test('memory tool verification reads back local SQLite and audit history', () async {
     sqfliteFfiInit();
     final db = await databaseFactoryFfi.openDatabase(
