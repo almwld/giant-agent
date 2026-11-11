@@ -140,6 +140,15 @@ class SubagentLifecycleManager {
         _requests[requestId]?.values ?? const <DynamicSubagentRecord>[],
       );
 
+  List<Map<String, Object?>> drainMessages(String requestId, String agentId) {
+    final key = _key(requestId, agentId);
+    final mailbox = _mailboxes[key];
+    if (mailbox == null || mailbox.isEmpty) return const <Map<String, Object?>>[];
+    final messages = List<Map<String, Object?>>.unmodifiable(mailbox);
+    mailbox.clear();
+    return messages;
+  }
+
   String? currentGoal(String requestId) => _goals[requestId];
 
   Future<void> start(String requestId, String agentId) async {
