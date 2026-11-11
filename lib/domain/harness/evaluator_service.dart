@@ -115,6 +115,75 @@ class EvaluatorService {
             'remote_effect_independently_asserted': false,
           },
         );
+      case 'create_subagent':
+        final child = toolResult['subagent'];
+        final passed = child is Map &&
+            child['id']?.toString() == toolArgs['id']?.toString() &&
+            child['status'] == 'pending' &&
+            child['parent_request_id'] != null;
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed
+              ? 'Durable registration verified: the child exists as pending and has not started.'
+              : 'Subagent creation was not confirmed in the durable child store.',
+          evidence: <String, Object?>{
+            'registered': passed,
+            'status': child is Map ? child['status'] : null,
+            'task_id': child is Map ? child['id'] : null,
+          },
+        );
+      case 'spawn_subagent':
+        final child = toolResult['subagent'];
+        final passed = child is Map &&
+            child['status'] == 'completed' &&
+            (child['last_result']?.toString() ?? '').trim().isNotEmpty;
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed
+              ? 'Subagent execution verified from its durable completed snapshot and saved result.'
+              : 'The subagent did not reach a verified completed state with a saved result.',
+          evidence: <String, Object?>{
+            'status': child is Map ? child['status'] : null,
+            'has_saved_result': child is Map &&
+                (child['last_result']?.toString() ?? '').trim().isNotEmpty,
+          },
+        );
+      case 'check_subagent_status':
+        final child = toolResult['subagent'];
+        final passed = child is Map &&
+            child['id']?.toString() == toolArgs['task_id']?.toString() &&
+            child['status'] != null;
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed
+              ? 'Subagent status is sourced from the durable child snapshot.'
+              : 'No durable status snapshot was returned for the requested child.',
+          evidence: <String, Object?>{
+            'found': passed,
+            'status': child is Map ? child['status'] : null,
+          },
+        );
+      case 'list_subagents':
+        final children = toolResult['subagents'];
+        final passed = children is List;
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed
+              ? 'The durable child list was returned as a structured collection.'
+              : 'The child list was not returned.',
+          evidence: <String, Object?>{
+            'count': children is List ? children.length : 0,
+          },
+        );
+      case 'delete_subagent':
+        final passed = toolResult['deleted'] == true;
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed
+              ? 'The terminal child was soft-dismissed; its audit history remains retained.'
+              : 'The child could not be dismissed. Active children cannot be deleted.',
+          evidence: <String, Object?>{'soft_dismissed': passed},
+        );
       case 'execute_python':
         final output = toolResult['output']?.toString() ?? '';
         final error = toolResult['error']?.toString() ?? '';
