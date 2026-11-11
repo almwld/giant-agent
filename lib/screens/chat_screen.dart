@@ -29,6 +29,7 @@ import '../services/cloud_storage_service.dart';
 import '../services/web_search_service.dart';
 import '../agent/task_manager.dart';
 import '../domain/kernel/agent_kernel_store.dart';
+import '../domain/mcp/mcp_client.dart';
 import '../agent/architecture/agent_event_bus.dart';
 import '../theme/giant_palette.dart';
 
@@ -355,6 +356,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     _modelService.requestTerminalApproval = _requestTerminalApproval;
+    _modelService.requestMcpApproval = _requestMcpApproval;
     _loadBubbleScale();
     _initDatabase();
     // The screen consumes exactly one event stream. ModelService and the
@@ -905,6 +907,76 @@ class _ChatScreenState extends State<ChatScreen> {
     if (!isUser) {
       AgentWorkflowScreen.publish(_agentSteps, finalOutputText: _latestAssistantOutput);
     }
+  }
+
+  Future<bool> _requestMcpApproval(
+    String serverId,
+    McpRemoteTool tool,
+    Map<String, dynamic> arguments,
+  ) async {
+    if (!mounted) return false;
+    final destructive = tool.annotations['destructiveHint'] == true;
+    final openWorld = tool.annotations['openWorldHint'] == true;
+    final approved = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(destructive ? 'السماح بإجراء MCP مؤثر؟' : 'السماح باستدعاء أداة MCP؟'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('الخادم: $serverId'),
+                const SizedBox(height: 6),
+                Text('الأداة: ${tool.name}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                if (tool.description.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(tool.description),
+                ],
+                const SizedBox(height: 12),
+                Text(destructive
+                    ? 'تحذير: يعلن الخادم أن هذه الأداة قد تُحدث تغييرات أو آثاراً لا يمكن التراجع عنها.'
+                    : 'هذه أداة من خادم خارجي. راجع الوسائط ومصدر الخادم قبل السماح.'),
+                if (openWorld) const Text('قد تتصل الأداة بخدمات أو موارد خارجية.'),
+                const SizedBox(height: 12),
+                const Text('الوسائط التي ستُرسل:'),
+                const SizedBox(height: 6),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF111827),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: SelectableText(
+                    const JsonEncoder.withIndent('  ').convert(arguments),
+                    style: const TextStyle(
+                      color: Colors.greenAccent,
+                      fontFamily: 'monospace',
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('رفض'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('السماح لهذه المرة فقط'),
+          ),
+        ],
+      ),
+    );
+    return approved == true && mounted;
   }
 
   Future<bool> _requestTerminalApproval(String command) async {
@@ -2375,6 +2447,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _agentEventSubscription?.cancel();
     _nativeAgentEventSubscription?.cancel();
     _modelService.requestTerminalApproval = null;
+    _modelService.requestMcpApproval = null;
     _speech.stop();
     _voiceOutput.stop();
     _controller.dispose();
