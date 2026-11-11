@@ -329,6 +329,7 @@ class ModelService {
         case 'read_file':
           result = await readFile(path: path);
           break;
+        case 'edit_file':
         case 'write_file':
           result = await writeFile(path: path, content: content);
           break;
