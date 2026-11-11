@@ -277,6 +277,17 @@ class EvaluatorService {
           message: passed ? 'Web search returned a structured result list.' : 'Web search returned no structured results.',
           evidence: <String, Object?>{'result_count': results is List ? results.length : 0},
         );
+      case 'dmail':
+        final results = toolResult['results'];
+        final passed = toolResult['ok'] == true && results is List &&
+            toolResult['query'] == toolArgs['query'] &&
+            toolResult['source'] == 'local_sqlite_conversation_history' &&
+            toolResult['email_sent'] == false;
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed ? 'DMail-style local conversation recall returned bounded chat excerpts; no email was sent.' : 'Conversation recall result could not be verified.',
+          evidence: <String, Object?>{'match_count': results is List ? results.length : 0, 'email_sent': false},
+        );
       case 'show_widget':
         final widgetId = toolResult['widget_id']?.toString() ?? '';
         final widgetType = toolResult['widget_type']?.toString() ?? '';
