@@ -2,6 +2,7 @@ import 'dart:async';
 import '../agent/architecture/agent_kernel.dart' as execution;
 import '../agent/architecture/agent_timeline_event.dart';
 import '../agent/architecture/agent_event_bus.dart';
+import '../agent/architecture/subagent_tool_bridge.dart';
 import '../domain/kernel/agent_kernel.dart' as durable;
 import '../domain/kernel/agent_kernel_store.dart';
 import '../domain/kernel/subagent_recovery_coordinator.dart';
@@ -123,6 +124,75 @@ class AgentService {
     return shared;
   }
 
+  void _configureSubagentToolBridge() {
+    SubagentToolBridge.instance.configure(
+      create: (parentRequestId, arguments, toolCallId) async {
+        final rawDependencies = arguments['depends_on'];
+        if (rawDependencies != null && rawDependencies is! List) {
+          throw const FormatException('depends_on must be an array of child task ids.');
+        }
+        final child = await createSubagent(
+          parentRequestId: parentRequestId,
+          taskId: arguments['id']?.toString() ?? '',
+          title: arguments['title']?.toString() ?? '',
+          prompt: arguments['prompt']?.toString() ?? '',
+          agentType: arguments['agent_type']?.toString() ?? 'explore',
+          dependsOn: (rawDependencies as List? ?? const [])
+              .map((value) => value.toString()).toList(growable: false),
+          toolCallId: toolCallId,
+        );
+        return <String, dynamic>{'ok': true, 'subagent': child};
+      },
+      spawn: (parentRequestId, arguments, toolCallId) async {
+        final taskId = arguments['task_id']?.toString() ?? '';
+        try {
+          final child = await spawnSubagent(
+            taskId,
+            expectedParentRequestId: parentRequestId,
+            toolCallId: toolCallId,
+          );
+          final completed = child['status'] == 'completed' &&
+              (child['last_result']?.toString() ?? '').trim().isNotEmpty;
+          return <String, dynamic>{
+            'ok': completed,
+            'subagent': child,
+            if (!completed)
+              'error': 'Subagent ended in state ${child['status']}; no verified completed result is available.',
+          };
+        } catch (error) {
+          return <String, dynamic>{'ok': false, 'error': error.toString()};
+        }
+      },
+      check: (parentRequestId, arguments, _) async {
+        final taskId = arguments['task_id']?.toString() ?? '';
+        final child = await checkSubagentStatus(
+          taskId,
+          expectedParentRequestId: parentRequestId,
+        );
+        if (child == null) {
+          return <String, dynamic>{'ok': false, 'error': 'Subagent not found for the active parent request.'};
+        }
+        return <String, dynamic>{'ok': true, 'subagent': child};
+      },
+      delete: (parentRequestId, arguments, _) async {
+        final taskId = arguments['task_id']?.toString() ?? '';
+        final deleted = await deleteSubagent(
+          taskId,
+          expectedParentRequestId: parentRequestId,
+        );
+        return <String, dynamic>{
+          'ok': deleted,
+          'deleted': deleted,
+          if (!deleted) 'error': 'The child was not found, belongs to another parent, or is still active.',
+        };
+      },
+      list: (parentRequestId, _, __) async => <String, dynamic>{
+        'ok': true,
+        'subagents': await listSubagents(parentRequestId),
+      },
+    );
+  }
+
   void _attachExecutionJournal() {
     _eventSubscription ??= AgentEventBus.instance.events.listen((event) {
       // Token deltas are streamed to the chat renderer and are intentionally
@@ -158,6 +228,7 @@ class AgentService {
   }
 
   Future<void> _initialize() async {
+    _configureSubagentToolBridge();
     // The execution runtime must be ready before queued durable work is drained.
     if (_initializeExecutionRuntime) await _executionKernel.initialize();
     _attachExecutionJournal();
@@ -258,6 +329,7 @@ class AgentService {
     required String prompt,
     String agentType = 'explore',
     List<String> dependsOn = const <String>[],
+    String toolCallId = '',
   }) async {
     await initialize();
     final id = taskId.trim();
@@ -306,6 +378,7 @@ class AgentService {
       'depends_on': dependsOn,
       'type': 'subagent_created',
       'status': 'pending',
+      if (toolCallId.isNotEmpty) 'tool_call_id': toolCallId,
       'details': 'Created and durably registered; execution has not started.',
       'timestamp': now,
     });
@@ -318,7 +391,11 @@ class AgentService {
 
   /// Starts one pending child through the existing shared AgentKernel runtime.
   /// A second local model/JNI runtime is never created.
-  Future<Map<String, dynamic>> spawnSubagent(String taskId) async {
+  Future<Map<String, dynamic>> spawnSubagent(
+    String taskId, {
+    String? expectedParentRequestId,
+    String toolCallId = '',
+  }) async {
     await initialize();
     final id = taskId.trim();
     if (id.isEmpty) throw ArgumentError('Subagent id is required.');
@@ -328,6 +405,10 @@ class AgentService {
     try {
       final child = await _store.getSubagent(id);
       if (child == null) throw StateError('Subagent $id was not found.');
+      if (expectedParentRequestId != null &&
+          child['parent_request_id'] != expectedParentRequestId) {
+        throw StateError('Subagent $id does not belong to the active parent request.');
+      }
       if (child['is_dismissed'] == true) {
         throw StateError('Dismissed subagents cannot be spawned.');
       }
@@ -358,15 +439,15 @@ class AgentService {
         'تشغيل الوكيل الفرعي: ${child['title'] ?? id}',
       );
       try {
-        await _executionKernel.executeRecoveredSubagent(
+        await _executionKernel.executeDynamicSubagent(
           parentRequestId: parent.id,
-          parentPrompt: parent.prompt,
           conversationId: parent.conversationId,
           taskId: id,
           title: child['title']?.toString() ?? id,
           taskPrompt: child['prompt']?.toString() ?? '',
           agentType: child['agent_type']?.toString() ?? 'explore',
           dependencyResults: dependencyResults,
+          toolCallId: toolCallId,
         );
       } finally {
         await _flushExecutionJournal();
@@ -382,17 +463,36 @@ class AgentService {
 
   /// Kimi-compatible delete is a soft delete: terminal state and audit events
   /// remain durable; active or pending workers cannot be removed.
-  Future<bool> deleteSubagent(String taskId) async {
+  Future<bool> deleteSubagent(
+    String taskId, {
+    String? expectedParentRequestId,
+  }) async {
     await initialize();
     if (_spawningSubagents.contains(taskId)) return false;
+    if (expectedParentRequestId != null) {
+      final child = await _store.getSubagent(taskId);
+      if (child == null || child['parent_request_id'] != expectedParentRequestId) {
+        return false;
+      }
+    }
     final deleted = await _store.dismissSubagent(taskId);
     await _flushExecutionJournal();
     return deleted;
   }
 
   /// Explicit status contract used by orchestration and recovery callers.
-  Future<Map<String, dynamic>?> checkSubagentStatus(String taskId) =>
-      subagentStatus(taskId);
+  Future<Map<String, dynamic>?> checkSubagentStatus(
+    String taskId, {
+    String? expectedParentRequestId,
+  }) async {
+    final child = await subagentStatus(taskId);
+    if (child == null ||
+        (expectedParentRequestId != null &&
+            child['parent_request_id'] != expectedParentRequestId)) {
+      return null;
+    }
+    return child;
+  }
 
   /// Lists all durable children for one parent in creation order.
   Future<List<Map<String, dynamic>>> listSubagents(String parentRequestId) async {
