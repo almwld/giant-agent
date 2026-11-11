@@ -772,6 +772,7 @@ $evidence
       conversationId: conversationId,
       persistTurn: false,
       allowedTools: const <String>{
+        'task',
         'create_subagent',
         'spawn_subagent',
         'delete_subagent',
