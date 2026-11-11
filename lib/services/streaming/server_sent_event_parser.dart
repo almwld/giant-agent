@@ -33,7 +33,7 @@ class ServerSentEventParser {
         if (tail > 0) _pendingUtf8 = combined.sublist(split);
         return decoded;
       } on FormatException {
-        if (tail == 3 || tail == combined.length) rethrow;
+        if (tail == 3) rethrow;
       }
     }
     throw const FormatException('Invalid UTF-8 in SSE stream.');
