@@ -145,3 +145,64 @@ Also export the status enum/type referenced by `Uc/C2011a3.java`
 (`ld/AbstractC3834A.java` appears in the decompiled signature) and the event
 wrapper class referenced by `ve/C5157w.java` (`Uc/Y.java`). These are needed
 to map status values and event dispatch without guessing.
+
+
+## Additional dispatch/event evidence from extracted DEX sources (Mylib main, 923a85a)
+
+The extracted source archive is now expanded into individual Java files under
+`Kimi_Subagent_Dispatch_Contents/Kimi_Subagent_Dispatch_Refs/dex_parts/`.
+The following additional facts are directly visible:
+
+- `Uc/Y.java` is the gateway `Event` envelope. Its `_subagentStatus`
+  field is a nullable `C2011a3`, separate from chat-message, reconnect,
+  typing, notification, operation and other event variants.
+- `Uc/W.java` is the serializer for that envelope and assigns
+  `subagentStatus` its own field index (9). This confirms typed event
+  transport rather than a status string embedded in ordinary chat text.
+- `ve/C5157w.java` parses the event envelope (or deserializes its JSON
+  representation), logs the subagent status payload, and forwards the
+  non-null/defaulted `C2011a3` through the global IM manager's
+  `Q.k.c(...)` event channel. This establishes an event-ingress path.
+- `Hf/C1164q3.java` case 3 consumes a `C2011a3` stream. It filters by
+  the currently selected chat ID, looks up the matching subagent snapshot
+  through `Ae.f.c(chatId, agentId)`, compares the received status against
+  the stored status, and notifies a downstream callback with the agent ID
+  and a boolean derived from the new status. It then invokes
+  `Ae.f.e(...)` to refresh/reconcile the chat's subagent state.
+- `C2011a3` carries `chatId`, `agentId`, a typed status object, and a
+  nullable integer progress percentage. `Uc/Y2` serializes these exact
+  four fields.
+- `ld/C3843J`/ `ld/C3841H` define the swarm snapshot separately from the
+  IM event: id, index, name, icon URL, motto, status, nullable progress,
+  description, type, and isAsync.
+- `ld/AbstractC3834A` is only the abstract status value type; its concrete
+  serialized variants still need to be enumerated before defining an exact
+  compatible state machine.
+- `Ie/D.java` is a very large Compose UI class and contains no direct
+  references to the subagent operation identifiers. It is not the operation
+  dispatcher. `Je/AbstractC1329a.java` and `gf/AbstractC3377a.java`
+  render tool/status UI; they should not be mistaken for execution engines.
+
+### Revised evidence boundary
+
+The expanded archive improves evidence for **typed event ingress, chat-scoped
+status reconciliation, and worker snapshot fields**. It still does not contain
+the actual dispatcher/handler bodies for create, spawn, delete, status query,
+send-message, or wait-for-message. In particular, the operation names in
+`Zd/B.java` remain registry evidence, not proof of their argument schemas or
+execution semantics. The classes `Ae.f`, the concrete status variants, and
+the backend/handler implementation remain missing from this export.
+
+### Revised Giant mapping
+
+- Event ingress and chat-scoped status reconciliation: Giant has durable child
+  lifecycle events and status snapshots, but does not yet consume an external
+  typed subagent-status stream analogous to Kimi's gateway event.
+- Progress: Giant lifecycle events currently represent transitions; Kimi's
+  event/snapshot contracts expose a nullable percentage. Add progress as a
+  first-class bounded field rather than parsing it from prose.
+- Worker presentation: Giant roles/title are present; icon, motto, description,
+  stable display index and async marker are not all represented.
+- Dynamic dispatch remains missing: create and spawn must remain separate
+  operations, and deletion must preserve the audit journal. Do not infer
+  Kimi's exact state transitions from the enum names alone.
