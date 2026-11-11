@@ -75,14 +75,14 @@ void main() {
       parentRequestId: 'parent-42',
       arguments: const <String, dynamic>{'id': 'child-7'},
       toolCallId: 'call-9',
-      isCancelled: () => true,
+      isCancelled: () => false,
     );
 
     expect(result['ok'], isTrue);
     expect(observed['parent'], 'parent-42');
     expect(observed['arguments'], {'id': 'child-7'});
     expect(observed['tool_call_id'], 'call-9');
-    expect(observed['is_cancelled'], isTrue);
+    expect(observed['is_cancelled'], isFalse);
   });
 
   test('rejects subagent calls without parent identity or known operation', () async {
@@ -93,6 +93,16 @@ void main() {
         parentRequestId: '',
         arguments: const <String, dynamic>{},
         toolCallId: 'call-empty-parent',
+      ),
+      throwsA(isA<StateError>()),
+    );
+    await expectLater(
+      bridge.invoke(
+        name: 'create_subagent',
+        parentRequestId: 'parent-1',
+        arguments: const <String, dynamic>{},
+        toolCallId: 'call-cancelled',
+        isCancelled: () => true,
       ),
       throwsA(isA<StateError>()),
     );
