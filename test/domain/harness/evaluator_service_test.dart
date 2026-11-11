@@ -104,6 +104,13 @@ void main() {
         const <String, dynamic>{'ok': false, 'error': 'Unknown subagent'},
       );
       expect(result.passed, isFalse);
+      final missingStatus = await evaluator.verify(
+        'Inspect a child agent',
+        'check_subagent_status',
+        const <String, dynamic>{'task_id': 'missing'},
+        const <String, dynamic>{'ok': false, 'task_id': 'missing', 'status': 'not_found'},
+      );
+      expect(missingStatus.passed, isFalse);
     });
 
     test('rejects tools without an independent verifier', () async {
