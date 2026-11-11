@@ -8,7 +8,7 @@ void main() {
     test('exposes only tools implemented by the runtime', () {
       expect(
         registry.getAvailableTools(),
-        ['create_file', 'read_file', 'write_file', 'list_files', 'execute_python', 'mcp_read_resource', 'mcp_call', 'create_subagent', 'spawn_subagent', 'delete_subagent', 'check_subagent_status', 'send_message', 'wait_for_message', 'ask_user', 'update_goal', 'web_search', 'todo_read', 'todo_write', 'memory_space_insert', 'memory_space_update', 'memory_space_delete', 'memory_space_edits', 'generate_speech', 'get_available_voices', 'get_data_source', 'get_data_source_desc', 'generate_slides_outline', 'slides_generator', 'fetch_urls', 'visit', 'click', 'input', 'find', 'scrollup', 'scrolldown', 'browser_visit', 'browser_click', 'browser_find', 'browser_input', 'browser_state', 'browser_scroll_up', 'browser_scroll_down', 'image_search', 'search_image_by_text', 'search_image_by_image', 'generate_image', 'edit_image', 'generate_sound_effects', 'find_asset_bbox', 'crop_and_replicate_assets_in_image', 'gain_terminal'],
+        ['create_file', 'read_file', 'edit_file', 'write_file', 'list_files', 'execute_python', 'mcp_read_resource', 'mcp_call', 'create_subagent', 'spawn_subagent', 'delete_subagent', 'check_subagent_status', 'send_message', 'wait_for_message', 'ask_user', 'update_goal', 'web_search', 'todo_read', 'todo_write', 'memory_space_insert', 'memory_space_update', 'memory_space_delete', 'memory_space_edits', 'generate_speech', 'get_available_voices', 'get_data_source', 'get_data_source_desc', 'generate_slides_outline', 'slides_generator', 'fetch_urls', 'visit', 'click', 'input', 'find', 'scrollup', 'scrolldown', 'browser_visit', 'browser_click', 'browser_find', 'browser_input', 'browser_state', 'browser_scroll_up', 'browser_scroll_down', 'image_search', 'search_image_by_text', 'search_image_by_image', 'generate_image', 'edit_image', 'generate_sound_effects', 'find_asset_bbox', 'crop_and_replicate_assets_in_image', 'gain_terminal'],
       );
       expect(registry.supports('delete_file'), isFalse);
       expect(registry.supports('execute_python'), isTrue);
@@ -35,6 +35,7 @@ void main() {
       expect(catalogue, contains('create_file'));
       expect(catalogue, contains('read_file'));
       expect(catalogue, contains('write_file'));
+      expect(catalogue, contains('edit_file'));
       expect(catalogue, contains('execute_python'));
       expect(catalogue, contains('gain_terminal'));
       expect(catalogue, contains('list_files'));
