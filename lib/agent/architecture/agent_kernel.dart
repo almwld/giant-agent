@@ -341,6 +341,7 @@ class AgentKernel {
     required String taskPrompt,
     required String agentType,
     required Map<String, String> dependencyResults,
+    List<Map<String, Object?>> inboxMessages = const <Map<String, Object?>>[],
   }) => _requestQueue.enqueue(() => _executeRecoveredSubagentAdmitted(
     parentRequestId: parentRequestId,
     parentPrompt: parentPrompt,
@@ -350,6 +351,7 @@ class AgentKernel {
     taskPrompt: taskPrompt,
     agentType: agentType,
     dependencyResults: dependencyResults,
+    inboxMessages: inboxMessages,
   ));
 
   Future<String> _executeRecoveredSubagentAdmitted({
@@ -361,6 +363,7 @@ class AgentKernel {
     required String taskPrompt,
     required String agentType,
     required Map<String, String> dependencyResults,
+    required List<Map<String, Object?>> inboxMessages,
   }) async {
     if (taskId.trim().isEmpty || taskPrompt.trim().isEmpty) {
       throw ArgumentError('Recovered child identity and prompt are required.');
@@ -391,7 +394,10 @@ class AgentKernel {
       _emit(requestId: parentRequestId, taskId: taskId, agentType: agentType,
         taskPrompt: taskPrompt, type: 'subagent_resume_started',
         title: 'استئناف الوكيل الفرعي: $title', status: 'running');
-      final prompt = '''أنت وكيل فرعي مستأنف من نوع $agentType.\nالمهمة الأصلية: $parentPrompt\nالمهمة المسندة: $taskPrompt\nنتائج التبعيات المكتملة:\n${dependencyContext.isEmpty ? 'لا توجد تبعيات.' : dependencyContext}\n\nقواعد الاستئناف:\n- افحص الحالة الحالية قبل أي تعديل؛ قد تكون بعض الآثار الجانبية نُفذت قبل الانقطاع.\n- لا تكرر عملية غير قابلة للعكس أو إرسالاً أو حذفاً أو دفعاً أو شراءً دون تحقق من حالتها وموافقة المستخدم عند الحاجة.\n- أكمل الجزء المتبقي فقط، ولا تفترض أن سياق النموذج السابق ما زال موجوداً.\n- استخدم الأدوات المسموح بها فقط، ولا تدّع نجاح عملية دون دليل.\n- أعد النتيجة والأدلة والملفات التي تغيرت وما بقي غير منجز.''';
+      final inboxContext = inboxMessages.isEmpty
+          ? 'لا توجد رسائل واردة محفوظة.'
+          : inboxMessages.map((message) => 'من ${message['from_task_id']}: ${message['content']}').join('\\n');
+      final prompt = '''أنت وكيل فرعي مستأنف من نوع $agentType.\nالمهمة الأصلية: $parentPrompt\nالمهمة المسندة: $taskPrompt\nنتائج التبعيات المكتملة:\n${dependencyContext.isEmpty ? 'لا توجد تبعيات.' : dependencyContext}\nرسائل الزملاء الواردة قبل الانقطاع:\n$inboxContext\n\nقواعد الاستئناف:\n- افحص الحالة الحالية قبل أي تعديل؛ قد تكون بعض الآثار الجانبية نُفذت قبل الانقطاع.\n- لا تكرر عملية غير قابلة للعكس أو إرسالاً أو حذفاً أو دفعاً أو شراءً دون تحقق من حالتها وموافقة المستخدم عند الحاجة.\n- أكمل الجزء المتبقي فقط، ولا تفترض أن سياق النموذج السابق ما زال موجوداً.\n- استخدم الأدوات المسموح بها فقط، ولا تدّع نجاح عملية دون دليل.\n- أعد النتيجة والأدلة والملفات التي تغيرت وما بقي غير منجز.''';
       final output = (await _models.processInput(prompt,
         conversationId: '$conversationId::subagent::$taskId',
         persistTurn: false, allowedTools: allowedTools,
