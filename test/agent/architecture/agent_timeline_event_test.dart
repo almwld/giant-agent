@@ -48,6 +48,29 @@ void main() {
       expect(restored.dependsOn, ['parent-request_agent_plan']);
     });
 
+    test('preserves structured collaboration metadata on round trip', () {
+      final event = AgentTimelineEvent(
+        id: 'message-event-1',
+        requestId: 'request-1',
+        type: 'subagent_message_sent',
+        title: 'Sent a message',
+        status: 'completed',
+        timestamp: DateTime.utc(2026, 11, 11),
+        taskId: 'worker-a',
+        metadata: const <String, Object?>{
+          'from_task_id': 'worker-a',
+          'to_task_id': 'worker-b',
+          'content': 'Audit finished.',
+          'depth': 1,
+        },
+      );
+      final restored = AgentTimelineEvent.fromMap(event.toMap());
+      expect(restored.metadata['from_task_id'], 'worker-a');
+      expect(restored.metadata['to_task_id'], 'worker-b');
+      expect(restored.metadata['content'], 'Audit finished.');
+      expect(restored.metadata['depth'], 1);
+    });
+
     test('omits absent optional details', () {
       final event = AgentTimelineEvent(
         id: 'kernel_runtime_1',
