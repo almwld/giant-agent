@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import '../services/llama_service.dart';
 import '../agent/architecture/agent_event_bus.dart';
 import '../agent/architecture/tool_call_registry.dart';
+import '../agent/architecture/subagent_lifecycle_manager.dart';
 import 'agent_memory_service.dart';
 import 'openai_compatible_provider.dart';
 import 'model_provider_settings.dart';
@@ -14,6 +15,8 @@ import '../tools/terminal_tool_coordinator.dart';
 import '../domain/harness/evaluator_service.dart';
 import '../domain/harness/reflexion_service.dart';
 import '../domain/mcp/mcp_client.dart';
+
+typedef AgentUserInputHandler = Future<String?> Function({required String question, required List<String> choices});
 
 class ModelService {
   static final ModelService _instance = ModelService._internal();
@@ -27,6 +30,8 @@ class ModelService {
   bool _cancelRequested = false;
   Future<bool> Function(String command)? requestTerminalApproval;
   Future<bool> Function(String serverId, McpRemoteTool tool, Map<String, dynamic> arguments)? requestMcpApproval;
+  AgentUserInputHandler? requestUserInput;
+  late final SubagentLifecycleManager _subagents = SubagentLifecycleManager(onEvent: AgentEventBus.instance.publish);
   final GainTerminalTool _gainTerminal = GainTerminalTool();
   Future<void> _requestTail = Future<void>.value();
   Future<void> _toolTail = Future<void>.value();
@@ -38,8 +43,12 @@ class ModelService {
   static const Object _parallelProviderZoneKey = #giantAgentParallelProvider;
   static const Object _taskIdZoneKey = #giantAgentTaskId;
   static const Object _agentTypeZoneKey = #giantAgentAgentType;
+  static const Object _conversationIdZoneKey = #giantAgentConversationId;
+  static const Object _toolLockOwnerZoneKey = #giantAgentToolLockOwner;
+  Object? _activeToolLockOwner;
   String get _activeTaskId => Zone.current[_taskIdZoneKey] as String? ?? '';
   String get _activeAgentType => Zone.current[_agentTypeZoneKey] as String? ?? '';
+  String get _activeConversationId => Zone.current[_conversationIdZoneKey] as String? ?? 'global';
   String get _activeRequestId =>
       Zone.current[_requestIdZoneKey] as String? ?? _fallbackRequestId;
 
@@ -102,13 +111,20 @@ class ModelService {
 
   /// One FIFO lock protects every operation that touches the mutable JNI model.
   Future<T> _withToolLock<T>(Future<T> Function() operation) async {
+    final inheritedOwner = Zone.current[_toolLockOwnerZoneKey];
+    if (inheritedOwner != null && identical(inheritedOwner, _activeToolLockOwner)) {
+      return operation();
+    }
     final gate = Completer<void>();
     final previous = _toolTail;
     _toolTail = gate.future;
+    await previous;
+    final owner = Object();
+    _activeToolLockOwner = owner;
     try {
-      await previous;
-      return await operation();
+      return await runZoned(operation, zoneValues: <Object, Object?>{_toolLockOwnerZoneKey: owner});
     } finally {
+      if (identical(_activeToolLockOwner, owner)) _activeToolLockOwner = null;
       if (!gate.isCompleted) gate.complete();
     }
   }
