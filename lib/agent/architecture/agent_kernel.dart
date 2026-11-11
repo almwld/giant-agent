@@ -664,6 +664,9 @@ ${dependencyContext.isEmpty ? 'لا توجد تبعيات سابقة.' : depende
     var results = <SubagentResult>[];
     try {
       results = await orchestrator.run(tasks);
+      // Dynamic children are registered by model-facing tools while workers
+      // run; include them in the canonical task list before synthesis/replan.
+      tasks = orchestrator.allTasks.toList(growable: true);
 
       // One bounded repair cycle lets the coordinator adapt to worker evidence
       // without creating an unbounded agent loop or replaying completed work.
