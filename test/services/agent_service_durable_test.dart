@@ -7,6 +7,7 @@ import 'package:giant_agent_x/domain/kernel/agent_kernel.dart'
     as durable;
 import 'package:giant_agent_x/domain/kernel/agent_kernel_store.dart';
 import 'package:giant_agent_x/services/agent_service.dart';
+import 'package:giant_agent_x/agent/architecture/subagent_tool_bridge.dart';
 
 Future<AgentKernelStore> _store(String path) async {
   return AgentKernelStore(
@@ -136,6 +137,66 @@ void main() {
       'request_started',
       'request_completed',
     ]);
+    await service.disposeForTesting();
+  });
+
+  test('model-facing create, status and list tools use the durable parent scope', () async {
+    final store = await _store('${directory.path}/model-subagent-tools.db');
+    final service = AgentService.withExecutor(
+      store: store,
+      executor: (request) async => 'completed:${request.prompt}',
+    );
+
+    await service.runTask('parent for model tools', conversationId: 'model-chat');
+    final parentId = await _requestIdForPrompt(store, 'parent for model tools');
+    final bridge = SubagentToolBridge.instance;
+
+    final created = await bridge.invoke(
+      name: 'create_subagent',
+      parentRequestId: parentId,
+      arguments: const <String, dynamic>{
+        'id': 'model-child',
+        'title': 'Model-created child',
+        'prompt': 'Inspect the workspace without modifying it.',
+        'agent_type': 'explore',
+        'description': 'Read-only inspection worker',
+        'motto': 'Evidence first',
+      },
+      toolCallId: 'tool-call-create',
+    );
+    expect(created['ok'], isTrue);
+    final child = created['subagent'] as Map<String, dynamic>;
+    expect(child['status'], 'pending');
+    expect(child['parent_request_id'], parentId);
+    expect(child['description'], 'Read-only inspection worker');
+    expect(child['motto'], 'Evidence first');
+
+    final status = await bridge.invoke(
+      name: 'check_subagent_status',
+      parentRequestId: parentId,
+      arguments: const <String, dynamic>{'task_id': 'model-child'},
+      toolCallId: 'tool-call-status',
+    );
+    expect((status['subagent'] as Map)['status'], 'pending');
+
+    final listed = await bridge.invoke(
+      name: 'list_subagents',
+      parentRequestId: parentId,
+      arguments: const <String, dynamic>{},
+      toolCallId: 'tool-call-list',
+    );
+    expect((listed['subagents'] as List).single['id'], 'model-child');
+
+    final foreign = await bridge.invoke(
+      name: 'check_subagent_status',
+      parentRequestId: 'another-parent',
+      arguments: const <String, dynamic>{'task_id': 'model-child'},
+      toolCallId: 'tool-call-foreign',
+    );
+    expect(foreign['ok'], isFalse);
+
+    final childEvents = await service.eventsForSubagent('model-child');
+    expect(childEvents.single.payload['tool_call_id'], 'tool-call-create');
     await service.disposeForTesting();
   });
 
