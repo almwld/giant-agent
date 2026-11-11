@@ -241,6 +241,12 @@ class AgentService {
   Future<List<Map<String, dynamic>>> subagentsForRequest(String requestId) =>
       _store.subagentsForRequest(requestId);
 
+  /// Returns all durable child snapshots owned by one chat/conversation.
+  Future<List<Map<String, dynamic>>> subagentsForConversation(String conversationId) async {
+    await initialize();
+    return _store.subagentsForConversation(conversationId);
+  }
+
   /// Returns the latest durable lifecycle snapshot for one child.
   Future<Map<String, dynamic>?> subagentStatus(String taskId) async {
     await initialize();
