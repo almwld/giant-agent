@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:giant_agent_x/agent/architecture/tool_call_registry.dart';
+import 'package:giant_agent_x/agent/architecture/agent_timeline_event.dart';
 import 'package:giant_agent_x/domain/mcp/mcp_tool_result.dart';
 import 'package:giant_agent_x/services/streaming/server_sent_event_parser.dart';
 
@@ -73,6 +74,25 @@ void main() {
       final events = parser.close();
       expect(events.single.data, 'final');
       expect(events.single.id, isNull);
+    });
+  });
+
+  group('timeline tool-call identity', () {
+    test('round-trips tool_call_id independently from request and step IDs', () {
+      final event = AgentTimelineEvent(
+        id: 'event-1',
+        requestId: 'request-1',
+        type: 'tool_call_started',
+        title: 'Tool started',
+        status: 'running',
+        timestamp: DateTime.utc(2026, 11, 11),
+        stepId: 'step-1',
+        toolCallId: 'call-1',
+      );
+      final restored = AgentTimelineEvent.fromMap(event.toMap());
+      expect(restored.requestId, 'request-1');
+      expect(restored.stepId, 'step-1');
+      expect(restored.toolCallId, 'call-1');
     });
   });
 
