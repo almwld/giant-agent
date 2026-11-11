@@ -98,13 +98,45 @@ class SubagentOrchestrator {
       List<Map<String, Object?>>.unmodifiable(_inboxes['parent'] ?? const <Map<String, Object?>>[]);
 
   Future<void> createTask(SubagentTask task, {required String creatorTaskId}) async {
-    if (!_running) throw StateError('Dynamic child creation is available only during an active orchestration.');
-    if (_tasks.length >= maxTasks) throw StateError('The request reached its maximum of $maxTasks subagents.');
+    if (!_running) {
+      throw StateError('Dynamic child creation is available only during an active orchestration.');
+    }
+    if (_tasks.length >= maxTasks) {
+      throw StateError('The request reached its maximum of $maxTasks subagents.');
+    }
     final id = task.id.trim();
     final title = task.title.trim();
     final prompt = task.prompt.trim();
     final dependencies = task.dependsOn.map((value) => value.trim()).toList(growable: false);
-    if (!RegExp(r'^[a-zA-Z0-9_-]{1,48}
+    final validId = id.isNotEmpty && id.length <= 48 && id.codeUnits.every((unit) =>
+        (unit >= 48 && unit <= 57) ||
+        (unit >= 65 && unit <= 90) ||
+        (unit >= 97 && unit <= 122) ||
+        unit == 95 || unit == 45);
+    if (!validId || _tasks.containsKey(id) || title.isEmpty ||
+        title.length > 160 || prompt.isEmpty || prompt.length > 12000) {
+      throw ArgumentError('Subagent id/title/prompt are invalid or exceed their supported limits.');
+    }
+    final creator = _tasks[creatorTaskId];
+    if (creator == null) throw StateError('Unknown creator subagent: $creatorTaskId');
+    if (creator.depth >= maxDepth) {
+      throw StateError('Maximum subagent nesting depth ($maxDepth) reached.');
+    }
+    if (!const {'explore', 'plan', 'coder', 'reviewer'}.contains(task.agentType)) {
+      throw ArgumentError('Unsupported subagent role: ' + task.agentType);
+    }
+    if (dependencies.length > 8 ||
+        dependencies.toSet().length != dependencies.length ||
+        dependencies.any((dependencyId) =>
+            !_tasks.containsKey(dependencyId) || dependencyId == id)) {
+      throw ArgumentError('Dependencies must be unique existing tasks and cannot include the new task.');
+    }
+    final registered = SubagentTask(
+      id: id,
+      title: title,
+      prompt: prompt,
+      agentType: task.agentType,
+      dependsOn: List<String>.unmodifiable(dependencies),
       parentTaskId: creatorTaskId,
       depth: creator.depth + 1,
     );
