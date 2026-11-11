@@ -33,3 +33,6 @@ consumes this parser, forwards token deltas to the existing UI event bus,
 and handles cancellation/terminal states with tests. Likewise, the typed MCP
 envelope must be connected to a real MCP transport/registry before claiming
 remote MCP server interoperability.
+
+
+Implementation status is tracked by PR #28; CI results must be read from the latest synchronized head before merge.
