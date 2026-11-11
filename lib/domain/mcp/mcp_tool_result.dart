@@ -55,16 +55,13 @@ class McpToolResult {
   /// File/resource links remain addressable objects for UI and follow-up reads.
   List<McpResourceLink> get resourceLinks => content
       .where((block) => block.type == 'resource_link' && block.uri != null)
-      .map((block) => McpResourceLink(
-            uri: block.uri!,
-            name: block.name,
-            title: block.title,
-            description: block.extra['description']?.toString(),
-            mimeType: block.mimeType,
-            size: block.extra['size'] is num
-                ? (block.extra['size'] as num).toInt()
-                : null,
-          ))
+      .map((block) => McpResourceLink.fromJson(<String, dynamic>{
+            ...block.extra,
+            'uri': block.uri,
+            if (block.name != null) 'name': block.name,
+            if (block.title != null) 'title': block.title,
+            if (block.mimeType != null) 'mimeType': block.mimeType,
+          }))
       .toList(growable: false);
 
   /// Explicit display helper; never use this as the persisted source of truth.
