@@ -196,6 +196,50 @@ void main() {
         'subagent_interrupted_on_restart');
   });
 
+  test('subagent dismissal preserves audit history and blocks later resume', () async {
+    final store = await _store('${directory.path}/subagent-dismissal.db');
+    await store.enqueue(
+      id: 'parent-dismiss',
+      prompt: 'parent',
+      conversationId: 'chat-dismiss',
+    );
+    await store.markRunning('parent-dismiss');
+    await store.recordSubagentEvent({
+      'id': 'child-failed-event',
+      'request_id': 'parent-dismiss',
+      'session_id': 'chat-dismiss',
+      'task_id': 'child-dismiss',
+      'agent_type': 'explore',
+      'title': 'Explore worker',
+      'task_prompt': 'Inspect the workspace',
+      'type': 'subagent_failed',
+      'status': 'failed',
+      'details': 'worker failed',
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+    });
+    final service = AgentService.withExecutor(
+      store: store,
+      executor: (request) async => 'unused',
+    );
+
+    expect((await service.subagentStatus('child-dismiss'))?['status'], 'failed');
+    expect(await service.dismissSubagent('child-dismiss'), isTrue);
+    final dismissed = await service.subagentStatus('child-dismiss');
+    expect(dismissed?['is_dismissed'], isTrue);
+    expect(dismissed?['status'], 'failed');
+    expect((await service.eventsForSubagent('child-dismiss')).last.type,
+        'subagent_dismissed');
+    await expectLater(
+      store.claimSubagentResume(
+        'child-dismiss',
+        sideEffectDisposition: 'user_authorized_retry',
+      ),
+      throwsA(isA<StateError>()),
+    );
+    expect(await service.dismissSubagent('child-dismiss'), isTrue);
+    await service.disposeForTesting();
+  });
+
   test('interrupted output is persisted as interrupted, not completed', () async {
     final store = await _store('${directory.path}/interrupted.db');
     late String requestId;
