@@ -14,6 +14,7 @@ import '../tools/terminal_tool_coordinator.dart';
 import '../domain/harness/evaluator_service.dart';
 import '../domain/harness/reflexion_service.dart';
 import '../domain/mcp/mcp_client.dart';
+import '../agent/architecture/subagent_orchestrator.dart';
 
 class ModelService {
   static final ModelService _instance = ModelService._internal();
@@ -38,8 +39,11 @@ class ModelService {
   static const Object _parallelProviderZoneKey = #giantAgentParallelProvider;
   static const Object _taskIdZoneKey = #giantAgentTaskId;
   static const Object _agentTypeZoneKey = #giantAgentAgentType;
+  static const Object _subagentOrchestratorZoneKey = #giantAgentSubagentOrchestrator;
   String get _activeTaskId => Zone.current[_taskIdZoneKey] as String? ?? '';
   String get _activeAgentType => Zone.current[_agentTypeZoneKey] as String? ?? '';
+  SubagentOrchestrator? get _activeSubagentOrchestrator =>
+      Zone.current[_subagentOrchestratorZoneKey] as SubagentOrchestrator?;
   String get _activeRequestId =>
       Zone.current[_requestIdZoneKey] as String? ?? _fallbackRequestId;
 
@@ -371,6 +375,86 @@ class ModelService {
             if (mcpResult.structuredContent != null) 'structuredContent': mcpResult.structuredContent,
           };
           break;
+        case 'create_subagent': {
+          final orchestrator = _activeSubagentOrchestrator;
+          final creatorTaskId = _activeTaskId;
+          if (orchestrator == null || creatorTaskId.isEmpty) {
+            throw StateError('Dynamic subagents are available only inside an active subagent orchestration.');
+          }
+          final rawDependencies = args['depends_on'];
+          final dependencies = rawDependencies is List
+              ? rawDependencies.map((value) => value.toString()).toList(growable: false)
+              : const <String>[];
+          final taskId = args['task_id']?.toString().trim() ?? '';
+          final title = args['title']?.toString().trim() ?? '';
+          final prompt = args['prompt']?.toString().trim() ?? '';
+          final role = args['agent_type']?.toString() ?? 'explore';
+          await orchestrator.createTask(
+            SubagentTask(id: taskId, title: title, prompt: prompt,
+              agentType: role, dependsOn: dependencies),
+            creatorTaskId: creatorTaskId,
+          );
+          result = <String, dynamic>{'ok': true, 'task_id': taskId, 'status': 'created'};
+          break;
+        }
+        case 'spawn_subagent': {
+          final orchestrator = _activeSubagentOrchestrator;
+          if (orchestrator == null) throw StateError('No active subagent orchestrator.');
+          final taskId = args['task_id']?.toString() ?? '';
+          await orchestrator.spawnTask(taskId);
+          result = <String, dynamic>{'ok': true, 'task_id': taskId, 'status': 'queued'};
+          break;
+        }
+        case 'delete_subagent': {
+          final orchestrator = _activeSubagentOrchestrator;
+          if (orchestrator == null) throw StateError('No active subagent orchestrator.');
+          final taskId = args['task_id']?.toString() ?? '';
+          result = <String, dynamic>{'ok': orchestrator.cancelTask(taskId),
+            'task_id': taskId, 'status': 'cancellation_requested'};
+          break;
+        }
+        case 'check_subagent_status': {
+          final orchestrator = _activeSubagentOrchestrator;
+          if (orchestrator == null) throw StateError('No active subagent orchestrator.');
+          result = <String, dynamic>{'ok': true,
+            ...orchestrator.status(args['task_id']?.toString() ?? '')};
+          break;
+        }
+        case 'send_message': {
+          final orchestrator = _activeSubagentOrchestrator;
+          if (orchestrator == null || _activeTaskId.isEmpty) {
+            throw StateError('Messaging is available only inside an active subagent.');
+          }
+          final recipient = args['to_task_id']?.toString() ?? '';
+          final message = args['content']?.toString() ?? '';
+          await orchestrator.sendMessage(fromTaskId: _activeTaskId,
+            toTaskId: recipient, content: message);
+          result = <String, dynamic>{'ok': true, 'to_task_id': recipient};
+          break;
+        }
+        case 'wait_for_message': {
+          final orchestrator = _activeSubagentOrchestrator;
+          if (orchestrator == null || _activeTaskId.isEmpty) {
+            throw StateError('Message waiting is available only inside an active subagent.');
+          }
+          final seconds = args['timeout_seconds'] is num
+              ? (args['timeout_seconds'] as num).toInt() : 20;
+          final message = await orchestrator.waitForMessage(
+            taskId: _activeTaskId, timeout: Duration(seconds: seconds));
+          result = <String, dynamic>{'ok': true,
+            'received': message != null && message.isNotEmpty, 'message': message};
+          break;
+        }
+        case 'update_goal': {
+          final orchestrator = _activeSubagentOrchestrator;
+          if (orchestrator == null || _activeTaskId.isEmpty) {
+            throw StateError('Goal updates are available only inside an active subagent.');
+          }
+          final goal = args['goal']?.toString() ?? '';
+          await orchestrator.updateGoal(taskId: _activeTaskId, goal: goal);
+          result = <String, dynamic>{'ok': true, 'goal': goal};
+          break;
+        }
         case 'gain_terminal':
           final approval = requestTerminalApproval;
           if (approval == null) {
@@ -451,6 +535,7 @@ class ModelService {
     String? requestId,
     String? taskId,
     String? agentType,
+    SubagentOrchestrator? subagentOrchestrator,
   }) async {
     final mode = await ModelProviderSettings.instance.getMode();
     final parallelProvider = mode == ModelProviderMode.openRouter;
@@ -485,6 +570,7 @@ class ModelService {
       _parallelProviderZoneKey: parallelProvider,
       _taskIdZoneKey: taskId ?? '',
       _agentTypeZoneKey: agentType ?? '',
+      if (subagentOrchestrator != null) _subagentOrchestratorZoneKey: subagentOrchestrator,
     };
     if (parallelProvider) {
       _parallelExecutions++;
