@@ -234,6 +234,46 @@ class ToolManager {
       example: '{"name":"browser_scroll_down","arguments":{}}',
     ),
     AgentToolDefinition(
+      name: 'image_search',
+      description: 'البحث عن الصور عبر مزوّد صور متصل؛ لا يستخدم بحث الويب النصي بديلاً عن نتائج الصور.',
+      example: '{"name":"image_search","arguments":{"query":"teal glass orb"}}',
+    ),
+    AgentToolDefinition(
+      name: 'search_image_by_text',
+      description: 'البحث عن صور باستخدام وصف نصي عبر مزوّد صور متصل.',
+      example: '{"name":"search_image_by_text","arguments":{"query":"minimal dark AI dashboard"}}',
+    ),
+    AgentToolDefinition(
+      name: 'search_image_by_image',
+      description: 'البحث العكسي عن صور باستخدام ملف مصدر ومزوّد يدعم البحث البصري.',
+      example: '{"name":"search_image_by_image","arguments":{"input_path":"images/reference.png"}}',
+    ),
+    AgentToolDefinition(
+      name: 'generate_image',
+      description: 'توليد صورة عبر مزوّد صور متصل فعلياً؛ لا يفترض أن OpenRouter النصي يولّد الصور.',
+      example: '{"name":"generate_image","arguments":{"prompt":"A clean teal glass sphere on a dark background"}}',
+    ),
+    AgentToolDefinition(
+      name: 'edit_image',
+      description: 'تعديل صورة مصدر عبر مزوّد يدعم تحرير الصور؛ يتطلب input_path أو input_paths.',
+      example: '{"name":"edit_image","arguments":{"prompt":"Remove the background","input_path":"images/source.png"}}',
+    ),
+    AgentToolDefinition(
+      name: 'generate_sound_effects',
+      description: 'توليد مؤثرات صوتية عبر مزوّد صوت متصل؛ لا يخلط ذلك مع TTS.',
+      example: '{"name":"generate_sound_effects","arguments":{"prompt":"Short soft notification chime"}}',
+    ),
+    AgentToolDefinition(
+      name: 'find_asset_bbox',
+      description: 'تحديد صناديق الأصول داخل صورة مصدر عبر مزوّد رؤية متصل.',
+      example: '{"name":"find_asset_bbox","arguments":{"input_path":"images/screen.png","prompt":"Find the main card and icon bounds"}}',
+    ),
+    AgentToolDefinition(
+      name: 'crop_and_replicate_assets_in_image',
+      description: 'قص وإعادة إنتاج عناصر من صورة مصدر عبر مزوّد تحرير صور متصل.',
+      example: '{"name":"crop_and_replicate_assets_in_image","arguments":{"input_path":"images/screen.png","prompt":"Extract the icon and create a clean transparent copy"}}',
+    ),
+    AgentToolDefinition(
       name: 'gain_terminal',
       description: 'تنفيذ أمر واحد في Android shell بصلاحيات التطبيق فقط؛ يتطلب موافقة المستخدم الصريحة على نص الأمر حرفياً قبل التنفيذ.',
       example: '{"name":"gain_terminal","arguments":{"command":"pwd && ls","timeout_seconds":30}}',
