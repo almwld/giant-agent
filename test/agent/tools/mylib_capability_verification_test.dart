@@ -58,6 +58,41 @@ void main() {
       })).passed, isTrue);
   });
 
+  test('verifies local website snapshots and approved rollback', () async {
+    final evaluator = EvaluatorService(
+      readWorkspaceFile: (_) async => const <String, dynamic>{'ok': false},
+    );
+    final snapshot = await evaluator.verify(
+      'snapshot website',
+      'website_version_manager',
+      const <String, dynamic>{'action': 'snapshot', 'path': 'site/index.html'},
+      const <String, dynamic>{
+        'ok': true,
+        'action': 'snapshot',
+        'version': <String, dynamic>{
+          'version_id': 'wv_1',
+          'file_path': 'site/index.html',
+          'version_number': 1,
+        },
+      },
+    );
+    expect(snapshot.passed, isTrue);
+
+    final rollback = await evaluator.verify(
+      'rollback website',
+      'website_version_manager_rollback',
+      const <String, dynamic>{'path': 'site/index.html', 'version_id': 'wv_1'},
+      const <String, dynamic>{
+        'ok': true,
+        'path': 'site/index.html',
+        'version_id': 'wv_1',
+        'verified': true,
+        'cancelled': false,
+      },
+    );
+    expect(rollback.passed, isTrue);
+  });
+
   test('verifies LBS only after explicit user approval or cancellation', () async {
     final evaluator = EvaluatorService(
       readWorkspaceFile: (_) async => const <String, dynamic>{'ok': false},
