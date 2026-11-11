@@ -60,7 +60,7 @@ void main() {
     });
 
     test('preserves UTF-8 characters split at every network byte boundary', () {
-      final bytes = utf8.encode('data: مرحبا\n\n');
+      final bytes = utf8.encode('data: مرحبا 🌍\n\n');
       for (var split = 1; split < bytes.length; split++) {
         final parser = ServerSentEventParser();
         expect(parser.add(bytes.sublist(0, split)), isEmpty);
@@ -68,7 +68,7 @@ void main() {
           ...parser.add(bytes.sublist(split)),
           ...parser.close(),
         ];
-        expect(events.single.data, 'مرحبا', reason: 'split at byte $split');
+        expect(events.single.data, 'مرحبا 🌍', reason: 'split at byte $split');
       }
     });
 
