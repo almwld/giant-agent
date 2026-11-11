@@ -20,6 +20,8 @@ class McpClient {
 
   final Map<String, _McpSession> _sessions = <String, _McpSession>{};
   final Map<String, List<McpRemoteTool>> _toolCache = <String, List<McpRemoteTool>>{};
+  final Map<String, List<Map<String, dynamic>>> _resourceCache =
+      <String, List<Map<String, dynamic>>>{};
   int _requestId = 0;
   Future<void> _storageTail = Future<void>.value();
 
@@ -60,6 +62,7 @@ class McpClient {
     await _writeServers(updated);
     _sessions.remove(normalizedId);
     _toolCache.remove(normalizedId);
+    _resourceCache.remove(normalizedId);
   }
 
   Future<bool> removeServer(String id) async {
@@ -69,6 +72,7 @@ class McpClient {
     await _writeServers(updated);
     _sessions.remove(id);
     _toolCache.remove(id);
+    _resourceCache.remove(id);
     return true;
   }
 
@@ -186,7 +190,12 @@ class McpClient {
     throw const FormatException('MCP tools/list exceeded the 20-page safety limit.');
   }
 
-  Future<List<Map<String, dynamic>>> listResources(String serverId) async {
+  Future<List<Map<String, dynamic>>> listResources(
+    String serverId, {
+    bool forceRefresh = false,
+  }) async {
+    final cached = _resourceCache[serverId];
+    if (!forceRefresh && cached != null) return cached;
     await initialize(serverId);
     final session = _sessions[serverId]!;
     final resources = <Map<String, dynamic>>[];
@@ -206,7 +215,11 @@ class McpClient {
         if (item is Map) resources.add(Map<String, dynamic>.from(item));
       }
       final next = result['nextCursor']?.toString();
-      if (next == null || next.isEmpty) return List<Map<String, dynamic>>.unmodifiable(resources);
+      if (next == null || next.isEmpty) {
+        final result = List<Map<String, dynamic>>.unmodifiable(resources);
+        _resourceCache[serverId] = result;
+        return result;
+      }
       if (!seenCursors.add(next)) throw const FormatException('MCP resources/list repeated a pagination cursor.');
       cursor = next;
     }
@@ -457,6 +470,7 @@ class McpClient {
   void close() {
     _sessions.clear();
     _toolCache.clear();
+    _resourceCache.clear();
   }
 }
 
