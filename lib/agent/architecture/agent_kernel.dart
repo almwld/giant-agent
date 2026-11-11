@@ -388,8 +388,8 @@ class AgentKernel {
       _ => throw ArgumentError('Unknown subagent type: $agentType'),
     };
     final dependencyContext = dependencyResults.entries.map((entry) =>
-      'نتيجة المهمة السابقة ${entry.key}:\\n${entry.value}'
-    ).join('\\n\\n');
+      'نتيجة المهمة السابقة ${entry.key}:\n${entry.value}'
+    ).join('\n\n');
     final previousParent = _activeSubagentParentRequestId;
     _activeSubagentIds.add(taskId);
     _activeSubagentParentRequestId = parentRequestId;
