@@ -266,14 +266,18 @@ class _McpSettingsScreenState extends State<McpSettingsScreen> {
                   dense: true,
                   contentPadding: EdgeInsets.zero,
                   leading: Icon(
-                    tool.annotations['readOnlyHint'] == true
+                    (tool.annotations['readOnlyHint'] == true &&
+                        tool.annotations['destructiveHint'] != true &&
+                        tool.annotations['openWorldHint'] != true)
                         ? Icons.visibility_outlined
                         : Icons.verified_user_outlined,
                   ),
                   title: Text(tool.name),
                   subtitle: Text(tool.description.isEmpty
-                      ? (tool.annotations['readOnlyHint'] == true
-                          ? tr('قراءة فقط', 'Read only')
+                      ? ((tool.annotations['readOnlyHint'] == true &&
+                          tool.annotations['destructiveHint'] != true &&
+                          tool.annotations['openWorldHint'] != true)
+                          ? tr('قراءة فقط (حسب تلميحات الخادم)', 'Read only (server hint)')
                           : tr('تتطلب موافقة', 'Approval required'))
                       : tool.description),
                 ),
