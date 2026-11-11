@@ -93,6 +93,7 @@ class AgentKernel {
     String? agentType,
     String? taskPrompt,
     List<String>? dependsOn,
+    Map<String, Object?> metadata = const <String, Object?>{},
   }) {
     final sequence = ++_eventSequence;
     final event = AgentTimelineEvent(
@@ -113,6 +114,7 @@ class AgentKernel {
       agentType: agentType,
       taskPrompt: taskPrompt,
       dependsOn: dependsOn ?? const <String>[],
+      metadata: metadata,
     );
     _events.add(event);
     AgentEventBus.instance.publish(event.toMap());
@@ -552,6 +554,15 @@ class AgentKernel {
           status: event['status']?.toString() ?? 'pending',
           details: event['details']?.toString(),
           result: event['result']?.toString(),
+          metadata: <String, Object?>{
+            for (final entry in event.entries)
+              if (!const <String>{
+                'id', 'request_id', 'session_id', 'task_id', 'agent_type',
+                'title', 'task_prompt', 'depends_on', 'type', 'status',
+                'details', 'result', 'timestamp',
+              }.contains(entry.key))
+                entry.key: entry.value,
+          },
         );
       },
       execute: (task, dependencyResults, isTaskCancelled) async {
