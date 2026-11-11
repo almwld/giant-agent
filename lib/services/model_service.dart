@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import '../services/llama_service.dart';
 import '../services/web_search_service.dart';
+import '../services/browser_session_service.dart';
 import '../services/voice_output_service.dart';
 import '../agent/task_manager.dart';
 import '../agent/architecture/agent_event_bus.dart';
@@ -34,6 +35,7 @@ class ModelService {
   Future<bool> Function(String command)? requestTerminalApproval;
   Future<bool> Function(String serverId, McpRemoteTool tool, Map<String, dynamic> arguments)? requestMcpApproval;
   AgentUserInputHandler? requestUserInput;
+  Future<void> Function()? requestBrowserSession;
   late final SubagentLifecycleManager _subagents = SubagentLifecycleManager(onEvent: AgentEventBus.instance.publish);
   final GainTerminalTool _gainTerminal = GainTerminalTool();
   Future<void> _requestTail = Future<void>.value();
