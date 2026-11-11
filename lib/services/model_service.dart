@@ -13,6 +13,7 @@ import '../tools/gain_terminal_tool.dart';
 import '../tools/terminal_tool_coordinator.dart';
 import '../domain/harness/evaluator_service.dart';
 import '../domain/harness/reflexion_service.dart';
+import '../domain/mcp/mcp_client.dart';
 
 class ModelService {
   static final ModelService _instance = ModelService._internal();
@@ -265,6 +266,7 @@ class ModelService {
     Map<String, dynamic> payload, {
     String? stepId,
     Set<String>? allowedTools,
+    bool Function()? isCancelled,
   }) async {
     final name = payload['name']?.toString() ?? '';
     if (!ToolManager().supports(name) ||
@@ -302,6 +304,27 @@ class ModelService {
           break;
         case 'execute_python':
           result = await executePython(code: args['code']?.toString() ?? '');
+          break;
+        case 'mcp_call':
+          final serverId = args['server_id']?.toString() ?? '';
+          final remoteToolName = args['tool_name']?.toString() ?? '';
+          final remoteArguments = args['arguments'];
+          if (serverId.isEmpty || remoteToolName.isEmpty || remoteArguments is! Map<String, dynamic>) {
+            throw const FormatException('mcp_call requires server_id, tool_name and an arguments object.');
+          }
+          final mcpResult = await McpClient.instance.callTool(
+            serverId: serverId,
+            toolName: remoteToolName,
+            arguments: remoteArguments,
+            isCancelled: isCancelled,
+          );
+          result = <String, dynamic>{
+            'ok': !mcpResult.isError,
+            'isError': mcpResult.isError,
+            'textPreview': mcpResult.textPreview,
+            'mcp_result': mcpResult.toJson(),
+            if (mcpResult.structuredContent != null) 'structuredContent': mcpResult.structuredContent,
+          };
           break;
         case 'gain_terminal':
           final approval = requestTerminalApproval;
@@ -583,9 +606,13 @@ $prompt
     if (await ModelProviderSettings.instance.getMode() == ModelProviderMode.local && !await _llama.isLoaded()) {
       return '⚠️ لم يتم تحميل نموذج GGUF المحلي. حمّل نموذج GGUF أو اختر OpenRouter من إعدادات المزوّد.';
     }
-    final toolCatalog = allowedTools == null
+    final baseToolCatalog = allowedTools == null
         ? ToolManager().promptCatalog
         : ToolManager().promptCatalogFor(allowedTools);
+    final remoteToolCatalog = allowedTools != null && !allowedTools.contains('mcp_call')
+        ? ''
+        : await McpClient.instance.promptCatalog();
+    final toolCatalog = '$baseToolCatalog\n$remoteToolCatalog';
     final history = StringBuffer('''أنت Giant Agent، مساعد ذكي متعدد المصادر. أجب بلغة المستخدم.
 الأدوات المتاحة فعلياً:
 $toolCatalog
@@ -681,6 +708,7 @@ $toolCatalog
               payload,
               stepId: toolStepId,
               allowedTools: allowedTools,
+              isCancelled: () => toolCall.isCancelled || isCancelled(),
             );
           } catch (error) {
             result = <String, dynamic>{'ok': false, 'error': error.toString()};
