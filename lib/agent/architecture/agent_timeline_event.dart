@@ -86,7 +86,7 @@ class AgentTimelineEvent {
       agentType: map['agent_type']?.toString(),
       taskPrompt: map['task_prompt']?.toString(),
       dependsOn: (map['depends_on'] as List?)?.map((item) => item.toString()).toList(growable: false) ?? const <String>[],
-      progressPercent: rawProgress is num ? rawProgress.toInt().clamp(0, 100) : int.tryParse(rawProgress?.toString() ?? ''),
+      progressPercent: rawProgress is num ? rawProgress.toInt().clamp(0, 100).toInt() : int.tryParse(rawProgress?.toString() ?? ''),
     );
   }
 }
