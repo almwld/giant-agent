@@ -331,7 +331,10 @@ class ModelService {
             throw const FormatException('mcp_call requires server_id, tool_name and an arguments object.');
           }
           final remoteTool = await McpClient.instance.findTool(serverId, remoteToolName);
-          if (remoteTool.annotations['readOnlyHint'] != true) {
+          final readOnlyHint = remoteTool.annotations['readOnlyHint'] == true &&
+              remoteTool.annotations['destructiveHint'] != true &&
+              remoteTool.annotations['openWorldHint'] != true;
+          if (!readOnlyHint) {
             final approval = requestMcpApproval;
             if (approval == null ||
                 !await approval(serverId, remoteTool, remoteArguments)) {
