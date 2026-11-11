@@ -49,7 +49,7 @@ class McpToolResult {
         'content': content.map((block) => block.toJson()).toList(),
         'isError': isError,
         if (structuredContent != null) 'structuredContent': structuredContent,
-        if (meta != null) 'meta': meta,
+        if (meta != null) '_meta': meta,
       };
 
   /// Explicit display helper; never use this as the persisted source of truth.
