@@ -354,8 +354,12 @@ class McpClient {
     }
     final contentType = streamed.headers['content-type']?.toLowerCase() ?? '';
     if (contentType.contains('text/event-stream')) {
-      final parser = ServerSentEventParser();
       final expectedId = payload['id']?.toString();
+      if (expectedId == null) {
+        await streamed.stream.listen((_) {}).cancel();
+        return null;
+      }
+      final parser = ServerSentEventParser();
       final responseCompleter = Completer<Map<String, dynamic>?>();
       late final StreamSubscription<List<int>> subscription;
 
