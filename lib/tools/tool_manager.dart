@@ -57,6 +57,47 @@ class ToolManager {
       description: 'استدعاء أداة مكتشفة من خادم MCP متصل. استخدم server_id وtool_name كما يظهران في قائمة أدوات MCP، وأرسل arguments وفق مخطط الأداة.',
       example: '{"name":"mcp_call","arguments":{"server_id":"workspace","tool_name":"search","arguments":{"query":"..."}}}',
     ),
+
+    AgentToolDefinition(
+      name: 'create_subagent',
+      description: 'تسجيل وكيل فرعي جديد دون تشغيله. استخدم id وtitle وprompt وagent_type وdepends_on؛ لا ينشئ الوكيل الفرعي وكلاء آخرين.',
+      example: '{"name":"create_subagent","arguments":{"id":"research","title":"بحث","prompt":"افحص مصادر المشروع ذات الصلة","agent_type":"explore","depends_on":[]}}',
+    ),
+    AgentToolDefinition(
+      name: 'spawn_subagent',
+      description: 'تشغيل وكيل مسجل مسبقاً عبر محرك النموذج الحالي المشترك، مع احترام التبعيات وصلاحيات الدور.',
+      example: '{"name":"spawn_subagent","arguments":{"id":"research"}}',
+    ),
+    AgentToolDefinition(
+      name: 'delete_subagent',
+      description: 'إخفاء وكيل غير نشط من الإدارة مع الاحتفاظ بسجل التدقيق؛ لا يحذف الملفات ولا يمحو التاريخ.',
+      example: '{"name":"delete_subagent","arguments":{"id":"research"}}',
+    ),
+    AgentToolDefinition(
+      name: 'check_subagent_status',
+      description: 'قراءة حالة وكيل فرعي ونتيجته المحفوظة ضمن الطلب الحالي.',
+      example: '{"name":"check_subagent_status","arguments":{"id":"research"}}',
+    ),
+    AgentToolDefinition(
+      name: 'send_message',
+      description: 'إرسال رسالة إلى صندوق وارد وكيل فرعي مسجل؛ يمكن إرسالها قبل تشغيله.',
+      example: '{"name":"send_message","arguments":{"agent_id":"research","message":"ركز على اختبارات الاستعادة"}}',
+    ),
+    AgentToolDefinition(
+      name: 'wait_for_message',
+      description: 'انتظار رسالة في صندوق وارد وكيل فرعي لمدة محدودة لا تتجاوز 30 ثانية.',
+      example: '{"name":"wait_for_message","arguments":{"agent_id":"research","timeout_seconds":10}}',
+    ),
+    AgentToolDefinition(
+      name: 'ask_user',
+      description: 'طلب توضيح مباشر من المستخدم عبر نافذة التطبيق؛ لا يخترع إجابة إذا لم تتوفر واجهة السؤال.',
+      example: '{"name":"ask_user","arguments":{"question":"أي فرع هو الهدف؟","choices":["main","integration"]}}',
+    ),
+    AgentToolDefinition(
+      name: 'update_goal',
+      description: 'تحديث هدف الطلب الجاري؛ يظهر التحديث في سجل الأحداث ويستخدمه الوكلاء اللاحقون.',
+      example: '{"name":"update_goal","arguments":{"goal":"أكمل التكامل ثم شغّل الاختبارات"}}',
+    ),
     AgentToolDefinition(
       name: 'gain_terminal',
       description: 'تنفيذ أمر واحد في Android shell بصلاحيات التطبيق فقط؛ يتطلب موافقة المستخدم الصريحة على نص الأمر حرفياً قبل التنفيذ.',
