@@ -2,9 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
-import 'dart:async';
-import 'dart:math';
-
 enum TimelineEventType {
   taskStarted, taskCompleted, taskFailed, taskCancelled,
   agentCreated, agentStarted, agentProgress, agentCompleted, agentFailed,
