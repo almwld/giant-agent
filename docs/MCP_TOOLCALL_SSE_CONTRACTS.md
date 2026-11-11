@@ -15,9 +15,12 @@ inference runtime or Dart isolate.
 - It negotiates the MCP protocol version returned by the server, retains
   `Mcp-Session-Id`, sends `MCP-Protocol-Version`, and accepts JSON or SSE
   responses from Streamable HTTP endpoints.
-- The agent prompt receives discovered tool names, descriptions and input
-  schemas. The model invokes them through the single `mcp_call` gateway;
+- The agent prompt receives discovered tool names, descriptions, input schemas
+  and annotations. The model invokes them through the single `mcp_call` gateway;
   runtime dispatch rejects tools not present in the latest discovery result.
+- Only tools explicitly annotated `readOnlyHint: true` run without confirmation.
+  All other remote tools require the app's `requestMcpApproval` callback; when
+  no approval handler is configured, the call is denied by default.
 - The API facade is `AgentService.addMcpServer`, `mcpServers`,
   `refreshMcpTools`, and `removeMcpServer`. This commit exposes the API;
   a dedicated settings screen and OAuth browser flow remain separate UI work.
@@ -54,6 +57,7 @@ the existing singleton `ModelService` / `LlamaService` path.
 The contract tests cover MCP result preservation, server/tool metadata
 round-tripping, SSE framing and UTF-8 boundaries, and independent tool-call
 cancellation. A passing CI run and runtime tests against a real MCP server are
-still required before calling this production-ready. Standard input/output MCP
-transports and OAuth authorization are not implemented in this mobile HTTP
-client.
+still required before calling this production-ready. Standard input/output MCP transports and OAuth authorization are not
+implemented in this mobile HTTP client. A dedicated server-management screen
+and an app-wired approval dialog for non-read-only remote tools are also still
+required for a complete end-user flow.
