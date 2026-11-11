@@ -567,20 +567,22 @@ ${result.output ?? result.error ?? 'لا توجد نتيجة نصية.'}
 ''';
         }).join('\n');
 
+        final orchestrationTools = const <String>{
+          'create_subagent', 'spawn_subagent', 'delete_subagent',
+          'check_subagent_status', 'send_message', 'wait_for_message',
+          'update_goal',
+        };
         final allowedTools = switch (task.agentType) {
-          'explore' || 'plan' || 'reviewer' =>
-            const <String>{'read_file', 'list_files', 'mcp_call', 'mcp_read_resource'},
-          'coder' => const <String>{
-              'create_file',
-              'read_file',
-              'write_file',
-              'list_files',
-              'execute_python',
-              'gain_terminal',
-              'mcp_call',
-              'mcp_read_resource',
+          'explore' || 'plan' || 'reviewer' => <String>{
+              'read_file', 'list_files', 'mcp_call', 'mcp_read_resource',
+              ...orchestrationTools,
             },
-          _ => const <String>{'read_file', 'list_files'},
+          'coder' => <String>{
+              'create_file', 'read_file', 'write_file', 'list_files',
+              'execute_python', 'gain_terminal', 'mcp_call',
+              'mcp_read_resource', ...orchestrationTools,
+            },
+          _ => orchestrationTools,
         };
 
         final isolatedConversationId =
@@ -619,6 +621,7 @@ ${dependencyContext.isEmpty ? 'لا توجد تبعيات سابقة.' : depende
             requestId: requestId,
             taskId: task.id,
             agentType: task.agentType,
+            subagentOrchestrator: orchestrator,
           )).trim();
         } finally {
           _activeSubagentIds.remove(task.id);
