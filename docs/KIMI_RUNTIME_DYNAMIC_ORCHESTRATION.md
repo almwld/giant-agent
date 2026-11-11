@@ -24,6 +24,6 @@ This tranche connects the model-facing tool loop to the active in-memory subagen
 
 ## User interaction
 
-The `ask_user` tool publishes a request event through the existing event bus. ChatScreen presents a text-entry dialog and submits the response through a request-ID-correlated broker. The broker persists request/answer/timeout/cancellation events through the existing journal path and bounds waits to three minutes. It does not treat an empty answer or a dismissed dialog as approval.
+The `ask_user` tool publishes a request event through the existing event bus. It is for non-secret information only and does not replace terminal or MCP action approvals. ChatScreen presents a text-entry dialog and submits the response through a request-ID-correlated broker. The broker persists request/answer/timeout/cancellation events through the existing journal path and bounds waits to three minutes. It does not treat an empty answer or a dismissed dialog as approval.
 
 The existing service-level create/spawn/status/soft-delete APIs remain available for recovery and external callers. Informational message and goal events preserve the worker's current lifecycle state in the durable task projection. The new model-facing tools operate against the active orchestrator so a worker can add children without enqueueing behind and deadlocking the parent request.
