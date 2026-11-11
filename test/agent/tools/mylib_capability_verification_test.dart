@@ -58,6 +58,37 @@ void main() {
       })).passed, isTrue);
   });
 
+  test('verifies LBS only after explicit user approval or cancellation', () async {
+    final evaluator = EvaluatorService(
+      readWorkspaceFile: (_) async => const <String, dynamic>{'ok': false},
+    );
+    final allowed = await evaluator.verify(
+      'get current location',
+      'lbs_tool',
+      const <String, dynamic>{},
+      const <String, dynamic>{
+        'ok': true,
+        'latitude': 15.35,
+        'longitude': 44.20,
+        'accuracy_meters': 25.0,
+        'background_location': false,
+      },
+    );
+    expect(allowed.passed, isTrue);
+
+    final denied = await evaluator.verify(
+      'get current location',
+      'lbs_tool',
+      const <String, dynamic>{},
+      const <String, dynamic>{
+        'ok': true,
+        'cancelled': true,
+        'location_accessed': false,
+      },
+    );
+    expect(denied.passed, isTrue);
+  });
+
   test('verifies DMail as local chat recall, not outbound email', () async {
     final evaluator = EvaluatorService(
       readWorkspaceFile: (_) async => const <String, dynamic>{'ok': false},
