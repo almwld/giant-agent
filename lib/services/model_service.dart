@@ -48,10 +48,11 @@ class ModelService {
     readWorkspaceFile: (path) => readFile(path: path),
   );
   late final ReflexionService _reflexion = ReflexionService(
-    generate: (prompt) => _generateText(
+    generate: (String prompt, {bool Function()? shouldCancel}) => _generateText(
       _boundPrompt(prompt),
       maxTokens: 512,
       temperature: .1,
+      shouldCancel: shouldCancel,
     ),
   );
 
@@ -859,6 +860,7 @@ $toolCatalog
               originalGoal: input,
               failedAction: failedAction,
               errorMessage: verificationMessage,
+              shouldCancel: isCancelled,
             );
             final proposed = <String, dynamic>{
               'name': action.toolName,
@@ -883,6 +885,7 @@ $toolCatalog
               stepId: toolStepId,
             );
           } catch (error) {
+            if (isCancelled()) return 'تم إيقاف التوليد بناءً على طلب المستخدم.';
             _emitToolEvent(
               'reflexion_failed',
               'تعذر توليد إجراء تصحيحي آمن',
