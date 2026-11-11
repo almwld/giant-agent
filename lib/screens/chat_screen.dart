@@ -357,6 +357,7 @@ class _ChatScreenState extends State<ChatScreen> {
     super.initState();
     _modelService.requestTerminalApproval = _requestTerminalApproval;
     _modelService.requestMcpApproval = _requestMcpApproval;
+    _modelService.requestUserInput = _requestAgentInput;
     _loadBubbleScale();
     _initDatabase();
     // The screen consumes exactly one event stream. ModelService and the
@@ -977,6 +978,71 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
     return approved == true && mounted;
+  }
+
+  Future<String?> _requestAgentInput({
+    required String question,
+    required List<String> choices,
+  }) async {
+    if (!mounted) return null;
+    final controller = TextEditingController();
+    try {
+      return await showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('مطلوب توضيح من المستخدم'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(question),
+                if (choices.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  for (final choice in choices)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(dialogContext, choice),
+                          child: Text(choice),
+                        ),
+                      ),
+                    ),
+                ],
+                const SizedBox(height: 8),
+                TextField(
+                  controller: controller,
+                  minLines: 1,
+                  maxLines: 4,
+                  decoration: const InputDecoration(
+                    labelText: 'إجابة أخرى (اختياري)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('إلغاء'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final answer = controller.text.trim();
+                if (answer.isNotEmpty) Navigator.pop(dialogContext, answer);
+              },
+              child: const Text('إرسال الإجابة'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      controller.dispose();
+    }
   }
 
   Future<bool> _requestTerminalApproval(String command) async {
@@ -2448,6 +2514,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _nativeAgentEventSubscription?.cancel();
     _modelService.requestTerminalApproval = null;
     _modelService.requestMcpApproval = null;
+    _modelService.requestUserInput = null;
     _speech.stop();
     _voiceOutput.stop();
     _controller.dispose();
