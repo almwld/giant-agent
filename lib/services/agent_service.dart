@@ -435,24 +435,19 @@ class AgentService {
           dependencyResults[dependencyId] = result;
         }
       }
-      await AgentBackgroundExecutionService.instance.beginTask(
-        'تشغيل الوكيل الفرعي: ${child['title'] ?? id}',
+      // The parent request already owns the foreground execution service.
+      // Do not release it when this nested child finishes.
+      await _executionKernel.executeDynamicSubagent(
+        parentRequestId: parent.id,
+        conversationId: parent.conversationId,
+        taskId: id,
+        title: child['title']?.toString() ?? id,
+        taskPrompt: child['prompt']?.toString() ?? '',
+        agentType: child['agent_type']?.toString() ?? 'explore',
+        dependencyResults: dependencyResults,
+        toolCallId: toolCallId,
       );
-      try {
-        await _executionKernel.executeDynamicSubagent(
-          parentRequestId: parent.id,
-          conversationId: parent.conversationId,
-          taskId: id,
-          title: child['title']?.toString() ?? id,
-          taskPrompt: child['prompt']?.toString() ?? '',
-          agentType: child['agent_type']?.toString() ?? 'explore',
-          dependencyResults: dependencyResults,
-          toolCallId: toolCallId,
-        );
-      } finally {
-        await _flushExecutionJournal();
-        await AgentBackgroundExecutionService.instance.endTask();
-      }
+      await _flushExecutionJournal();
       final completed = await _store.getSubagent(id);
       if (completed == null) throw StateError('Subagent state disappeared after execution.');
       return completed;
