@@ -275,6 +275,18 @@ class OpenAICompatibleProvider {
 
       final completed = Completer<void>();
       late final StreamSubscription<List<int>> subscription;
+      Timer? idleTimer;
+      void resetIdleTimer() {
+        idleTimer?.cancel();
+        idleTimer = Timer(requestTimeout, () {
+          if (!completed.isCompleted) {
+            completed.completeError(TimeoutException(
+              'انتهت مهلة عدم وصول بيانات من OpenRouter بعد ${requestTimeout.inSeconds} ثانية.',
+            ));
+            unawaited(subscription.cancel());
+          }
+        });
+      }
       var receivedDone = false;
 
       void consumeEvents(List<ServerSentEvent> events) {
@@ -313,8 +325,10 @@ class OpenAICompatibleProvider {
         }
       }
 
+      resetIdleTimer();
       subscription = response.stream.listen(
         (bytes) {
+          resetIdleTimer();
           try {
             if (isCancelled?.call() == true) {
               if (!completed.isCompleted) completed.completeError(const _OpenRouterStreamInterrupted());
@@ -347,9 +361,10 @@ class OpenAICompatibleProvider {
         }
       });
       try {
-        await completed.future.timeout(requestTimeout);
+        await completed.future;
       } finally {
         cancellationPoll.cancel();
+        idleTimer?.cancel();
         await subscription.cancel();
       }
 
