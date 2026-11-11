@@ -132,3 +132,18 @@ The earlier "Remaining integration work" section above is historical and predate
 - A real MCP server integration test and OAuth/stdio transports remain outside the current mobile Streamable HTTP implementation.
 
 No proprietary source code or private provider endpoint contract has been copied. The transfer is an independent implementation of observed architectural patterns.
+
+
+## Follow-up: durable assistant message state — 2026-11-12
+
+The previous note that streaming deltas were not durable has been narrowed by a new local message-state store:
+
+- `assistant_messages` stores one assistant response per request/child conversation with `streaming`, `complete`, `interrupted`, or `failed` state.
+- OpenRouter SSE deltas are batched and appended while the response is streaming.
+- Completion stores the final user-visible response, replacing intermediate tool-call/control text.
+- Cancellation/failure preserves the available partial response and its terminal state.
+- App startup reconciles any message left in `streaming` to `interrupted`; it never upgrades an abandoned stream to success.
+- Message records are scoped by conversation and can be queried independently from the compact turn-recall table.
+- The database upgrade is forward-only (memory schema v4), and conversation-memory deletion clears message snapshots for that conversation without deleting saved facts.
+
+Remaining GPT asset differences: remote message IDs, provider-specific reasoning metadata, prepared markdown/entity payloads, and server-side conversation synchronization are not implemented. No hidden reasoning is stored.
