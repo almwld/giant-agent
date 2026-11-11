@@ -16,15 +16,12 @@ workflows:
         - pattern: main
           include: true
           source: true
-          target: true
         - pattern: feat/consolidate-sqlite-runtime-v2
           include: true
           source: true
-          target: true
         - pattern: ci/codemagic-android-release
           include: true
           source: true
-          target: true
 
     cache:
       cache_paths:
