@@ -19,6 +19,7 @@ class AgentTimelineEvent {
     this.agentType,
     this.taskPrompt,
     this.dependsOn = const <String>[],
+    this.metadata = const <String, Object?>{},
   });
 
   final String id;
@@ -37,8 +38,10 @@ class AgentTimelineEvent {
   final String? agentType;
   final String? taskPrompt;
   final List<String> dependsOn;
+  final Map<String, Object?> metadata;
 
   Map<String, dynamic> toMap() => <String, dynamic>{
+        ...metadata,
         'id': id,
         'request_id': requestId,
         'attempt_id': attemptId != null && attemptId!.isNotEmpty ? attemptId : requestId,
@@ -83,6 +86,12 @@ class AgentTimelineEvent {
       agentType: map['agent_type']?.toString(),
       taskPrompt: map['task_prompt']?.toString(),
       dependsOn: (map['depends_on'] as List?)?.map((item) => item.toString()).toList(growable: false) ?? const <String>[],
+      metadata: Map<String, Object?>.from(map)..removeWhere((key, _) => const <String>{
+        'id', 'request_id', 'requestId', 'attempt_id', 'step_id', 'stepId',
+        'tool_call_id', 'toolCallId', 'sequence', 'type', 'title', 'status',
+        'timestamp', 'details', 'result', 'task_id', 'agent_type', 'task_prompt',
+        'depends_on',
+      }.contains(key)),
     );
   }
 }
