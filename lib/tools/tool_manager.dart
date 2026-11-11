@@ -59,8 +59,8 @@ class ToolManager {
     ),
     AgentToolDefinition(
       name: 'create_subagent',
-      description: 'تسجيل وكيل فرعي دائم دون تشغيله. يتطلب id وtitle وprompt، ويمكن تحديد agent_type من explore أو plan أو coder أو reviewer وdepends_on لمعرفات وكلاء من الطلب نفسه.',
-      example: '{"name":"create_subagent","arguments":{"id":"research_api","title":"استكشاف واجهة API","prompt":"افحص ملفات API وحدد نقاط التكامل دون تعديل الملفات.","agent_type":"explore","depends_on":[]}}',
+      description: 'تسجيل وكيل فرعي دائم دون تشغيله. يتطلب id وtitle وprompt، ويمكن تحديد agent_type وdepends_on وdescription وmotto وicon_url (HTTPS) لبيانات العامل.',
+      example: '{"name":"create_subagent","arguments":{"id":"research_api","title":"استكشاف واجهة API","prompt":"افحص ملفات API وحدد نقاط التكامل دون تعديل الملفات.","agent_type":"explore","depends_on":[],"description":"يفحص واجهات API","motto":"التحقق قبل الاستنتاج","icon_url":"https://example.com/agent.png"}}',
     ),
     AgentToolDefinition(
       name: 'spawn_subagent',
