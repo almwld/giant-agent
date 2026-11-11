@@ -200,7 +200,7 @@ class AgentMemoryService {
         where: 'session_id = ?',
         whereArgs: [conversationId],
         orderBy: 'created_at DESC',
-        limit: limit.clamp(1, 300),
+        limit: limit.clamp(1, 300).toInt(),
       );
 
   Future<void> saveTurn(String userText, String assistantText, {String conversationId = 'global'}) async {
