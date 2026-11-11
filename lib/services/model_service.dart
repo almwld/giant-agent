@@ -739,11 +739,11 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
       final goal = _subagents.currentGoal(requestId);
       final allowedTools = switch (child.agentType) {
         'explore' || 'plan' || 'reviewer' => const <String>{
-            'read_file', 'list_files', 'mcp_call', 'mcp_read_resource',
+            'read_file', 'list_files', 'web_search', 'mcp_call', 'mcp_read_resource',
             'send_message', 'wait_for_message',
           },
         'coder' => const <String>{
-            'create_file', 'read_file', 'write_file', 'list_files',
+            'create_file', 'read_file', 'write_file', 'list_files', 'web_search',
             'execute_python', 'gain_terminal', 'mcp_call', 'mcp_read_resource',
             'send_message', 'wait_for_message',
           },
