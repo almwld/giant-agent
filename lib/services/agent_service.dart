@@ -247,6 +247,159 @@ class AgentService {
     return _store.getSubagent(taskId);
   }
 
+  final Set<String> _spawningSubagents = <String>{};
+
+  /// Creates a durable child-agent definition without starting execution.
+  /// The append-only event journal remains the source of lifecycle history.
+  Future<Map<String, dynamic>> createSubagent({
+    required String parentRequestId,
+    required String taskId,
+    required String title,
+    required String prompt,
+    String agentType = 'explore',
+    List<String> dependsOn = const <String>[],
+  }) async {
+    await initialize();
+    final id = taskId.trim();
+    final cleanTitle = title.trim();
+    final cleanPrompt = prompt.trim();
+    if (id.isEmpty || cleanTitle.isEmpty || cleanPrompt.isEmpty) {
+      throw ArgumentError('Subagent id, title and prompt are required.');
+    }
+    if (cleanPrompt.length > 12000 || cleanTitle.length > 160) {
+      throw ArgumentError('Subagent title or prompt exceeds the supported limit.');
+    }
+    if (!const {'explore', 'plan', 'coder', 'reviewer'}.contains(agentType)) {
+      throw ArgumentError('Unknown subagent type: $agentType');
+    }
+    if (dependsOn.length > 8 || dependsOn.toSet().length != dependsOn.length ||
+        dependsOn.contains(id)) {
+      throw ArgumentError('Subagent dependencies must be unique and cannot include itself.');
+    }
+    final parent = await _store.getRequest(parentRequestId);
+    if (parent == null) {
+      throw StateError('Parent request $parentRequestId does not exist.');
+    }
+    final children = await _store.subagentsForRequest(parentRequestId);
+    if (children.length >= 8) {
+      throw StateError('A request may own at most eight subagents.');
+    }
+    if (await _store.getSubagent(id) != null) {
+      throw StateError('Subagent id already exists: $id');
+    }
+    for (final dependencyId in dependsOn) {
+      final dependency = await _store.getSubagent(dependencyId);
+      if (dependency == null ||
+          dependency['parent_request_id'] != parentRequestId) {
+        throw StateError('Dependency $dependencyId is not a child of this request.');
+      }
+    }
+    final now = DateTime.now().toUtc().toIso8601String();
+    await _store.recordSubagentEvent(<String, dynamic>{
+      'id': 'subagent_created_${id}_${DateTime.now().microsecondsSinceEpoch}',
+      'request_id': parentRequestId,
+      'session_id': parent.conversationId,
+      'task_id': id,
+      'agent_type': agentType,
+      'title': cleanTitle,
+      'task_prompt': cleanPrompt,
+      'depends_on': dependsOn,
+      'type': 'subagent_created',
+      'status': 'pending',
+      'details': 'Created and durably registered; execution has not started.',
+      'timestamp': now,
+    });
+    final created = await _store.getSubagent(id);
+    if (created == null || created['status'] != 'pending') {
+      throw StateError('Subagent creation was not durably confirmed.');
+    }
+    return created;
+  }
+
+  /// Starts one pending child through the existing shared AgentKernel runtime.
+  /// A second local model/JNI runtime is never created.
+  Future<Map<String, dynamic>> spawnSubagent(String taskId) async {
+    await initialize();
+    final id = taskId.trim();
+    if (id.isEmpty) throw ArgumentError('Subagent id is required.');
+    if (!_spawningSubagents.add(id)) {
+      throw StateError('Subagent $id is already being spawned.');
+    }
+    try {
+      final child = await _store.getSubagent(id);
+      if (child == null) throw StateError('Subagent $id was not found.');
+      if (child['is_dismissed'] == true) {
+        throw StateError('Dismissed subagents cannot be spawned.');
+      }
+      if (child['status'] != 'pending') {
+        throw StateError('Only pending subagents can be spawned; current state: ${child['status']}.');
+      }
+      final parentId = child['parent_request_id']?.toString() ?? '';
+      final parent = await _store.getRequest(parentId);
+      if (parent == null) throw StateError('Parent request $parentId was not found.');
+      final dependencyResults = <String, String>{};
+      final dependencies = child['depends_on'];
+      if (dependencies is List) {
+        for (final rawId in dependencies) {
+          final dependencyId = rawId.toString();
+          final dependency = await _store.getSubagent(dependencyId);
+          if (dependency == null || dependency['parent_request_id'] != parentId ||
+              dependency['status'] != 'completed') {
+            throw StateError('Dependency $dependencyId must complete before this subagent can start.');
+          }
+          final result = dependency['last_result']?.toString() ?? '';
+          if (result.trim().isEmpty) {
+            throw StateError('Dependency $dependencyId has no completed result.');
+          }
+          dependencyResults[dependencyId] = result;
+        }
+      }
+      await AgentBackgroundExecutionService.instance.beginTask(
+        'تشغيل الوكيل الفرعي: ${child['title'] ?? id}',
+      );
+      try {
+        await _executionKernel.executeRecoveredSubagent(
+          parentRequestId: parent.id,
+          parentPrompt: parent.prompt,
+          conversationId: parent.conversationId,
+          taskId: id,
+          title: child['title']?.toString() ?? id,
+          taskPrompt: child['prompt']?.toString() ?? '',
+          agentType: child['agent_type']?.toString() ?? 'explore',
+          dependencyResults: dependencyResults,
+        );
+      } finally {
+        await _flushExecutionJournal();
+        await AgentBackgroundExecutionService.instance.endTask();
+      }
+      final completed = await _store.getSubagent(id);
+      if (completed == null) throw StateError('Subagent state disappeared after execution.');
+      return completed;
+    } finally {
+      _spawningSubagents.remove(id);
+    }
+  }
+
+  /// Kimi-compatible delete is a soft delete: terminal state and audit events
+  /// remain durable; active or pending workers cannot be removed.
+  Future<bool> deleteSubagent(String taskId) async {
+    await initialize();
+    if (_spawningSubagents.contains(taskId)) return false;
+    final deleted = await _store.dismissSubagent(taskId);
+    await _flushExecutionJournal();
+    return deleted;
+  }
+
+  /// Explicit status contract used by orchestration and recovery callers.
+  Future<Map<String, dynamic>?> checkSubagentStatus(String taskId) =>
+      subagentStatus(taskId);
+
+  /// Lists all durable children for one parent in creation order.
+  Future<List<Map<String, dynamic>>> listSubagents(String parentRequestId) async {
+    await initialize();
+    return _store.subagentsForRequest(parentRequestId);
+  }
+
   /// Dismisses a terminal child from active management without deleting its
   /// append-only audit history. Pending/running children cannot be dismissed.
   Future<bool> dismissSubagent(String taskId) async {
