@@ -439,7 +439,8 @@ ${dependencyContext.isEmpty ? 'لا توجد تبعيات.' : dependencyContext}
         taskId: taskId,
         agentType: agentType,
       )).trim();
-      if (_cancellationRequested ||
+      if (isCancelled?.call() == true ||
+          _cancellationRequested ||
           _cancelledSubagentIds.contains(taskId) ||
           _isCancelledOutput(output)) {
         throw SubagentInterrupted(output.isEmpty
