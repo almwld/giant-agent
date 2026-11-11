@@ -673,6 +673,53 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
             'powerpoint_file_created': false,
           };
           break;
+        case 'fetch_urls':
+          final rawUrls = args['urls'];
+          if (rawUrls is! List || rawUrls.isEmpty || rawUrls.length > 5 ||
+              rawUrls.any((item) => item is! String)) {
+            throw const FormatException('fetch_urls accepts a list of 1–5 HTTP(S) URLs.');
+          }
+          await _ensureBrowserSession();
+          final fetched = await BrowserSessionService.instance.fetchUrls(
+            rawUrls.map((item) => item.toString()).toList(),
+          );
+          result = <String, dynamic>{'ok': fetched.isNotEmpty && fetched.every((item) => item['ok'] == true), 'results': fetched};
+          break;
+        case 'visit':
+        case 'browser_visit':
+          await _ensureBrowserSession();
+          result = await BrowserSessionService.instance.visit(args['url']?.toString() ?? '');
+          break;
+        case 'click':
+        case 'browser_click':
+          result = await BrowserSessionService.instance.click(
+            args['text']?.toString() ?? '',
+          );
+          break;
+        case 'input':
+        case 'browser_input':
+          result = await BrowserSessionService.instance.input(
+            args['selector']?.toString() ?? '',
+            args['value']?.toString() ?? '',
+          );
+          break;
+        case 'find':
+        case 'browser_find':
+          result = await BrowserSessionService.instance.find(
+            args['query']?.toString() ?? '',
+          );
+          break;
+        case 'scrollup':
+        case 'browser_scroll_up':
+          result = await BrowserSessionService.instance.scroll(down: false);
+          break;
+        case 'scrolldown':
+        case 'browser_scroll_down':
+          result = await BrowserSessionService.instance.scroll(down: true);
+          break;
+        case 'browser_state':
+          result = await BrowserSessionService.instance.state();
+          break;
         case 'gain_terminal':
           final approval = requestTerminalApproval;
           if (approval == null) {
@@ -717,6 +764,15 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
       }
       rethrow;
     }
+  }
+
+  Future<void> _ensureBrowserSession() async {
+    final request = requestBrowserSession;
+    if (request == null) {
+      throw StateError('The visible agent browser is unavailable in this execution context.');
+    }
+    await request();
+    await BrowserSessionService.instance.waitUntilReady();
   }
 
   Future<Map<String, dynamic>> _spawnDynamicSubagent(
