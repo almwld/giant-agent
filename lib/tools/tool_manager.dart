@@ -58,6 +58,46 @@ class ToolManager {
       example: '{"name":"mcp_call","arguments":{"server_id":"workspace","tool_name":"search","arguments":{"query":"..."}}}',
     ),
     AgentToolDefinition(
+      name: 'create_subagent',
+      description: 'أنشئ وكيلاً فرعياً تابعاً للمهمة الحالية. الإنشاء لا يبدأ التنفيذ؛ استخدم spawn_subagent بعده. الحد الإجمالي 8 وكلاء وعمق التداخل 2.',
+      example: '{"name":"create_subagent","arguments":{"task_id":"audit_api","title":"مراجعة API","prompt":"افحص واجهات API وحدد المخاطر","agent_type":"reviewer","depends_on":[]}}',
+    ),
+    AgentToolDefinition(
+      name: 'spawn_subagent',
+      description: 'ابدأ وكيلاً فرعياً تم إنشاؤه بعد اكتمال تبعياته.',
+      example: '{"name":"spawn_subagent","arguments":{"task_id":"audit_api"}}',
+    ),
+    AgentToolDefinition(
+      name: 'delete_subagent',
+      description: 'ألغِ الوكيل النشط أو أزل الوكيل المكتمل من الإدارة النشطة مع الاحتفاظ بالنتيجة وسجل التدقيق؛ لا يحذف السجل نهائياً.',
+      example: '{"name":"delete_subagent","arguments":{"task_id":"audit_api"}}',
+    ),
+    AgentToolDefinition(
+      name: 'check_subagent_status',
+      description: 'استعلم عن حالة وكيل فرعي ونتيجته الحالية.',
+      example: '{"name":"check_subagent_status","arguments":{"task_id":"audit_api"}}',
+    ),
+    AgentToolDefinition(
+      name: 'send_message',
+      description: 'أرسل رسالة قصيرة إلى وكيل شقيق أو إلى صندوق رسائل المنسق.',
+      example: '{"name":"send_message","arguments":{"to_task_id":"audit_api","content":"هل وجدت نقاطاً حرجة؟"}}',
+    ),
+    AgentToolDefinition(
+      name: 'wait_for_message',
+      description: 'استقبل رسالة واردة إلى الوكيل الحالي. في OpenRouter ينتظر حتى 60 ثانية؛ في النموذج المحلي المتسلسل يستقبل الرسائل الموجودة فوراً دون حبس المحرك ومنع الوكيل المرسل من العمل.',
+      example: '{"name":"wait_for_message","arguments":{"timeout_seconds":20}}',
+    ),
+    AgentToolDefinition(
+      name: 'ask_user',
+      description: 'اطلب معلومة غير سرية من المستخدم عبر نافذة تفاعلية داخل غرفة المحادثة. لا تطلب كلمات مرور أو مفاتيح API أو بيانات اعتماد، ولا تستخدمها بديلاً عن موافقات الأدوات المؤثرة؛ اطرح سؤالاً محدداً وانتظر الإجابة أو الإلغاء.',
+      example: '{"name":"ask_user","arguments":{"question":"هل تريد اعتماد خطة الترحيل أم التراجع؟","timeout_seconds":120}}',
+    ),
+    AgentToolDefinition(
+      name: 'update_goal',
+      description: 'حدّث هدف التنسيق المشترك؛ ستظهر الصياغة الجديدة في تعليمات الوكلاء الذين يبدأون لاحقاً.',
+      example: '{"name":"update_goal","arguments":{"goal":"ركز على إصلاحات الأمان دون تغيير الواجهات."}}',
+    ),
+    AgentToolDefinition(
       name: 'gain_terminal',
       description: 'تنفيذ أمر واحد في Android shell بصلاحيات التطبيق فقط؛ يتطلب موافقة المستخدم الصريحة على نص الأمر حرفياً قبل التنفيذ.',
       example: '{"name":"gain_terminal","arguments":{"command":"pwd && ls","timeout_seconds":30}}',

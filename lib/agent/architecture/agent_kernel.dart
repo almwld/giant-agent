@@ -93,6 +93,7 @@ class AgentKernel {
     String? agentType,
     String? taskPrompt,
     List<String>? dependsOn,
+    Map<String, Object?> metadata = const <String, Object?>{},
   }) {
     final sequence = ++_eventSequence;
     final event = AgentTimelineEvent(
@@ -113,6 +114,7 @@ class AgentKernel {
       agentType: agentType,
       taskPrompt: taskPrompt,
       dependsOn: dependsOn ?? const <String>[],
+      metadata: metadata,
     );
     _events.add(event);
     AgentEventBus.instance.publish(event.toMap());
@@ -339,6 +341,7 @@ class AgentKernel {
     required String taskPrompt,
     required String agentType,
     required Map<String, String> dependencyResults,
+    List<Map<String, Object?>> inboxMessages = const <Map<String, Object?>>[],
   }) => _requestQueue.enqueue(() => _executeRecoveredSubagentAdmitted(
     parentRequestId: parentRequestId,
     parentPrompt: parentPrompt,
@@ -348,6 +351,7 @@ class AgentKernel {
     taskPrompt: taskPrompt,
     agentType: agentType,
     dependencyResults: dependencyResults,
+    inboxMessages: inboxMessages,
   ));
 
   Future<String> _executeRecoveredSubagentAdmitted({
@@ -359,6 +363,7 @@ class AgentKernel {
     required String taskPrompt,
     required String agentType,
     required Map<String, String> dependencyResults,
+    required List<Map<String, Object?>> inboxMessages,
   }) async {
     if (taskId.trim().isEmpty || taskPrompt.trim().isEmpty) {
       throw ArgumentError('Recovered child identity and prompt are required.');
@@ -389,7 +394,10 @@ class AgentKernel {
       _emit(requestId: parentRequestId, taskId: taskId, agentType: agentType,
         taskPrompt: taskPrompt, type: 'subagent_resume_started',
         title: 'استئناف الوكيل الفرعي: $title', status: 'running');
-      final prompt = '''أنت وكيل فرعي مستأنف من نوع $agentType.\nالمهمة الأصلية: $parentPrompt\nالمهمة المسندة: $taskPrompt\nنتائج التبعيات المكتملة:\n${dependencyContext.isEmpty ? 'لا توجد تبعيات.' : dependencyContext}\n\nقواعد الاستئناف:\n- افحص الحالة الحالية قبل أي تعديل؛ قد تكون بعض الآثار الجانبية نُفذت قبل الانقطاع.\n- لا تكرر عملية غير قابلة للعكس أو إرسالاً أو حذفاً أو دفعاً أو شراءً دون تحقق من حالتها وموافقة المستخدم عند الحاجة.\n- أكمل الجزء المتبقي فقط، ولا تفترض أن سياق النموذج السابق ما زال موجوداً.\n- استخدم الأدوات المسموح بها فقط، ولا تدّع نجاح عملية دون دليل.\n- أعد النتيجة والأدلة والملفات التي تغيرت وما بقي غير منجز.''';
+      final inboxContext = inboxMessages.isEmpty
+          ? 'لا توجد رسائل واردة محفوظة.'
+          : inboxMessages.map((message) => 'من ${message['from_task_id']}: ${message['content']}').join('\\n');
+      final prompt = '''أنت وكيل فرعي مستأنف من نوع $agentType.\nالمهمة الأصلية: $parentPrompt\nالمهمة المسندة: $taskPrompt\nنتائج التبعيات المكتملة:\n${dependencyContext.isEmpty ? 'لا توجد تبعيات.' : dependencyContext}\nرسائل الزملاء الواردة قبل الانقطاع:\n$inboxContext\n\nقواعد الاستئناف:\n- افحص الحالة الحالية قبل أي تعديل؛ قد تكون بعض الآثار الجانبية نُفذت قبل الانقطاع.\n- لا تكرر عملية غير قابلة للعكس أو إرسالاً أو حذفاً أو دفعاً أو شراءً دون تحقق من حالتها وموافقة المستخدم عند الحاجة.\n- أكمل الجزء المتبقي فقط، ولا تفترض أن سياق النموذج السابق ما زال موجوداً.\n- استخدم الأدوات المسموح بها فقط، ولا تدّع نجاح عملية دون دليل.\n- أعد النتيجة والأدلة والملفات التي تغيرت وما بقي غير منجز.''';
       final output = (await _models.processInput(prompt,
         conversationId: '$conversationId::subagent::$taskId',
         persistTurn: false, allowedTools: allowedTools,
@@ -530,7 +538,8 @@ class AgentKernel {
     final cloudParallelismEnabled = selectedMode == ModelProviderMode.openRouter &&
         await OpenAICompatibleProvider.instance.isEnabled();
     final workerConcurrency = cloudParallelismEnabled ? 3 : 1;
-    final orchestrator = SubagentOrchestrator(
+    late final SubagentOrchestrator orchestrator;
+    orchestrator = SubagentOrchestrator(
       parentRequestId: requestId,
       conversationId: conversationId,
       // The mutable llama.cpp JNI context remains strictly single-worker.
@@ -551,6 +560,15 @@ class AgentKernel {
           status: event['status']?.toString() ?? 'pending',
           details: event['details']?.toString(),
           result: event['result']?.toString(),
+          metadata: <String, Object?>{
+            for (final entry in event.entries)
+              if (!const <String>{
+                'id', 'request_id', 'session_id', 'task_id', 'agent_type',
+                'title', 'task_prompt', 'depends_on', 'type', 'status',
+                'details', 'result', 'timestamp',
+              }.contains(entry.key))
+                entry.key: entry.value,
+          },
         );
       },
       execute: (task, dependencyResults, isTaskCancelled) async {
@@ -567,20 +585,22 @@ ${result.output ?? result.error ?? 'لا توجد نتيجة نصية.'}
 ''';
         }).join('\n');
 
+        final orchestrationTools = const <String>{
+          'create_subagent', 'spawn_subagent', 'delete_subagent',
+          'check_subagent_status', 'send_message', 'wait_for_message',
+          'ask_user', 'update_goal',
+        };
         final allowedTools = switch (task.agentType) {
-          'explore' || 'plan' || 'reviewer' =>
-            const <String>{'read_file', 'list_files', 'mcp_call', 'mcp_read_resource'},
-          'coder' => const <String>{
-              'create_file',
-              'read_file',
-              'write_file',
-              'list_files',
-              'execute_python',
-              'gain_terminal',
-              'mcp_call',
-              'mcp_read_resource',
+          'explore' || 'plan' || 'reviewer' => <String>{
+              'read_file', 'list_files', 'mcp_call', 'mcp_read_resource',
+              ...orchestrationTools,
             },
-          _ => const <String>{'read_file', 'list_files'},
+          'coder' => <String>{
+              'create_file', 'read_file', 'write_file', 'list_files',
+              'execute_python', 'gain_terminal', 'mcp_call',
+              'mcp_read_resource', ...orchestrationTools,
+            },
+          _ => orchestrationTools,
         };
 
         final isolatedConversationId =
@@ -593,12 +613,17 @@ $prompt
 المهمة المسندة إليك:
 ${task.prompt}
 
+هدف التنسيق الحالي:
+${orchestrator.currentGoal.isEmpty ? prompt : orchestrator.currentGoal}
+
 نتائج الوكلاء السابقين:
 ${dependencyContext.isEmpty ? 'لا توجد تبعيات سابقة.' : dependencyContext}
 
 قواعد التنفيذ:
-- اعمل داخل نطاق المهمة المسندة فقط ولا تنشئ وكلاء فرعيين.
-- هذا سياق معزول؛ لا تفترض أنك ترى سجل المحادثة الرئيسي.
+- اعمل داخل نطاق المهمة المسندة فقط. يمكنك إنشاء وكلاء فرعيين عند الحاجة باستخدام create_subagent ثم spawn_subagent.
+- لا تتجاوز حدود 8 وكلاء إجمالاً وعمق تداخل 2، ولا تبدأ تابعاً قبل اكتمال تبعياته.
+- استخدم send_message وwait_for_message للتنسيق مع الوكلاء، وcheck_subagent_status لمتابعة الحالة، وask_user لطلب معلومة غير سرية لازمة من المستخدم، وupdate_goal لتحديث الهدف المشترك.
+- لا تطلب كلمات مرور أو مفاتيح API أو رموز مصادقة أو أسراراً شخصية. ask_user ليس بديلاً عن موافقات الطرفية أو MCP.
 - استخدم الأدوات المسموح بها فقط، ولا تدّع تنفيذ عملية دون نتيجة أداة مؤكدة.
 - وكيل explore وplan وreviewer للقراءة والتحليل فقط؛ لا تعدّل الملفات.
 - وكيل coder يمكنه تعديل مساحة العمل، وأوامر الطرفية تظل خاضعة لموافقة المستخدم.
@@ -619,6 +644,8 @@ ${dependencyContext.isEmpty ? 'لا توجد تبعيات سابقة.' : depende
             requestId: requestId,
             taskId: task.id,
             agentType: task.agentType,
+            subagentOrchestrator: orchestrator,
+            userVisibleSessionId: conversationId,
           )).trim();
         } finally {
           _activeSubagentIds.remove(task.id);
@@ -641,8 +668,15 @@ ${dependencyContext.isEmpty ? 'لا توجد تبعيات سابقة.' : depende
 
     _activeSubagentOrchestrator = orchestrator;
     var results = <SubagentResult>[];
+    final parentMessages = <Map<String, Object?>>[];
+    var finalCoordinationGoal = '';
     try {
       results = await orchestrator.run(tasks);
+      parentMessages.addAll(orchestrator.parentMessages);
+      finalCoordinationGoal = orchestrator.currentGoal;
+      // Dynamic children are registered by model-facing tools while workers
+      // run; include them in the canonical task list before synthesis/replan.
+      tasks = orchestrator.allTasks.toList(growable: true);
 
       // One bounded repair cycle lets the coordinator adapt to worker evidence
       // without creating an unbounded agent loop or replaying completed work.
@@ -687,6 +721,10 @@ $priorEvidence
             );
             tasks.addAll(repairTasks);
             final repairResults = await orchestrator.run(repairTasks);
+            parentMessages.addAll(orchestrator.parentMessages);
+            if (orchestrator.currentGoal.isNotEmpty) {
+              finalCoordinationGoal = orchestrator.currentGoal;
+            }
             results = <SubagentResult>[...results, ...repairResults];
             _emit(
               requestId: requestId,
@@ -755,9 +793,19 @@ ${result.output ?? result.error ?? 'لم تُنتج نتيجة.'}
 ''';
     }).join('\n---\n');
 
+    final parentMessageEvidence = parentMessages.isEmpty
+        ? 'لا توجد رسائل موجهة إلى المنسق.'
+        : parentMessages.map((message) =>
+            'من ${message['from_task_id']}: ${message['content']}').join('\\n');
     final finalOutput = await _models.processInput(
       '''
 المهمة الأصلية: $prompt
+
+هدف التنسيق النهائي:
+${finalCoordinationGoal.isEmpty ? prompt : finalCoordinationGoal}
+
+رسائل الوكلاء الموجهة إلى المنسق:
+$parentMessageEvidence
 
 نتائج الوكلاء الفرعيين:
 $evidence

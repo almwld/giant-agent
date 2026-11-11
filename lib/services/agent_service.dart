@@ -139,7 +139,7 @@ class AgentService {
           .then((_) async {
         final eventType = event['type']?.toString() ?? '';
         if ((event['task_id']?.toString() ?? '').isNotEmpty &&
-            eventType.startsWith('subagent_')) {
+            (eventType.startsWith('subagent_') || eventType.startsWith('user_input_'))) {
           await _store.recordSubagentEvent(event);
         }
         await _store.appendRequestEvent(event);
@@ -215,6 +215,9 @@ class AgentService {
       }
       return record.result ?? '';
     } finally {
+      // Flush the asynchronous event-bus subscriber before returning the
+      // request result so lifecycle and ask-user records are durably visible.
+      await _flushExecutionJournal();
       await _backgroundProgressTail;
       await AgentBackgroundExecutionService.instance.endTask();
     }
@@ -444,6 +447,25 @@ class AgentService {
         sideEffectDisposition: sideEffectDisposition,
         execute: ({required parent, required task, required dependencyResults}) async {
           try {
+            final parentEvents = await _store.eventsFor(parent.id);
+            final inboxMessages = parentEvents
+                .where((event) =>
+                    (event.type == 'subagent_message_sent' &&
+                        event.payload['to_task_id']?.toString() == taskId) ||
+                    (event.type == 'user_input_answered' &&
+                        event.payload['task_id']?.toString() == taskId &&
+                        (event.payload['answer']?.toString() ?? '').trim().isNotEmpty))
+                .map((event) {
+                  if (event.type == 'user_input_answered') {
+                    return <String, Object?>{
+                      'from_task_id': 'user',
+                      'content': 'إجابة المستخدم: ${event.payload['answer']}',
+                      'input_request_id': event.payload['input_request_id'],
+                    };
+                  }
+                  return Map<String, Object?>.from(event.payload);
+                })
+                .toList(growable: false);
             return await _executionKernel.executeRecoveredSubagent(
               parentRequestId: parent.id,
               parentPrompt: parent.prompt,
@@ -453,6 +475,7 @@ class AgentService {
               taskPrompt: task['prompt']?.toString() ?? '',
               agentType: task['agent_type']?.toString() ?? 'explore',
               dependencyResults: dependencyResults,
+              inboxMessages: inboxMessages,
             );
           } finally {
             await _flushExecutionJournal();

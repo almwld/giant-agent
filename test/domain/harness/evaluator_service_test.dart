@@ -70,6 +70,49 @@ void main() {
       expect(result.evidence?['goal_semantics_independently_asserted'], isFalse);
     });
 
+    test('accepts valid Kimi orchestration control-plane operations', () async {
+      final evaluator = EvaluatorService(
+        readWorkspaceFile: (_) async => {'ok': false},
+      );
+      final operations = <String, Map<String, dynamic>>{
+        'create_subagent': {'ok': true, 'task_id': 'worker-1', 'status': 'created'},
+        'spawn_subagent': {'ok': true, 'task_id': 'worker-1', 'status': 'queued'},
+        'delete_subagent': {'ok': true, 'task_id': 'worker-1'},
+        'check_subagent_status': {'ok': true, 'task_id': 'worker-1', 'status': 'running'},
+        'send_message': {'ok': true, 'to_task_id': 'worker-1'},
+        'wait_for_message': {'ok': true, 'received': false, 'message': {}},
+        'ask_user': {'ok': true, 'answered': true, 'answer': 'Approve option A'},
+        'update_goal': {'ok': true, 'goal': 'Review security'},
+      };
+      for (final entry in operations.entries) {
+        final result = await evaluator.verify(
+          'Coordinate subagents',
+          entry.key,
+          const <String, dynamic>{},
+          entry.value,
+        );
+        expect(result.passed, isTrue, reason: entry.key);
+      }
+    });
+
+    test('rejects failed Kimi orchestration control-plane operations', () async {
+      final evaluator = EvaluatorService(readWorkspaceFile: (_) async => {'ok': false});
+      final result = await evaluator.verify(
+        'Coordinate subagents',
+        'spawn_subagent',
+        const <String, dynamic>{'task_id': 'missing'},
+        const <String, dynamic>{'ok': false, 'error': 'Unknown subagent'},
+      );
+      expect(result.passed, isFalse);
+      final missingStatus = await evaluator.verify(
+        'Inspect a child agent',
+        'check_subagent_status',
+        const <String, dynamic>{'task_id': 'missing'},
+        const <String, dynamic>{'ok': false, 'task_id': 'missing', 'status': 'not_found'},
+      );
+      expect(missingStatus.passed, isFalse);
+    });
+
     test('rejects tools without an independent verifier', () async {
       final evaluator = EvaluatorService(readWorkspaceFile: (_) async => {'ok': false});
       final result = await evaluator.verify('goal', 'unknown_tool', {}, {'ok': true});

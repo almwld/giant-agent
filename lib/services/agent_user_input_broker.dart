@@ -1,0 +1,115 @@
+import 'dart:async';
+
+import '../agent/architecture/agent_event_bus.dart';
+
+class _PendingAgentInput {
+  _PendingAgentInput({required this.completer, required this.requestId, required this.taskId, required this.sessionId});
+  final Completer<String?> completer;
+  final String requestId;
+  final String taskId;
+  final String sessionId;
+}
+
+/// Bridges a model's ask-user tool call to the active chat UI without exposing
+/// internal reasoning or allowing a worker to silently invent user approval.
+class AgentUserInputBroker {
+  AgentUserInputBroker._();
+  static final AgentUserInputBroker instance = AgentUserInputBroker._();
+
+  final Map<String, _PendingAgentInput> _pending = <String, _PendingAgentInput>{};
+
+  Future<String?> askUser({
+    required String requestId,
+    required String taskId,
+    required String sessionId,
+    required String question,
+    Duration timeout = const Duration(seconds: 120),
+    bool Function()? isCancelled,
+  }) async {
+    final prompt = question.trim();
+    if (requestId.isEmpty || taskId.isEmpty || sessionId.isEmpty ||
+        prompt.isEmpty || prompt.length > 2000) {
+      throw ArgumentError('ask_user requires request, task, session and a question of 1–2000 characters.');
+    }
+    if (timeout <= Duration.zero || timeout > const Duration(minutes: 3)) {
+      throw ArgumentError('User-input timeout must be between 1 second and 3 minutes.');
+    }
+    final id = 'user_input_${requestId}_${taskId}_${DateTime.now().microsecondsSinceEpoch}';
+    final completer = Completer<String?>();
+    _pending[id] = _PendingAgentInput(completer: completer, requestId: requestId, taskId: taskId, sessionId: sessionId);
+    AgentEventBus.instance.publish(<String, Object?>{
+      'id': id,
+      'input_request_id': id,
+      'request_id': requestId,
+      'task_id': taskId,
+      'session_id': sessionId,
+      'type': 'user_input_requested',
+      'title': 'يحتاج الوكيل إلى إجابتك',
+      'question': prompt,
+      'status': 'pending',
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+    });
+    Timer? cancellationPoll;
+    final cancelled = Completer<void>();
+    if (isCancelled != null) {
+      cancellationPoll = Timer.periodic(const Duration(milliseconds: 250), (_) {
+        if (isCancelled() && !cancelled.isCompleted) cancelled.complete();
+      });
+    }
+    try {
+      final answer = await Future.any<String?>(<Future<String?>>[
+        completer.future,
+        if (isCancelled != null) cancelled.future.then<String?>((_) => null),
+      ]).timeout(timeout);
+      if (cancelled.isCompleted && answer == null) {
+        AgentEventBus.instance.publish(<String, Object?>{
+          'id': '${id}_cancelled', 'input_request_id': id,
+          'request_id': requestId, 'task_id': taskId, 'session_id': sessionId,
+          'type': 'user_input_cancelled', 'title': 'أُلغي انتظار إجابة المستخدم',
+          'status': 'cancelled', 'timestamp': DateTime.now().toUtc().toIso8601String(),
+        });
+      }
+      return answer;
+    } on TimeoutException {
+      AgentEventBus.instance.publish(<String, Object?>{
+        'id': '${id}_timeout',
+        'input_request_id': id,
+        'request_id': requestId,
+        'task_id': taskId,
+        'session_id': sessionId,
+        'type': 'user_input_timed_out',
+        'title': 'انتهت مهلة انتظار إجابتك',
+        'status': 'interrupted',
+        'timestamp': DateTime.now().toUtc().toIso8601String(),
+      });
+      return null;
+    } finally {
+      cancellationPoll?.cancel();
+      _pending.remove(id);
+    }
+  }
+
+  bool submitAnswer(String inputRequestId, String? answer) {
+    final pending = _pending[inputRequestId];
+    if (pending == null || pending.completer.isCompleted) return false;
+    final normalized = answer?.trim();
+    pending.completer.complete(normalized == null || normalized.isEmpty ? null : normalized);
+    AgentEventBus.instance.publish(<String, Object?>{
+      'id': '${inputRequestId}_answered',
+      'input_request_id': inputRequestId,
+      'request_id': pending.requestId,
+      'task_id': pending.taskId,
+      'session_id': pending.sessionId,
+      'type': 'user_input_answered',
+      'title': normalized == null || normalized.isEmpty
+          ? 'تم إلغاء سؤال الوكيل'
+          : 'وصلت إجابتك إلى الوكيل',
+      'status': normalized == null || normalized.isEmpty ? 'cancelled' : 'completed',
+      'answer': normalized,
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+    });
+    return true;
+  }
+
+  int get pendingCount => _pending.length;
+}

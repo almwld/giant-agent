@@ -7,6 +7,7 @@ import 'package:giant_agent_x/domain/kernel/agent_kernel.dart'
     as durable;
 import 'package:giant_agent_x/domain/kernel/agent_kernel_store.dart';
 import 'package:giant_agent_x/services/agent_service.dart';
+import 'package:giant_agent_x/agent/architecture/agent_event_bus.dart';
 
 Future<AgentKernelStore> _store(String path) async {
   return AgentKernelStore(
@@ -166,6 +167,69 @@ void main() {
     await service.disposeForTesting();
   });
 
+  test('ask-user request and answer events are saved in the child journal', () async {
+    final store = await _store('${directory.path}/ask-user-journal.db');
+    final service = AgentService.withExecutor(
+      store: store,
+      executor: (request) async {
+        AgentEventBus.instance.publish({
+          'id': 'ask-user-request-${request.id}',
+          'request_id': request.id,
+          'session_id': request.conversationId,
+          'task_id': 'child-ask',
+          'type': 'subagent_started',
+          'status': 'running',
+          'title': 'Worker started',
+          'task_prompt': 'Need a decision',
+          'timestamp': DateTime.now().toUtc().toIso8601String(),
+        });
+        AgentEventBus.instance.publish({
+          'id': 'ask-user-question-${request.id}',
+          'request_id': request.id,
+          'session_id': request.conversationId,
+          'task_id': 'child-ask',
+          'input_request_id': 'input-1',
+          'type': 'user_input_requested',
+          'status': 'pending',
+          'question': 'Choose A or B',
+          'timestamp': DateTime.now().toUtc().toIso8601String(),
+        });
+        AgentEventBus.instance.publish({
+          'id': 'ask-user-answer-${request.id}',
+          'request_id': request.id,
+          'session_id': request.conversationId,
+          'task_id': 'child-ask',
+          'input_request_id': 'input-1',
+          'type': 'user_input_answered',
+          'status': 'completed',
+          'answer': 'A',
+          'timestamp': DateTime.now().toUtc().toIso8601String(),
+        });
+        AgentEventBus.instance.publish({
+          'id': 'ask-user-completed-${request.id}',
+          'request_id': request.id,
+          'session_id': request.conversationId,
+          'task_id': 'child-ask',
+          'type': 'subagent_completed',
+          'status': 'completed',
+          'title': 'Worker completed',
+          'timestamp': DateTime.now().toUtc().toIso8601String(),
+        });
+        return 'done';
+      },
+    );
+    await service.runTask('ask the user', conversationId: 'ask-chat');
+    final journal = await service.eventsForSubagent('child-ask');
+    expect(journal.map((event) => event.type), [
+      'subagent_started',
+      'user_input_requested',
+      'user_input_answered',
+      'subagent_completed',
+    ]);
+    expect(journal[2].payload['answer'], 'A');
+    await service.disposeForTesting();
+  });
+
   test('subagent snapshots are durable and interrupted children are not replayed', () async {
     final store = await _store('${directory.path}/subagent-recovery.db');
     await store.enqueue(id: 'parent-1', prompt: 'parent', conversationId: 'chat-1');
@@ -194,6 +258,55 @@ void main() {
     expect(after.single['recovery_requires_explicit_resume'], isTrue);
     expect((await store.taskEvents('parent-1_agent_worker')).last.type,
         'subagent_interrupted_on_restart');
+  });
+
+  test('informational subagent messages and goal updates preserve running status', () async {
+    final store = await _store('${directory.path}/subagent-informational-events.db');
+    await store.enqueue(id: 'parent-info', prompt: 'parent', conversationId: 'chat-info');
+    await store.markRunning('parent-info');
+    await store.recordSubagentEvent({
+      'id': 'child-started-info',
+      'request_id': 'parent-info',
+      'session_id': 'chat-info',
+      'task_id': 'child-info',
+      'agent_type': 'explore',
+      'title': 'Research worker',
+      'task_prompt': 'Research',
+      'type': 'subagent_started',
+      'status': 'running',
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+    });
+    await store.recordSubagentEvent({
+      'id': 'child-message-info',
+      'request_id': 'parent-info',
+      'session_id': 'chat-info',
+      'task_id': 'child-info',
+      'type': 'subagent_message_sent',
+      'status': 'completed',
+      'from_task_id': 'child-info',
+      'to_task_id': 'sibling-info',
+      'content': 'Research is complete.',
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+    });
+    expect((await store.getSubagent('child-info'))?['status'], 'running');
+    await store.recordSubagentEvent({
+      'id': 'child-goal-info',
+      'request_id': 'parent-info',
+      'session_id': 'chat-info',
+      'task_id': 'child-info',
+      'type': 'subagent_goal_updated',
+      'status': 'completed',
+      'details': 'Prioritize security',
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+    });
+    expect((await store.getSubagent('child-info'))?['status'], 'running');
+    final journal = await store.taskEvents('child-info');
+    expect(journal.map((event) => event.type), [
+      'subagent_started',
+      'subagent_message_sent',
+      'subagent_goal_updated',
+    ]);
+    expect(journal[1].payload['content'], 'Research is complete.');
   });
 
   test('subagent dismissal preserves audit history and blocks later resume', () async {
