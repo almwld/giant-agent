@@ -58,6 +58,25 @@ void main() {
       })).passed, isTrue);
   });
 
+  test('verifies DMail as local chat recall, not outbound email', () async {
+    final evaluator = EvaluatorService(
+      readWorkspaceFile: (_) async => const <String, dynamic>{'ok': false},
+    );
+    final result = await evaluator.verify(
+      'recall previous chat',
+      'dmail',
+      const <String, dynamic>{'query': 'MCP'},
+      const <String, dynamic>{
+        'ok': true,
+        'query': 'MCP',
+        'results': <dynamic>[],
+        'source': 'local_sqlite_conversation_history',
+        'email_sent': false,
+      },
+    );
+    expect(result.passed, isTrue);
+  });
+
   test('verifies structured widget publication', () async {
     final evaluator = EvaluatorService(
       readWorkspaceFile: (_) async => const <String, dynamic>{'ok': false},
