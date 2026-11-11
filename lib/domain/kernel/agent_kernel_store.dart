@@ -325,9 +325,21 @@ class AgentKernelStore {
         DateTime.now().toUtc().toIso8601String();
     final now = DateTime.now().toUtc().toIso8601String();
     final eventType = event['type']?.toString() ?? 'unknown';
-    final eventStatus = eventType == 'subagent_cancelled'
-        ? 'cancelled'
-        : event['status']?.toString() ?? 'pending';
+    final reportedStatus = event['status']?.toString() ?? 'pending';
+    // Informational events (messages, goal updates, status reads) must never
+    // transition a still-running worker to a terminal state.
+    final eventStatus = switch (eventType) {
+      'subagent_created' || 'subagent_queued' => 'pending',
+      'subagent_started' || 'subagent_resume_started' => 'running',
+      'subagent_completed' || 'subagent_resume_completed' => 'completed',
+      'subagent_failed' || 'subagent_resume_failed' => 'failed',
+      'subagent_interrupted' || 'subagent_resume_interrupted' ||
+      'subagent_interrupted_on_restart' => 'interrupted',
+      'subagent_cancelled' => 'cancelled',
+      'subagent_skipped' => 'skipped',
+      'subagent_dismissed' => previous['status']?.toString() ?? reportedStatus,
+      _ => previous['status']?.toString() ?? reportedStatus,
+    };
     final snapshot = <String, dynamic>{
       ...previous,
       'id': taskId,
