@@ -5,7 +5,7 @@ void main() {
   group('ReflexionService', () {
     test('parses and allow-lists a corrective workspace listing action', () async {
       final service = ReflexionService(
-        generate: (_) async => '{"tool":"list_files","args":{}}',
+        generate: (String prompt, {bool Function()? shouldCancel}) async => '{"tool":"list_files","args":{}}',
       );
       final action = await service.generateFix(
         originalGoal: 'Read nonexistent.txt',
@@ -18,7 +18,7 @@ void main() {
 
     test('rejects a tool outside the registry', () async {
       final service = ReflexionService(
-        generate: (_) async => '{"tool":"execute_terminal","args":{"command":"ls"}}',
+        generate: (String prompt, {bool Function()? shouldCancel}) async => '{"tool":"execute_terminal","args":{"command":"ls"}}',
       );
       await expectLater(
         service.generateFix(
@@ -32,7 +32,7 @@ void main() {
 
     test('rejects allow-listed tools with invalid arguments', () async {
       final service = ReflexionService(
-        generate: (_) async => '{"tool":"read_file","args":{}}',
+        generate: (String prompt, {bool Function()? shouldCancel}) async => '{"tool":"read_file","args":{}}',
       );
       await expectLater(
         service.generateFix(
@@ -45,7 +45,7 @@ void main() {
     });
 
     test('rejects malformed model output', () async {
-      final service = ReflexionService(generate: (_) async => 'I will try another action.');
+      final service = ReflexionService(generate: (String prompt, {bool Function()? shouldCancel}) async => 'I will try another action.');
       await expectLater(
         service.generateFix(
           originalGoal: 'Inspect files',
@@ -58,7 +58,7 @@ void main() {
 
     test('includes the original failure and available tools in the repair prompt', () async {
       var prompt = '';
-      final service = ReflexionService(generate: (value) async {
+      final service = ReflexionService(generate: (String value, {bool Function()? shouldCancel}) async {
         prompt = value;
         return '{"tool":"list_files","args":{}}';
       });
