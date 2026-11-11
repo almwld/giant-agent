@@ -17,22 +17,26 @@ class _AgentBrowserDialogState extends State<AgentBrowserDialog> {
   @override
   void initState() {
     super.initState();
-    _controller = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onNavigationRequest: (request) => _browser.allowsNavigation(request.url)
-              ? NavigationDecision.navigate
-              : NavigationDecision.prevent,
-          onPageStarted: (_) => _browser.markPageStarted(),
-          onPageFinished: _browser.markPageFinished,
-          onWebResourceError: (error) {
-            if (error.isForMainFrame == true) {
-              _browser.markPageError(error.description);
-            }
-          },
-        ),
-      );
+    _controller = WebViewController();
+    _initializeBrowserController();
+  }
+
+  Future<void> _initializeBrowserController() async {
+    await _controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+    await _controller.setNavigationDelegate(
+      NavigationDelegate(
+        onNavigationRequest: (request) => _browser.allowsNavigation(request.url)
+            ? NavigationDecision.navigate
+            : NavigationDecision.prevent,
+        onPageStarted: (_) => _browser.markPageStarted(),
+        onPageFinished: _browser.markPageFinished,
+        onWebResourceError: (error) {
+          if (error.isForMainFrame == true) {
+            _browser.markPageError(error.description);
+          }
+        },
+      ),
+    );
     _browser.attach(_controller);
   }
 
