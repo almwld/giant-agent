@@ -25,4 +25,4 @@ This tranche connects the model-facing tool loop to the active in-memory subagen
 
 `ask_user` is not exposed yet. A correct implementation needs a user-facing pending-input surface in the chat UI, durable correlation from the request to that prompt, timeout/cancellation behavior, and a response API. Emitting a fake question event without a response path would falsely imply a working interaction. This remains a separate UI/runtime contract and is not claimed as complete.
 
-The existing service-level create/spawn/status/soft-delete APIs remain available for recovery and external callers. The new model-facing tools operate against the active orchestrator so a worker can add children without enqueueing behind and deadlocking the parent request.
+The existing service-level create/spawn/status/soft-delete APIs remain available for recovery and external callers. Informational message and goal events preserve the worker's current lifecycle state in the durable task projection. The new model-facing tools operate against the active orchestrator so a worker can add children without enqueueing behind and deadlocking the parent request.
