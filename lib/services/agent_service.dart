@@ -238,6 +238,19 @@ class AgentService {
   Future<List<Map<String, dynamic>>> subagentsForRequest(String requestId) =>
       _store.subagentsForRequest(requestId);
 
+  /// Returns the latest durable lifecycle snapshot for one child.
+  Future<Map<String, dynamic>?> subagentStatus(String taskId) async {
+    await initialize();
+    return _store.getSubagent(taskId);
+  }
+
+  /// Dismisses a terminal child from active management without deleting its
+  /// append-only audit history. Pending/running children cannot be dismissed.
+  Future<bool> dismissSubagent(String taskId) async {
+    await initialize();
+    return _store.dismissSubagent(taskId);
+  }
+
   /// Resumes one interrupted child only after an explicit user decision about
   /// possible side effects. The child reuses the process-wide execution kernel.
   Future<String> resumeSubagent(
