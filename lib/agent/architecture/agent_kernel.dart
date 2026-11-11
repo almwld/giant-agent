@@ -382,7 +382,7 @@ class AgentKernel {
         'نتيجة المهمة السابقة ${entry.key}:\n${entry.value}'
       ).join('\n\n');
       final allowedTools = switch (agentType) {
-        'explore' || 'plan' || 'reviewer' => const <String>{'read_file', 'list_files'},
+        'explore' || 'plan' || 'reviewer' => const <String>{'read_file', 'list_files', 'mcp_call'},
         'coder' => const <String>{'create_file', 'read_file', 'write_file', 'list_files', 'execute_python', 'gain_terminal'},
         _ => throw ArgumentError('Unknown recovered agent type: $agentType'),
       };
@@ -434,6 +434,7 @@ class AgentKernel {
       output.startsWith('تم إيقاف المهمة') ||
       output.startsWith('تم إيقاف تنفيذ الوكيل') ||
       output.startsWith('تم إيقاف الوكيل بعد اكتمال الأداة') ||
+      output.startsWith('تم إيقاف استدعاء الأداة المحدد') ||
       output.startsWith('تم إيقاف التوليد') ||
       output.contains('[تم إيقاف التوليد]');
 
@@ -575,6 +576,7 @@ ${result.output ?? result.error ?? 'لا توجد نتيجة نصية.'}
               'list_files',
               'execute_python',
               'gain_terminal',
+              'mcp_call',
             },
           _ => const <String>{'read_file', 'list_files'},
         };
