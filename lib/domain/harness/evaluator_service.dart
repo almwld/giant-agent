@@ -82,6 +82,39 @@ class EvaluatorService {
           message: passed ? 'Workspace listing returned a structured file list.' : 'Workspace listing did not return a file list.',
           evidence: <String, Object?>{'file_count': files is List ? files.length : 0},
         );
+      case 'mcp_read_resource':
+        final resource = toolResult['resource_result'];
+        final contents = resource is Map ? resource['contents'] : null;
+        final passed = toolResult['ok'] == true && contents is List;
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed
+              ? 'MCP resource verification passed: the server returned structured resource contents.'
+              : 'MCP resource verification failed: no structured contents were returned.',
+          evidence: <String, Object?>{
+            'resource_contents_received': passed,
+            'content_items': contents is List ? contents.length : 0,
+          },
+        );
+      case 'mcp_call':
+        final envelope = toolResult['mcp_result'];
+        final content = envelope is Map ? envelope['content'] : null;
+        final structured = envelope is Map ? envelope['structuredContent'] : null;
+        final passed = toolResult['ok'] == true &&
+            envelope is Map &&
+            (content is List || structured is Map);
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed
+              ? 'MCP transport verification passed: the remote server returned a typed result envelope. Remote business effects are not independently asserted.'
+              : 'MCP verification failed: the remote server did not return a valid typed result envelope.',
+          evidence: <String, Object?>{
+            'transport_result_received': passed,
+            'content_blocks': content is List ? content.length : 0,
+            'has_structured_content': structured is Map,
+            'remote_effect_independently_asserted': false,
+          },
+        );
       case 'execute_python':
         final output = toolResult['output']?.toString() ?? '';
         final error = toolResult['error']?.toString() ?? '';

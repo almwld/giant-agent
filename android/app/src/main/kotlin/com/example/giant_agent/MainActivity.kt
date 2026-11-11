@@ -1,7 +1,10 @@
 package com.example.giant_agent
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.webkit.MimeTypeMap
+import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -21,6 +24,13 @@ import com.google.mlkit.vision.label.ImageLabeling
 import com.google.mlkit.vision.label.defaults.ImageLabelerOptions
 
 class MainActivity: FlutterActivity() {
+    override fun provideFlutterEngine(context: Context): FlutterEngine? =
+        AgentRuntime.flutterEngine
+
+    // AgentForegroundService keeps this process alive while durable work runs;
+    // retaining the engine also retains the one shared Dart ModelService/LlamaService facade.
+    override fun shouldDestroyEngineWithHost(): Boolean = false
+
     private val CHANNEL = "file_receiver"
     private val AI_CHANNEL = "giant_agent/llama"
     private val AGENT_EVENTS_CHANNEL = "giant_agent_stream"
@@ -33,8 +43,43 @@ class MainActivity: FlutterActivity() {
     companion object { private const val REQUEST_OPEN_MODEL = 7402 }
     
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+        AgentRuntime.retainFlutterEngine(flutterEngine)
         super.configureFlutterEngine(flutterEngine)
         NotificationBridge.register(this, flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "giant_agent/background")
+            .setMethodCallHandler { call, result ->
+                try {
+                    when (call.method) {
+                        "startTask" -> {
+                            dispatchBackgroundService(
+                                AgentForegroundService.ACTION_START_TASK,
+                                call.argument<String>("title"),
+                                call.argument<String>("body")
+                            )
+                            result.success(true)
+                        }
+                        "updateTask" -> {
+                            AgentForegroundService.updateNotification(
+                                applicationContext,
+                                call.argument<String>("title") ?: "Giant Agent",
+                                call.argument<String>("body") ?: "يواصل الوكيل تنفيذ المهمة في الخلفية"
+                            )
+                            result.success(true)
+                        }
+                        "runtimeReady" -> {
+                            dispatchBackgroundService(AgentForegroundService.ACTION_RUNTIME, null, null)
+                            result.success(true)
+                        }
+                        "stop" -> {
+                            applicationContext.stopService(Intent(applicationContext, AgentForegroundService::class.java))
+                            result.success(true)
+                        }
+                        else -> result.notImplemented()
+                    }
+                } catch (error: Throwable) {
+                    result.error("BACKGROUND_SERVICE_FAILED", error.message, null)
+                }
+            }
         GainPtyBridge.register(this, flutterEngine.dartExecutor.binaryMessenger)
 
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, AGENT_EVENTS_CHANNEL)
@@ -90,8 +135,8 @@ class MainActivity: FlutterActivity() {
                         require(content.toByteArray(Charsets.UTF_8).size <= 1024 * 1024) {
                             "File content exceeds the 1 MB limit."
                         }
-                        val file = resolveAgentFile(relativePath)
-                        require(file.isFile) { "Only existing workspace files can be edited." }
+                        val file = resolveAgentFile(relativePath, textWorkspaceExtensions)
+                        require(file.isFile) { "Only existing text/code workspace files can be edited." }
                         file.writeText(content, Charsets.UTF_8)
                         emitAgentFileUpdated(relativePath, content, eventId)
                         result.success(mapOf("ok" to true, "path" to relativePath))
@@ -100,12 +145,27 @@ class MainActivity: FlutterActivity() {
                         result.error("WRITE_FILE_FAILED", t.message ?: "File update failed", null)
                     }
                 }
+                "inspectWorkspaceFile" -> {
+                    try {
+                        val relativePath = call.argument<String>("path").orEmpty()
+                        val file = resolveAgentFile(relativePath)
+                        require(file.isFile && file.canRead()) { "Workspace file does not exist or cannot be read." }
+                        result.success(mapOf(
+                            "ok" to true,
+                            "path" to relativePath,
+                            "size_bytes" to file.length(),
+                            "extension" to file.extension.lowercase()
+                        ))
+                    } catch (t: Throwable) {
+                        result.error("WORKSPACE_FILE_INSPECT_FAILED", t.message ?: "Unable to inspect workspace file.", null)
+                    }
+                }
                 "readFile" -> {
                     val relativePath = call.argument<String>("path").orEmpty()
                     val eventId = "tool_${System.nanoTime()}"
                     emitAgentToolStart(eventId, "read_file", relativePath)
                     try {
-                        val file = resolveAgentFile(relativePath)
+                        val file = resolveAgentFile(relativePath, textWorkspaceExtensions)
                         require(file.isFile && file.canRead()) { "File does not exist or cannot be read." }
                         require(file.length() <= 1024 * 1024) { "File exceeds the 1 MB read limit." }
                         val content = file.readText(Charsets.UTF_8)
@@ -238,6 +298,72 @@ class MainActivity: FlutterActivity() {
                         }
                     }
                 }
+                "shareWorkspace" -> {
+                    aiExecutor.execute {
+                        try {
+                            val requestedPaths = call.argument<List<String>>("paths").orEmpty().distinct()
+                            require(requestedPaths.isNotEmpty() && requestedPaths.size <= 100) {
+                                "Select between 1 and 100 generated files to share."
+                            }
+                            val workspace = File(filesDir, "agent_workspace").apply { mkdirs() }.canonicalFile
+                            val exportFile = File(cacheDir, "giant-agent-task-outputs.zip")
+                            var count = 0
+                            ZipOutputStream(FileOutputStream(exportFile)).use { zip ->
+                                requestedPaths.forEach { relativePath ->
+                                    val file = resolveAgentFile(relativePath)
+                                    require(file.isFile && file.canRead()) { "Output file is missing: $relativePath" }
+                                    val canonical = file.canonicalFile
+                                    require(canonical.path.startsWith(workspace.path + File.separator) &&
+                                        canonical.absolutePath == file.absolutePath) {
+                                        "Output file escapes the workspace or uses a symbolic link."
+                                    }
+                                    zip.putNextEntry(ZipEntry(canonical.relativeTo(workspace).invariantSeparatorsPath))
+                                    file.inputStream().use { input -> input.copyTo(zip) }
+                                    zip.closeEntry()
+                                    count++
+                                }
+                            }
+                            val uri = FileProvider.getUriForFile(
+                                this@MainActivity, "$packageName.fileprovider", exportFile
+                            )
+                            runOnUiThread {
+                                val send = Intent(Intent.ACTION_SEND).apply {
+                                    type = "application/zip"
+                                    putExtra(Intent.EXTRA_STREAM, uri)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                startActivity(Intent.createChooser(send, "مشاركة مخرجات المهمة المحددة"))
+                                result.success(mapOf("ok" to true, "files" to count))
+                            }
+                        } catch (t: Throwable) {
+                            runOnUiThread { result.error("WORKSPACE_SHARE_FAILED", t.message ?: "Workspace sharing failed.", null) }
+                        }
+                    }
+                }
+                "readImagePreview" -> {
+                    try {
+                        val relativePath = call.argument<String>("path").orEmpty()
+                        val file = resolveAgentFile(relativePath)
+                        require(file.isFile && file.canRead()) { "Image does not exist or cannot be read." }
+                        require(file.extension.lowercase() in setOf("png", "jpg", "jpeg", "webp", "gif", "bmp")) {
+                            "Unsupported image format."
+                        }
+                        require(file.length() in 1..(2L * 1024L * 1024L)) {
+                            "Image preview is limited to 2 MB."
+                        }
+                        val mime = when (file.extension.lowercase()) {
+                            "png" -> "image/png"
+                            "jpg", "jpeg" -> "image/jpeg"
+                            "webp" -> "image/webp"
+                            "gif" -> "image/gif"
+                            else -> "image/bmp"
+                        }
+                        val encoded = android.util.Base64.encodeToString(file.readBytes(), android.util.Base64.NO_WRAP)
+                        result.success(mapOf("ok" to true, "mime_type" to mime, "base64" to encoded))
+                    } catch (t: Throwable) {
+                        result.error("IMAGE_PREVIEW_FAILED", t.message ?: "Image preview failed.", null)
+                    }
+                }
                 "exportWorkspace" -> {
                     aiExecutor.execute {
                         try {
@@ -295,8 +421,7 @@ class MainActivity: FlutterActivity() {
                     val threads = (call.argument<Int>("threads") ?: 2).coerceIn(1, 8)
                     if (path.isBlank() || !File(path).isFile || !File(path).canRead()) result.success(false)
                     else {
-                        if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(Intent(this, AgentForegroundService::class.java))
-                        else startService(Intent(this, AgentForegroundService::class.java))
+                        dispatchBackgroundService(AgentForegroundService.ACTION_RUNTIME, null, null)
                         aiExecutor.execute {
                             val ok = try { llamaBridge.nativeLoadModel(path, threads, null, 1.0f) }
                             catch (t: Throwable) { android.util.Log.e("GiantLLM", "GGUF load failed", t); false }
@@ -397,6 +522,20 @@ class MainActivity: FlutterActivity() {
         }
     }
 
+    private fun dispatchBackgroundService(action: String, title: String?, body: String?) {
+        val appContext = applicationContext
+        val intent = Intent(appContext, AgentForegroundService::class.java).apply {
+            this.action = action
+            if (!title.isNullOrBlank()) putExtra("task_title", title)
+            if (!body.isNullOrBlank()) putExtra("task_body", body)
+        }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            appContext.startForegroundService(intent)
+        } else {
+            appContext.startService(intent)
+        }
+    }
+
     private fun emitAgentEvent(
         id: String,
         title: String,
@@ -436,15 +575,27 @@ class MainActivity: FlutterActivity() {
         }
     }
 
-    private fun resolveAgentFile(relativePath: String): File {
+    private val textWorkspaceExtensions = setOf(
+        "dart", "md", "txt", "json", "yaml", "yml", "html", "css", "js", "kt", "java",
+        "cpp", "h", "c", "cc", "hpp", "ts", "tsx", "jsx", "py", "go", "rs", "sql",
+        "sh", "xml", "toml", "gradle", "svg"
+    )
+    private val workspaceExtensions = textWorkspaceExtensions + setOf(
+        "png", "jpg", "jpeg", "webp", "gif", "bmp", "svg", "pdf", "doc", "docx",
+        "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "zip"
+    )
+
+    private fun resolveAgentFile(
+        relativePath: String,
+        allowedExtensions: Set<String> = workspaceExtensions
+    ): File {
         require(relativePath.isNotBlank()) { "File path is required." }
         require(!relativePath.startsWith("/") && !relativePath.startsWith("\\")) { "Absolute paths are not allowed." }
         require(!relativePath.contains("\\") && relativePath.split("/").none { it.isBlank() || it == "." || it == ".." }) {
             "Invalid relative path."
         }
-        val allowed = setOf("dart", "md", "txt", "json", "yaml", "yml", "html", "css", "js", "kt", "java", "cpp", "h")
         val name = relativePath.substringAfterLast("/")
-        require(name.substringAfterLast(".", "").lowercase() in allowed) { "File extension is not allowed." }
+        require(name.substringAfterLast(".", "").lowercase() in allowedExtensions) { "File extension is not allowed." }
         val root = File(filesDir, "agent_workspace").apply { mkdirs() }.canonicalFile
         val candidate = File(root, relativePath)
         val canonical = candidate.canonicalFile
@@ -525,9 +676,9 @@ class MainActivity: FlutterActivity() {
 
     private fun createAgentFile(relativePath: String, content: String): Pair<String, String> {
         require(content.toByteArray(Charsets.UTF_8).size <= 1024 * 1024) { "File content exceeds the 1 MB limit." }
-        val target = resolveAgentFile(relativePath)
+        val target = resolveAgentFile(relativePath, textWorkspaceExtensions)
         target.parentFile?.mkdirs()
-        val canonical = resolveAgentFile(relativePath)
+        val canonical = resolveAgentFile(relativePath, textWorkspaceExtensions)
         require(!canonical.exists()) { "A file with this path already exists." }
         canonical.writeText(content, Charsets.UTF_8)
         return Pair(relativePath, canonical.name)

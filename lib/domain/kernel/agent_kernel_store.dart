@@ -79,7 +79,7 @@ class AgentKernelStore {
     await Directory(directory.path).create(recursive: true);
     return openDatabase(
       '${directory.path}/giant_agent_kernel.db',
-      version: 3,
+      version: 4,
       onConfigure: (db) async {
         await db.execute('PRAGMA foreign_keys = ON');
         await db.execute('PRAGMA journal_mode = WAL');
@@ -138,6 +138,7 @@ class AgentKernelStore {
           BEGIN SELECT RAISE(ABORT, 'agent_events is append-only'); END
         """);
         await _createTaskTable(db);
+        await _createOutputTable(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) await _createTaskTable(db);
@@ -145,6 +146,7 @@ class AgentKernelStore {
           await db.execute('ALTER TABLE agent_events ADD COLUMN task_id TEXT');
           await db.execute('CREATE INDEX IF NOT EXISTS idx_agent_events_task ON agent_events(task_id, row_id)');
         }
+        if (oldVersion < 4) await _createOutputTable(db);
       },
     );
   }
@@ -168,6 +170,92 @@ class AgentKernelStore {
       CREATE INDEX IF NOT EXISTS idx_agent_tasks_conversation
       ON agent_tasks(conversation_id, sequence)
     ''');
+  }
+
+  static Future<void> _createOutputTable(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS agent_outputs (
+        id TEXT PRIMARY KEY,
+        request_id TEXT NOT NULL,
+        conversation_id TEXT NOT NULL,
+        task_id TEXT,
+        kind TEXT NOT NULL,
+        title TEXT NOT NULL,
+        mime_type TEXT NOT NULL,
+        file_path TEXT,
+        content TEXT,
+        preview TEXT,
+        status TEXT NOT NULL,
+        verified INTEGER NOT NULL DEFAULT 0,
+        verification_message TEXT,
+        metadata_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_agent_outputs_request
+      ON agent_outputs(request_id, created_at)
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_agent_outputs_conversation
+      ON agent_outputs(conversation_id, created_at)
+    ''');
+  }
+
+  /// Stores a durable output artifact projection, separate from the immutable event journal.
+  Future<void> saveOutputArtifact(Map<String, dynamic> artifact) async {
+    final id = artifact['id']?.toString() ?? '';
+    final requestId = artifact['request_id']?.toString() ?? '';
+    if (id.isEmpty || requestId.isEmpty) {
+      throw ArgumentError('Output artifact id and request id are required.');
+    }
+    final now = DateTime.now().toUtc().toIso8601String();
+    final metadata = artifact['metadata'] is Map
+        ? Map<String, Object?>.from(artifact['metadata'] as Map)
+        : <String, Object?>{};
+    await (await database).insert('agent_outputs', <String, Object?>{
+      'id': id,
+      'request_id': requestId,
+      'conversation_id': artifact['conversation_id']?.toString() ?? 'global',
+      'task_id': artifact['task_id']?.toString(),
+      'kind': artifact['kind']?.toString() ?? 'text',
+      'title': artifact['title']?.toString() ?? 'مخرج الوكيل',
+      'mime_type': artifact['mime_type']?.toString() ?? 'text/plain',
+      'file_path': artifact['file_path']?.toString(),
+      'content': artifact['content']?.toString(),
+      'preview': artifact['preview']?.toString(),
+      'status': artifact['status']?.toString() ?? 'available',
+      'verified': artifact['verified'] == true ? 1 : 0,
+      'verification_message': artifact['verification_message']?.toString(),
+      'metadata_json': jsonEncode(metadata),
+      'created_at': artifact['created_at']?.toString() ?? now,
+      'updated_at': now,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<List<Map<String, dynamic>>> outputsForRequest(String requestId) async {
+    final rows = await (await database).query(
+      'agent_outputs', where: 'request_id = ?', whereArgs: [requestId],
+      orderBy: 'created_at ASC, id ASC',
+    );
+    return rows.map((row) => <String, dynamic>{
+      ...row,
+      'verified': (row['verified'] as num?)?.toInt() == 1,
+      'metadata': jsonDecode(row['metadata_json']! as String),
+    }).toList(growable: false);
+  }
+
+  Future<List<Map<String, dynamic>>> outputsForConversation(String conversationId) async {
+    final rows = await (await database).query(
+      'agent_outputs', where: 'conversation_id = ?', whereArgs: [conversationId],
+      orderBy: 'created_at DESC, id ASC',
+    );
+    return rows.map((row) => <String, dynamic>{
+      ...row,
+      'verified': (row['verified'] as num?)?.toInt() == 1,
+      'metadata': jsonDecode(row['metadata_json']! as String),
+    }).toList(growable: false);
   }
 
   /// Returns task snapshots in stable creation order.
@@ -208,6 +296,280 @@ class AgentKernelStore {
         whereArgs: [id],
       );
       if (changed == 0) await txn.insert('agent_tasks', values);
+    });
+  }
+
+  /// Persists a child-agent projection and its immutable lifecycle event.
+  /// Child prompts and dependency IDs are retained for explicit, reviewed recovery;
+  /// this method never starts or replays work.
+  Future<void> recordSubagentEvent(Map<String, dynamic> event) async {
+    final taskId = event['task_id']?.toString() ?? '';
+    final requestId = event['request_id']?.toString() ?? '';
+    if (taskId.isEmpty || requestId.isEmpty) return;
+    final db = await database;
+    final rows = await db.query(
+      'agent_tasks',
+      where: 'id = ?',
+      whereArgs: [taskId],
+      limit: 1,
+    );
+    Map<String, dynamic> previous = <String, dynamic>{};
+    if (rows.isNotEmpty) {
+      final decoded = jsonDecode(rows.single['payload_json']! as String);
+      if (decoded is Map) previous = Map<String, dynamic>.from(decoded);
+      if (previous['kind'] != null && previous['kind'] != 'subagent') {
+        throw StateError('Task id collision while persisting subagent $taskId.');
+      }
+    }
+    final timestamp = event['timestamp']?.toString() ??
+        DateTime.now().toUtc().toIso8601String();
+    final now = DateTime.now().toUtc().toIso8601String();
+    final eventType = event['type']?.toString() ?? 'unknown';
+    final eventStatus = eventType == 'subagent_cancelled'
+        ? 'cancelled'
+        : event['status']?.toString() ?? 'pending';
+    final snapshot = <String, dynamic>{
+      ...previous,
+      'id': taskId,
+      'kind': 'subagent',
+      'parent_request_id': requestId,
+      'conversation_id': event['session_id']?.toString() ?? 'global',
+      'agent_type': event['agent_type']?.toString() ?? 'unknown',
+      'title': event['title']?.toString() ?? taskId,
+      'prompt': event['task_prompt']?.toString() ?? previous['prompt'],
+      'depends_on': event['depends_on'] ?? previous['depends_on'] ?? const <String>[],
+      'status': eventStatus,
+      'last_event_type': eventType,
+      'last_details': event['details']?.toString(),
+      'last_result': event['result']?.toString() ?? previous['last_result'],
+      'is_dismissed': eventType == 'subagent_dismissed'
+          ? true
+          : previous['is_dismissed'] == true,
+      'dismissed_at': eventType == 'subagent_dismissed'
+          ? timestamp
+          : previous['dismissed_at'],
+      'created_at': previous['created_at']?.toString() ?? timestamp,
+      'updated_at': now,
+    };
+    final payload = Map<String, Object?>.from(event);
+    await saveTaskWithEvents(snapshot, events: <Map<String, Object?>>[
+      <String, Object?>{
+        'type': event['type']?.toString() ?? 'subagent_event',
+        'status': event['status']?.toString() ?? 'pending',
+        'payload': payload,
+      },
+    ]);
+  }
+
+  /// Marks children interrupted after process death. Side effects are never replayed.
+  Future<int> reconcileInterruptedSubagents() async {
+    final snapshots = (await getTasks())
+        .where((task) => task['kind'] == 'subagent' &&
+            {'pending', 'running'}.contains(task['status']))
+        .toList(growable: false);
+    for (final task in snapshots) {
+      final now = DateTime.now().toUtc().toIso8601String();
+      final recovered = <String, dynamic>{
+        ...task,
+        'status': 'interrupted',
+        'last_event_type': 'subagent_interrupted_on_restart',
+        'updated_at': now,
+        'recovery_requires_explicit_resume': true,
+      };
+      await saveTaskWithEvents(recovered, events: <Map<String, Object?>>[
+        <String, Object?>{
+          'type': 'subagent_interrupted_on_restart',
+          'status': 'interrupted',
+          'payload': <String, Object?>{
+            'parent_request_id': task['parent_request_id'],
+            'replay': false,
+            'requires_explicit_resume': true,
+          },
+        },
+      ]);
+    }
+    return snapshots.length;
+  }
+
+  Future<List<Map<String, dynamic>>> subagentsForRequest(String requestId) async =>
+      (await getTasks())
+          .where((task) => task['kind'] == 'subagent' &&
+              task['parent_request_id'] == requestId)
+          .toList(growable: false);
+
+  /// Loads one durable child-agent projection by stable task id.
+  Future<Map<String, dynamic>?> getSubagent(String taskId) async {
+    final rows = await (await database).query('agent_tasks',
+      where: 'id = ?', whereArgs: [taskId], limit: 1);
+    if (rows.isEmpty) return null;
+    final decoded = jsonDecode(rows.single['payload_json']! as String);
+    if (decoded is! Map || decoded['kind'] != 'subagent') return null;
+    return Map<String, dynamic>.from(decoded);
+  }
+
+  /// Soft-deletes a terminal child from active management while retaining
+  /// its immutable event journal and original terminal status for audit.
+  Future<bool> dismissSubagent(String taskId) async {
+    final task = await getSubagent(taskId);
+    if (task == null) return false;
+    if (task['is_dismissed'] == true) return true;
+    final status = task['status']?.toString() ?? 'unknown';
+    if (status == 'pending' || status == 'running') return false;
+    final requestId = task['parent_request_id']?.toString() ?? '';
+    if (requestId.isEmpty) return false;
+    await recordSubagentEvent(<String, dynamic>{
+      'id': 'subagent_dismissed_${taskId}_${DateTime.now().microsecondsSinceEpoch}',
+      'request_id': requestId,
+      'session_id': task['conversation_id']?.toString() ?? 'global',
+      'task_id': taskId,
+      'agent_type': task['agent_type']?.toString() ?? 'unknown',
+      'title': task['title']?.toString() ?? taskId,
+      'task_prompt': task['prompt']?.toString() ?? '',
+      'depends_on': task['depends_on'] ?? const <String>[],
+      'type': 'subagent_dismissed',
+      'status': status,
+      'details': 'Dismissed from active management; audit history retained.',
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+    });
+    return true;
+  }
+
+  /// Atomically claims an interrupted child for a user-authorized resume.
+  /// The caller must explicitly classify the possible prior side effects.
+  /// Dependency outputs are reconstructed from durable completed snapshots.
+  Future<Map<String, dynamic>> claimSubagentResume(
+    String taskId, {
+    required String sideEffectDisposition,
+  }) async {
+    const allowed = {'verified_no_side_effects', 'user_authorized_retry'};
+    if (!allowed.contains(sideEffectDisposition)) {
+      throw ArgumentError.value(sideEffectDisposition, 'sideEffectDisposition',
+        'An explicit side-effect disposition is required.');
+    }
+    final db = await database;
+    final now = DateTime.now().toUtc().toIso8601String();
+    late Map<String, dynamic> claimed;
+    await db.transaction((txn) async {
+      final rows = await txn.query('agent_tasks', where: 'id = ?',
+        whereArgs: [taskId], limit: 1);
+      if (rows.isEmpty) throw StateError('الوكيل الفرعي غير موجود.');
+      final decoded = jsonDecode(rows.single['payload_json']! as String);
+      if (decoded is! Map || decoded['kind'] != 'subagent') {
+        throw StateError('السجل المحدد ليس وكيلاً فرعياً.');
+      }
+      final task = Map<String, dynamic>.from(decoded);
+      final status = task['status']?.toString();
+      if (task['is_dismissed'] == true) {
+        throw StateError('تم إخفاء الوكيل من الإدارة ولا يمكن استئنافه.');
+      }
+      if (status == 'completed' || status == 'cancelled') {
+        throw StateError('لا يمكن استئناف وكيل مكتمل أو ملغى.');
+      }
+      if (status != 'interrupted' && status != 'failed') {
+        throw StateError('الوكيل الفرعي ليس في حالة تسمح بالاستئناف: $status');
+      }
+      if ((task['prompt']?.toString() ?? '').trim().isEmpty) {
+        throw StateError('تعذر استعادة تعليمات الوكيل الفرعي الأصلية.');
+      }
+      final dependencies = (task['depends_on'] as List? ?? const [])
+          .map((value) => value.toString()).toList(growable: false);
+      final dependencyResults = <String, String>{};
+      for (final dependencyId in dependencies) {
+        final dependencyRows = await txn.query('agent_tasks',
+          where: 'id = ?', whereArgs: [dependencyId], limit: 1);
+        if (dependencyRows.isEmpty) {
+          throw StateError('تعذر إعادة بناء التبعية $dependencyId.');
+        }
+        final dependencyDecoded = jsonDecode(
+          dependencyRows.single['payload_json']! as String);
+        if (dependencyDecoded is! Map ||
+            dependencyDecoded['kind'] != 'subagent' ||
+            dependencyDecoded['parent_request_id'] != task['parent_request_id'] ||
+            dependencyDecoded['status'] != 'completed') {
+          throw StateError('التبعية $dependencyId ليست مكتملة ضمن المهمة الأصلية.');
+        }
+        final output = dependencyDecoded['last_result']?.toString() ?? '';
+        if (output.isEmpty) {
+          throw StateError('نتيجة التبعية $dependencyId غير محفوظة بالكامل.');
+        }
+        dependencyResults[dependencyId] = output;
+      }
+      final attempts = (task['resume_attempts'] as num?)?.toInt() ?? 0;
+      task['status'] = 'running';
+      task['resume_attempts'] = attempts + 1;
+      task['resume_authorized_at'] = now;
+      task['side_effect_disposition'] = sideEffectDisposition;
+      task['recovery_requires_explicit_resume'] = false;
+      task['updated_at'] = now;
+      task['dependency_results_snapshot'] = dependencyResults;
+      final values = <String, Object?>{
+        'id': taskId,
+        'conversation_id': task['conversation_id']?.toString() ?? 'global',
+        'status': 'running',
+        'payload_json': jsonEncode(task),
+        'created_at': task['created_at']?.toString() ?? now,
+        'updated_at': now,
+      };
+      await txn.update('agent_tasks', values, where: 'id = ?', whereArgs: [taskId]);
+      await _appendTaskEvent(txn, taskId, 'subagent_resume_authorized', 'running',
+        <String, Object?>{
+          'authorization': 'explicit_user_action',
+          'side_effect_disposition': sideEffectDisposition,
+          'resume_attempt': attempts + 1,
+          'dependencies_reconstructed': dependencies,
+          'automatic_replay': false,
+        }, now);
+      claimed = task;
+    });
+    return claimed;
+  }
+
+  /// Persists the terminal/interrupted state of a resumed child and full output.
+  Future<void> finishSubagentResume(
+    String taskId, {
+    String? result,
+    String? error,
+    required String status,
+  }) async {
+    if (!{'completed', 'failed', 'interrupted'}.contains(status)) {
+      throw ArgumentError.value(status, 'status');
+    }
+    final db = await database;
+    final now = DateTime.now().toUtc().toIso8601String();
+    await db.transaction((txn) async {
+      final rows = await txn.query('agent_tasks', where: 'id = ?',
+        whereArgs: [taskId], limit: 1);
+      if (rows.isEmpty) throw StateError('الوكيل الفرعي غير موجود.');
+      final decoded = jsonDecode(rows.single['payload_json']! as String);
+      if (decoded is! Map || decoded['kind'] != 'subagent' || decoded['status'] != 'running') {
+        throw StateError('لا توجد محاولة استئناف نشطة لهذا الوكيل.');
+      }
+      final task = Map<String, dynamic>.from(decoded)
+        ..['status'] = status
+        ..['updated_at'] = now
+        ..['last_event_type'] = 'subagent_resume_$status';
+      if (result != null) task['last_result'] = result;
+      if (error != null) task['last_error'] = error;
+      if (status == 'completed') {
+        task['completed_at'] = now;
+        task.remove('last_error');
+        task['recovery_requires_explicit_resume'] = false;
+      } else {
+        task['recovery_requires_explicit_resume'] = true;
+      }
+      await txn.update('agent_tasks', <String, Object?>{
+        'id': taskId,
+        'conversation_id': task['conversation_id']?.toString() ?? 'global',
+        'status': status,
+        'payload_json': jsonEncode(task),
+        'created_at': task['created_at']?.toString() ?? now,
+        'updated_at': now,
+      }, where: 'id = ?', whereArgs: [taskId]);
+      await _appendTaskEvent(txn, taskId, 'subagent_resume_$status', status,
+        <String, Object?>{
+          if (result != null) 'result': result,
+          if (error != null) 'error': error,
+        }, now);
     });
   }
 
@@ -398,6 +760,13 @@ class AgentKernelStore {
     });
   }
 
+  Future<bool> hasActiveRequests() async {
+    final count = Sqflite.firstIntValue(await (await database).rawQuery(
+      "SELECT COUNT(*) FROM agent_requests WHERE status IN ('queued', 'running')",
+    )) ?? 0;
+    return count > 0;
+  }
+
   Future<List<KernelRequestRecord>> queuedRequests() async {
     final rows = await (await database).query(
       'agent_requests',
@@ -474,6 +843,36 @@ class AgentKernelStore {
     });
   }
 
+  /// Completes a previously interrupted parent only after its recovered
+  /// children have been re-synthesized and the Output Engine has verified all artifacts.
+  Future<void> completeInterruptedRequest(String id, String result) async {
+    final db = await database;
+    final now = DateTime.now().toUtc().toIso8601String();
+    await db.transaction((txn) async {
+      final changed = await txn.update(
+        'agent_requests',
+        <String, Object?>{
+          'status': 'completed',
+          'result': result,
+          'error': null,
+          'completed_at': now,
+          'updated_at': now,
+        },
+        where: "id = ? AND status IN ('interrupted', 'failed')",
+        whereArgs: [id],
+      );
+      if (changed != 1) throw StateError('Request $id is not recoverable from its current state.');
+      await _appendEvent(
+        txn,
+        id,
+        'request_recovered_completed',
+        'completed',
+        <String, Object?>{'recovered_after_child_resume': true, 'output_verified': true},
+        now,
+      );
+    });
+  }
+
   Future<KernelRequestRecord?> getRequest(String id) async {
     final rows = await (await database).query(
       'agent_requests',
@@ -482,6 +881,49 @@ class AgentKernelStore {
       limit: 1,
     );
     return rows.isEmpty ? null : KernelRequestRecord.fromMap(rows.single);
+  }
+
+  /// Appends a factual runtime/timeline event to its parent request journal.
+  /// Events are immutable and duplicate IDs are ignored during stream retries.
+  Future<void> appendRequestEvent(Map<String, dynamic> event) async {
+    final requestId = event['request_id']?.toString() ?? '';
+    if (requestId.isEmpty || requestId == 'runtime') return;
+    final id = event['id']?.toString() ?? '';
+    final type = event['type']?.toString() ?? 'unknown';
+    if (id.isEmpty) return;
+    final now = DateTime.now().toUtc().toIso8601String();
+    final createdAt = event['timestamp']?.toString() ?? now;
+    final db = await database;
+    await db.transaction((txn) async {
+      final request = await txn.query(
+        'agent_requests',
+        columns: ['id'],
+        where: 'id = ?',
+        whereArgs: [requestId],
+        limit: 1,
+      );
+      if (request.isEmpty) return;
+      final values = <String, Object?>{
+        'id': id,
+        'request_id': requestId,
+        'type': type,
+        'status': event['status']?.toString() ?? 'pending',
+        'payload_json': jsonEncode(event),
+        'created_at': createdAt,
+      };
+      final taskId = event['task_id']?.toString();
+      if (taskId != null && taskId.isNotEmpty) {
+        final columns = await txn.rawQuery('PRAGMA table_info(agent_events)');
+        if (columns.any((column) => column['name'] == 'task_id')) {
+          values['task_id'] = taskId;
+        }
+      }
+      await txn.insert(
+        'agent_events',
+        values,
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
+    });
   }
 
   Future<List<KernelEventRecord>> eventsFor(String requestId) async {

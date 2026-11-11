@@ -12,8 +12,10 @@ on:
       - feat/voice-orb-in-chat-session
       - feat/chat-bubble-resize-teal-toasts
   pull_request:
+    types: [opened, reopened, synchronize, edited]
     branches:
       - main
+      - feat/kimi-subagent-orchestration
       - feat/integrated-agent-completion
       - feat/consolidate-sqlite-runtime-v2
       - integration/giant-agent-stabilization

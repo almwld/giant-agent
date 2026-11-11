@@ -12,17 +12,18 @@ class ReflexionAction {
 /// Produces one bounded corrective action. It never executes tools.
 class ReflexionService {
   ReflexionService({
-    required Future<String> Function(String prompt) generate,
+    required Future<String> Function(String prompt, {bool Function()? shouldCancel}) generate,
     ToolManager? tools,
   }) : _generate = generate, _tools = tools ?? ToolManager();
 
-  final Future<String> Function(String prompt) _generate;
+  final Future<String> Function(String prompt, {bool Function()? shouldCancel}) _generate;
   final ToolManager _tools;
 
   Future<ReflexionAction> generateFix({
     required String originalGoal,
     required String failedAction,
     required String errorMessage,
+    bool Function()? shouldCancel,
   }) async {
     final prompt = '''
 You are the recovery controller for Giant Agent.
@@ -38,7 +39,9 @@ Return ONLY one JSON object:
 {"tool":"tool_name","args":{...}}
 No markdown, explanation, or private reasoning.
 ''';
-    final raw = (await _generate(prompt)).trim();
+    if (shouldCancel?.call() == true) throw StateError('Reflexion cancelled.');
+    final raw = (await _generate(prompt, shouldCancel: shouldCancel)).trim();
+    if (shouldCancel?.call() == true) throw StateError('Reflexion cancelled.');
     final decoded = _decodeObject(raw);
     final tool = decoded['tool']?.toString() ?? '';
     final args = decoded['args'];
@@ -71,6 +74,16 @@ No markdown, explanation, or private reasoning.
       case 'execute_python':
         if (!hasText('code')) {
           throw const FormatException('Reflexion execute_python action requires non-empty code.');
+        }
+        break;
+      case 'mcp_call':
+        if (!hasText('server_id') || !hasText('tool_name') || args['arguments'] is! Map) {
+          throw const FormatException('Reflexion mcp_call requires server_id, tool_name and an arguments object.');
+        }
+        break;
+      case 'mcp_read_resource':
+        if (!hasText('server_id') || !hasText('uri')) {
+          throw const FormatException('Reflexion mcp_read_resource requires server_id and uri.');
         }
         break;
       case 'list_files':

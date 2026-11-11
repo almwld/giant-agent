@@ -27,6 +27,27 @@ void main() {
       });
     });
 
+    test('round-trips child agent identity and role', () {
+      final event = AgentTimelineEvent(
+        id: 'child-event-1',
+        requestId: 'parent-request',
+        type: 'subagent_started',
+        title: 'بدأ وكيل الاستكشاف',
+        status: 'running',
+        timestamp: DateTime.utc(2026, 11, 10),
+        taskId: 'parent-request_agent_explore',
+        agentType: 'explore',
+        taskPrompt: 'Inspect the workspace safely.',
+        dependsOn: const ['parent-request_agent_plan'],
+      );
+
+      final restored = AgentTimelineEvent.fromMap(event.toMap());
+      expect(restored.taskId, 'parent-request_agent_explore');
+      expect(restored.agentType, 'explore');
+      expect(restored.taskPrompt, 'Inspect the workspace safely.');
+      expect(restored.dependsOn, ['parent-request_agent_plan']);
+    });
+
     test('omits absent optional details', () {
       final event = AgentTimelineEvent(
         id: 'kernel_runtime_1',
