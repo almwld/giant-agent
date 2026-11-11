@@ -411,8 +411,11 @@ class ModelService {
           final orchestrator = _activeSubagentOrchestrator;
           if (orchestrator == null) throw StateError('No active subagent orchestrator.');
           final taskId = args['task_id']?.toString() ?? '';
-          result = <String, dynamic>{'ok': orchestrator.cancelTask(taskId),
-            'task_id': taskId, 'status': 'cancellation_requested'};
+          final deleted = await orchestrator.deleteTask(taskId);
+          final state = orchestrator.status(taskId);
+          result = <String, dynamic>{'ok': deleted,
+            'task_id': taskId,
+            'status': state['is_dismissed'] == true ? 'dismissed' : state['status']};
           break;
         }
         case 'check_subagent_status': {
