@@ -342,6 +342,12 @@ class AgentKernelStore {
       'last_event_type': eventType,
       'last_details': event['details']?.toString(),
       'last_result': event['result']?.toString() ?? previous['last_result'],
+      'is_dismissed': eventType == 'subagent_dismissed'
+          ? true
+          : previous['is_dismissed'] == true,
+      'dismissed_at': eventType == 'subagent_dismissed'
+          ? timestamp
+          : previous['dismissed_at'],
       'created_at': previous['created_at']?.toString() ?? timestamp,
       'updated_at': now,
     };
@@ -401,6 +407,33 @@ class AgentKernelStore {
     return Map<String, dynamic>.from(decoded);
   }
 
+  /// Soft-deletes a terminal child from active management while retaining
+  /// its immutable event journal and original terminal status for audit.
+  Future<bool> dismissSubagent(String taskId) async {
+    final task = await getSubagent(taskId);
+    if (task == null) return false;
+    if (task['is_dismissed'] == true) return true;
+    final status = task['status']?.toString() ?? 'unknown';
+    if (status == 'pending' || status == 'running') return false;
+    final requestId = task['parent_request_id']?.toString() ?? '';
+    if (requestId.isEmpty) return false;
+    await recordSubagentEvent(<String, dynamic>{
+      'id': 'subagent_dismissed_${taskId}_${DateTime.now().microsecondsSinceEpoch}',
+      'request_id': requestId,
+      'session_id': task['conversation_id']?.toString() ?? 'global',
+      'task_id': taskId,
+      'agent_type': task['agent_type']?.toString() ?? 'unknown',
+      'title': task['title']?.toString() ?? taskId,
+      'task_prompt': task['prompt']?.toString() ?? '',
+      'depends_on': task['depends_on'] ?? const <String>[],
+      'type': 'subagent_dismissed',
+      'status': status,
+      'details': 'Dismissed from active management; audit history retained.',
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+    });
+    return true;
+  }
+
   /// Atomically claims an interrupted child for a user-authorized resume.
   /// The caller must explicitly classify the possible prior side effects.
   /// Dependency outputs are reconstructed from durable completed snapshots.
@@ -426,6 +459,9 @@ class AgentKernelStore {
       }
       final task = Map<String, dynamic>.from(decoded);
       final status = task['status']?.toString();
+      if (task['is_dismissed'] == true) {
+        throw StateError('تم إخفاء الوكيل من الإدارة ولا يمكن استئنافه.');
+      }
       if (status == 'completed' || status == 'cancelled') {
         throw StateError('لا يمكن استئناف وكيل مكتمل أو ملغى.');
       }
