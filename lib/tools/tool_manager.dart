@@ -109,6 +109,11 @@ class ToolManager {
       example: '{"name":"web_search","arguments":{"query":"Flutter 3.16 release notes","limit":5}}',
     ),
     AgentToolDefinition(
+      name: 'task',
+      description: 'إدارة مهام TaskManager المحلية: list/create/select/status/cancel/resume. استئناف التنفيذ يتطلب موافقة المستخدم.',
+      example: '{"name":"task","arguments":{"action":"list"}}',
+    ),
+    AgentToolDefinition(
       name: 'todo_read',
       description: 'قراءة المهام المحلية الدائمة للجلسة الحالية وحالاتها.',
       example: '{"name":"todo_read","arguments":{"status":"pending"}}',
