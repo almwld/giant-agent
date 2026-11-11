@@ -540,8 +540,24 @@ $prompt
         }
         return _llama.generate(prompt, maxTokens: maxTokens, temperature: temperature);
       case ModelProviderMode.openRouter:
-        return OpenAICompatibleProvider.instance.generate(
-          prompt, maxTokens: maxTokens, temperature: temperature,
+        return OpenAICompatibleProvider.instance.generateStreaming(
+          prompt,
+          maxTokens: maxTokens,
+          temperature: temperature,
+          isCancelled: () => _cancelRequested,
+          onDelta: (delta) {
+            AgentEventBus.instance.publish(<String, dynamic>{
+              'id': 'stream_${_activeRequestId}_${DateTime.now().microsecondsSinceEpoch}',
+              'request_id': _activeRequestId,
+              'attempt_id': _activeRequestId,
+              'task_id': _activeTaskId,
+              'agent_type': _activeAgentType,
+              'type': 'stream_token',
+              'content': delta,
+              'status': 'streaming',
+              'timestamp': DateTime.now().toUtc().toIso8601String(),
+            });
+          },
         );
     }
   }
