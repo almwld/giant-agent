@@ -621,6 +621,14 @@ ${queuedMessages.isEmpty ? 'لا توجد رسائل.' : queuedMessages}
       case 'execute_python': return 'يشغّل كود Python';
       case 'gain_terminal': return 'يطلب موافقة لتنفيذ أمر طرفية';
       case 'list_files': return 'يعرض ملفات مساحة العمل';
+      case 'create_subagent': return 'يسجل وكيلاً فرعياً جديداً';
+      case 'spawn_subagent': return 'يشغل وكيلاً فرعياً مسجلاً';
+      case 'delete_subagent': return 'يخفي وكيلاً فرعياً من الإدارة';
+      case 'check_subagent_status': return 'يفحص حالة وكيل فرعي';
+      case 'send_message': return 'يرسل رسالة إلى وكيل فرعي';
+      case 'wait_for_message': return 'ينتظر رسالة من صندوق الوارد';
+      case 'ask_user': return 'يطلب توضيحاً من المستخدم';
+      case 'update_goal': return 'يحدث هدف المهمة';
       default: return 'ينفّذ أداة';
     }
   }
@@ -633,6 +641,14 @@ ${queuedMessages.isEmpty ? 'لا توجد رسائل.' : queuedMessages}
       case 'execute_python': return 'اكتمل تنفيذ Python';
       case 'gain_terminal': return 'اكتمل تنفيذ أمر الطرفية';
       case 'list_files': return 'اكتمل استعراض الملفات';
+      case 'create_subagent': return 'اكتمل تسجيل الوكيل الفرعي';
+      case 'spawn_subagent': return 'اكتمل تشغيل الوكيل الفرعي';
+      case 'delete_subagent': return 'اكتمل إخفاء الوكيل الفرعي';
+      case 'check_subagent_status': return 'اكتمل فحص حالة الوكيل';
+      case 'send_message': return 'أُرسلت الرسالة إلى الوكيل';
+      case 'wait_for_message': return 'اكتمل انتظار الرسالة';
+      case 'ask_user': return 'وصل رد المستخدم';
+      case 'update_goal': return 'اكتمل تحديث هدف المهمة';
       default: return 'اكتمل تنفيذ الأداة';
     }
   }
@@ -682,6 +698,7 @@ ${queuedMessages.isEmpty ? 'لا توجد رسائل.' : queuedMessages}
       _parallelProviderZoneKey: parallelProvider,
       _taskIdZoneKey: taskId ?? '',
       _agentTypeZoneKey: agentType ?? '',
+      _conversationIdZoneKey: conversationId,
     };
     if (parallelProvider) {
       _parallelExecutions++;
