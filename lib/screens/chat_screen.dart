@@ -76,6 +76,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _voiceListenStarted = false;
   AgentState _voiceOrbState = AgentState.idle;
   bool _webSearchEnabled = false;
+  bool _agentBrowserDialogOpen = false;
   bool _includeGithubContext = false;
   bool _externalProviderEnabled = false;
   bool _agentModeEnabled = true;
