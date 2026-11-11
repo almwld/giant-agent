@@ -786,6 +786,7 @@ $evidence
         'ask_user',
         'update_goal',
         'web_search',
+        'lbs_tool',
         'fetch_urls',
         'visit',
         'click',
