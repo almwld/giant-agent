@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/services.dart';
 import '../services/llama_service.dart';
-import '../agent/architecture/agent_event_bus.dart';
+import '../agent/architecture/agent_event_bus.dart';\nimport '../agent/architecture/tool_call_registry.dart';
 import 'agent_memory_service.dart';
 import 'openai_compatible_provider.dart';
 import 'model_provider_settings.dart';
@@ -29,7 +29,7 @@ class ModelService {
   Future<void> _toolTail = Future<void>.value();
   String _fallbackRequestId = '';
   int _parallelExecutions = 0;
-  int _toolEventSequence = 0;
+  int _toolEventSequence = 0;\n  final ToolCallRegistry _toolCalls = ToolCallRegistry();
   static const Object _requestIdZoneKey = #giantAgentRequestId;
   static const Object _parallelProviderZoneKey = #giantAgentParallelProvider;
   static const Object _taskIdZoneKey = #giantAgentTaskId;
@@ -70,7 +70,7 @@ class ModelService {
       'attempt_id': _activeRequestId,
       'task_id': _activeTaskId,
       'agent_type': _activeAgentType,
-      'step_id': stepId ?? 'tool_${_activeRequestId}_$sequence',
+      'step_id': stepId ?? 'tool_${_activeRequestId}_$sequence',\n      'tool_call_id': toolCallId,
       'sequence': sequence,
       'type': type,
       'title': title,
@@ -196,7 +196,7 @@ class ModelService {
     return result;
   }
 
-  Future<bool> cancelGeneration() async {
+  bool cancelToolCall(String toolCallId) => _toolCalls.cancel(toolCallId);\n\n  Future<bool> cancelGeneration() async {
     _cancelRequested = true;
     return _llama.cancel();
   }
@@ -650,11 +650,27 @@ $toolCatalog
         }
 
         final toolStepId = 'verified_step_${_activeRequestId}_${DateTime.now().microsecondsSinceEpoch}';
+        final toolCallId = 'call_${_activeRequestId}_${DateTime.now().microsecondsSinceEpoch}_${++_toolEventSequence}';
+        final toolCall = _toolCalls.begin(
+          toolCallId: toolCallId,
+          requestId: _activeRequestId,
+          toolName: toolName,
+        );
         late Map<String, dynamic> result;
         late bool verificationPassed;
         late String verificationMessage;
-        await _withToolLock(() async {
+        _emitToolEvent(
+          'tool_call_started',
+          'بدأ استدعاء الأداة',
+          toolName: toolName,
+          status: 'running',
+          stepId: toolStepId,
+          toolCallId: toolCallId,
+        );
+        try {
+          await _withToolLock(() async {
           try {
+            toolCall.throwIfCancelled();
             result = await _executeToolUnlocked(
               payload,
               stepId: toolStepId,
@@ -662,6 +678,11 @@ $toolCatalog
             );
           } catch (error) {
             result = <String, dynamic>{'ok': false, 'error': error.toString()};
+          }
+          if (toolCall.isCancelled) {
+            verificationPassed = false;
+            verificationMessage = 'تمت مقاطعة استدعاء الأداة المحدد.';
+            return;
           }
           if (isCancelled()) {
             verificationPassed = false;
@@ -692,9 +713,33 @@ $toolCatalog
             details: verification.message,
             status: verification.passed ? 'completed' : 'failed',
             stepId: toolStepId,
+            toolCallId: toolCallId,
           );
-        });
-        if (isCancelled()) return 'تم إيقاف الوكيل بعد اكتمال الأداة الحالية.';
+          });
+          if (toolCall.isCancelled) {
+            _emitToolEvent(
+              'tool_call_interrupted',
+              'تمت مقاطعة استدعاء الأداة',
+              toolName: toolName,
+              details: 'أُوقف هذا الاستدعاء بمعرّفه المستقل دون إيقاف الطلبات الأخرى.',
+              status: 'interrupted',
+              stepId: toolStepId,
+              toolCallId: toolCallId,
+            );
+            return 'تم إيقاف استدعاء الأداة المحدد.';
+          }
+          if (isCancelled()) return 'تم إيقاف الوكيل بعد اكتمال الأداة الحالية.';
+          _emitToolEvent(
+            'tool_call_completed',
+            'اكتمل استدعاء الأداة',
+            toolName: toolName,
+            status: 'completed',
+            stepId: toolStepId,
+            toolCallId: toolCallId,
+          );
+        } finally {
+          _toolCalls.finish(toolCallId);
+        }
 
         if (!verificationPassed) {
           final failedAction = jsonEncode(payload);
