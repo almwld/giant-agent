@@ -376,7 +376,7 @@ class McpClient {
           final decoded = jsonDecode(event.data);
           if (decoded is! Map) continue;
           final message = Map<String, dynamic>.from(decoded);
-          if (expectedId == null || message['id']?.toString() == expectedId) {
+          if (message['id']?.toString() == expectedId) {
             responseCompleter.complete(message);
             unawaited(subscription.cancel());
             return;
