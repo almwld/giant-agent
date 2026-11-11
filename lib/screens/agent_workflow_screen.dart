@@ -302,6 +302,40 @@ class AgentWorkflowScreen extends StatelessWidget {
                           ),
                         ),
                       ),
+                    if (event['task_id'] != null &&
+                        latestSubagentEvent[event['task_id'].toString()] == event['id']?.toString() &&
+                        {'completed', 'failed', 'interrupted', 'cancelled', 'skipped'}
+                            .contains(status.toLowerCase()) &&
+                        event['type'] != 'subagent_dismissed')
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                        child: Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: OutlinedButton.icon(
+                            onPressed: () async {
+                              try {
+                                final dismissed = await AgentService.instance
+                                    .dismissSubagent(event['task_id'].toString());
+                                if (!context.mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(dismissed
+                                        ? 'تم إخفاء الوكيل مع الاحتفاظ بسجل عملياته.'
+                                        : 'لا يمكن إخفاء وكيل ما زال قيد التنفيذ.'),
+                                  ),
+                                );
+                              } catch (error) {
+                                if (!context.mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('تعذر إخفاء الوكيل: $error')),
+                                );
+                              }
+                            },
+                            icon: const Icon(Icons.archive_outlined, size: 17),
+                            label: const Text('إخفاء الوكيل مع حفظ السجل'),
+                          ),
+                        ),
+                      ),
                     if (event['output'] != null && details != event['output'].toString())
                       _detailBlock('المخرجات', event['output'].toString()),
                     ...event.entries.where((entry) => !{
