@@ -49,7 +49,7 @@ class McpClient {
     final uri = _validateEndpoint(endpoint);
     final cleanName = name.trim();
     final cleanToken = bearerToken?.trim();
-    if (cleanToken != null && (cleanToken.length > 8192 || RegExp(r'[\\r\\n]').hasMatch(cleanToken))) {
+    if (cleanToken != null && (cleanToken.length > 8192 || RegExp(r'[\r\n]').hasMatch(cleanToken))) {
       throw ArgumentError.value(bearerToken, 'bearerToken', 'Bearer token is invalid or too long.');
     }
     if (cleanName.isEmpty || cleanName.length > 100) {
