@@ -330,6 +330,7 @@ class ModelService {
   Future<Map<String, dynamic>> _executeToolUnlocked(
     Map<String, dynamic> payload, {
     String? stepId,
+    String? toolCallId,
     Set<String>? allowedTools,
     bool Function()? isCancelled,
   }) async {
@@ -520,7 +521,7 @@ class ModelService {
             choices: rawChoices.map((item) => item.toString()).toList(),
             isCancelled: isCancelled,
           );
-          if (isCancelled()) throw ToolCallInterrupted(toolCallId ?? 'ask_user');
+          if (isCancelled?.call() == true) throw ToolCallInterrupted(toolCallId ?? 'ask_user');
           result = <String, dynamic>{'ok': true, 'cancelled': answer == null, if (answer != null) 'answer': answer};
           break;
         case 'update_goal':
@@ -1742,6 +1743,7 @@ $toolCatalog
             result = await _executeToolUnlocked(
               payload,
               stepId: toolStepId,
+              toolCallId: toolCallId,
               allowedTools: allowedTools,
               isCancelled: () => toolCall.isCancelled || isCancelled(),
             );
