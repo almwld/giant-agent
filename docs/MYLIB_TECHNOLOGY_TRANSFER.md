@@ -61,8 +61,8 @@ Mylib contains decompiled Android/Kotlin sources and extracted assets from Kimi 
 | 38 | `get_data_source` | Implemented as a safe list of configured MCP servers (credentials excluded). |
 | 39 | `get_data_source_desc` | Implemented by initializing a selected MCP server and reading its tools/resources. |
 | 40 | `deploy_website` | Not transferred: current GitHub connector is read-only; deployment requires an explicitly authorized provider. |
-| 41 | `website_version_manager` | Not transferred: no write-capable deployment/version provider is connected. |
-| 42 | `website_version_manager_rollback` | Not transferred: rollback must be backed by a real deployment history and explicit authorization. |
+| 41 | `website_version_manager` | Implemented as local workspace website-file snapshots/listing, with 20 versions retained per file in SQLite; it is not a public hosting version manager. |
+| 42 | `website_version_manager_rollback` | Implemented as user-approved local rollback; the current file is snapshotted first and restored content is read back for verification. |
 | 43 | `gen_purchase_url` | Not transferred: no commerce/payment provider or verified purchase URL contract exists. |
 | 44 | `memory_space_insert` | Implemented in local SQLite with an audit entry. |
 | 45 | `memory_space_update` | Implemented in local SQLite with previous/new values recorded. |
@@ -90,7 +90,7 @@ Mylib contains decompiled Android/Kotlin sources and extracted assets from Kimi 
 - Per-invocation `tool_call_id` and cancellation registry.
 - Durable SQLite task/request/event/subagent journal and restart recovery.
 - Existing Gain PTY bridge, explicit terminal approval, one-shot Python execution plus a separate persistent chat-scoped REPL (same restricted AST sandbox), and workspace path constraints.
-- Existing local memory, TTS, OCR, WebView workspace preview and output collection.
+- Existing local memory, TTS, OCR, WebView workspace preview, structured timeline widgets, local DMail-style chat recall and bounded per-file website version history.
 
 ## Dynamic subagent contract implemented in this transfer
 
