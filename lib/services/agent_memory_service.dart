@@ -25,7 +25,7 @@ class AgentMemoryService {
     final dir = await getApplicationDocumentsDirectory();
     _db = await openDatabase(
       '${dir.path}/giant_agent_memory.db',
-      version: 4,
+      version: 5,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE turns (
@@ -58,6 +58,18 @@ class AgentMemoryService {
           )
         ''');
         await db.execute('CREATE INDEX fact_edits_key_time ON fact_edits(fact_key, updated_at DESC)');
+        await db.execute('''
+          CREATE TABLE workspace_versions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            version_id TEXT NOT NULL UNIQUE,
+            file_path TEXT NOT NULL,
+            content TEXT NOT NULL,
+            label TEXT NOT NULL DEFAULT '',
+            content_length INTEGER NOT NULL,
+            created_at INTEGER NOT NULL
+          )
+        ''');
+        await db.execute('CREATE INDEX workspace_versions_path_time ON workspace_versions(file_path, created_at DESC)');
       },
       onUpgrade: (db, oldVersion, newVersion) =>
           migrateSchema(db, oldVersion),
@@ -97,6 +109,20 @@ class AgentMemoryService {
         updated_at INTEGER NOT NULL
       )
     ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS workspace_versions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        version_id TEXT NOT NULL UNIQUE,
+        file_path TEXT NOT NULL,
+        content TEXT NOT NULL,
+        label TEXT NOT NULL DEFAULT '',
+        content_length INTEGER NOT NULL,
+        created_at INTEGER NOT NULL
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS workspace_versions_path_time ON workspace_versions(file_path, created_at DESC)',
+    );
     await db.execute(
       'CREATE INDEX IF NOT EXISTS fact_edits_key_time ON fact_edits(fact_key, updated_at DESC)',
     );
@@ -265,6 +291,77 @@ class AgentMemoryService {
         'relevance': row['_score'],
       };
     }).toList(growable: false);
+  }
+
+  Future<Map<String, dynamic>> saveWorkspaceVersion(
+    String filePath,
+    String content, {
+    String label = '',
+  }) async {
+    final normalizedPath = filePath.trim();
+    final segments = normalizedPath.split(RegExp(r'[/\\\\]'));
+    if (normalizedPath.isEmpty || normalizedPath.startsWith('/') ||
+        segments.contains('..') || content.length > 1024 * 1024 ||
+        label.length > 120) {
+      throw ArgumentError('Workspace version requires a safe relative path, content up to 1 MB and a short label.');
+    }
+    final db = await database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final versionId = 'wv_${DateTime.now().microsecondsSinceEpoch}';
+    return db.transaction((txn) async {
+      final countRows = await txn.rawQuery(
+        'SELECT COUNT(*) AS count FROM workspace_versions WHERE file_path = ?',
+        [normalizedPath],
+      );
+      final versionNumber = ((countRows.first['count'] as int?) ?? 0) + 1;
+      await txn.insert('workspace_versions', {
+        'version_id': versionId,
+        'file_path': normalizedPath,
+        'content': content,
+        'label': label,
+        'content_length': content.length,
+        'created_at': now,
+      });
+      await txn.rawDelete(
+        'DELETE FROM workspace_versions WHERE file_path = ? AND id NOT IN (SELECT id FROM workspace_versions WHERE file_path = ? ORDER BY created_at DESC, id DESC LIMIT 20)',
+        [normalizedPath, normalizedPath],
+      );
+      return <String, dynamic>{
+        'version_id': versionId,
+        'file_path': normalizedPath,
+        'version_number': versionNumber,
+        'label': label,
+        'content_length': content.length,
+        'created_at': now,
+      };
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> getWorkspaceVersions(
+    String filePath, {
+    int limit = 20,
+  }) async {
+    final db = await database;
+    final rows = await db.query(
+      'workspace_versions',
+      columns: const ['version_id', 'file_path', 'label', 'content_length', 'created_at'],
+      where: 'file_path = ?',
+      whereArgs: [filePath],
+      orderBy: 'created_at DESC, id DESC',
+      limit: limit.clamp(1, 20).toInt(),
+    );
+    return rows.map((row) => Map<String, dynamic>.from(row)).toList(growable: false);
+  }
+
+  Future<Map<String, dynamic>?> getWorkspaceVersion(String versionId) async {
+    final db = await database;
+    final rows = await db.query(
+      'workspace_versions',
+      where: 'version_id = ?',
+      whereArgs: [versionId],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : Map<String, dynamic>.from(rows.first);
   }
 
   Future<String> buildContext(String query, {int limit = 3, String conversationId = 'global'}) async {
