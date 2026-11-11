@@ -30,6 +30,7 @@ class EvaluatorService {
     }
     switch (toolName) {
       case 'create_file':
+      case 'edit_file':
       case 'write_file':
         final path = toolArgs['path']?.toString().trim() ?? '';
         final expected = toolArgs['content'];
