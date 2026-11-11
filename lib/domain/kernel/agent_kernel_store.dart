@@ -397,6 +397,13 @@ class AgentKernelStore {
               task['parent_request_id'] == requestId)
           .toList(growable: false);
 
+  /// Returns durable child snapshots grouped by the chat/conversation that owns them.
+  Future<List<Map<String, dynamic>>> subagentsForConversation(String conversationId) async =>
+      (await getTasks())
+          .where((task) => task['kind'] == 'subagent' &&
+              task['conversation_id'] == conversationId)
+          .toList(growable: false);
+
   /// Loads one durable child-agent projection by stable task id.
   Future<Map<String, dynamic>?> getSubagent(String taskId) async {
     final rows = await (await database).query('agent_tasks',
