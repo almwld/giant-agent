@@ -494,6 +494,78 @@ class ModelService {
           final searchResults = await WebSearchService.instance.search(query, limit: limit);
           result = <String, dynamic>{'ok': true, 'query': query, 'results': searchResults};
           break;
+        case 'task':
+          final manager = TaskManager();
+          final action = args['action']?.toString() ?? 'list';
+          final taskId = args['task_id']?.toString() ?? '';
+          switch (action) {
+            case 'list':
+            case 'read':
+              final taskList = await manager.getTasksForConversation(
+                _activeConversationId,
+                status: args['status']?.toString(),
+              );
+              result = <String, dynamic>{'ok': true, 'tasks': taskList};
+              break;
+            case 'create':
+            case 'add':
+              final description = args['description']?.toString() ?? '';
+              final createdTask = await manager.createTask(
+                description,
+                conversationId: _activeConversationId,
+              );
+              result = <String, dynamic>{'ok': true, 'task': createdTask};
+              break;
+            case 'status':
+              final taskList = await manager.getTasksForConversation(_activeConversationId);
+              final task = taskList.where((item) => item['id'] == taskId).firstOrNull;
+              result = <String, dynamic>{
+                'ok': task != null,
+                if (task != null) 'task': task,
+                if (task == null) 'error': 'Task not found in this conversation.',
+              };
+              break;
+            case 'select':
+              final selected = await manager.selectTask(taskId);
+              result = <String, dynamic>{
+                'ok': selected,
+                'task_id': taskId,
+                if (!selected) 'error': 'Task could not be selected; another task may be executing.',
+              };
+              break;
+            case 'cancel':
+              final taskList = await manager.getTasksForConversation(_activeConversationId);
+              final exists = taskList.any((item) => item['id'] == taskId);
+              if (!exists) throw StateError('Task not found: $taskId');
+              final cancelled = manager.isExecuting && manager.currentTaskId == taskId
+                  ? await manager.cancelTask()
+                  : manager.isExecuting
+                      ? false
+                      : await manager.markCancelled(taskId).then((_) => true);
+              result = <String, dynamic>{
+                'ok': cancelled,
+                'task_id': taskId,
+                if (!cancelled) 'error': 'A different task is currently executing.',
+              };
+              break;
+            case 'resume':
+              if (taskId.isEmpty) throw const FormatException('task_id is required to resume.');
+              final approvalHandler = requestUserInput;
+              if (approvalHandler == null ||
+                  await approvalHandler(
+                    question: 'هل تسمح باستئناف المهمة "$taskId"؟ سيبدأ التنفيذ من نقطة الاستعادة المحفوظة.',
+                    choices: const <String>['السماح', 'إلغاء'],
+                  ) != 'السماح') {
+                result = <String, dynamic>{'ok': true, 'cancelled': true, 'task_id': taskId};
+                break;
+              }
+              final resumed = await manager.resumeTask(taskId);
+              result = <String, dynamic>{'ok': true, 'resume_result': resumed};
+              break;
+            default:
+              throw ArgumentError.value(action, 'action', 'Supported task actions: list, create, status, select, cancel, resume.');
+          }
+          break;
         case 'todo_read':
           final status = args['status']?.toString();
           final tasks = await TaskManager().getTasksForConversation(
