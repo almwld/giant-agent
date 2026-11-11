@@ -89,6 +89,7 @@ class AgentKernel {
     String? details,
     String? result,
     String? eventId,
+    String? toolCallId,
     String? taskId,
     String? agentType,
     String? taskPrompt,
@@ -102,6 +103,7 @@ class AgentKernel {
       requestId: requestId,
       attemptId: requestId,
       stepId: eventId ?? '${requestId}_$type',
+      toolCallId: toolCallId,
       sequence: sequence,
       type: type,
       title: title,
@@ -349,6 +351,137 @@ class AgentKernel {
     agentType: agentType,
     dependencyResults: dependencyResults,
   ));
+
+  /// Runs a model-created child inline inside its active parent request.
+  ///
+  /// Unlike recovery, this path must not enqueue behind the parent request:
+  /// the parent is waiting for this tool result. ModelService's request-scoped
+  /// reentrant runtime lease allows the child to reuse the same local model
+  /// while the parent is suspended at the orchestration tool call.
+  Future<String> executeDynamicSubagent({
+    required String parentRequestId,
+    required String conversationId,
+    required String taskId,
+    required String title,
+    required String taskPrompt,
+    required String agentType,
+    required Map<String, String> dependencyResults,
+    required String toolCallId,
+  }) async {
+    if (_activeRequestId != parentRequestId ||
+        _state != AgentKernelState.executing) {
+      throw StateError('Dynamic subagents must be spawned by their active parent request.');
+    }
+    if (taskId.trim().isEmpty || taskPrompt.trim().isEmpty) {
+      throw ArgumentError('Subagent identity and prompt are required.');
+    }
+    if (_activeSubagentIds.contains(taskId)) {
+      throw StateError('Subagent $taskId is already active.');
+    }
+    final allowedTools = switch (agentType) {
+      'explore' || 'plan' || 'reviewer' =>
+        const <String>{'read_file', 'list_files', 'mcp_call', 'mcp_read_resource'},
+      'coder' => const <String>{
+          'create_file', 'read_file', 'write_file', 'list_files',
+          'execute_python', 'gain_terminal', 'mcp_call', 'mcp_read_resource',
+        },
+      _ => throw ArgumentError('Unknown subagent type: $agentType'),
+    };
+    final dependencyContext = dependencyResults.entries.map((entry) =>
+      'نتيجة المهمة السابقة ${entry.key}:\\n${entry.value}'
+    ).join('\\n\\n');
+    final previousParent = _activeSubagentParentRequestId;
+    _activeSubagentIds.add(taskId);
+    _activeSubagentParentRequestId = parentRequestId;
+    _emit(
+      requestId: parentRequestId,
+      taskId: taskId,
+      agentType: agentType,
+      taskPrompt: taskPrompt,
+      toolCallId: toolCallId,
+      type: 'subagent_started',
+      title: 'بدأ الوكيل الفرعي: $title',
+      status: 'running',
+    );
+    try {
+      final prompt = '''أنت وكيل فرعي تابع للطلب الحالي من نوع $agentType.
+المهمة: $taskPrompt
+نتائج التبعيات المكتملة:
+${dependencyContext.isEmpty ? 'لا توجد تبعيات.' : dependencyContext}
+
+قواعد التنفيذ:
+- نفّذ المهمة المسندة فقط؛ لا تنشئ أو تشغّل أو تحذف وكلاء فرعيين.
+- لا تفترض أنك ترى سجل المحادثة الرئيسي.
+- استخدم الأدوات المسموح بها فقط، ولا تدّع نجاح عملية دون نتيجة مؤكدة.
+- وكيل explore وplan وreviewer للقراءة والتحليل فقط؛ لا تعدّل الملفات.
+- وكيل coder يمكنه تعديل مساحة العمل، وأوامر الطرفية تتطلب موافقة المستخدم.
+- أعد النتيجة والأدلة والملفات التي تغيرت وما بقي غير منجز.
+- لا تعرض التفكير الداخلي التفصيلي.''';
+      final output = (await _models.processInput(
+        prompt,
+        conversationId: '$conversationId::subagent::$taskId',
+        persistTurn: false,
+        allowedTools: allowedTools,
+        shouldCancel: () =>
+            _cancellationRequested || _cancelledSubagentIds.contains(taskId),
+        requestId: parentRequestId,
+        taskId: taskId,
+        agentType: agentType,
+      )).trim();
+      if (_cancellationRequested ||
+          _cancelledSubagentIds.contains(taskId) ||
+          _isCancelledOutput(output)) {
+        throw SubagentInterrupted(output.isEmpty
+            ? 'تم إيقاف الوكيل الفرعي.'
+            : output);
+      }
+      if (_isIncompleteOutput(output)) throw SubagentInterrupted(output);
+      if (_isFailureOutput(output)) throw StateError(output);
+      _emit(
+        requestId: parentRequestId,
+        taskId: taskId,
+        agentType: agentType,
+        taskPrompt: taskPrompt,
+        toolCallId: toolCallId,
+        type: 'subagent_completed',
+        title: 'اكتمل الوكيل الفرعي: $title',
+        status: 'completed',
+        details: output.length > 1200 ? '${output.substring(0, 1200)}…' : output,
+        result: output,
+      );
+      return output;
+    } on SubagentInterrupted catch (error) {
+      _emit(
+        requestId: parentRequestId,
+        taskId: taskId,
+        agentType: agentType,
+        taskPrompt: taskPrompt,
+        toolCallId: toolCallId,
+        type: 'subagent_interrupted',
+        title: 'توقف الوكيل الفرعي: $title',
+        status: 'interrupted',
+        details: error.toString(),
+      );
+      rethrow;
+    } catch (error) {
+      _emit(
+        requestId: parentRequestId,
+        taskId: taskId,
+        agentType: agentType,
+        taskPrompt: taskPrompt,
+        toolCallId: toolCallId,
+        type: 'subagent_failed',
+        title: 'تعذر تشغيل الوكيل الفرعي: $title',
+        status: 'failed',
+        details: error.toString(),
+      );
+      rethrow;
+    } finally {
+      _activeSubagentIds.remove(taskId);
+      _cancelledSubagentIds.remove(taskId);
+      _activeSubagentParentRequestId = previousParent;
+    }
+  }
 
   Future<String> _executeRecoveredSubagentAdmitted({
     required String parentRequestId,
