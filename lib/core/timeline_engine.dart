@@ -191,7 +191,10 @@ class TimelineEngine {
     _events
       ..clear()
       ..addAll(events.where((e) => e.sessionId == sessionId)
-        .toList()..sort((a, b) => a.createdAt.compareTo(b.createdAt)));
+        .toList()..sort((a, b) {
+          final byTime = a.createdAt.compareTo(b.createdAt);
+          return byTime != 0 ? byTime : a.id.compareTo(b.id);
+        }));
     _changes.add(this.events);
   }
 
@@ -205,7 +208,9 @@ class TimelineEngine {
     if (index < 0) return null;
     final old = _events[index];
     final nextStatus = status ?? old.status;
-    final rawProgress = identical(progress, _unset) ? old.progress : progress as double?;
+    final rawProgress = identical(progress, _unset)
+        ? old.progress
+        : progress == null ? null : (progress as num).toDouble();
     final terminal = nextStatus == TimelineStatus.completed ||
         nextStatus == TimelineStatus.failed || nextStatus == TimelineStatus.cancelled;
     final updated = old.copyWith(
