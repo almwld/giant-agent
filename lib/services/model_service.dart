@@ -307,6 +307,22 @@ class ModelService {
         case 'execute_python':
           result = await executePython(code: args['code']?.toString() ?? '');
           break;
+        case 'mcp_read_resource':
+          final serverId = args['server_id']?.toString() ?? '';
+          final resourceUri = args['uri']?.toString() ?? '';
+          if (serverId.isEmpty || resourceUri.isEmpty) {
+            throw const FormatException('mcp_read_resource requires server_id and uri.');
+          }
+          final resourceResult = await McpClient.instance.readResource(
+            serverId: serverId,
+            uri: resourceUri,
+            isCancelled: isCancelled,
+          );
+          result = <String, dynamic>{
+            'ok': true,
+            'resource_result': resourceResult,
+          };
+          break;
         case 'mcp_call':
           final serverId = args['server_id']?.toString() ?? '';
           final remoteToolName = args['tool_name']?.toString() ?? '';
