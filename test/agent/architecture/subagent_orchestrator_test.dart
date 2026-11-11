@@ -32,6 +32,31 @@ void main() {
     expect(results.last.taskId, 'dynamic-review');
   });
 
+  test('cancels a created child before it is spawned', () async {
+    late SubagentOrchestrator orchestrator;
+    orchestrator = SubagentOrchestrator(
+      parentRequestId: 'request-cancel-created',
+      conversationId: 'chat-cancel-created',
+      maxConcurrency: 1,
+      onEvent: (_) {},
+      execute: (task, dependencies, isCancelled) async {
+        if (task.id == 'root') {
+          await orchestrator.createTask(
+            const SubagentTask(id: 'unused', title: 'Unused', prompt: 'Do not run'),
+            creatorTaskId: 'root',
+          );
+          expect(orchestrator.cancelTask('unused'), isTrue);
+          expect(orchestrator.status('unused')['status'], 'cancelled');
+        }
+        return 'done';
+      },
+    );
+    final results = await orchestrator.run([
+      const SubagentTask(id: 'root', title: 'Root', prompt: 'Root'),
+    ]);
+    expect(results.map((result) => result.status), ['completed', 'cancelled']);
+  });
+
   test('delivers messages and records shared goal updates', () async {
     late SubagentOrchestrator orchestrator;
     final received = Completer<Map<String, Object?>?>();
