@@ -2534,7 +2534,17 @@ class _ChatScreenState extends State<ChatScreen> {
       case 'tool_output': return Icons.terminal;
       case 'todo': return Icons.checklist;
       case 'thought': return Icons.psychology_alt_outlined;
-      case 'task_interrupted': return Icons.pause_circle_outline;
+      case 'task_interrupted':
+      case 'subagent_interrupted': return Icons.pause_circle_outline;
+      case 'subagent_created': return Icons.person_add_alt_1_outlined;
+      case 'subagent_started': return Icons.smart_toy_outlined;
+      case 'subagent_completed': return Icons.check_circle_outline;
+      case 'subagent_failed': return Icons.error_outline;
+      case 'subagent_cancelled':
+      case 'subagent_dismissed': return Icons.person_off_outlined;
+      case 'subagent_message_sent':
+      case 'subagent_message_received': return Icons.forum_outlined;
+      case 'goal_updated': return Icons.flag_outlined;
       case 'tool_error': return Icons.error_outline;
       default: return Icons.circle_outlined;
     }
