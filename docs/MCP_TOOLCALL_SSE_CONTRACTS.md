@@ -11,7 +11,8 @@ inference runtime or Dart isolate.
   `FlutterSecureStorage`; credentials are never emitted to timeline events.
 - HTTPS is required. Plain HTTP is accepted only for localhost/loopback.
 - The client performs `initialize`, `notifications/initialized`,
-  paginated `tools/list`, and `tools/call` JSON-RPC requests.
+  paginated `tools/list` and `resources/list`, plus `tools/call` and
+  `resources/read` JSON-RPC requests.
 - It negotiates the MCP protocol version returned by the server, retains
   `Mcp-Session-Id`, sends `MCP-Protocol-Version`, and accepts JSON or SSE
   responses from Streamable HTTP endpoints.
@@ -30,7 +31,8 @@ inference runtime or Dart isolate.
 `McpToolResult` preserves ordered content blocks, text, image/audio/resource
 payload fields, unknown extension fields, `isError`, `structuredContent`,
 and `_meta`. Resource links remain structured rather than being flattened
-into text. A text preview is a display projection, never the canonical result.
+into text and can be read through `mcp_read_resource`. A text preview is a
+display projection, never the canonical result.
 The evaluator verifies receipt of a typed remote result, not the remote
 business side effect; that distinction is deliberate.
 
