@@ -27,6 +27,8 @@ import '../services/model_provider_settings.dart';
 import '../services/github_repository_service.dart';
 import '../services/cloud_storage_service.dart';
 import '../services/web_search_service.dart';
+import '../services/browser_session_service.dart';
+import '../widgets/agent_browser_dialog.dart';
 import '../agent/task_manager.dart';
 import '../domain/kernel/agent_kernel_store.dart';
 import '../domain/mcp/mcp_client.dart';
@@ -358,6 +360,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _modelService.requestTerminalApproval = _requestTerminalApproval;
     _modelService.requestMcpApproval = _requestMcpApproval;
     _modelService.requestUserInput = _requestAgentInput;
+    _modelService.requestBrowserSession = _ensureAgentBrowser;
     _loadBubbleScale();
     _initDatabase();
     // The screen consumes exactly one event stream. ModelService and the
@@ -978,6 +981,23 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
     return approved == true && mounted;
+  }
+
+  Future<void> _ensureAgentBrowser() async {
+    if (!mounted) throw StateError('Chat screen is no longer active.');
+    if (!BrowserSessionService.instance.isAttached && !_agentBrowserDialogOpen) {
+      _agentBrowserDialogOpen = true;
+      unawaited(
+        showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => const AgentBrowserDialog(),
+        ).whenComplete(() {
+          _agentBrowserDialogOpen = false;
+        }),
+      );
+    }
+    await BrowserSessionService.instance.waitUntilReady();
   }
 
   Future<String?> _requestAgentInput({
@@ -2515,6 +2535,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _modelService.requestTerminalApproval = null;
     _modelService.requestMcpApproval = null;
     _modelService.requestUserInput = null;
+    _modelService.requestBrowserSession = null;
     _speech.stop();
     _voiceOutput.stop();
     _controller.dispose();
