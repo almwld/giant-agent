@@ -236,7 +236,21 @@ class OpenAICompatibleProvider {
           'temperature': temperature,
           'stream': true,
         });
-      final response = await client.send(request).timeout(requestTimeout);
+      final sendFuture = client.send(request);
+      final sendCancellationPoll = Timer.periodic(const Duration(milliseconds: 100), (_) {
+        if (isCancelled?.call() == true) client.close();
+      });
+      late final http.StreamedResponse response;
+      try {
+        response = await sendFuture.timeout(requestTimeout);
+      } catch (error) {
+        if (isCancelled?.call() == true) {
+          throw StateError('تم إيقاف تدفق OpenRouter بناءً على طلب المستخدم.');
+        }
+        rethrow;
+      } finally {
+        sendCancellationPoll.cancel();
+      }
       if (response.isRedirect) {
         throw StateError('رفض OpenRouter إعادة توجيه HTTP ${response.statusCode}.');
       }
