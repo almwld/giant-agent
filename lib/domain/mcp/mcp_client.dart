@@ -20,6 +20,7 @@ class McpClient {
 
   final http.Client _http = http.Client();
   final Map<String, _McpSession> _sessions = <String, _McpSession>{};
+  final Map<String, List<McpRemoteTool>> _toolCache = <String, List<McpRemoteTool>>{};
   int _requestId = 0;
   Future<void> _storageTail = Future<void>.value();
 
@@ -59,6 +60,7 @@ class McpClient {
     ));
     await _writeServers(updated);
     _sessions.remove(normalizedId);
+    _toolCache.remove(normalizedId);
   }
 
   Future<bool> removeServer(String id) async {
@@ -67,6 +69,7 @@ class McpClient {
     if (updated.length == current.length) return false;
     await _writeServers(updated);
     _sessions.remove(id);
+    _toolCache.remove(id);
     return true;
   }
 
@@ -168,7 +171,11 @@ class McpClient {
         if (raw is Map) tools.add(McpRemoteTool.fromJson(Map<String, dynamic>.from(raw)));
       }
       final next = result['nextCursor']?.toString();
-      if (next == null || next.isEmpty) return List<McpRemoteTool>.unmodifiable(tools);
+      if (next == null || next.isEmpty) {
+        final result = List<McpRemoteTool>.unmodifiable(tools);
+        _toolCache[serverId] = result;
+        return result;
+      }
       if (!seenCursors.add(next)) {
         throw const FormatException('MCP tools/list repeated a pagination cursor.');
       }
@@ -185,6 +192,10 @@ class McpClient {
   }) async {
     if (isCancelled?.call() == true) throw StateError('MCP tool call cancelled before dispatch.');
     await initialize(serverId);
+    final availableTools = _toolCache[serverId] ?? await listTools(serverId);
+    if (!availableTools.any((tool) => tool.name == toolName)) {
+      throw StateError('MCP tool is not present in the latest tools/list result: $toolName');
+    }
     final session = _sessions[serverId]!;
     final response = await _post(session, <String, dynamic>{
       'jsonrpc': '2.0',
@@ -287,7 +298,9 @@ class McpClient {
     final buffer = StringBuffer();
     for (final server in await servers()) {
       try {
-        for (final tool in await listTools(server.id)) {
+        final tools = _toolCache[server.id] ??
+            await listTools(server.id).timeout(const Duration(seconds: 12));
+        for (final tool in tools) {
           buffer
             ..writeln('- mcp_call: ${server.name} / ${tool.name}')
             ..writeln('  description: ${tool.description}')
@@ -304,6 +317,7 @@ class McpClient {
   void close() {
     _http.close();
     _sessions.clear();
+    _toolCache.clear();
   }
 }
 
