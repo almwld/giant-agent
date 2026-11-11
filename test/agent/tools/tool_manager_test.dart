@@ -8,11 +8,14 @@ void main() {
     test('exposes only tools implemented by the runtime', () {
       expect(
         registry.getAvailableTools(),
-        ['create_file', 'read_file', 'write_file', 'list_files', 'execute_python', 'mcp_read_resource', 'mcp_call', 'gain_terminal'],
+        ['create_file', 'read_file', 'write_file', 'list_files', 'execute_python', 'mcp_read_resource', 'mcp_call', 'create_subagent', 'spawn_subagent', 'delete_subagent', 'check_subagent_status', 'send_message', 'wait_for_message', 'ask_user', 'update_goal', 'gain_terminal'],
       );
       expect(registry.supports('delete_file'), isFalse);
       expect(registry.supports('execute_python'), isTrue);
       expect(registry.supports('gain_terminal'), isTrue);
+      expect(registry.supports('create_subagent'), isTrue);
+      expect(registry.supports('ask_user'), isTrue);
+      expect(registry.supports('update_goal'), isTrue);
     });
 
     test('builds prompt catalogue from the registered definitions', () {
