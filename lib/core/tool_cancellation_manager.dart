@@ -35,12 +35,23 @@ class ToolCancellationToken {
 
   Future<void> delay(Duration duration) async {
     throwIfCancelled();
-    final result = await Future.any<Object>([
-      Future<void>.delayed(duration).then<Object>((_) => true),
-      whenCancelled.then<Object>((reason) => ToolCancelledException(toolCallId, reason)),
-    ]);
-    if (result is ToolCancelledException) throw result;
-    throwIfCancelled();
+    final completer = Completer<void>();
+    final timer = Timer(duration, () {
+      if (!completer.isCompleted) completer.complete();
+    });
+    final cancellation = whenCancelled.then<void>((reason) {
+      if (!completer.isCompleted) {
+        completer.completeError(ToolCancelledException(toolCallId, reason));
+      }
+    });
+    try {
+      await completer.future;
+      throwIfCancelled();
+    } finally {
+      timer.cancel();
+      // Observe the cancellation future even if the timer wins the race.
+      cancellation.ignore();
+    }
   }
 
   /// Stops waiting immediately on cancellation. The underlying operation is
