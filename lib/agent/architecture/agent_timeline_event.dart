@@ -57,6 +57,7 @@ class AgentTimelineEvent {
         if (agentType != null && agentType!.isNotEmpty) 'agent_type': agentType,
         if (taskPrompt != null && taskPrompt!.isNotEmpty) 'task_prompt': taskPrompt,
         if (dependsOn.isNotEmpty) 'depends_on': dependsOn,
+        if (progressPercent != null) 'progress_percent': progressPercent!.clamp(0, 100),
       };
 
   factory AgentTimelineEvent.fromMap(Map<String, dynamic> map) {
