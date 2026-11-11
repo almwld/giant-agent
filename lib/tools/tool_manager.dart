@@ -184,6 +184,16 @@ class ToolManager {
       example: '{"name":"slides_generator","arguments":{"path":"presentations/overview.html","title":"Overview","slides":[{"title":"Goal","body":"Key points"}]}}',
     ),
     AgentToolDefinition(
+      name: 'website_version_manager',
+      description: 'إدارة نسخ ملفات الموقع داخل مساحة العمل محلياً: snapshot لحفظ نسخة وlist لاستعراض النسخ؛ لا تنشر الموقع للعامة.',
+      example: '{"name":"website_version_manager","arguments":{"action":"snapshot","path":"site/index.html","label":"before redesign"}}',
+    ),
+    AgentToolDefinition(
+      name: 'website_version_manager_rollback',
+      description: 'استعادة ملف موقع إلى نسخة محلية سابقة بعد موافقة المستخدم، مع حفظ الحالة الحالية والتحقق من القراءة بعد الاستعادة.',
+      example: '{"name":"website_version_manager_rollback","arguments":{"path":"site/index.html","version_id":"wv_123"}}',
+    ),
+    AgentToolDefinition(
       name: 'lbs_tool',
       description: 'طلب موقع المستخدم الحالي بعد موافقته داخل التطبيق ثم إذن Android؛ يعمل أثناء استخدام التطبيق فقط ولا يطلب تتبعاً في الخلفية.',
       example: '{"name":"lbs_tool","arguments":{}}',
