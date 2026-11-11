@@ -88,6 +88,11 @@ class ToolManager {
       example: '{"name":"wait_for_message","arguments":{"timeout_seconds":20}}',
     ),
     AgentToolDefinition(
+      name: 'ask_user',
+      description: 'اطلب معلومة أو قراراً من المستخدم عبر نافذة تفاعلية داخل غرفة المحادثة. لا تطلب موافقة عامة؛ اطرح سؤالاً محدداً وانتظر الإجابة أو الإلغاء.',
+      example: '{"name":"ask_user","arguments":{"question":"هل تريد اعتماد خطة الترحيل أم التراجع؟","timeout_seconds":120}}',
+    ),
+    AgentToolDefinition(
       name: 'update_goal',
       description: 'حدّث هدف التنسيق المشترك؛ ستظهر الصياغة الجديدة في تعليمات الوكلاء الذين يبدأون لاحقاً.',
       example: '{"name":"update_goal","arguments":{"goal":"ركز على إصلاحات الأمان دون تغيير الواجهات."}}',
