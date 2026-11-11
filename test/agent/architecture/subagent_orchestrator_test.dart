@@ -93,6 +93,9 @@ void main() {
             fromTaskId: 'sender', toTaskId: 'receiver', content: 'API audit complete',
           );
           await orchestrator.updateGoal(taskId: 'sender', goal: 'Prioritize security fixes');
+          await orchestrator.sendMessage(
+            fromTaskId: 'sender', toTaskId: 'parent', content: 'Coordinator update',
+          );
           return 'sent';
         }
         if (task.id == 'receiver') {
@@ -110,6 +113,7 @@ void main() {
     ]);
     expect((await received.future)?['content'], 'API audit complete');
     expect(orchestrator.currentGoal, 'Prioritize security fixes');
+    expect(orchestrator.parentMessages.single['content'], 'Coordinator update');
   });
 
   test('enforces dynamic task count and nesting depth', () async {
