@@ -23,8 +23,9 @@ inference runtime or Dart isolate.
   All other remote tools require the app's `requestMcpApproval` callback; when
   no approval handler is configured, the call is denied by default.
 - The API facade is `AgentService.addMcpServer`, `mcpServers`,
-  `refreshMcpTools`, and `removeMcpServer`. This commit exposes the API;
-  a dedicated settings screen and OAuth browser flow remain separate UI work.
+  `refreshMcpTools`, and `removeMcpServer`. The app now includes a server
+  management/discovery screen and a one-time approval dialog for non-read-only
+  calls. OAuth browser authorization remains separate work.
 
 ## MCP result envelope
 
@@ -60,6 +61,5 @@ The contract tests cover MCP result preservation, server/tool metadata
 round-tripping, SSE framing and UTF-8 boundaries, and independent tool-call
 cancellation. A passing CI run and runtime tests against a real MCP server are
 still required before calling this production-ready. Standard input/output MCP transports and OAuth authorization are not
-implemented in this mobile HTTP client. A dedicated server-management screen
-and an app-wired approval dialog for non-read-only remote tools are also still
-required for a complete end-user flow.
+implemented in this mobile HTTP client. A real-server integration test and a
+CI pass are still required before production use.
