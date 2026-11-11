@@ -2624,6 +2624,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           step['details'] != null ||
                           step['file_name'] != null;
                       final toolName = step['tool_name']?.toString() ?? '';
+                      final toolCallId = step['tool_call_id']?.toString() ?? '';
                       final isTool = toolName.isNotEmpty ||
                           type.contains('tool') ||
                           type.contains('terminal') ||
@@ -2693,6 +2694,23 @@ class _ChatScreenState extends State<ChatScreen> {
                                   ],
                                 ),
                               ),
+                              if (running && toolCallId.isNotEmpty)
+                                IconButton(
+                                  tooltip: 'إيقاف استدعاء الأداة هذا',
+                                  visualDensity: VisualDensity.compact,
+                                  constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+                                  padding: EdgeInsets.zero,
+                                  icon: const Icon(Icons.stop_circle_outlined,
+                                    size: 17, color: Color(0xFFFF9292)),
+                                  onPressed: () {
+                                    final cancelled = AgentService.instance.cancelToolCall(toolCallId);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text(cancelled
+                                        ? 'أُرسل طلب إيقاف الأداة المحددة.'
+                                        : 'انتهى استدعاء الأداة أو لم يعد نشطاً.')),
+                                    );
+                                  },
+                                ),
                               if (hasPreview)
                                 const Padding(
                                   padding: EdgeInsetsDirectional.only(start: 5),
