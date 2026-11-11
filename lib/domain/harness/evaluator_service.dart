@@ -277,6 +277,25 @@ class EvaluatorService {
           message: passed ? 'Web search returned a structured result list.' : 'Web search returned no structured results.',
           evidence: <String, Object?>{'result_count': results is List ? results.length : 0},
         );
+      case 'task':
+        final action = toolArgs['action']?.toString() ?? 'list';
+        final passed = switch (action) {
+          'list' || 'read' => toolResult['ok'] == true && toolResult['tasks'] is List,
+          'create' || 'add' => toolResult['ok'] == true && toolResult['task'] is Map &&
+              (toolResult['task'] as Map)['id'] != null,
+          'status' => toolResult['ok'] == true && toolResult['task'] is Map,
+          'select' => toolResult['ok'] == true && toolResult['task_id'] == toolArgs['task_id'],
+          'cancel' => toolResult['ok'] == true,
+          'resume' => toolResult['cancelled'] == true ||
+              (toolResult['ok'] == true && toolResult['resume_result'] is Map &&
+               (toolResult['resume_result'] as Map)['status'] != 'missing'),
+          _ => false,
+        };
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed ? 'TaskManager action completed or was explicitly cancelled by the user.' : 'TaskManager action could not be verified.',
+          evidence: <String, Object?>{'action': action, 'verified': passed},
+        );
       case 'todo_read':
         final tasks = toolResult['tasks'];
         final passed = tasks is List;
