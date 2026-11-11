@@ -1296,6 +1296,8 @@ ${queuedMessages.isEmpty ? 'لا توجد رسائل.' : queuedMessages}
       case 'generate_sound_effects': return 'يولّد مؤثرات صوتية';
       case 'find_asset_bbox': return 'يحدد حدود الأصول في الصورة';
       case 'crop_and_replicate_assets_in_image': return 'يقص ويعيد إنتاج الأصول';
+      case 'website_version_manager': return 'يدير نسخ ملفات الموقع';
+      case 'website_version_manager_rollback': return 'يستعيد نسخة سابقة بموافقة المستخدم';
       case 'lbs_tool': return 'يطلب موقع الجهاز بإذن المستخدم';
       case 'fetch_urls': return 'يجلب صفحات الويب';
       case 'visit':
@@ -1358,6 +1360,8 @@ ${queuedMessages.isEmpty ? 'لا توجد رسائل.' : queuedMessages}
       case 'generate_sound_effects': return 'اكتمل توليد المؤثرات';
       case 'find_asset_bbox': return 'اكتمل تحديد حدود الأصول';
       case 'crop_and_replicate_assets_in_image': return 'اكتمل قص الأصول وإعادة إنتاجها';
+      case 'website_version_manager': return 'اكتملت إدارة نسخ الموقع';
+      case 'website_version_manager_rollback': return 'اكتملت الاستعادة والتحقق';
       case 'lbs_tool': return 'اكتمل طلب الموقع أو أُلغي';
       case 'fetch_urls': return 'اكتمل جلب صفحات الويب';
       case 'visit':
