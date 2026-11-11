@@ -398,9 +398,7 @@ class ModelService {
         return 'تم إيقاف تنفيذ الوكيل بناءً على طلب المستخدم.';
       }
       final response = await _processInput(
-        context.isEmpty ? input : '$context
-
-طلب المستخدم: $input',
+        context.isEmpty ? input : '$context\n\nطلب المستخدم: $input',
         allowedTools: allowedTools,
         shouldCancel: shouldCancel,
       );
@@ -483,9 +481,7 @@ class ModelService {
 - لا تدّع أن التنفيذ قد حدث؛ هذه خطة فقط.
 - لا تستخدم coder إلا إذا كان هدف المستخدم يتطلب تعديل برنامج أو ملفات مشروع.
 - اجعل prompt لكل مهمة مستقلاً بما يكفي، ولا يتجاوز 1200 حرفاً.
-${context.isEmpty ? '' : 'سياق مختصر:
-$context
-'}
+${context.isEmpty ? '' : 'سياق مختصر:\n$context\n'}
 هدف المستخدم:
 $prompt
 ''';
@@ -512,9 +508,7 @@ $prompt
         input,
         conversationId: conversationId,
       );
-      final prompt = context.isEmpty ? input : '$context
-
-رسالة المستخدم: $input';
+      final prompt = context.isEmpty ? input : '$context\n\nرسالة المستخدم: $input';
       final response = await _generateText(
         _boundPrompt(prompt),
         maxTokens: 768,
@@ -535,11 +529,7 @@ $prompt
     if (prompt.length <= _maxPromptCharacters) return prompt;
     const headLength = 1800;
     const tailLength = _maxPromptCharacters - headLength;
-    return '${prompt.substring(0, headLength)}
-
-[تم اختصار السياق الأقدم لتجنب تجاوز نافذة النموذج]
-
-'
+    return '${prompt.substring(0, headLength)}\n\n[تم اختصار السياق الأقدم لتجنب تجاوز نافذة النموذج]\n\n'
         '${prompt.substring(prompt.length - tailLength)}';
   }
 
@@ -628,9 +618,7 @@ $toolCatalog
           if (isCancelled()) {
             return generated.trim().isEmpty
                 ? 'تم إيقاف التوليد.'
-                : '${generated.trim()}
-
-[تم إيقاف التوليد]';
+                : '${generated.trim()}\n\n[تم إيقاف التوليد]';
           }
           final match = RegExp(r'<tool_call>\s*(\{.*?\})\s*</tool_call>', dotAll: true)
               .firstMatch(generated);
@@ -648,11 +636,7 @@ $toolCatalog
             (allowedTools != null && !allowedTools.contains(toolName)) ||
             rawArgs is! Map<String, dynamic>) {
           history
-            ..write('
-
-System Note: Unsupported tool or invalid arguments. Use only the registered tool catalogue.
-
-Assistant:');
+            ..write('\n\nSystem Note: Unsupported tool or invalid arguments. Use only the registered tool catalogue.\n\nAssistant:');
           continue;
         }
 
@@ -766,15 +750,9 @@ Assistant:');
         if (!verificationPassed) {
           final failedAction = jsonEncode(payload);
           history
-            ..write('
-
-System Note: Tool $toolName result: ${jsonEncode(result)}')
-            ..write('
-Independent verification FAILED: $verificationMessage')
-            ..write('
-Do not claim the goal is complete. Choose a different corrective tool action.
-
-Assistant:');
+            ..write('\n\nSystem Note: Tool $toolName result: ${jsonEncode(result)}')
+            ..write('\nIndependent verification FAILED: $verificationMessage')
+            ..write('\nDo not claim the goal is complete. Choose a different corrective tool action.\n\nAssistant:');
 
           if (reflexionAttempts >= maxReflexionAttempts) {
             return 'تعذر إكمال الطلب: لم يتحقق الهدف بعد $maxReflexionAttempts محاولات تصحيح آمنة. آخر نتيجة: $verificationMessage';
@@ -833,22 +811,15 @@ Assistant:');
         final resultJson = jsonEncode(result);
         final pythonTail = result['output']?.toString() ?? '';
         final boundedPythonTail = pythonTail.length > 500
-            ? '${pythonTail.substring(pythonTail.length - 500)}
-[Python output truncated to last 500 characters]'
+            ? '${pythonTail.substring(pythonTail.length - 500)}\n[Python output truncated to last 500 characters]'
             : pythonTail;
         final contextResult = toolName == 'execute_python'
-            ? 'ok=true
-$boundedPythonTail'
+            ? 'ok=true\n$boundedPythonTail'
             : resultJson;
         history
-          ..write('
-
-System Note: $toolName result (independently verified): ')
+          ..write('\n\nSystem Note: $toolName result (independently verified): ')
           ..write(contextResult)
-          ..write('
-Continue only if more work is required; never claim unverified side effects.
-
-Assistant:');
+          ..write('\nContinue only if more work is required; never claim unverified side effects.\n\nAssistant:');
       }
       return 'وصل الوكيل إلى الحد الآمن ($maxToolCalls دورات تنفيذ/تحقق) دون إنهاء المهمة. أعد الطلب لمتابعة العمل من سياق المحادثة.';
     } catch (e) {
