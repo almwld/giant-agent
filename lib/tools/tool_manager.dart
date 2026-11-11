@@ -69,7 +69,7 @@ class ToolManager {
     ),
     AgentToolDefinition(
       name: 'delete_subagent',
-      description: 'ألغِ وكيلاً فرعياً مع الاحتفاظ بسجل التدقيق؛ لا يحذف السجل نهائياً.',
+      description: 'ألغِ الوكيل النشط أو أزل الوكيل المكتمل من الإدارة النشطة مع الاحتفاظ بالنتيجة وسجل التدقيق؛ لا يحذف السجل نهائياً.',
       example: '{"name":"delete_subagent","arguments":{"task_id":"audit_api"}}',
     ),
     AgentToolDefinition(
