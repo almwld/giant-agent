@@ -137,18 +137,27 @@ class BrowserSessionService {
     return Map<String, dynamic>.from(decoded);
   }
 
-  Future<Map<String, dynamic>> click(String visibleText) async {
+  Future<Map<String, dynamic>> click(
+    String visibleText, {
+    bool allowSensitive = false,
+  }) async {
     final value = visibleText.trim();
     if (value.isEmpty || value.length > 200) throw ArgumentError('Click target must contain 1–200 characters.');
     final controller = _requireController();
     final encoded = jsonEncode(value);
+    final approval = allowSensitive ? 'true' : 'false';
     final raw = await controller.runJavaScriptReturningResult('''(() => {
-      const target=$encoded;
+      const target=$encoded, allowSensitive=$approval;
       const norm=s=>(s||'').replace(/\\s+/g,' ').trim().toLocaleLowerCase();
       const nodes=[...document.querySelectorAll('a,button,[role="button"],input[type="submit"]')];
       const node=nodes.find(e=>norm(e.innerText||e.value||e.getAttribute('aria-label')||e.title)===norm(target))
         || nodes.find(e=>norm(e.innerText||e.value||e.getAttribute('aria-label')||e.title).includes(norm(target)));
       if(!node)return JSON.stringify({ok:false,error:'No visible link or button matched the requested text.'});
+      const label=norm(node.innerText||node.value||node.getAttribute('aria-label')||node.title);
+      const risky=/\\b(pay|purchase|buy|delete|remove|transfer|submit|confirm|order|checkout|sign out|unsubscribe)\\b/.test(label);
+      const mutating=node.tagName!=='A' || node.type==='submit' || node.getAttribute('role')==='button';
+      if((risky||mutating)&&!allowSensitive)
+        return JSON.stringify({ok:false,requires_confirmation:true,clicked:target,tag:node.tagName});
       node.click();
       return JSON.stringify({ok:true,clicked:target,tag:node.tagName});
     })()''');
@@ -157,7 +166,11 @@ class BrowserSessionService {
     return Map<String, dynamic>.from(decoded);
   }
 
-  Future<Map<String, dynamic>> input(String selector, String value) async {
+  Future<Map<String, dynamic>> input(
+    String selector,
+    String value, {
+    bool allowSensitive = false,
+  }) async {
     final cleanSelector = selector.trim();
     if (cleanSelector.isEmpty || cleanSelector.length > 300 || value.length > 4000) {
       throw ArgumentError('Input requires a CSS selector (1–300 chars) and value (max 4000 chars).');
@@ -165,14 +178,19 @@ class BrowserSessionService {
     final controller = _requireController();
     final selectorJson = jsonEncode(cleanSelector);
     final valueJson = jsonEncode(value);
+    final approval = allowSensitive ? 'true' : 'false';
     final raw = await controller.runJavaScriptReturningResult('''(() => {
-      const selector=$selectorJson, value=$valueJson;
+      const selector=$selectorJson, value=$valueJson, allowSensitive=$approval;
       let element;
       try { element=document.querySelector(selector); } catch(e) {
         return JSON.stringify({ok:false,error:'Invalid CSS selector.'});
       }
       if(!element)return JSON.stringify({ok:false,error:'No element matched the CSS selector.'});
       if(!('value' in element))return JSON.stringify({ok:false,error:'Matched element is not an input control.'});
+      const metadata=(selector+' '+(element.name||'')+' '+(element.autocomplete||'')+' '+(element.type||'')).toLowerCase();
+      const sensitive=element.type==='password'||/password|card|cvv|cvc|security.?code|bank|account|token|secret/.test(metadata);
+      if(sensitive&&!allowSensitive)
+        return JSON.stringify({ok:false,requires_confirmation:true,selector,tag:element.tagName,type:element.type||''});
       element.focus(); element.value=value;
       element.dispatchEvent(new Event('input',{bubbles:true}));
       element.dispatchEvent(new Event('change',{bubbles:true}));
