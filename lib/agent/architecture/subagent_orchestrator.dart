@@ -146,7 +146,7 @@ class SubagentOrchestrator {
     return true;
   }
 
-  bool isTaskCancelled(String taskId) => _cancelRequested || _cancelledTasks.contains(taskId);
+  bool isTaskCancelled(String taskId) => _cancelledTasks.contains(taskId);
 
   Map<String, Object?> status(String taskId) {
     final task = _tasks[taskId];
