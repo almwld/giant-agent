@@ -663,9 +663,11 @@ ${dependencyContext.isEmpty ? 'لا توجد تبعيات سابقة.' : depende
     _activeSubagentOrchestrator = orchestrator;
     var results = <SubagentResult>[];
     final parentMessages = <Map<String, Object?>>[];
+    var finalCoordinationGoal = '';
     try {
       results = await orchestrator.run(tasks);
       parentMessages.addAll(orchestrator.parentMessages);
+      finalCoordinationGoal = orchestrator.currentGoal;
       // Dynamic children are registered by model-facing tools while workers
       // run; include them in the canonical task list before synthesis/replan.
       tasks = orchestrator.allTasks.toList(growable: true);
@@ -714,6 +716,9 @@ $priorEvidence
             tasks.addAll(repairTasks);
             final repairResults = await orchestrator.run(repairTasks);
             parentMessages.addAll(orchestrator.parentMessages);
+            if (orchestrator.currentGoal.isNotEmpty) {
+              finalCoordinationGoal = orchestrator.currentGoal;
+            }
             results = <SubagentResult>[...results, ...repairResults];
             _emit(
               requestId: requestId,
@@ -789,6 +794,9 @@ ${result.output ?? result.error ?? 'لم تُنتج نتيجة.'}
     final finalOutput = await _models.processInput(
       '''
 المهمة الأصلية: $prompt
+
+هدف التنسيق النهائي:
+${finalCoordinationGoal.isEmpty ? prompt : finalCoordinationGoal}
 
 رسائل الوكلاء الموجهة إلى المنسق:
 $parentMessageEvidence
