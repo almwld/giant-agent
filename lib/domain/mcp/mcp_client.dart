@@ -265,20 +265,60 @@ class McpClient {
     final contentType = streamed.headers['content-type']?.toLowerCase() ?? '';
     if (contentType.contains('text/event-stream')) {
       final parser = ServerSentEventParser();
-      final messages = <Map<String, dynamic>>[];
-      await for (final chunk in streamed.stream.timeout(_timeout)) {
-        if (isCancelled?.call() == true) throw StateError('MCP request cancelled.');
-        for (final event in parser.add(chunk)) {
+      final expectedId = payload['id']?.toString();
+      final responseCompleter = Completer<Map<String, dynamic>?>();
+      late final StreamSubscription<List<int>> subscription;
+
+      void consumeEvents(List<ServerSentEvent> events) {
+        for (final event in events) {
+          if (event.data.trim().isEmpty || responseCompleter.isCompleted) continue;
           final decoded = jsonDecode(event.data);
-          if (decoded is Map) messages.add(Map<String, dynamic>.from(decoded));
+          if (decoded is! Map) continue;
+          final message = Map<String, dynamic>.from(decoded);
+          if (expectedId == null || message['id']?.toString() == expectedId) {
+            responseCompleter.complete(message);
+            unawaited(subscription.cancel());
+            return;
+          }
         }
       }
-      for (final event in parser.close()) {
-        final decoded = jsonDecode(event.data);
-        if (decoded is Map) messages.add(Map<String, dynamic>.from(decoded));
+
+      subscription = streamed.stream.listen(
+        (chunk) {
+          try {
+            consumeEvents(parser.add(chunk));
+          } catch (error, stack) {
+            if (!responseCompleter.isCompleted) {
+              responseCompleter.completeError(error, stack);
+              unawaited(subscription.cancel());
+            }
+          }
+        },
+        onError: (Object error, StackTrace stack) {
+          if (!responseCompleter.isCompleted) responseCompleter.completeError(error, stack);
+        },
+        onDone: () {
+          try {
+            consumeEvents(parser.close());
+            if (!responseCompleter.isCompleted) responseCompleter.complete(null);
+          } catch (error, stack) {
+            if (!responseCompleter.isCompleted) responseCompleter.completeError(error, stack);
+          }
+        },
+        cancelOnError: true,
+      );
+      final cancellationPoll = Timer.periodic(const Duration(milliseconds: 100), (_) {
+        if (isCancelled?.call() == true && !responseCompleter.isCompleted) {
+          responseCompleter.completeError(StateError('MCP request cancelled.'));
+          unawaited(subscription.cancel());
+        }
+      });
+      try {
+        return await responseCompleter.future.timeout(_timeout);
+      } finally {
+        cancellationPoll.cancel();
+        await subscription.cancel();
       }
-      if (messages.isEmpty) return null;
-      return messages.last;
     }
     final body = await streamed.stream.bytesToString();
     if (body.trim().isEmpty) return null;
