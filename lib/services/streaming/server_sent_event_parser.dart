@@ -90,7 +90,7 @@ class ServerSentEventParser {
         _event = value;
         break;
       case 'id':
-        if (!value.contains('\\u0000')) _id = value;
+        if (!value.contains('\u0000')) _id = value;
         break;
       case 'retry':
         final milliseconds = int.tryParse(value);
@@ -113,7 +113,7 @@ class ServerSentEventParser {
     if (_id != null) _lastEventId = _id!;
     events.add(ServerSentEvent(
       event: _event.isEmpty ? 'message' : _event,
-      data: _data.join('\\n'),
+      data: _data.join('\n'),
       id: id,
       retry: _retry,
     ));
