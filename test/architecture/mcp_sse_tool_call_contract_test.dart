@@ -122,5 +122,22 @@ void main() {
         throwsStateError,
       );
     });
+
+    test('interruption carries the exact tool_call_id', () {
+      final registry = ToolCallRegistry();
+      final call = registry.begin(
+        toolCallId: 'call-specific',
+        requestId: 'request-parent',
+        toolName: 'write_file',
+      );
+      registry.cancel('call-specific');
+      expect(call.throwIfCancelled, throwsA(
+        isA<ToolCallInterrupted>().having(
+          (error) => error.toolCallId,
+          'toolCallId',
+          'call-specific',
+        ),
+      ));
+    });
   });
 }
