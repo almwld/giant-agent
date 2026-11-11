@@ -70,7 +70,7 @@ Mylib contains decompiled Android/Kotlin sources and extracted assets from Kimi 
 | 47 | `memory_space_edits` | Implemented as readback of current facts and the local edit journal. |
 | 48 | `slides_generator` | Implemented as a self-contained HTML slide deck in the workspace, not a PPTX export. |
 | 49 | `slides_generator_bnn` | Not transferred: specialized contract/format was not established from the available evidence. |
-| 50 | `task` | Mapped to the existing durable TaskManager/AgentService lifecycle; no second task runtime is created. |
+| 50 | `task` | Implemented as a unified TaskManager tool for list/create/status/select/cancel and user-approved resume; no second task runtime is created. |
 | 51 | `create_subagent` | Implemented with request-scoped child identity and durable lifecycle events. |
 | 52 | `spawn_subagent` | Implemented inline through the existing shared ModelService/LlamaService runtime; child recursion is blocked. |
 | 53 | `delete_subagent` | Implemented as a soft dismissal; running children cannot be erased. |
