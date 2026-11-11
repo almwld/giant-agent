@@ -131,6 +131,30 @@ class EvaluatorService {
             'goal_semantics_independently_asserted': false,
           },
         );
+      case 'create_subagent':
+      case 'spawn_subagent':
+      case 'delete_subagent':
+      case 'check_subagent_status':
+      case 'send_message':
+      case 'wait_for_message':
+      case 'update_goal':
+        final operation = toolResult['status']?.toString() ??
+            (toolResult['received'] == true ? 'message_received' : 'accepted');
+        final passed = toolResult['ok'] == true &&
+            (toolResult['task_id'] == null || toolResult['task_id'].toString().isNotEmpty);
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed
+              ? 'Orchestration control-plane operation was accepted by the active scheduler.'
+              : 'Orchestration control-plane operation was rejected or returned an invalid result.',
+          evidence: <String, Object?>{
+            'operation': toolName,
+            'accepted': passed,
+            'state': operation,
+            'task_id': toolResult['task_id'],
+            'received_message': toolResult['received'] == true,
+          },
+        );
       default:
         return ToolVerificationResult(
           passed: false,
