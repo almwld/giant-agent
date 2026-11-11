@@ -14,7 +14,6 @@ import '../tools/terminal_tool_coordinator.dart';
 import '../domain/harness/evaluator_service.dart';
 import '../domain/harness/reflexion_service.dart';
 import '../domain/mcp/mcp_client.dart';
-import '../domain/mcp/mcp_client.dart';
 
 class ModelService {
   static final ModelService _instance = ModelService._internal();
