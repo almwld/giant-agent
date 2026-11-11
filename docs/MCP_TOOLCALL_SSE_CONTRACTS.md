@@ -19,9 +19,11 @@ inference runtime or Dart isolate.
 - The agent prompt receives discovered tool names, descriptions, input schemas
   and annotations. The model invokes them through the single `mcp_call` gateway;
   runtime dispatch rejects tools not present in the latest discovery result.
-- Only tools explicitly annotated `readOnlyHint: true` run without confirmation.
-  All other remote tools require the app's `requestMcpApproval` callback; when
-  no approval handler is configured, the call is denied by default.
+- Only tools annotated `readOnlyHint: true` and not also marked destructive or
+  open-world run without confirmation. MCP annotations are advisory metadata,
+  not a security boundary. All other remote tools require the app's
+  `requestMcpApproval` callback; when no approval handler is configured, the
+  call is denied by default.
 - The API facade is `AgentService.addMcpServer`, `mcpServers`,
   `refreshMcpTools`, and `removeMcpServer`. The app now includes a server
   management/discovery screen and a one-time approval dialog for non-read-only
