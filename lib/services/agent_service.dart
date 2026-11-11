@@ -215,6 +215,9 @@ class AgentService {
       }
       return record.result ?? '';
     } finally {
+      // Flush the asynchronous event-bus subscriber before returning the
+      // request result so lifecycle and ask-user records are durably visible.
+      await _flushExecutionJournal();
       await _backgroundProgressTail;
       await AgentBackgroundExecutionService.instance.endTask();
     }
