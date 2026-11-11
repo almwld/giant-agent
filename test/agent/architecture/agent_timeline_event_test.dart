@@ -71,7 +71,8 @@ void main() {
         100,
       );
     });
-\n    test('omits absent optional details', () {
+
+    test('omits absent optional details', () {
       final event = AgentTimelineEvent(
         id: 'kernel_runtime_1',
         requestId: 'runtime',
