@@ -32,6 +32,26 @@ void main() {
     expect(results.last.taskId, 'dynamic-review');
   });
 
+  test('soft-deletes a completed child without erasing its result', () async {
+    final events = <Map<String, Object?>>[];
+    final orchestrator = SubagentOrchestrator(
+      parentRequestId: 'request-dismiss',
+      conversationId: 'chat-dismiss',
+      onEvent: events.add,
+      execute: (task, dependencies, isCancelled) async => 'verified result',
+    );
+    final results = await orchestrator.run([
+      const SubagentTask(id: 'completed-worker', title: 'Completed worker', prompt: 'Work'),
+    ]);
+    expect(results.single.status, 'completed');
+    expect(await orchestrator.deleteTask('completed-worker'), isTrue);
+    final status = orchestrator.status('completed-worker');
+    expect(status['is_dismissed'], isTrue);
+    expect(status['status'], 'completed');
+    expect(status['result'], 'verified result');
+    expect(events.last['type'], 'subagent_dismissed');
+  });
+
   test('cancels a created child before it is spawned', () async {
     late SubagentOrchestrator orchestrator;
     orchestrator = SubagentOrchestrator(
