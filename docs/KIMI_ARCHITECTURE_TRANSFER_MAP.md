@@ -206,3 +206,32 @@ the backend/handler implementation remain missing from this export.
 - Dynamic dispatch remains missing: create and spawn must remain separate
   operations, and deletion must preserve the audit journal. Do not infer
   Kimi's exact state transitions from the enum names alone.
+
+
+## Transfer continuation — 2026-11-12
+
+The earlier table above describes the PR #28 state before the dynamic model-tool bridge. The following capabilities have now been added on `feat/kimi-subagent-orchestration`:
+
+| Capability | Current implementation | Status |
+|---|---|---|
+| Model-facing create/spawn/delete/status/list | `ToolManager` definitions + `SubagentToolBridge` + `AgentService` durable handlers | Implemented with Giant-owned validated schemas |
+| Separate create and spawn | Create persists pending snapshot; spawn runs only a pending child | Implemented |
+| Dynamic child execution under active parent | `AgentKernel.executeDynamicSubagent` runs inline rather than queueing behind its waiting parent | Implemented |
+| Single shared local model runtime | Request-scoped reentrant runtime lease; orchestration calls do not hold the child tool FIFO lock | Implemented; device stress test still required |
+| Parent ownership enforcement | Status/list/delete/spawn operations are scoped to the active parent request | Implemented |
+| Per-call identity | Child creation and lifecycle events retain the independent `tool_call_id` | Implemented |
+| Worker metadata | Index, description, HTTPS icon URL, motto and async marker are stored in snapshots | Implemented |
+| Progress event contract | Integer progress is clamped to 0–100 and persisted; start/completion report 0/100 | Implemented at lifecycle boundaries |
+| Message/wait/ask-user/goal-update | No verified Kimi handler body/schema was found in Mylib | Not implemented; next tranche requires an explicit Giant contract and interaction UI |
+
+### Runtime safeguards
+
+- Maximum eight child registrations per parent.
+- Only `explore`, `plan`, `coder`, and `reviewer` roles are accepted.
+- Dependencies must belong to the same parent and be completed with a non-empty result before spawn.
+- Children cannot recursively invoke lifecycle tools.
+- Delete is a soft dismissal; append-only audit history is preserved.
+- Interrupted work is never automatically replayed; explicit resume still requires side-effect disposition.
+- The dynamic path is only valid while the parent request is actively executing. Recovery remains a separate path.
+
+The model-facing operation names were observed in `Zd/B.java`, and the worker/snapshot fields in `Dc/*` and `ld/C3841H.java` / `ld/C3843J.java`. The implementation does not assert that the inferred Giant argument names match Kimi's server schema.
