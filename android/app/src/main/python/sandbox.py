@@ -171,6 +171,7 @@ def run_repl(code, workspace_path, session_id):
         }
         _REPL_SESSIONS[session_id] = session
     _REPL_SESSIONS.move_to_end(session_id)
+    _prune_repl_sessions(now)
     session["last_used"] = now
     result = _run_with_namespace(code, workspace_path, session["namespace"])
     namespace = session["namespace"]
@@ -186,7 +187,7 @@ def run_repl(code, workspace_path, session_id):
 
 
 def reset_repl(session_id):
-    if not isinstance(session_id, str):
+    if not isinstance(session_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", session_id):
         return {"ok": False, "error": "Invalid REPL session id."}
     removed = _REPL_SESSIONS.pop(session_id, None) is not None
     return {"ok": True, "reset": removed}
