@@ -57,6 +57,7 @@ class _ChatScreenState extends State<ChatScreen> {
   String _activeAgentRequestId = '';
   final Set<String> _collapsedTimelineIds = <String>{};
   final Set<String> _pendingUserInputDialogIds = <String>{};
+  final Map<String, VoidCallback> _userInputDialogClosers = <String, VoidCallback>{};
   String _streamingResponse = '';
   int _streamingShimmerStart = 0;
   String _toolStreamBuffer = '';
@@ -183,6 +184,11 @@ class _ChatScreenState extends State<ChatScreen> {
     if (step['type'] == 'user_input_requested') {
       unawaited(_presentAgentUserInputRequest(step));
     }
+    if (step['type'] == 'user_input_cancelled' ||
+        step['type'] == 'user_input_timed_out') {
+      final inputRequestId = step['input_request_id']?.toString() ?? '';
+      _userInputDialogClosers[inputRequestId]?.call();
+    }
     if (step['type'] == 'stream_token') {
       // Native token callbacks are deltas. Ignore a replayed event id so a
       // reconnect/re-delivery cannot append the same chunk twice.
@@ -268,7 +274,13 @@ class _ChatScreenState extends State<ChatScreen> {
       final answer = await showDialog<String>(
         context: context,
         barrierDismissible: false,
-        builder: (dialogContext) => AlertDialog(
+        builder: (dialogContext) {
+          _userInputDialogClosers[requestId] = () {
+            if (Navigator.of(dialogContext).canPop()) {
+              Navigator.of(dialogContext).pop();
+            }
+          };
+          return AlertDialog(
           title: const Text('يحتاج الوكيل إلى إجابتك'),
           content: SizedBox(
             width: double.maxFinite,
@@ -302,7 +314,8 @@ class _ChatScreenState extends State<ChatScreen> {
               child: const Text('إرسال الإجابة'),
             ),
           ],
-        ),
+        );
+        },
       );
       AgentUserInputBroker.instance.submitAnswer(requestId, answer);
     } catch (_) {
@@ -310,6 +323,7 @@ class _ChatScreenState extends State<ChatScreen> {
     } finally {
       controller.dispose();
       _pendingUserInputDialogIds.remove(requestId);
+      _userInputDialogClosers.remove(requestId);
     }
   }
 
