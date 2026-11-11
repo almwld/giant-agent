@@ -183,6 +183,25 @@ class EvaluatorService {
           message: passed ? 'Updated request goal was stored in the active lifecycle.' : 'Updated request goal could not be read back.',
           evidence: <String, Object?>{'goal_updated': passed},
         );
+      case 'generate_image':
+      case 'edit_image':
+      case 'image_search':
+      case 'search_image_by_text':
+      case 'search_image_by_image':
+      case 'generate_sound_effects':
+      case 'find_asset_bbox':
+      case 'crop_and_replicate_assets_in_image':
+        final assets = toolResult['assets'];
+        final passed = toolResult['ok'] == true && assets is List && assets.isNotEmpty &&
+            assets.every((asset) => asset is Map &&
+                ((asset['local_path']?.toString().isNotEmpty ?? false) ||
+                 (asset['remote_url']?.toString().isNotEmpty ?? false) ||
+                 (asset['metadata'] is Map && (asset['metadata'] as Map).isNotEmpty)));
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed ? 'Connected media provider returned a structured asset or analysis result.' : 'No verified media asset/result was returned by a connected provider.',
+          evidence: <String, Object?>{'asset_count': assets is List ? assets.length : 0, 'provider_id': toolResult['provider_id']},
+        );
       case 'fetch_urls':
         final pages = toolResult['results'];
         final passed = pages is List && pages.isNotEmpty &&
