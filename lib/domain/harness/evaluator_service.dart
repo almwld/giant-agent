@@ -203,6 +203,26 @@ class EvaluatorService {
           message: passed ? 'Connected media provider returned a structured asset or analysis result.' : 'No verified media asset/result was returned by a connected provider.',
           evidence: <String, Object?>{'asset_count': assets is List ? assets.length : 0, 'provider_id': toolResult['provider_id']},
         );
+      case 'lbs_tool':
+        final cancelled = toolResult['cancelled'] == true;
+        final latitude = toolResult['latitude'];
+        final longitude = toolResult['longitude'];
+        final passed = cancelled ||
+            (toolResult['ok'] == true && latitude is num && longitude is num &&
+             latitude >= -90 && latitude <= 90 &&
+             longitude >= -180 && longitude <= 180 &&
+             toolResult['background_location'] == false);
+        return ToolVerificationResult(
+          passed: passed,
+          message: cancelled ? 'Location access was explicitly cancelled by the user.' :
+              passed ? 'Foreground location was returned after in-app and Android permission checks.' :
+              'Location was not obtained or returned an invalid coordinate.',
+          evidence: <String, Object?>{
+            'cancelled': cancelled,
+            'permission_denied': toolResult['permission_denied'] == true,
+            'background_location': toolResult['background_location'] == true,
+          },
+        );
       case 'fetch_urls':
         final pages = toolResult['results'];
         final passed = pages is List && pages.isNotEmpty &&
