@@ -15,6 +15,7 @@ import '../domain/harness/evaluator_service.dart';
 import '../domain/harness/reflexion_service.dart';
 import '../domain/mcp/mcp_client.dart';
 import '../agent/architecture/subagent_orchestrator.dart';
+import 'agent_user_input_broker.dart';
 
 class ModelService {
   static final ModelService _instance = ModelService._internal();
@@ -40,6 +41,7 @@ class ModelService {
   static const Object _taskIdZoneKey = #giantAgentTaskId;
   static const Object _agentTypeZoneKey = #giantAgentAgentType;
   static const Object _subagentOrchestratorZoneKey = #giantAgentSubagentOrchestrator;
+  static const Object _userSessionIdZoneKey = #giantAgentUserSessionId;
   String get _activeTaskId => Zone.current[_taskIdZoneKey] as String? ?? '';
   String get _activeAgentType => Zone.current[_agentTypeZoneKey] as String? ?? '';
   SubagentOrchestrator? get _activeSubagentOrchestrator =>
@@ -445,6 +447,26 @@ class ModelService {
             'received': message != null && message.isNotEmpty, 'message': message};
           break;
         }
+        case 'ask_user': {
+          final orchestrator = _activeSubagentOrchestrator;
+          if (orchestrator == null || _activeTaskId.isEmpty) {
+            throw StateError('ask_user is available only inside an active subagent.');
+          }
+          final question = args['question']?.toString() ?? '';
+          final timeoutSeconds = args['timeout_seconds'] is num
+              ? (args['timeout_seconds'] as num).toInt() : 120;
+          final sessionId = Zone.current[_userSessionIdZoneKey] as String? ?? '';
+          final answer = await AgentUserInputBroker.instance.askUser(
+            requestId: _activeRequestId,
+            taskId: _activeTaskId,
+            sessionId: sessionId,
+            question: question,
+            timeout: Duration(seconds: timeoutSeconds),
+            isCancelled: isCancelled,
+          );
+          result = <String, dynamic>{'ok': true, 'answered': answer != null, 'answer': answer};
+          break;
+        }
         case 'update_goal': {
           final orchestrator = _activeSubagentOrchestrator;
           if (orchestrator == null || _activeTaskId.isEmpty) {
@@ -536,6 +558,7 @@ class ModelService {
     String? taskId,
     String? agentType,
     SubagentOrchestrator? subagentOrchestrator,
+    String? userVisibleSessionId,
   }) async {
     final mode = await ModelProviderSettings.instance.getMode();
     final parallelProvider = mode == ModelProviderMode.openRouter;
@@ -571,6 +594,7 @@ class ModelService {
       _taskIdZoneKey: taskId ?? '',
       _agentTypeZoneKey: agentType ?? '',
       if (subagentOrchestrator != null) _subagentOrchestratorZoneKey: subagentOrchestrator,
+      _userSessionIdZoneKey: userVisibleSessionId ?? conversationId,
     };
     if (parallelProvider) {
       _parallelExecutions++;
