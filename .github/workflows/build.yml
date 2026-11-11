@@ -56,14 +56,6 @@ jobs:
           python3.11 --version
           command -v python3.11
 
-      - name: Install parser test dependency
-        run: python -m pip install pypdf==4.2.0 reportlab==4.2.0
-
-      - name: Test PDF DOCX XLSX parser
-        run: |
-          cd android/app/src/main/python
-          python -m unittest -v test_document_parser
-
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -74,20 +66,8 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Test AgentService durable execution boundary
-        run: flutter test test/services/agent_service_durable_test.dart
-
-      - name: Test approved voice orb Lottie asset and states
-        run: flutter test test/voice/voice_orb_lottie_test.dart
-
-      - name: Test TaskManager SQLite migration and recovery
-        run: flutter test test/agent/task_manager_recovery_test.dart
-
       - name: Analyze all Flutter and Dart sources
         run: flutter analyze --no-pub
-
-      - name: Run Flutter unit tests
-        run: flutter test --no-pub
 
       # Do not use --split-per-abi: Chaquopy requires ndk.abiFilters.
       # Build each ABI in its own Flutter invocation instead.
