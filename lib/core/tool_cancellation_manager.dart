@@ -15,12 +15,13 @@ class ToolCancellationToken {
   ToolCancellationToken(this.toolCallId);
   final String toolCallId;
   final Completer<String> _cancelled = Completer<String>();
+  String? _reason;
 
   bool get isCancelled => _cancelled.isCompleted;
   Future<String> get whenCancelled => _cancelled.future;
 
   void cancel([String reason = 'Cancelled by user']) {
-    if (!_cancelled.isCompleted) _cancelled.complete(reason);
+    if (!_cancelled.isCompleted) { _reason = reason; _cancelled.complete(reason); }
   }
 
   void throwIfCancelled() {
@@ -30,7 +31,7 @@ class ToolCancellationToken {
   }
 
   String get _cancelledReason =>
-      _cancelled.isCompleted ? 'Cancelled by user or parent task' : 'Cancelled';
+      _reason ?? 'Cancelled';
 
   Future<void> delay(Duration duration) async {
     throwIfCancelled();
