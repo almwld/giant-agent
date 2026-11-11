@@ -201,11 +201,12 @@ void main() {
     final db = await databaseFactoryFfi.openDatabase(
       inMemoryDatabasePath,
       options: OpenDatabaseOptions(
-        version: 4,
+        version: 5,
         onCreate: (db, version) async {
           await db.execute('CREATE TABLE turns (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL DEFAULT \'global\', user_text TEXT NOT NULL, assistant_text TEXT NOT NULL, created_at INTEGER NOT NULL)');
           await db.execute('CREATE TABLE facts (id INTEGER PRIMARY KEY AUTOINCREMENT, fact_key TEXT NOT NULL UNIQUE, fact_value TEXT NOT NULL, importance INTEGER NOT NULL DEFAULT 1, updated_at INTEGER NOT NULL)');
           await db.execute('CREATE TABLE fact_edits (id INTEGER PRIMARY KEY AUTOINCREMENT, fact_key TEXT NOT NULL, operation TEXT NOT NULL, previous_value TEXT, new_value TEXT, importance INTEGER, updated_at INTEGER NOT NULL)');
+          await db.execute('CREATE TABLE workspace_versions (id INTEGER PRIMARY KEY AUTOINCREMENT, version_id TEXT NOT NULL UNIQUE, file_path TEXT NOT NULL, content TEXT NOT NULL, label TEXT NOT NULL DEFAULT \'\', version_number INTEGER NOT NULL, content_length INTEGER NOT NULL, created_at INTEGER NOT NULL)');
         },
       ),
     );
