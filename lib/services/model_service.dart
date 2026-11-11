@@ -692,8 +692,9 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
       }
       final ok = result['ok'] == true;
       final output = (result['output'] ?? result['path'] ?? result['error'] ?? result).toString();
-      if (ok && name == 'create_file') {
-        _emitToolEvent('file_created', 'تم إنشاء الملف', toolName: name, path: path,
+      if (ok && (name == 'create_file' || name == 'slides_generator')) {
+        final createdPath = name == 'slides_generator' ? args['path']?.toString() ?? path : path;
+        _emitToolEvent('file_created', 'تم إنشاء الملف', toolName: name, path: createdPath,
             output: output, details: 'أنشأ المحرك الملف داخل مساحة العمل فعلياً.', stepId: toolStepId);
       } else if (ok && name == 'write_file') {
         _emitToolEvent('file_updated', 'تم تحديث الملف', toolName: name, path: path,
@@ -812,6 +813,19 @@ ${queuedMessages.isEmpty ? 'لا توجد رسائل.' : queuedMessages}
       case 'execute_python': return 'يشغّل كود Python';
       case 'gain_terminal': return 'يطلب موافقة لتنفيذ أمر طرفية';
       case 'list_files': return 'يعرض ملفات مساحة العمل';
+      case 'web_search': return 'يبحث على الويب';
+      case 'todo_read': return 'يقرأ قائمة المهام';
+      case 'todo_write': return 'يسجل مهمة محلية';
+      case 'memory_space_insert': return 'يحفظ حقيقة في الذاكرة';
+      case 'memory_space_update': return 'يحدث حقيقة في الذاكرة';
+      case 'memory_space_delete': return 'يحذف حقيقة من الذاكرة';
+      case 'memory_space_edits': return 'يراجع سجل تعديلات الذاكرة';
+      case 'generate_speech': return 'يشغل القراءة الصوتية';
+      case 'get_available_voices': return 'يستعرض أصوات الجهاز';
+      case 'get_data_source': return 'يعرض مصادر MCP';
+      case 'get_data_source_desc': return 'يفحص مصدر بيانات MCP';
+      case 'generate_slides_outline': return 'ينشئ مخطط شرائح';
+      case 'slides_generator': return 'ينشئ عرض شرائح HTML';
       case 'create_subagent': return 'يسجل وكيلاً فرعياً جديداً';
       case 'spawn_subagent': return 'يشغل وكيلاً فرعياً مسجلاً';
       case 'delete_subagent': return 'يخفي وكيلاً فرعياً من الإدارة';
@@ -832,6 +846,19 @@ ${queuedMessages.isEmpty ? 'لا توجد رسائل.' : queuedMessages}
       case 'execute_python': return 'اكتمل تنفيذ Python';
       case 'gain_terminal': return 'اكتمل تنفيذ أمر الطرفية';
       case 'list_files': return 'اكتمل استعراض الملفات';
+      case 'web_search': return 'اكتمل البحث على الويب';
+      case 'todo_read': return 'اكتملت قراءة المهام';
+      case 'todo_write': return 'تم تسجيل المهمة المحلية';
+      case 'memory_space_insert': return 'تم حفظ الحقيقة';
+      case 'memory_space_update': return 'تم تحديث الحقيقة';
+      case 'memory_space_delete': return 'تم حذف الحقيقة';
+      case 'memory_space_edits': return 'اكتملت مراجعة سجل الذاكرة';
+      case 'generate_speech': return 'اكتملت القراءة الصوتية';
+      case 'get_available_voices': return 'اكتمل استعراض الأصوات';
+      case 'get_data_source': return 'اكتمل استعراض مصادر MCP';
+      case 'get_data_source_desc': return 'اكتمل فحص مصدر البيانات';
+      case 'generate_slides_outline': return 'اكتمل مخطط الشرائح';
+      case 'slides_generator': return 'اكتمل إنشاء عرض HTML';
       case 'create_subagent': return 'اكتمل تسجيل الوكيل الفرعي';
       case 'spawn_subagent': return 'اكتمل تشغيل الوكيل الفرعي';
       case 'delete_subagent': return 'اكتمل إخفاء الوكيل الفرعي';
