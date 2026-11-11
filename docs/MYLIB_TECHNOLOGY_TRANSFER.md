@@ -17,6 +17,21 @@ The extracted registry contains 60 operation identifiers. The protobuf ToolBlock
 
 Mylib contains decompiled Android/Kotlin sources and extracted assets from Kimi and other applications. The transfer is an independent Flutter/Dart implementation of the observed contracts and useful behaviours. Third-party APK binaries, native libraries, proprietary assets, credentials and decompiled implementation code are not copied into Giant Agent. In particular, Compose resources, app-specific `.so` files, `.tflite` models, Rive animations and embedded Python wheels are not interchangeable Flutter dependencies and require separate licensing, ABI and runtime validation.
 
+## Remaining source operations that are intentionally not claimed as complete
+
+Five source identifiers remain outside the implemented transfer because their required provider or capture contract is not available in this app:
+
+- `browser_screenshot` and `screenshot_web_full_page`: the current WebView plugin does not expose a reliable native WebView capture/stitch API. A Flutter repaint capture is not treated as proof because platform-view pixels may be omitted.
+- `deploy_website`: no write-authorized hosting/deployment provider is connected. Local HTML preview and local version history are not public deployment.
+- `gen_purchase_url`: no commerce/payment provider is connected, so the app must not invent checkout URLs.
+- `slides_generator_bnn`: the BNN-specific output schema/template could not be established from the inspected source; the general HTML slide generator is not passed off as that specialized format.
+
+Image search/generation/editing, sound effects, bounding-box analysis and asset cropping have registered provider adapters, but remain unavailable until a real compatible provider is registered. The source tool name being present does not imply the external provider is available.
+
+## Giant Agent extensions beyond the source registry
+
+The transfer also keeps Giant Agent-specific tools that support the same architecture: `create_file`, `write_file`, `list_files`, `gain_terminal`, `mcp_call`, `mcp_read_resource`, `edit_image` and `reset_ipython`. These are not represented as additional Mylib source identifiers.
+
 ## Kimi tool inventory (60 identifiers)
 
 | # | Source identifier | Giant Agent mapping |
