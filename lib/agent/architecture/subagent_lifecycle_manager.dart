@@ -144,13 +144,29 @@ class SubagentLifecycleManager {
         _requests[requestId]?.values ?? const <DynamicSubagentRecord>[],
       );
 
-  List<Map<String, Object?>> drainMessages(String requestId, String agentId) {
+  Future<List<Map<String, Object?>>> drainMessages(
+    String requestId,
+    String agentId,
+  ) async {
     final key = _key(requestId, agentId);
     final mailbox = _mailboxes[key];
     if (mailbox == null || mailbox.isEmpty) return const <Map<String, Object?>>[];
-    final messages = List<Map<String, Object?>>.unmodifiable(mailbox);
+    final messages = List<Map<String, Object?>>.from(mailbox);
     mailbox.clear();
-    return messages;
+    final record = _require(requestId, agentId);
+    for (final message in messages) {
+      await _emit(
+        record,
+        'subagent_message_received',
+        details: message['message']?.toString(),
+        extra: <String, Object?>{
+          'message_id': message['message_id'],
+          'message': message['message'],
+          'sender_task_id': message['sender_task_id'],
+        },
+      );
+    }
+    return List<Map<String, Object?>>.unmodifiable(messages);
   }
 
   String? currentGoal(String requestId) => _goals[requestId];
@@ -233,7 +249,9 @@ class SubagentLifecycleManager {
     if (normalized.isEmpty || normalized.length > 4000) {
       throw ArgumentError('Message must contain 1 to 4000 characters.');
     }
+    final messageId = 'msg_${requestId}_${DateTime.now().microsecondsSinceEpoch}';
     final item = <String, Object?>{
+      'message_id': messageId,
       'message': normalized,
       'sender_task_id': senderTaskId,
       'timestamp': DateTime.now().toUtc().toIso8601String(),
@@ -245,8 +263,16 @@ class SubagentLifecycleManager {
       final waiter = waiters.removeAt(0);
       if (!waiter.isCompleted) waiter.complete();
     }
-    await _emit(record, 'subagent_message_sent',
-        details: normalized.length > 500 ? '${normalized.substring(0, 500)}…' : normalized);
+    await _emit(
+      record,
+      'subagent_message_sent',
+      details: normalized.length > 500 ? '${normalized.substring(0, 500)}…' : normalized,
+      extra: <String, Object?>{
+        'message_id': messageId,
+        'message': normalized,
+        'sender_task_id': senderTaskId,
+      },
+    );
   }
 
   Future<Map<String, Object?>?> waitForMessage({
@@ -261,7 +287,20 @@ class SubagentLifecycleManager {
     }
     final key = _key(requestId, agentId);
     final mailbox = _mailboxes.putIfAbsent(key, () => <Map<String, Object?>>[]);
-    if (mailbox.isNotEmpty) return mailbox.removeAt(0);
+    if (mailbox.isNotEmpty) {
+      final message = mailbox.removeAt(0);
+      await _emit(
+        record,
+        'subagent_message_received',
+        details: message['message']?.toString(),
+        extra: <String, Object?>{
+          'message_id': message['message_id'],
+          'message': message['message'],
+          'sender_task_id': message['sender_task_id'],
+        },
+      );
+      return message;
+    }
     final waiter = Completer<void>();
     final waiters = _messageWaiters.putIfAbsent(key, () => <Completer<void>>[]);
     waiters.add(waiter);
@@ -286,8 +325,16 @@ class SubagentLifecycleManager {
     }
     if (mailbox.isEmpty) return null;
     final message = mailbox.removeAt(0);
-    await _emit(record, 'subagent_message_received',
-        details: message['message']?.toString());
+    await _emit(
+      record,
+      'subagent_message_received',
+      details: message['message']?.toString(),
+      extra: <String, Object?>{
+        'message_id': message['message_id'],
+        'message': message['message'],
+        'sender_task_id': message['sender_task_id'],
+      },
+    );
     return message;
   }
 
@@ -304,6 +351,7 @@ class SubagentLifecycleManager {
       'status': 'completed',
       'title': 'تم تحديث هدف المهمة',
       'details': normalized,
+      'goal': normalized,
       'timestamp': DateTime.now().toUtc().toIso8601String(),
     });
   }
@@ -319,6 +367,7 @@ class SubagentLifecycleManager {
     String type, {
     String? details,
     String? result,
+    Map<String, Object?>? extra,
   }) =>
       Future<void>.sync(() => _onEvent(<String, Object?>{
             'id': '${type}_${record.parentRequestId}_${record.id}_${DateTime.now().microsecondsSinceEpoch}',
@@ -337,6 +386,7 @@ class SubagentLifecycleManager {
             'progress_percent': record.progressPercent,
             if (details != null) 'details': details,
             if (result != null) 'result': result,
+            ...?extra,
             'timestamp': DateTime.now().toUtc().toIso8601String(),
           }));
 }
