@@ -3,6 +3,110 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:giant_agent_x/agent/architecture/subagent_orchestrator.dart';
 
 void main() {
+  test('allows a running worker to create and spawn a dynamic child', () async {
+    late SubagentOrchestrator orchestrator;
+    final executed = <String>[];
+    orchestrator = SubagentOrchestrator(
+      parentRequestId: 'request-dynamic',
+      conversationId: 'chat-dynamic',
+      maxConcurrency: 1,
+      onEvent: (_) {},
+      execute: (task, dependencies, isCancelled) async {
+        executed.add(task.id);
+        if (task.id == 'planner') {
+          await orchestrator.createTask(
+            const SubagentTask(id: 'dynamic-review', title: 'Dynamic review',
+              prompt: 'Review the implementation', agentType: 'reviewer'),
+            creatorTaskId: task.id,
+          );
+          await orchestrator.spawnTask('dynamic-review');
+        }
+        return 'result-${task.id}';
+      },
+    );
+    final results = await orchestrator.run([
+      const SubagentTask(id: 'planner', title: 'Planner', prompt: 'Plan'),
+    ]);
+    expect(executed, ['planner', 'dynamic-review']);
+    expect(results.map((result) => result.status), ['completed', 'completed']);
+    expect(results.last.taskId, 'dynamic-review');
+  });
+
+  test('delivers messages and records shared goal updates', () async {
+    late SubagentOrchestrator orchestrator;
+    final received = Completer<Map<String, Object?>?>();
+    orchestrator = SubagentOrchestrator(
+      parentRequestId: 'request-messages',
+      conversationId: 'chat-messages',
+      maxConcurrency: 2,
+      onEvent: (_) {},
+      execute: (task, dependencies, isCancelled) async {
+        if (task.id == 'sender') {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+          await orchestrator.sendMessage(
+            fromTaskId: 'sender', toTaskId: 'receiver', content: 'API audit complete',
+          );
+          await orchestrator.updateGoal(taskId: 'sender', goal: 'Prioritize security fixes');
+          return 'sent';
+        }
+        if (task.id == 'receiver') {
+          received.complete(await orchestrator.waitForMessage(
+            taskId: 'receiver', timeout: const Duration(seconds: 2),
+          ));
+          return 'received';
+        }
+        return 'unexpected';
+      },
+    );
+    await orchestrator.run([
+      const SubagentTask(id: 'sender', title: 'Sender', prompt: 'Send result', agentType: 'explore'),
+      const SubagentTask(id: 'receiver', title: 'Receiver', prompt: 'Wait for result', agentType: 'reviewer'),
+    ]);
+    expect((await received.future)?['content'], 'API audit complete');
+    expect(orchestrator.currentGoal, 'Prioritize security fixes');
+  });
+
+  test('enforces dynamic task count and nesting depth', () async {
+    late SubagentOrchestrator orchestrator;
+    orchestrator = SubagentOrchestrator(
+      parentRequestId: 'request-limits',
+      conversationId: 'chat-limits',
+      maxConcurrency: 1,
+      maxTasks: 2,
+      maxDepth: 1,
+      onEvent: (_) {},
+      execute: (task, dependencies, isCancelled) async {
+        if (task.id == 'root') {
+          await orchestrator.createTask(
+            const SubagentTask(id: 'child', title: 'Child', prompt: 'Child'),
+            creatorTaskId: 'root',
+          );
+          await expectLater(
+            orchestrator.createTask(
+              const SubagentTask(id: 'overflow', title: 'Overflow', prompt: 'Overflow'),
+              creatorTaskId: 'root',
+            ),
+            throwsStateError,
+          );
+          await orchestrator.spawnTask('child');
+        } else {
+          await expectLater(
+            orchestrator.createTask(
+              const SubagentTask(id: 'grandchild', title: 'Grandchild', prompt: 'Grandchild'),
+              creatorTaskId: 'child',
+            ),
+            throwsStateError,
+          );
+        }
+        return 'ok';
+      },
+    );
+    final results = await orchestrator.run([
+      const SubagentTask(id: 'root', title: 'Root', prompt: 'Root'),
+    ]);
+    expect(results.map((result) => result.status), ['completed', 'completed']);
+  });
+
   test('runs independent agents concurrently and respects dependencies', () async {
     final active = <String>{};
     var peak = 0;
