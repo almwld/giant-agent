@@ -421,8 +421,8 @@ class ModelService {
         case 'check_subagent_status': {
           final orchestrator = _activeSubagentOrchestrator;
           if (orchestrator == null) throw StateError('No active subagent orchestrator.');
-          result = <String, dynamic>{'ok': true,
-            ...orchestrator.status(args['task_id']?.toString() ?? '')};
+          final status = orchestrator.status(args['task_id']?.toString() ?? '');
+          result = <String, dynamic>{'ok': status['status'] != 'not_found', ...status};
           break;
         }
         case 'send_message': {
