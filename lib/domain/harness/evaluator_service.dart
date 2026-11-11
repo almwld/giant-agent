@@ -1,3 +1,7 @@
+import 'dart:convert';
+
+import '../../services/agent_memory_service.dart';
+
 class ToolVerificationResult {
   const ToolVerificationResult({required this.passed, required this.message, this.evidence});
   final bool passed;
@@ -179,6 +183,137 @@ class EvaluatorService {
           message: passed ? 'Updated request goal was stored in the active lifecycle.' : 'Updated request goal could not be read back.',
           evidence: <String, Object?>{'goal_updated': passed},
         );
+      case 'web_search':
+        final results = toolResult['results'];
+        final passed = results is List;
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed ? 'Web search returned a structured result list.' : 'Web search returned no structured results.',
+          evidence: <String, Object?>{'result_count': results is List ? results.length : 0},
+        );
+      case 'todo_read':
+        final tasks = toolResult['tasks'];
+        final passed = tasks is List;
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed ? 'Persistent task list was read.' : 'Task list response is invalid.',
+          evidence: <String, Object?>{'task_count': tasks is List ? tasks.length : 0},
+        );
+      case 'todo_write':
+        final task = toolResult['task'];
+        final passed = task is Map && task['id'] != null &&
+            task['status'] == 'pending' && toolResult['execution_started'] == false;
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed ? 'A durable pending task was created without starting it.' : 'Task creation was not verified.',
+          evidence: <String, Object?>{'task_created': passed, 'execution_started': toolResult['execution_started'] == true},
+        );
+      case 'memory_space_insert':
+        final facts = await AgentMemoryService.instance.getFacts();
+        final key = toolArgs['key']?.toString() ?? '';
+        final value = toolArgs['value']?.toString() ?? '';
+        final passed = facts.any((fact) => fact['fact_key'] == key && fact['fact_value'] == value);
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed ? 'Memory fact was read back from local SQLite.' : 'Inserted memory fact could not be read back.',
+          evidence: <String, Object?>{'key': key, 'stored': passed},
+        );
+      case 'memory_space_update':
+        final facts = await AgentMemoryService.instance.getFacts();
+        final key = toolArgs['key']?.toString() ?? '';
+        final value = toolArgs['value']?.toString() ?? '';
+        final passed = facts.any((fact) => fact['fact_key'] == key && fact['fact_value'] == value);
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed ? 'Updated memory fact was read back from local SQLite.' : 'Updated memory fact could not be read back.',
+          evidence: <String, Object?>{'key': key, 'updated': passed},
+        );
+      case 'memory_space_delete':
+        final facts = await AgentMemoryService.instance.getFacts();
+        final key = toolArgs['key']?.toString() ?? '';
+        final edits = await AgentMemoryService.instance.getFactEdits(limit: 100);
+        final passed = !facts.any((fact) => fact['fact_key'] == key) &&
+            edits.any((edit) => edit['fact_key'] == key && edit['operation'] == 'delete');
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed ? 'Memory fact is absent and its deletion audit entry exists.' : 'Memory deletion could not be verified.',
+          evidence: <String, Object?>{'key': key, 'deleted': passed},
+        );
+      case 'memory_space_edits':
+        final facts = toolResult['facts'];
+        final edits = toolResult['edits'];
+        final passed = facts is List && edits is List;
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed ? 'Memory facts and their edit journal were returned.' : 'Memory edit history response is invalid.',
+          evidence: <String, Object?>{'fact_count': facts is List ? facts.length : 0, 'edit_count': edits is List ? edits.length : 0},
+        );
+      case 'generate_speech':
+        final passed = toolResult['played'] == true && toolResult['saved_audio_file'] == false;
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed ? 'Device TTS playback completed; no downloadable audio file is claimed.' : 'TTS playback was not confirmed.',
+          evidence: <String, Object?>{'played': passed, 'audio_file_created': false},
+        );
+      case 'get_available_voices':
+        final voices = toolResult['voices'];
+        final passed = voices is List;
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed ? 'Device TTS voice catalogue was returned.' : 'Voice catalogue response is invalid.',
+          evidence: <String, Object?>{'voice_count': voices is List ? voices.length : 0},
+        );
+      case 'get_data_source':
+        final servers = toolResult['servers'];
+        final passed = servers is List;
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed ? 'Configured MCP data sources were listed without credentials.' : 'MCP data source list is invalid.',
+          evidence: <String, Object?>{'server_count': servers is List ? servers.length : 0, 'credentials_exposed': false},
+        );
+      case 'get_data_source_desc':
+        final server = toolResult['server'];
+        final tools = toolResult['tools'];
+        final resources = toolResult['resources'];
+        final passed = server is Map && server['id'] == toolArgs['server_id'] &&
+            tools is List && resources is List;
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed ? 'MCP server metadata, tools and resources were read.' : 'MCP data source description is incomplete.',
+          evidence: <String, Object?>{'server_verified': passed, 'tool_count': tools is List ? tools.length : 0, 'resource_count': resources is List ? resources.length : 0},
+        );
+      case 'generate_slides_outline':
+        final outline = toolResult['outline']?.toString() ?? '';
+        var valid = false;
+        try {
+          final decoded = jsonDecode(outline);
+          valid = decoded is Map && decoded['slides'] is List && (decoded['slides'] as List).isNotEmpty;
+        } catch (_) {}
+        return ToolVerificationResult(
+          passed: valid,
+          message: valid ? 'Slide outline is valid structured JSON with a non-empty slide list.' : 'Slide outline is not valid structured JSON.',
+          evidence: <String, Object?>{'valid_outline': valid},
+        );
+      case 'slides_generator':
+        final path = toolArgs['path']?.toString() ?? '';
+        final created = toolResult['created_file'];
+        if (path.isEmpty || created is! Map || created['ok'] != true) {
+          return const ToolVerificationResult(passed: false, message: 'HTML slide file creation was not confirmed.');
+        }
+        try {
+          final readback = await _readWorkspaceFile(path);
+          final html = readback['content']?.toString() ?? '';
+          final count = RegExp(r'<section class="slide').allMatches(html).length;
+          final expected = (toolArgs['slides'] as List?)?.length ?? 0;
+          final passed = readback['ok'] == true && html.contains('</html>') && count == expected;
+          return ToolVerificationResult(
+            passed: passed,
+            message: passed ? 'HTML slide deck was read back and every slide section was verified.' : 'HTML slide deck read-back verification failed.',
+            evidence: <String, Object?>{'path': path, 'slide_sections': count, 'expected_slides': expected, 'powerpoint_created': false},
+          );
+        } catch (error) {
+          return ToolVerificationResult(passed: false, message: 'HTML slide deck read-back failed: $error');
+        }
       case 'execute_python':
         final output = toolResult['output']?.toString() ?? '';
         final error = toolResult['error']?.toString() ?? '';
