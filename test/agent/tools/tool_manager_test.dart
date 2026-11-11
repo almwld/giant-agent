@@ -8,7 +8,7 @@ void main() {
     test('exposes only tools implemented by the runtime', () {
       expect(
         registry.getAvailableTools(),
-        ['create_file', 'read_file', 'write_file', 'list_files', 'execute_python', 'mcp_read_resource', 'mcp_call', 'create_subagent', 'spawn_subagent', 'delete_subagent', 'check_subagent_status', 'send_message', 'wait_for_message', 'ask_user', 'update_goal', 'gain_terminal'],
+        ['create_file', 'read_file', 'write_file', 'list_files', 'execute_python', 'mcp_read_resource', 'mcp_call', 'create_subagent', 'spawn_subagent', 'delete_subagent', 'check_subagent_status', 'send_message', 'wait_for_message', 'ask_user', 'update_goal', 'web_search', 'todo_read', 'todo_write', 'memory_space_insert', 'memory_space_update', 'memory_space_delete', 'memory_space_edits', 'generate_speech', 'get_available_voices', 'get_data_source', 'get_data_source_desc', 'generate_slides_outline', 'slides_generator', 'gain_terminal'],
       );
       expect(registry.supports('delete_file'), isFalse);
       expect(registry.supports('execute_python'), isTrue);
@@ -17,6 +17,10 @@ void main() {
       expect(registry.supports('spawn_subagent'), isTrue);
       expect(registry.supports('ask_user'), isTrue);
       expect(registry.supports('update_goal'), isTrue);
+      expect(registry.supports('web_search'), isTrue);
+      expect(registry.supports('memory_space_insert'), isTrue);
+      expect(registry.supports('generate_speech'), isTrue);
+      expect(registry.supports('slides_generator'), isTrue);
     });
 
     test('builds prompt catalogue from the registered definitions', () {
@@ -35,6 +39,19 @@ void main() {
       expect(catalogue, contains('wait_for_message'));
       expect(catalogue, contains('ask_user'));
       expect(catalogue, contains('update_goal'));
+      expect(catalogue, contains('web_search'));
+      expect(catalogue, contains('todo_read'));
+      expect(catalogue, contains('todo_write'));
+      expect(catalogue, contains('memory_space_insert'));
+      expect(catalogue, contains('memory_space_update'));
+      expect(catalogue, contains('memory_space_delete'));
+      expect(catalogue, contains('memory_space_edits'));
+      expect(catalogue, contains('generate_speech'));
+      expect(catalogue, contains('get_available_voices'));
+      expect(catalogue, contains('get_data_source'));
+      expect(catalogue, contains('get_data_source_desc'));
+      expect(catalogue, contains('generate_slides_outline'));
+      expect(catalogue, contains('slides_generator'));
       expect(catalogue, contains('\n'));
       expect(catalogue, isNot(contains(r'\n  مثال:')));
     });
