@@ -518,7 +518,10 @@ class ModelService {
               break;
             case 'status':
               final taskList = await manager.getTasksForConversation(_activeConversationId);
-              final task = taskList.where((item) => item['id'] == taskId).firstOrNull;
+              Map<String, dynamic>? task;
+              for (final item in taskList) {
+                if (item['id'] == taskId) { task = item; break; }
+              }
               result = <String, dynamic>{
                 'ok': task != null,
                 if (task != null) 'task': task,
