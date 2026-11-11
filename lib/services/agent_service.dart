@@ -101,6 +101,7 @@ class AgentService {
       output.startsWith('تم إيقاف المهمة') ||
       output.startsWith('تم إيقاف تنفيذ الوكيل') ||
       output.startsWith('تم إيقاف الوكيل بعد اكتمال الأداة') ||
+      output.startsWith('تم إيقاف استدعاء الأداة المحدد') ||
       output.startsWith('تم إيقاف التوليد') ||
       output.startsWith('وصل الوكيل إلى الحد الآمن') ||
       output.startsWith('أوقف الوكيل تكرار استدعاء الأداة') ||
