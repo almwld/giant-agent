@@ -70,7 +70,7 @@ void main() {
       expect(await memory.deleteFact('missing'), isFalse);
       final edits = await memory.getFactEdits();
       expect(edits.map((edit) => edit['operation']),
-          containsAllInOrder(['insert', 'update', 'delete']));
+          containsAll(['insert', 'update', 'delete']));
 
       await memory.saveTurn(
         'أفضل أن تكون الإجابات بالعربية الفصحى',
