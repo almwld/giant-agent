@@ -1198,6 +1198,8 @@ ${queuedMessages.isEmpty ? 'لا توجد رسائل.' : queuedMessages}
       case 'create_file': return 'ينشئ ملفاً في مساحة العمل';
       case 'write_file': return 'يحدّث ملفاً موجوداً';
       case 'read_file': return 'يقرأ ملفاً من مساحة العمل';
+      case 'ipython': return 'يشغل جلسة Python مستمرة';
+      case 'reset_ipython': return 'يعيد ضبط جلسة Python';
       case 'execute_python': return 'يشغّل كود Python';
       case 'gain_terminal': return 'يطلب موافقة لتنفيذ أمر طرفية';
       case 'list_files': return 'يعرض ملفات مساحة العمل';
@@ -1257,6 +1259,8 @@ ${queuedMessages.isEmpty ? 'لا توجد رسائل.' : queuedMessages}
       case 'edit_file':
       case 'write_file': return 'اكتمل تحديث الملف';
       case 'read_file': return 'اكتملت قراءة الملف';
+      case 'ipython': return 'اكتمل تنفيذ جلسة Python';
+      case 'reset_ipython': return 'اكتملت إعادة ضبط جلسة Python';
       case 'execute_python': return 'اكتمل تنفيذ Python';
       case 'gain_terminal': return 'اكتمل تنفيذ أمر الطرفية';
       case 'list_files': return 'اكتمل استعراض الملفات';
