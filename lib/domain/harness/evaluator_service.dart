@@ -137,6 +137,7 @@ class EvaluatorService {
       case 'check_subagent_status':
       case 'send_message':
       case 'wait_for_message':
+      case 'ask_user':
       case 'update_goal':
         final operation = toolResult['status']?.toString() ??
             (toolResult['received'] == true ? 'message_received' : 'accepted');
