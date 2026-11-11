@@ -253,6 +253,8 @@ class SubagentLifecycleManager {
           'message_id': message['message_id'],
           'message': message['message'],
           'sender_task_id': message['sender_task_id'],
+          'to_agent_id': agentId,
+          'to_task_id': record.taskId,
         },
       );
     }
@@ -361,8 +363,132 @@ class SubagentLifecycleManager {
         'message_id': messageId,
         'message': normalized,
         'sender_task_id': senderTaskId,
+        'to_agent_id': agentId,
+        'to_task_id': record.taskId,
       },
     );
+  }
+
+  Future<void> sendMessageToParent({
+    required String requestId,
+    required String message,
+    required String senderTaskId,
+  }) async {
+    final senderId = _localIdForTaskId(requestId, senderTaskId);
+    if (senderId.isEmpty) {
+      throw StateError('Only a registered child can send a message to its parent.');
+    }
+    final sender = _require(requestId, senderId);
+    if (sender.dismissed) throw StateError('A dismissed child cannot send messages.');
+    final normalized = message.trim();
+    if (normalized.isEmpty || normalized.length > 4000) {
+      throw ArgumentError('Message must contain 1 to 4000 characters.');
+    }
+    final messageId = 'msg_${requestId}_${DateTime.now().microsecondsSinceEpoch}';
+    final item = <String, Object?>{
+      'message_id': messageId,
+      'message': normalized,
+      'sender_task_id': sender.taskId,
+      'to_agent_id': 'parent',
+      'to_task_id': 'parent',
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+    };
+    final key = _key(requestId, 'parent');
+    _mailboxes.putIfAbsent(key, () => <Map<String, Object?>>[]).add(item);
+    final waiters = _messageWaiters[key];
+    if (waiters != null && waiters.isNotEmpty) {
+      final waiter = waiters.removeAt(0);
+      if (!waiter.isCompleted) waiter.complete();
+    }
+    await _emitParentMailboxEvent(
+      requestId: requestId,
+      senderTaskId: sender.taskId,
+      type: 'subagent_message_sent',
+      message: item,
+    );
+  }
+
+  Future<Map<String, Object?>?> waitForParentMessage({
+    required String requestId,
+    required int timeoutSeconds,
+    bool Function()? isCancelled,
+  }) async {
+    if (timeoutSeconds < 1 || timeoutSeconds > 30) {
+      throw ArgumentError.value(timeoutSeconds, 'timeoutSeconds', 'Timeout must be 1–30 seconds.');
+    }
+    final key = _key(requestId, 'parent');
+    final mailbox = _mailboxes.putIfAbsent(key, () => <Map<String, Object?>>[]);
+    if (mailbox.isNotEmpty) {
+      final message = mailbox.removeAt(0);
+      await _emitParentMailboxEvent(
+        requestId: requestId,
+        senderTaskId: message['sender_task_id']?.toString(),
+        type: 'subagent_message_received',
+        message: message,
+      );
+      return message;
+    }
+    final waiter = Completer<void>();
+    final waiters = _messageWaiters.putIfAbsent(key, () => <Completer<void>>[]);
+    waiters.add(waiter);
+    final deadline = DateTime.now().add(Duration(seconds: timeoutSeconds));
+    try {
+      while (!waiter.isCompleted && DateTime.now().isBefore(deadline)) {
+        if (isCancelled?.call() == true) {
+          throw StateError('Parent mailbox wait was cancelled.');
+        }
+        await Future.any<void>([
+          waiter.future,
+          Future<void>.delayed(const Duration(milliseconds: 100)),
+        ]);
+      }
+      if (isCancelled?.call() == true) {
+        throw StateError('Parent mailbox wait was cancelled.');
+      }
+      if (!waiter.isCompleted) return null;
+    } finally {
+      waiters.remove(waiter);
+      if (waiters.isEmpty) _messageWaiters.remove(key);
+    }
+    if (mailbox.isEmpty) return null;
+    final message = mailbox.removeAt(0);
+    await _emitParentMailboxEvent(
+      requestId: requestId,
+      senderTaskId: message['sender_task_id']?.toString(),
+      type: 'subagent_message_received',
+      message: message,
+    );
+    return message;
+  }
+
+  Future<void> _emitParentMailboxEvent({
+    required String requestId,
+    required String? senderTaskId,
+    required String type,
+    required Map<String, Object?> message,
+  }) async {
+    final senderId = senderTaskId == null
+        ? ''
+        : _localIdForTaskId(requestId, senderTaskId);
+    final sender = senderId.isEmpty ? null : get(requestId, senderId);
+    await Future<void>.sync(() => _onEvent(<String, Object?>{
+      'id': '${type}_${message['message_id']}',
+      'request_id': requestId,
+      'session_id': sender?.conversationId,
+      'chat_id': sender?.conversationId,
+      'agent_id': sender?.taskId ?? senderTaskId,
+      'task_id': sender?.taskId ?? senderTaskId,
+      'sender_task_id': senderTaskId,
+      'to_agent_id': 'parent',
+      'to_task_id': 'parent',
+      'message_id': message['message_id'],
+      'message': message['message'],
+      'type': type,
+      'status': sender?.status ?? 'running',
+      'wire_status': sender?.wireStatus ?? 'STATUS_RUNNING',
+      'details': message['message'],
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+    }));
   }
 
   Future<Map<String, Object?>?> waitForMessage({
@@ -387,6 +513,8 @@ class SubagentLifecycleManager {
           'message_id': message['message_id'],
           'message': message['message'],
           'sender_task_id': message['sender_task_id'],
+          'to_agent_id': agentId,
+          'to_task_id': record.taskId,
         },
       );
       return message;
@@ -423,6 +551,8 @@ class SubagentLifecycleManager {
         'message_id': message['message_id'],
         'message': message['message'],
         'sender_task_id': message['sender_task_id'],
+        'to_agent_id': agentId,
+        'to_task_id': record.taskId,
       },
     );
     return message;
