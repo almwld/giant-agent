@@ -444,10 +444,20 @@ class ModelService {
           }
           final seconds = args['timeout_seconds'] is num
               ? (args['timeout_seconds'] as num).toInt() : 20;
-          final message = await orchestrator.waitForMessage(
-            taskId: _activeTaskId, timeout: Duration(seconds: seconds));
-          result = <String, dynamic>{'ok': true,
-            'received': message != null && message.isNotEmpty, 'message': message};
+          final parallelProvider = Zone.current[_parallelProviderZoneKey] == true;
+          // llama.cpp owns one mutable native context. A blocking wait while
+          // holding its serialized request would prevent the sender worker from
+          // running, so local mode only drains already-delivered messages.
+          final message = parallelProvider
+              ? await orchestrator.waitForMessage(
+                  taskId: _activeTaskId, timeout: Duration(seconds: seconds))
+              : orchestrator.receiveMessageNow(_activeTaskId);
+          result = <String, dynamic>{
+            'ok': true,
+            'received': message != null && message.isNotEmpty,
+            'message': message,
+            'wait_mode': parallelProvider ? 'blocking' : 'non_blocking_local_serial',
+          };
           break;
         }
         case 'ask_user': {
