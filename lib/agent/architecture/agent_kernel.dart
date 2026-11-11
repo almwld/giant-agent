@@ -763,13 +763,25 @@ ${result.output ?? result.error ?? 'لم تُنتج نتيجة.'}
 $evidence
 
 اكتب الإجابة النهائية اعتماداً على النتائج أعلاه فقط.
-لا تنفذ أدوات جديدة في هذه المرحلة، ولا تضف نتائج غير موجودة.
+إذا بقيت فجوة جوهرية لا يمكن حسمها من الأدلة، يمكنك تنفيذ جولة ديناميكية محدودة عبر create_subagent ثم spawn_subagent، مع check_subagent_status عند الحاجة. لا تتجاوز ستة وكلاء إضافيين، ولا تكرر عملاً مكتملًا.
+يمكنك استخدام web_search للتحقق من معلومة خارجية فقط عند الحاجة، وask_user فقط إذا كان القرار لا يمكن استنتاجه بأمان.
+لا تنفذ تعديلات مباشرة على الملفات في مرحلة التجميع؛ التعديلات البرمجية مسؤولية الوكلاء المصرح لهم في خطة التنفيذ.
 ميّز بوضوح بين ما نُفذ فعلياً وما فشل أو تم تجاوزه أو لم يمكن التحقق منه.
-إذا كانت بعض المهام فاشلة، قدم نتيجة جزئية مع بيان الفجوات ولا تصف المهمة بأنها مكتملة بالكامل.
+إذا بقيت مهام فاشلة، قدم نتيجة جزئية مع بيان الفجوات ولا تصف المهمة بأنها مكتملة بالكامل.
 ''',
       conversationId: conversationId,
       persistTurn: false,
-      allowedTools: const <String>{},
+      allowedTools: const <String>{
+        'create_subagent',
+        'spawn_subagent',
+        'delete_subagent',
+        'check_subagent_status',
+        'send_message',
+        'wait_for_message',
+        'ask_user',
+        'update_goal',
+        'web_search',
+      },
       requestId: requestId,
       shouldCancel: () => _cancellationRequested,
     );
