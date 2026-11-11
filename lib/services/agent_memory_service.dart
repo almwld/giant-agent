@@ -53,15 +53,7 @@ class AgentMemoryService {
     );
     // A process death must never promote a partial assistant response to
     // success. Reconcile any abandoned stream before exposing conversation state.
-    await _db!.update(
-      'assistant_messages',
-      <String, Object?>{
-        'status': 'interrupted',
-        'updated_at': DateTime.now().millisecondsSinceEpoch,
-        'error': 'Application stopped before the assistant message completed.',
-      },
-      where: "status = 'streaming'",
-    );
+    await reconcileInterruptedAssistantMessages(_db!);
   }
 
   /// Applies forward-only memory schema migrations. Kept separate so the
@@ -114,6 +106,19 @@ class AgentMemoryService {
       'CREATE INDEX IF NOT EXISTS assistant_messages_request ON assistant_messages(request_id)',
     );
   }
+
+  static Future<int> reconcileInterruptedAssistantMessages(
+    DatabaseExecutor db,
+  ) =>
+      db.update(
+        'assistant_messages',
+        <String, Object?>{
+          'status': 'interrupted',
+          'updated_at': DateTime.now().millisecondsSinceEpoch,
+          'error': 'Application stopped before the assistant message completed.',
+        },
+        where: "status = 'streaming'",
+      );
 
   Future<void> beginAssistantMessage({
     required String id,
