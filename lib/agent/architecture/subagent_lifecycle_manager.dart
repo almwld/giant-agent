@@ -253,6 +253,7 @@ class SubagentLifecycleManager {
     required String requestId,
     required String agentId,
     required int timeoutSeconds,
+    bool Function()? isCancelled,
   }) async {
     final record = _require(requestId, agentId);
     if (timeoutSeconds < 1 || timeoutSeconds > 30) {
@@ -264,10 +265,21 @@ class SubagentLifecycleManager {
     final waiter = Completer<void>();
     final waiters = _messageWaiters.putIfAbsent(key, () => <Completer<void>>[]);
     waiters.add(waiter);
+    final deadline = DateTime.now().add(Duration(seconds: timeoutSeconds));
     try {
-      await waiter.future.timeout(Duration(seconds: timeoutSeconds));
-    } on TimeoutException {
-      return null;
+      while (!waiter.isCompleted && DateTime.now().isBefore(deadline)) {
+        if (isCancelled?.call() == true) {
+          throw StateError('Subagent mailbox wait was cancelled.');
+        }
+        await Future.any<void>([
+          waiter.future,
+          Future<void>.delayed(const Duration(milliseconds: 100)),
+        ]);
+      }
+      if (isCancelled?.call() == true) {
+        throw StateError('Subagent mailbox wait was cancelled.');
+      }
+      if (!waiter.isCompleted) return null;
     } finally {
       waiters.remove(waiter);
       if (waiters.isEmpty) _messageWaiters.remove(key);
