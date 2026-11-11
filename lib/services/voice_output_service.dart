@@ -34,6 +34,22 @@ class VoiceOutputService {
     _initialized = true;
   }
 
+  Future<List<Map<String, dynamic>>> getAvailableVoices() async {
+    await initialize();
+    final dynamic available = await _tts.getVoices;
+    if (available is! List) return const <Map<String, dynamic>>[];
+    return available.whereType<Map>().map((voice) {
+      final item = Map<String, dynamic>.from(voice);
+      return <String, dynamic>{
+        'name': item['name']?.toString() ?? '',
+        'locale': item['locale']?.toString() ?? '',
+        if (item['quality'] != null) 'quality': item['quality'],
+        if (item['gender'] != null) 'gender': item['gender'],
+        if (item['network_required'] != null) 'network_required': item['network_required'],
+      };
+    }).where((voice) => voice['name']!.toString().isNotEmpty).toList(growable: false);
+  }
+
   Future<void> speak(
     String text, {
     bool waitForCompletion = false,
