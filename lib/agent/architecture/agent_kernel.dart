@@ -405,8 +405,11 @@ class AgentKernel {
               event['type'] == 'subagent_message_sent' &&
               event['task_id']?.toString() == taskId &&
               (event['message']?.toString().trim().isNotEmpty ?? false))
-          .map((event) =>
-              'رسالة من ${event['sender_task_id']?.toString() ?? 'الطلب الرئيسي'}: ${event['message']}')
+          .map((event) {
+            final sender = event['sender_task_id']?.toString() ?? 'الطلب الرئيسي';
+            final message = event['message']?.toString() ?? '';
+            return 'رسالة من $sender: $message';
+          })
           .join('\n');
       final dependencyContext = dependencyResults.entries.map((entry) =>
         'نتيجة المهمة السابقة ${entry.key}:\n${entry.value}'
