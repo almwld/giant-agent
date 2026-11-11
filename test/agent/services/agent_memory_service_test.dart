@@ -201,4 +201,52 @@ void main() {
     }
   });
 
+  test('reconciles abandoned streaming messages as interrupted after restart', () async {
+    sqfliteFfiInit();
+    final database = await databaseFactoryFfi.openDatabase(
+      inMemoryDatabasePath,
+      options: OpenDatabaseOptions(
+        version: 4,
+        onCreate: (db, version) async {
+          await db.execute('''
+            CREATE TABLE assistant_messages (
+              id TEXT PRIMARY KEY,
+              session_id TEXT NOT NULL,
+              request_id TEXT,
+              role TEXT NOT NULL DEFAULT 'assistant',
+              status TEXT NOT NULL,
+              content TEXT NOT NULL DEFAULT '',
+              error TEXT,
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL,
+              completed_at INTEGER
+            )
+          ''');
+        },
+      ),
+    );
+    try {
+      await database.insert('assistant_messages', <String, Object?>{
+        'id': 'abandoned-message',
+        'session_id': 'restart-session',
+        'status': 'streaming',
+        'content': 'partial stream',
+        'created_at': 1,
+        'updated_at': 1,
+      });
+      final changed =
+          await AgentMemoryService.reconcileInterruptedAssistantMessages(database);
+      final rows = await database.query(
+        'assistant_messages',
+        where: 'id = ?',
+        whereArgs: const ['abandoned-message'],
+      );
+      expect(changed, 1);
+      expect(rows.single['status'], 'interrupted');
+      expect(rows.single['content'], 'partial stream');
+    } finally {
+      await database.close();
+    }
+  });
+
 }
