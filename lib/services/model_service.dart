@@ -877,6 +877,74 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
             prompt: args['prompt']?.toString() ?? '',
           );
           break;
+        case 'show_widget':
+          final widgetType = args['widget_type']?.toString() ?? '';
+          final widgetTitle = args['title']?.toString().trim() ?? '';
+          final rawPayload = args['payload'];
+          if (!const {'metric', 'progress', 'table', 'list', 'notice'}.contains(widgetType) ||
+              widgetTitle.isEmpty || widgetTitle.length > 100 ||
+              rawPayload is! Map || rawPayload.length > 12) {
+            throw const FormatException('show_widget requires a supported widget_type, title and bounded payload object.');
+          }
+          final widgetPayload = Map<String, dynamic>.from(rawPayload);
+          switch (widgetType) {
+            case 'metric':
+              if (widgetPayload['value'] == null ||
+                  (widgetPayload['label']?.toString().length ?? 0) > 120) {
+                throw const FormatException('metric requires a value and an optional short label.');
+              }
+              break;
+            case 'progress':
+              final progress = widgetPayload['value'];
+              if (progress is! num || progress < 0 || progress > 100) {
+                throw const FormatException('progress value must be a number from 0 to 100.');
+              }
+              break;
+            case 'table':
+              final columns = widgetPayload['columns'];
+              final rows = widgetPayload['rows'];
+              if (columns is! List || columns.isEmpty || columns.length > 8 ||
+                  columns.any((item) => item is! String || item.length > 80) ||
+                  rows is! List || rows.length > 20 ||
+                  rows.any((row) => row is! List || row.length != columns.length ||
+                      row.any((cell) => cell.toString().length > 200))) {
+                throw const FormatException('table requires up to 8 columns and 20 bounded rows.');
+              }
+              break;
+            case 'list':
+              final items = widgetPayload['items'];
+              if (items is! List || items.length > 20 ||
+                  items.any((item) => item is! String || item.length > 300)) {
+                throw const FormatException('list requires up to 20 short text items.');
+              }
+              break;
+            case 'notice':
+              final message = widgetPayload['message']?.toString() ?? '';
+              if (message.isEmpty || message.length > 1000 ||
+                  !const {'info', 'success', 'warning', 'error'}.contains(widgetPayload['tone'] ?? 'info')) {
+                throw const FormatException('notice requires a message and an optional supported tone.');
+              }
+              break;
+          }
+          final widgetId = 'widget_${_activeRequestId}_${DateTime.now().microsecondsSinceEpoch}';
+          AgentEventBus.instance.publish(<String, dynamic>{
+            'id': widgetId,
+            'request_id': _activeRequestId,
+            'session_id': _activeConversationId,
+            'type': 'agent_widget',
+            'status': 'completed',
+            'title': widgetTitle,
+            'widget_type': widgetType,
+            'payload': widgetPayload,
+            'timestamp': DateTime.now().toUtc().toIso8601String(),
+          });
+          result = <String, dynamic>{
+            'ok': true,
+            'widget_id': widgetId,
+            'widget_type': widgetType,
+            'title': widgetTitle,
+          };
+          break;
         case 'gain_terminal':
           final approval = requestTerminalApproval;
           if (approval == null) {
