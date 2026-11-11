@@ -205,7 +205,7 @@ class AgentMemoryService {
     final db = await database;
     final rows = await db.query('facts',
         orderBy: 'importance DESC, updated_at DESC',
-        limit: limit.clamp(1, 500));
+        limit: limit.clamp(1, 500).toInt());
     return rows.map((row) => Map<String, dynamic>.from(row)).toList(growable: false);
   }
 
