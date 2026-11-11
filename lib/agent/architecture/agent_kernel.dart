@@ -94,6 +94,7 @@ class AgentKernel {
     String? agentType,
     String? taskPrompt,
     List<String>? dependsOn,
+    int? progressPercent,
   }) {
     final sequence = ++_eventSequence;
     final event = AgentTimelineEvent(
@@ -115,6 +116,7 @@ class AgentKernel {
       agentType: agentType,
       taskPrompt: taskPrompt,
       dependsOn: dependsOn ?? const <String>[],
+      progressPercent: progressPercent,
     );
     _events.add(event);
     AgentEventBus.instance.publish(event.toMap());
@@ -399,6 +401,7 @@ class AgentKernel {
       agentType: agentType,
       taskPrompt: taskPrompt,
       toolCallId: toolCallId,
+      progressPercent: 0,
       type: 'subagent_started',
       title: 'بدأ الوكيل الفرعي: $title',
       status: 'running',
@@ -443,6 +446,7 @@ ${dependencyContext.isEmpty ? 'لا توجد تبعيات.' : dependencyContext}
         agentType: agentType,
         taskPrompt: taskPrompt,
         toolCallId: toolCallId,
+        progressPercent: 100,
         type: 'subagent_completed',
         title: 'اكتمل الوكيل الفرعي: $title',
         status: 'completed',
