@@ -277,6 +277,17 @@ class EvaluatorService {
           message: passed ? 'Web search returned a structured result list.' : 'Web search returned no structured results.',
           evidence: <String, Object?>{'result_count': results is List ? results.length : 0},
         );
+      case 'show_widget':
+        final widgetId = toolResult['widget_id']?.toString() ?? '';
+        final widgetType = toolResult['widget_type']?.toString() ?? '';
+        final passed = toolResult['ok'] == true &&
+            widgetId.startsWith('widget_') &&
+            widgetType == toolArgs['widget_type'];
+        return ToolVerificationResult(
+          passed: passed,
+          message: passed ? 'A validated structured widget event was published to the session timeline.' : 'Structured widget publication could not be verified.',
+          evidence: <String, Object?>{'widget_id': widgetId, 'widget_type': widgetType},
+        );
       case 'task':
         final action = toolArgs['action']?.toString() ?? 'list';
         final passed = switch (action) {
