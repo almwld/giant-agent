@@ -23,11 +23,18 @@ llama_adapter_lora * g_lora = nullptr;
 std::atomic<bool> g_generation_active{false};
 std::atomic<bool> g_cancel_requested{false};
 std::atomic<bool> g_timeout_requested{false};
-std::atomic<int64_t> g_last_token_ms{0};
+std::atomic<int64_t> g_last_progress_ms{0};
 
 int64_t monotonicMillis() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+// Refresh only after observable native work has completed successfully.
+// This prevents a long prompt prefill from being mistaken for a stalled
+// generation merely because no user-visible token has been emitted yet.
+void markGenerationProgress() {
+    g_last_progress_ms.store(monotonicMillis(), std::memory_order_release);
 }
 
 // A watchdog runs independently of llama.cpp. It can request cancellation
@@ -202,6 +209,7 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerateStreaming(JNIEnv * env, jobject, j
     if (nTokens <= 0) return env->NewStringUTF("ERROR: Tokenization failed");
     tokens.resize(nTokens);
     const int32_t originalTokenCount = nTokens;
+    markGenerationProgress();
 
     const uint32_t nCtx = llama_n_ctx(g_ctx);
     if (nCtx <= 256) {
@@ -264,10 +272,9 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerateStreaming(JNIEnv * env, jobject, j
     llama_sampler_chain_add(g_sampler, llama_sampler_init_temp(safeTemperature));
     llama_sampler_chain_add(g_sampler, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
 
-    // n_batch is deliberately small on phones. Never submit the whole prompt
-    // as one batch: long Arabic/system prompts can exceed n_batch and cause
-    // inference failures on some llama.cpp builds.
-    constexpr int32_t kDecodeBatch = 32;
+    // Keep prefill batches small so cancellation/watchdog checks regain
+    // control frequently on slower Android devices.
+    constexpr int32_t kDecodeBatch = 8;
     for (int32_t offset = 0; offset < nTokens;) {
         const int32_t count = std::min<int32_t>(kDecodeBatch, nTokens - offset);
         auto batch = llama_batch_get_one(tokens.data() + offset, count);
@@ -282,6 +289,7 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerateStreaming(JNIEnv * env, jobject, j
             LOGE("Prompt decode failed at token offset %d (status=%d)", offset, decodeStatus);
             return env->NewStringUTF("ERROR: Prompt decode failed; try a shorter message.");
         }
+        markGenerationProgress();
         offset += count;
     }
 
@@ -317,6 +325,7 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerateStreaming(JNIEnv * env, jobject, j
             break;
         }
         llama_token next = llama_sampler_sample(g_sampler, g_ctx, -1);
+        markGenerationProgress();
         if (llama_vocab_is_eog(vocab, next)) break;
 
         char piece[1024];
@@ -338,6 +347,7 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerateStreaming(JNIEnv * env, jobject, j
             LOGE("Decode stopped after %d generated tokens", i + 1);
             break;
         }
+        markGenerationProgress();
     }
     if (!pendingUtf8.empty() && callbackRef && onToken) emitToken(env, callbackRef, onToken, pendingUtf8);
     if (callbackClass) env->DeleteLocalRef(callbackClass);
