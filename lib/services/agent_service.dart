@@ -349,7 +349,10 @@ class AgentService {
     }
   }
 
-  /// Cancels one active tool invocation by its independent tool_call_id.\n  bool cancelToolCall(String toolCallId) => _models.cancelToolCall(toolCallId);\n\n  Future<bool> cancel() => _executionKernel.cancel();
+  /// Cancels one active tool invocation by its independent tool_call_id.
+  bool cancelToolCall(String toolCallId) => _models.cancelToolCall(toolCallId);
+
+  Future<bool> cancel() => _executionKernel.cancel();
 
   Future<bool> cancelSubagent(String taskId) =>
       _executionKernel.cancelSubagent(taskId);
