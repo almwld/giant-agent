@@ -280,7 +280,7 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerateStreaming(JNIEnv * env, jobject, j
         auto batch = llama_batch_get_one(tokens.data() + offset, count);
         const int decodeStatus = llama_decode(g_ctx, batch);
         if (g_timeout_requested.load(std::memory_order_acquire)) {
-            return env->NewStringUTF("TIMEOUT: لم يصدر النموذج أي رمز جديد خلال 15 ثانية؛ تم إيقاف التوليد.");
+            return env->NewStringUTF("TIMEOUT: لم يحرز الاستدلال تقدماً خلال 15 ثانية؛ تم إيقاف التوليد.");
         }
         if (g_cancel_requested.load(std::memory_order_acquire)) {
             return env->NewStringUTF("CANCELLED: تم إيقاف المهمة بواسطة المستخدم.");
@@ -354,7 +354,7 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerateStreaming(JNIEnv * env, jobject, j
     if (callbackRef) env->DeleteGlobalRef(callbackRef);
     LOGE("Inference finished; generated %zu UTF-8 bytes", output.size());
     if (g_timeout_requested.load(std::memory_order_acquire)) {
-        return env->NewStringUTF("TIMEOUT: لم يصدر النموذج أي رمز جديد خلال 15 ثانية؛ تم إيقاف التوليد.");
+        return env->NewStringUTF("TIMEOUT: لم يحرز الاستدلال تقدماً خلال 15 ثانية؛ تم إيقاف التوليد.");
     }
     if (g_cancel_requested.load(std::memory_order_acquire)) {
         return env->NewStringUTF("CANCELLED: تم إيقاف المهمة بواسطة المستخدم.");
