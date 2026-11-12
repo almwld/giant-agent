@@ -191,10 +191,18 @@ class _ChatScreenState extends State<ChatScreen> {
       }
       final token = step['text']?.toString() ?? '';
       final visible = _visibleAnswerDelta(token);
-      if (visible.isNotEmpty) setState(() {
-        _streamingShimmerStart = _streamingResponse.length;
-        _streamingResponse += visible;
-      });
+      if (visible.isNotEmpty) {
+        if (_voiceRequestActive) {
+          _voiceOutput.addStreamingText(visible);
+          if (_voiceOrbState == AgentState.thinking && mounted) {
+            setState(() => _voiceOrbState = AgentState.speaking);
+          }
+        }
+        setState(() {
+          _streamingShimmerStart = _streamingResponse.length;
+          _streamingResponse += visible;
+        });
+      }
       _scrollToBottom();
       return;
     }
@@ -1610,6 +1618,15 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     _scrollToBottom();
 
+    if (_voiceRequestActive) {
+      try {
+        await _voiceOutput.beginStreaming();
+      } catch (_) {
+        // The model response still succeeds when no offline Arabic voice is
+        // installed; the final playback path will report the local TTS issue.
+      }
+    }
+
     String response;
     try {
       response = await _executeChatPrompt(text, requestId: requestId);
@@ -1635,7 +1652,11 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() => _voiceOrbState = AgentState.speaking);
     }
     try {
-      await _voiceOutput.speak(response, waitForCompletion: _voiceRequestActive);
+      if (_voiceRequestActive) {
+        await _voiceOutput.finishStreaming(response);
+      } else {
+        await _voiceOutput.speak(response);
+      }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
