@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../domain/kernel/agent_kernel_store.dart';
@@ -36,7 +38,7 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
 
   @override
   void dispose() {
-    _store.close();
+    unawaited(_store.close());
     super.dispose();
   }
 
