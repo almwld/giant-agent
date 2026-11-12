@@ -32,8 +32,9 @@ class AgentContextCompactor {
     if (remaining <= 0) return _clip(history, maxCharacters);
 
     final selected = List<String?>.filled(segments.length, null);
-    final recentStart =
-        (segments.length - recentFullResults).clamp(0, segments.length);
+    final recentStart = (segments.length - recentFullResults)
+        .clamp(0, segments.length)
+        .toInt();
 
     // Keep compact evidence from older calls in chronological positions.
     for (var index = 0; index < recentStart; index++) {
