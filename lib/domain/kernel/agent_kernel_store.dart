@@ -79,7 +79,7 @@ class AgentKernelStore {
     await Directory(directory.path).create(recursive: true);
     return openDatabase(
       '${directory.path}/giant_agent_kernel.db',
-      version: 4,
+      version: 5,
       onConfigure: (db) async {
         await db.execute('PRAGMA foreign_keys = ON');
         await db.execute('PRAGMA journal_mode = WAL');
@@ -139,6 +139,7 @@ class AgentKernelStore {
         """);
         await _createTaskTable(db);
         await _createOutputTable(db);
+        await _createSubagentRuntimeStateTable(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) await _createTaskTable(db);
@@ -147,6 +148,7 @@ class AgentKernelStore {
           await db.execute('CREATE INDEX IF NOT EXISTS idx_agent_events_task ON agent_events(task_id, row_id)');
         }
         if (oldVersion < 4) await _createOutputTable(db);
+        if (oldVersion < 5) await _createSubagentRuntimeStateTable(db);
       },
     );
   }
@@ -271,6 +273,57 @@ class AgentKernelStore {
       }
       return Map<String, dynamic>.from(decoded);
     }).toList(growable: false);
+  }
+
+  static Future<void> _createSubagentRuntimeStateTable(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS agent_subagent_runtime_state (
+        request_id TEXT PRIMARY KEY,
+        payload_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+  }
+
+  /// Persists request-scoped goal and mailbox state independently from the
+  /// append-only lifecycle journal. A mailbox write is an atomic replacement.
+  Future<void> saveSubagentRuntimeState(
+    String requestId,
+    Map<String, Object?> state,
+  ) async {
+    if (requestId.trim().isEmpty) {
+      throw ArgumentError.value(requestId, 'requestId', 'Request id is required.');
+    }
+    final now = DateTime.now().toUtc().toIso8601String();
+    final payload = jsonEncode(state);
+    await (await database).insert(
+      'agent_subagent_runtime_state',
+      <String, Object?>{
+        'request_id': requestId,
+        'payload_json': payload,
+        'updated_at': now,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<Map<String, Object?>?> loadSubagentRuntimeState(String requestId) async {
+    if (requestId.trim().isEmpty) return null;
+    final rows = await (await database).query(
+      'agent_subagent_runtime_state',
+      where: 'request_id = ?',
+      whereArgs: [requestId],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(rows.single['payload_json']! as String);
+      if (decoded is! Map) return null;
+      return Map<String, Object?>.from(decoded);
+    } on FormatException {
+      // Preserve the corrupt row for diagnosis; do not silently overwrite it.
+      return null;
+    }
   }
 
   Future<void> saveTask(Map<String, dynamic> task) async {
