@@ -375,8 +375,8 @@ class AgentMemoryService {
   String _normalizeMemoryText(String value) => value
       .toLowerCase()
       .replaceAll('ـ', '')
-      .replaceAll(RegExp(r'[\\u064B-\\u065F\\u0670]'), '')
-      .replaceAll(RegExp(r'\\s+'), ' ')
+      .replaceAll(RegExp(r'[\u064B-\u065F\u0670]'), '')
+      .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
 
   /// Hybrid lexical/recency/importance ranking for local episodic and factual
