@@ -108,7 +108,8 @@ void main() {
       'chat-a',
       limit: 2,
     );
-    expect(first.events.map((event) => event.id), ['request-1_request_completed', 'tool-3']);
+    expect(first.events.map((event) => event.type), ['request_completed', 'tool_failed']);
+    expect(first.events.last.id, 'tool-3');
     expect(first.hasMore, isTrue);
     expect(first.nextCursor, isNotNull);
 
@@ -125,7 +126,7 @@ void main() {
       limit: 2,
       beforeRowId: second.nextCursor,
     );
-    expect(third.events.map((event) => event.id), ['request-1_request_started', 'request-1_request_queued']);
+    expect(third.events.map((event) => event.type), ['request_started', 'request_queued']);
     expect(third.hasMore, isFalse);
 
     final failed = await store.observabilityEventsForConversation(
@@ -172,7 +173,7 @@ void main() {
     expect(summary.activeRequests, 1);
     expect(summary.completedRequests, 1);
     expect(summary.failedRequests, 0);
-    expect(summary.eventCount, 6);
+    expect(summary.eventCount, 7);
     expect(summary.toolCallCount, 2);
     expect(summary.toolFailureCount, 1);
     expect(summary.toolSuccessRate, 0.5);
