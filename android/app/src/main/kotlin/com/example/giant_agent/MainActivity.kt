@@ -24,6 +24,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+import java.util.concurrent.ConcurrentHashMap
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
 import com.google.mlkit.vision.common.InputImage
@@ -47,6 +48,8 @@ class MainActivity: FlutterActivity() {
     @Volatile private var agentEventSink: EventChannel.EventSink? = null
     private val pendingSharedFiles = java.util.concurrent.ConcurrentLinkedQueue<String>()
     private val aiExecutor = AgentRuntime.aiExecutor
+    private val activePythonExecutionIds = ConcurrentHashMap.newKeySet<String>()
+    private val cancelledPythonExecutionIds = ConcurrentHashMap.newKeySet<String>()
     private val llamaBridge = AgentRuntime.llamaBridge
     private var pendingModelResult: MethodChannel.Result? = null
     companion object {
@@ -289,59 +292,90 @@ class MainActivity: FlutterActivity() {
                     }
                 }
                 "getCurrentLocation" -> requestCurrentLocation(result)
+                "cancelPythonExecution" -> {
+                    val invocationId = call.argument<String>("invocationId").orEmpty()
+                    val accepted = invocationId.isNotBlank() &&
+                        activePythonExecutionIds.contains(invocationId)
+                    if (accepted) cancelledPythonExecutionIds.add(invocationId)
+                    result.success(accepted)
+                }
                 "executePython" -> {
                     val code = call.argument<String>("code").orEmpty()
+                    val invocationId = call.argument<String>("invocationId").orEmpty()
+                    val executionId = invocationId.ifBlank { "python_${System.nanoTime()}" }
                     val eventId = "python_${System.nanoTime()}"
+                    if (invocationId.isNotBlank()) activePythonExecutionIds.add(executionId)
                     emitPythonEvent("tool_start", code, null, "running", eventId)
                     aiExecutor.execute {
                         try {
-                            if (!Python.isStarted()) Python.start(AndroidPlatform(this))
-                            val workspace = File(filesDir, "agent_workspace").apply { mkdirs() }.canonicalPath
-                            val pyResult = Python.getInstance().getModule("sandbox")
-                                .callAttr("run_code", code, workspace)
-                            val status = pyResult.get("status")?.toString() ?: "error"
-                            val output = pyResult.get("output")?.toString() ?: ""
-                            val error = pyResult.get("error")?.toString() ?: ""
-                            val ok = status == "success"
-                            emitPythonEvent(if (ok) "tool_output" else "tool_error", code,
-                                if (ok) output else error, if (ok) "completed" else "failed", eventId)
-                            runOnUiThread {
-                                result.success(mapOf("ok" to ok, "output" to output, "error" to error))
+                            if (cancelledPythonExecutionIds.remove(executionId)) {
+                                runOnUiThread { result.success(mapOf("ok" to false, "cancelled" to true, "output" to "", "error" to "Cancelled before Python dispatch.")) }
+                            } else {
+                                if (!Python.isStarted()) Python.start(AndroidPlatform(this))
+                                val workspace = File(filesDir, "agent_workspace").apply { mkdirs() }.canonicalPath
+                                val pyResult = Python.getInstance().getModule("sandbox")
+                                    .callAttr("run_code", code, workspace)
+                                val status = pyResult.get("status")?.toString() ?: "error"
+                                val output = pyResult.get("output")?.toString() ?: ""
+                                val error = pyResult.get("error")?.toString() ?: ""
+                                val cancelled = cancelledPythonExecutionIds.remove(executionId)
+                                val ok = status == "success" && !cancelled
+                                emitPythonEvent(if (cancelled) "tool_interrupted" else if (ok) "tool_output" else "tool_error", code,
+                                    if (ok) output else if (cancelled) "Python execution cancelled." else error,
+                                    if (cancelled) "interrupted" else if (ok) "completed" else "failed", eventId)
+                                runOnUiThread {
+                                    result.success(mapOf("ok" to ok, "cancelled" to cancelled, "output" to output, "error" to if (cancelled) "Python execution cancelled." else error))
+                                }
                             }
                         } catch (t: Throwable) {
                             val message = t.message ?: "Python runtime failed"
                             emitPythonEvent("tool_error", code, message, "failed", eventId)
                             runOnUiThread { result.success(mapOf("ok" to false, "output" to "", "error" to message)) }
+                        } finally {
+                            activePythonExecutionIds.remove(executionId)
+                            cancelledPythonExecutionIds.remove(executionId)
                         }
                     }
                 }
                 "executePythonRepl" -> {
                     val code = call.argument<String>("code").orEmpty()
                     val sessionId = call.argument<String>("sessionId").orEmpty()
+                    val invocationId = call.argument<String>("invocationId").orEmpty()
+                    val executionId = invocationId.ifBlank { "ipython_${System.nanoTime()}" }
                     require(sessionId.matches(Regex("[A-Za-z0-9_-]{1,128}"))) {
                         "Invalid Python REPL session id."
                     }
+                    if (invocationId.isNotBlank()) activePythonExecutionIds.add(executionId)
                     val eventId = "ipython_${System.nanoTime()}"
                     emitPythonEvent("tool_start", code, null, "running", eventId, "ipython")
                     aiExecutor.execute {
                         try {
-                            if (!Python.isStarted()) Python.start(AndroidPlatform(this))
-                            val workspace = File(filesDir, "agent_workspace").apply { mkdirs() }.canonicalPath
-                            val pyResult = Python.getInstance().getModule("sandbox")
-                                .callAttr("run_repl", code, workspace, sessionId)
-                            val status = pyResult.get("status")?.toString() ?: "error"
-                            val output = pyResult.get("output")?.toString() ?: ""
-                            val error = pyResult.get("error")?.toString() ?: ""
-                            val ok = status == "success"
-                            emitPythonEvent(if (ok) "tool_output" else "tool_error", code,
-                                if (ok) output else error, if (ok) "completed" else "failed", eventId, "ipython")
-                            runOnUiThread {
-                                result.success(mapOf("ok" to ok, "output" to output, "error" to error, "session_id" to sessionId))
+                            if (cancelledPythonExecutionIds.remove(executionId)) {
+                                runOnUiThread { result.success(mapOf("ok" to false, "cancelled" to true, "output" to "", "error" to "Cancelled before Python dispatch.", "session_id" to sessionId)) }
+                            } else {
+                                if (!Python.isStarted()) Python.start(AndroidPlatform(this))
+                                val workspace = File(filesDir, "agent_workspace").apply { mkdirs() }.canonicalPath
+                                val pyResult = Python.getInstance().getModule("sandbox")
+                                    .callAttr("run_repl", code, workspace, sessionId)
+                                val status = pyResult.get("status")?.toString() ?: "error"
+                                val output = pyResult.get("output")?.toString() ?: ""
+                                val error = pyResult.get("error")?.toString() ?: ""
+                                val cancelled = cancelledPythonExecutionIds.remove(executionId)
+                                val ok = status == "success" && !cancelled
+                                emitPythonEvent(if (cancelled) "tool_interrupted" else if (ok) "tool_output" else "tool_error", code,
+                                    if (ok) output else if (cancelled) "Python REPL execution cancelled." else error,
+                                    if (cancelled) "interrupted" else if (ok) "completed" else "failed", eventId, "ipython")
+                                runOnUiThread {
+                                    result.success(mapOf("ok" to ok, "cancelled" to cancelled, "output" to output, "error" to if (cancelled) "Python REPL execution cancelled." else error, "session_id" to sessionId))
+                                }
                             }
                         } catch (t: Throwable) {
                             val message = t.message ?: "Python REPL failed"
                             emitPythonEvent("tool_error", code, message, "failed", eventId, "ipython")
                             runOnUiThread { result.success(mapOf("ok" to false, "output" to "", "error" to message, "session_id" to sessionId)) }
+                        } finally {
+                            activePythonExecutionIds.remove(executionId)
+                            cancelledPythonExecutionIds.remove(executionId)
                         }
                     }
                 }
