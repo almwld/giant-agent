@@ -12,6 +12,7 @@ class GainCommandResult {
     required this.duration,
     this.timedOut = false,
     this.sessionLost = false,
+    this.cancelled = false,
   });
 
   final String command;
@@ -20,8 +21,9 @@ class GainCommandResult {
   final Duration duration;
   final bool timedOut;
   final bool sessionLost;
+  final bool cancelled;
 
-  bool get succeeded => exitCode == 0 && !timedOut && !sessionLost;
+  bool get succeeded => exitCode == 0 && !timedOut && !sessionLost && !cancelled;
 }
 
 /// Command-level adapter over Gain's persistent native PTY.
@@ -39,6 +41,7 @@ class GainTerminalTool {
   Future<GainCommandResult> execute(
     String command, {
     Duration timeout = const Duration(seconds: 60),
+    bool Function()? isCancelled,
   }) {
     final completer = Completer<GainCommandResult>();
     _tail = _tail.then((_) async {
@@ -46,6 +49,7 @@ class GainTerminalTool {
         completer.complete(await _executeSerialized(
           command,
           timeout: timeout,
+          isCancelled: isCancelled,
         ));
       } catch (error, stack) {
         completer.completeError(error, stack);
@@ -57,6 +61,7 @@ class GainTerminalTool {
   Future<GainCommandResult> _executeSerialized(
     String command, {
     required Duration timeout,
+    bool Function()? isCancelled,
   }) async {
     final normalized = command.trim();
     if (normalized.isEmpty) {
@@ -97,7 +102,11 @@ class GainTerminalTool {
       }
     });
 
+    Timer? cancellationPoll;
     try {
+      if (isCancelled?.call() == true) {
+        return GainCommandResult(command: normalized, output: 'Command cancelled before PTY dispatch.', exitCode: 130, duration: DateTime.now().difference(startedAt), cancelled: true);
+      }
       final started = await _client.start();
       if (!started) {
         return GainCommandResult(
@@ -115,11 +124,22 @@ class GainTerminalTool {
           '$normalized\n__gain_status=\$?; printf \'\\n$marker%s__\\n\' "\$__gain_status"\n';
       await _client.write(script);
 
+      final cancelled = Completer<void>();
+      cancellationPoll = Timer.periodic(const Duration(milliseconds: 75), (_) {
+        if (isCancelled?.call() == true && !cancelled.isCompleted) cancelled.complete();
+      });
       final exitCode = await Future.any<int>([
         completed.future,
         sessionLost.future.then((_) => -1),
+        cancelled.future.then((_) => -2),
       ]).timeout(effectiveTimeout);
-
+      if (exitCode == -2) {
+        try {
+          await _client.interrupt();
+          await Future.any<void>([completed.future.then((_) {}), sessionLost.future]).timeout(const Duration(milliseconds: 750));
+        } catch (_) { await _client.stop(); }
+        return GainCommandResult(command: normalized, output: parser.output, exitCode: 130, duration: DateTime.now().difference(startedAt), cancelled: true);
+      }
       final output = parser.output;
       final lost = exitCode < 0;
       return GainCommandResult(
@@ -149,6 +169,7 @@ class GainTerminalTool {
         timedOut: true,
       );
     } finally {
+      cancellationPoll?.cancel();
       await outputSubscription.cancel();
       await closedSubscription.cancel();
     }
