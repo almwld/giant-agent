@@ -3,14 +3,16 @@ import 'dart:math';
 import 'gain_terminal_tool.dart';
 
 typedef TerminalApprovalRequest = Future<bool> Function(String command);
-typedef TerminalCommandExecution = Future<GainCommandResult> Function(String command, Duration timeout, {bool Function()? isCancelled});
+typedef TerminalCommandExecution = Future<GainCommandResult> Function(String command, Duration timeout);
+typedef TerminalCancellableCommandExecution = Future<GainCommandResult> Function(String command, Duration timeout, bool Function()? isCancelled);
 
 class TerminalToolCoordinator {
-  TerminalToolCoordinator({required TerminalApprovalRequest requestApproval, required TerminalCommandExecution execute, void Function(Map<String, dynamic>)? onEvent})
-      : _requestApproval = requestApproval, _execute = execute, _onEvent = onEvent;
+  TerminalToolCoordinator({required TerminalApprovalRequest requestApproval, required TerminalCommandExecution execute, TerminalCancellableCommandExecution? executeCancellable, void Function(Map<String, dynamic>)? onEvent})
+      : _requestApproval = requestApproval, _execute = execute, _executeCancellable = executeCancellable, _onEvent = onEvent;
 
   final TerminalApprovalRequest _requestApproval;
   final TerminalCommandExecution _execute;
+  final TerminalCancellableCommandExecution? _executeCancellable;
   final void Function(Map<String, dynamic>)? _onEvent;
   final Random _random = Random.secure();
 
@@ -42,7 +44,9 @@ class TerminalToolCoordinator {
     }
     _emit('tool_start', 'بدء تنفيذ أمر Gain Terminal', 'running', command: normalized);
     try {
-      final result = await _execute(normalized, timeout, isCancelled: isCancelled);
+      final result = _executeCancellable == null
+          ? await _execute(normalized, timeout)
+          : await _executeCancellable(normalized, timeout, isCancelled);
       final ok = result.succeeded;
       if (result.cancelled) {
         _emit('tool_interrupted', 'تم إيقاف أمر الطرفية المحدد', 'interrupted', command: normalized, output: result.output, details: 'exit_code=' + result.exitCode.toString() + '; cancelled=true');

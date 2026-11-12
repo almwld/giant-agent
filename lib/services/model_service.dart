@@ -1101,7 +1101,8 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
           }
           final coordinator = TerminalToolCoordinator(
             requestApproval: approval,
-            execute: (command, timeout, {isCancelled}) => _gainTerminal.execute(command, timeout: timeout, isCancelled: isCancelled),
+            execute: (command, timeout) => _gainTerminal.execute(command, timeout: timeout),
+            executeCancellable: (command, timeout, isCancelled) => _gainTerminal.execute(command, timeout: timeout, isCancelled: isCancelled),
             onEvent: (event) => AgentEventBus.instance.publish(event),
           );
           result = await coordinator.execute(
