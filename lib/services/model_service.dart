@@ -242,6 +242,34 @@ class ModelService {
     return result;
   }
 
+  Future<bool?> _awaitToolApproval(
+    Future<bool> approval,
+    bool Function()? isCancelled,
+  ) async {
+    if (isCancelled == null) return approval;
+    if (isCancelled()) return null;
+    final result = Completer<bool?>();
+    final cancellationPoll = Timer.periodic(
+      const Duration(milliseconds: 75),
+      (_) {
+        if (!result.isCompleted && isCancelled()) result.complete(null);
+      },
+    );
+    approval.then(
+      (approved) {
+        if (!result.isCompleted) result.complete(approved);
+      },
+      onError: (Object error, StackTrace stack) {
+        if (!result.isCompleted) result.completeError(error, stack);
+      },
+    );
+    try {
+      return await result.future;
+    } finally {
+      cancellationPoll.cancel();
+    }
+  }
+
   /// Cancels only the identified invocation. The tool's own cancellation
   /// callback interrupts its HTTP request, PTY process, or wait operation;
   /// cancelling a tool must never cancel the shared model generation context.
@@ -412,18 +440,39 @@ class ModelService {
           if (serverId.isEmpty || remoteToolName.isEmpty || remoteArguments is! Map<String, dynamic>) {
             throw const FormatException('mcp_call requires server_id, tool_name and an arguments object.');
           }
-          final remoteTool = await McpClient.instance.findTool(serverId, remoteToolName);
+          final remoteTool = await McpClient.instance.findTool(
+            serverId,
+            remoteToolName,
+            isCancelled: isCancelled,
+          );
+          if (isCancelled?.call() == true) {
+            throw ToolCallInterrupted(toolCallId ?? 'mcp_call');
+          }
           final readOnlyHint = remoteTool.annotations['readOnlyHint'] == true &&
               remoteTool.annotations['destructiveHint'] != true &&
               remoteTool.annotations['openWorldHint'] != true;
           if (!readOnlyHint) {
             final approval = requestMcpApproval;
-            if (approval == null ||
-                !await approval(serverId, remoteTool, remoteArguments)) {
+            if (approval == null) {
               result = <String, dynamic>{
                 'ok': false,
                 'denied': true,
                 'error': 'MCP tool requires explicit user approval; no approval was granted.',
+              };
+              break;
+            }
+            final approved = await _awaitToolApproval(
+              approval(serverId, remoteTool, remoteArguments),
+              isCancelled,
+            );
+            if (approved == null || isCancelled?.call() == true) {
+              throw ToolCallInterrupted(toolCallId ?? 'mcp_call');
+            }
+            if (!approved) {
+              result = <String, dynamic>{
+                'ok': false,
+                'denied': true,
+                'error': 'MCP tool approval was denied; the remote operation was not dispatched.',
               };
               break;
             }
