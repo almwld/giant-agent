@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
@@ -22,18 +23,43 @@ class WebSearchService {
     return text.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
-  Future<List<Map<String, String>>> search(String query, {int limit = 5}) async {
+  Future<List<Map<String, String>>> search(
+    String query, {
+    int limit = 5,
+    bool Function()? isCancelled,
+  }) async {
     final value = query.trim();
     if (value.isEmpty) return const [];
-    final uri = Uri.https('html.duckduckgo.com', '/html/', {'q': value});
-    final response = await http.get(uri, headers: {
-      'User-Agent': 'Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36',
-      'Accept': 'text/html',
-    }).timeout(const Duration(seconds: 25));
-    if (response.statusCode != 200) {
-      throw StateError('تعذر البحث على الويب (' + response.statusCode.toString() + ').');
+    if (isCancelled?.call() == true) {
+      throw StateError('Web search tool call cancelled before dispatch.');
     }
-    final html = utf8.decode(response.bodyBytes, allowMalformed: true);
+    final uri = Uri.https('html.duckduckgo.com', '/html/', {'q': value});
+    final client = http.Client();
+    Timer? cancellationPoll;
+    if (isCancelled != null) {
+      cancellationPoll = Timer.periodic(const Duration(milliseconds: 75), (_) {
+        if (isCancelled()) client.close();
+      });
+    }
+    try {
+      final request = http.Request('GET', uri)
+        ..headers.addAll({
+          'User-Agent': 'Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36',
+          'Accept': 'text/html',
+        });
+      final streamed = await client.send(request).timeout(const Duration(seconds: 25));
+      if (isCancelled?.call() == true) {
+        throw StateError('Web search tool call cancelled during request.');
+      }
+      final response = await http.Response.fromStream(streamed)
+          .timeout(const Duration(seconds: 25));
+      if (isCancelled?.call() == true) {
+        throw StateError('Web search tool call cancelled while reading response.');
+      }
+      if (response.statusCode != 200) {
+        throw StateError('تعذر البحث على الويب (' + response.statusCode.toString() + ').');
+      }
+      final html = utf8.decode(response.bodyBytes, allowMalformed: true);
     final anchors = RegExp(r'<a\b[^>]*>.*?</a>', caseSensitive: false, dotAll: true)
         .allMatches(html);
     final results = <Map<String, String>>[];
@@ -65,7 +91,14 @@ class WebSearchService {
       results.add({'title': title, 'url': target.toString(), 'snippet': snippet});
       if (results.length >= limit.clamp(1, 8)) break;
     }
-    return results;
+      if (isCancelled?.call() == true) {
+        throw StateError('Web search tool call cancelled while parsing results.');
+      }
+      return results;
+    } finally {
+      cancellationPoll?.cancel();
+      client.close();
+    }
   }
 
   String formatForPrompt(List<Map<String, String>> results) {
