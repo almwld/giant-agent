@@ -83,7 +83,7 @@ class VoiceOutputService {
   void addStreamingText(String delta) {
     if (!_streaming || delta.isEmpty) return;
     _streamBuffer += delta;
-    final boundary = RegExp(r'[.!?؟؛،\\n。！？]');
+    final boundary = RegExp(r'[.!?؟؛،\n。！？]');
     var cut = -1;
     for (var i = 0; i < _streamBuffer.length; i++) {
       if (boundary.hasMatch(_streamBuffer[i]) &&
