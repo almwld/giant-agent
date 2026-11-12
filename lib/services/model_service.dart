@@ -649,7 +649,7 @@ class ModelService {
         case 'web_search':
           final query = args['query']?.toString() ?? '';
           final limit = args['limit'] is int ? (args['limit'] as int).clamp(1, 8).toInt() : 5;
-          final searchResults = await WebSearchService.instance.search(query, limit: limit);
+          final searchResults = await WebSearchService.instance.search(query, limit: limit, isCancelled: isCancelled);
           result = <String, dynamic>{'ok': true, 'query': query, 'results': searchResults};
           break;
         case 'task':
