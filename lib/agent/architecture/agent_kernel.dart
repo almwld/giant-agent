@@ -664,8 +664,8 @@ ${dependencyContext.isEmpty ? 'لا توجد تبعيات سابقة.' : depende
         try {
           final priorEvidence = results.map((result) {
             final task = tasks.firstWhere((item) => item.id == result.taskId);
-            return 'معرّف المهمة: ${task.id}\\nالوكيل: ${task.agentType}\\nالمهمة: ${task.prompt}\\nالحالة: ${result.status}\\nالنتيجة: ${result.output ?? result.error ?? 'لا توجد نتيجة.'}';
-          }).join('\\n---\\n');
+            return 'معرّف المهمة: ${task.id}\nالوكيل: ${task.agentType}\nالمهمة: ${task.prompt}\nالحالة: ${result.status}\nالنتيجة: ${result.output ?? result.error ?? 'لا توجد نتيجة.'}';
+          }).join('\n---\n');
           final repairPlan = await _models.generateStructuredOutput(
             '''
 أنت منسق إصلاح تكيفي لمهمة لم تكتمل بالكامل.
