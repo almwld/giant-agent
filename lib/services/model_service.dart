@@ -10,6 +10,7 @@ import '../services/media/media_provider_registry.dart';
 import '../services/voice_output_service.dart';
 import '../agent/task_manager.dart';
 import '../agent/architecture/agent_event_bus.dart';
+import '../agent/architecture/context_compactor.dart';
 import '../agent/architecture/tool_call_registry.dart';
 import '../agent/architecture/subagent_lifecycle_manager.dart';
 import '../domain/kernel/agent_kernel_store.dart';
@@ -1820,7 +1821,7 @@ $toolCatalog
           pendingReflexionPayload = null;
         } else {
           final generated = await _generateText(
-            history.toString(),
+            AgentContextCompactor.compact(history.toString()),
             maxTokens: 768,
             temperature: .25,
             shouldCancel: isCancelled,
