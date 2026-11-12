@@ -3,6 +3,8 @@ import 'dart:async';
 typedef SubagentLifecycleEventSink = FutureOr<void> Function(
   Map<String, Object?> event,
 );
+typedef LoadSubagentRuntimeState = Future<Map<String, Object?>?> Function(String requestId);
+typedef SaveSubagentRuntimeState = Future<void> Function(String requestId, Map<String, Object?> state);
 
 class DynamicSubagentRecord {
   DynamicSubagentRecord({
@@ -19,7 +21,8 @@ class DynamicSubagentRecord {
     this.result,
     this.error,
     this.dismissed = false,
-  }) : createdAt = DateTime.now().toUtc();
+    DateTime? createdAt,
+  }) : createdAt = createdAt ?? DateTime.now().toUtc();
 
   final String id;
   final String taskId;
@@ -44,6 +47,25 @@ class DynamicSubagentRecord {
           'STATUS_TERMINATED',
         _ => 'STATUS_UNSPECIFIED',
       };
+
+  factory DynamicSubagentRecord.fromMap(Map<String, dynamic> map) =>
+      DynamicSubagentRecord(
+        id: map['id']?.toString() ?? '',
+        taskId: map['task_id']?.toString() ?? '',
+        parentRequestId: map['parent_request_id']?.toString() ?? '',
+        conversationId: map['conversation_id']?.toString() ?? 'global',
+        title: map['title']?.toString() ?? '',
+        prompt: map['prompt']?.toString() ?? '',
+        agentType: map['agent_type']?.toString() ?? 'explore',
+        dependsOn: (map['depends_on'] as List? ?? const <dynamic>[])
+            .map((item) => item.toString()).toList(growable: false),
+        status: map['status']?.toString() ?? 'idle',
+        progressPercent: map['progress_percent'] as int?,
+        result: map['result']?.toString(),
+        error: map['error']?.toString(),
+        dismissed: map['dismissed'] == true,
+        createdAt: DateTime.tryParse(map['created_at']?.toString() ?? ''),
+      );
 
   Map<String, Object?> toMap() => <String, Object?>{
         'id': id,
@@ -70,16 +92,85 @@ class DynamicSubagentRecord {
 /// lifecycle vocabulary. It does not copy Kimi handlers or assume undocumented
 /// remote argument schemas.
 class SubagentLifecycleManager {
-  SubagentLifecycleManager({required SubagentLifecycleEventSink onEvent})
-      : _onEvent = onEvent;
+  SubagentLifecycleManager({
+    required SubagentLifecycleEventSink onEvent,
+    LoadSubagentRuntimeState? loadState,
+    SaveSubagentRuntimeState? saveState,
+  })  : _onEvent = onEvent,
+        _loadState = loadState,
+        _saveState = saveState;
 
   final SubagentLifecycleEventSink _onEvent;
+  final LoadSubagentRuntimeState? _loadState;
+  final SaveSubagentRuntimeState? _saveState;
+  final Set<String> _restoredRequests = <String>{};
   final Map<String, Map<String, DynamicSubagentRecord>> _requests = {};
   final Map<String, List<Map<String, Object?>>> _mailboxes = {};
   final Map<String, List<Completer<void>>> _messageWaiters = {};
   final Map<String, String> _goals = {};
 
   static const int maxChildrenPerRequest = 6;
+  static const int maxMailboxMessages = 100;
+
+  /// Restores request-scoped goal and pending messages before the request is used.
+  /// Call once after process start; subsequent calls are idempotent.
+  Future<void> restoreRequest(String requestId) async {
+    if (requestId.trim().isEmpty || _restoredRequests.contains(requestId)) return;
+    final state = await _loadState?.call(requestId);
+    if (state != null) {
+      final goal = state['current_goal']?.toString();
+      if (goal != null && goal.isNotEmpty) _goals[requestId] = goal;
+      final rawRecords = state['records'];
+      if (rawRecords is Map) {
+        final restored = <String, DynamicSubagentRecord>{};
+        for (final entry in rawRecords.entries) {
+          if (entry.value is! Map) continue;
+          final record = DynamicSubagentRecord.fromMap(
+            Map<String, dynamic>.from(entry.value as Map),
+          );
+          if (record.id.isNotEmpty && record.parentRequestId == requestId) {
+            restored[record.id] = record;
+          }
+        }
+        if (restored.isNotEmpty) _requests[requestId] = restored;
+      }
+      final rawMailboxes = state['mailboxes'];
+      if (rawMailboxes is Map) {
+        for (final entry in rawMailboxes.entries) {
+          final agentId = entry.key.toString();
+          final rawMessages = entry.value;
+          if (agentId.isEmpty || rawMessages is! List) continue;
+          final messages = rawMessages.whereType<Map>().take(maxMailboxMessages)
+              .map((item) => Map<String, Object?>.from(item)).toList();
+          if (messages.isNotEmpty) _mailboxes[_key(requestId, agentId)] = messages;
+        }
+      }
+    }
+    _restoredRequests.add(requestId);
+  }
+
+  Future<void> _persistRequest(String requestId) async {
+    final save = _saveState;
+    if (save == null) return;
+    final mailboxes = <String, Object?>{};
+    final records = <String, Object?>{
+      for (final entry in (_requests[requestId] ?? const <String, DynamicSubagentRecord>{}).entries)
+        entry.key: entry.value.toMap(),
+    };
+    final prefix = '$requestId::';
+    for (final entry in _mailboxes.entries) {
+      if (entry.key.startsWith(prefix) && entry.value.isNotEmpty) {
+        mailboxes[entry.key.substring(prefix.length)] =
+            entry.value.map((message) => Map<String, Object?>.from(message)).toList();
+      }
+    }
+    await save(requestId, <String, Object?>{
+      'current_goal': _goals[requestId],
+      'records': records,
+      'mailboxes': mailboxes,
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    });
+  }
 
   String _key(String requestId, String agentId) => '$requestId::$agentId';
 
@@ -93,6 +184,7 @@ class SubagentLifecycleManager {
     List<String> dependsOn = const <String>[],
     String? creatorTaskId,
   }) async {
+    await restoreRequest(requestId);
     if (requestId.trim().isEmpty ||
         conversationId.trim().isEmpty ||
         !RegExp(r'^[a-zA-Z0-9_-]{1,48}$').hasMatch(id)) {
@@ -132,6 +224,7 @@ class SubagentLifecycleManager {
       dependsOn: List<String>.unmodifiable(dependsOn),
     );
     children[id] = record;
+    await _persistRequest(requestId);
     await _emit(record, 'subagent_created', details: 'تم تسجيل الوكيل؛ لم يبدأ التنفيذ بعد.');
     return record;
   }
@@ -144,18 +237,21 @@ class SubagentLifecycleManager {
         _requests[requestId]?.values ?? const <DynamicSubagentRecord>[],
       );
 
-  List<Map<String, Object?>> drainMessages(String requestId, String agentId) {
+  Future<List<Map<String, Object?>>> drainMessages(String requestId, String agentId) async {
+    await restoreRequest(requestId);
     final key = _key(requestId, agentId);
     final mailbox = _mailboxes[key];
     if (mailbox == null || mailbox.isEmpty) return const <Map<String, Object?>>[];
     final messages = List<Map<String, Object?>>.unmodifiable(mailbox);
     mailbox.clear();
+    await _persistRequest(requestId);
     return messages;
   }
 
   String? currentGoal(String requestId) => _goals[requestId];
 
   Future<void> start(String requestId, String agentId) async {
+    await restoreRequest(requestId);
     final record = _require(requestId, agentId);
     if (record.dismissed) throw StateError('Subagent was dismissed.');
     if (record.status != 'idle' && record.status != 'pending') {
@@ -171,10 +267,12 @@ class SubagentLifecycleManager {
       ..status = 'running'
       ..progressPercent = null
       ..error = null;
+    await _persistRequest(requestId);
     await _emit(record, 'subagent_started');
   }
 
   Future<void> complete(String requestId, String agentId, String result) async {
+    await restoreRequest(requestId);
     final record = _require(requestId, agentId);
     if (record.status != 'running') throw StateError('Subagent is not running.');
     if (result.trim().isEmpty) throw StateError('A completed subagent must return a non-empty result.');
@@ -183,6 +281,7 @@ class SubagentLifecycleManager {
       ..progressPercent = 100
       ..result = result
       ..error = null;
+    await _persistRequest(requestId);
     await _emit(record, 'subagent_completed',
         details: result.length > 1200 ? '${result.substring(0, 1200)}…' : result,
         result: result);
@@ -199,6 +298,7 @@ class SubagentLifecycleManager {
     record
       ..status = interrupted ? 'interrupted' : 'failed'
       ..error = error.toString();
+    await _persistRequest(requestId);
     await _emit(
       record,
       interrupted ? 'subagent_interrupted' : 'subagent_failed',
@@ -207,6 +307,7 @@ class SubagentLifecycleManager {
   }
 
   Future<void> delete(String requestId, String agentId) async {
+    await restoreRequest(requestId);
     final record = _require(requestId, agentId);
     if (record.status == 'running') {
       throw StateError('A running subagent cannot be deleted; interrupt it first.');
@@ -217,6 +318,7 @@ class SubagentLifecycleManager {
       await _emit(record, 'subagent_cancelled', details: 'أُلغي الوكيل قبل بدء التنفيذ.');
     }
     record.dismissed = true;
+    await _persistRequest(requestId);
     await _emit(record, 'subagent_dismissed',
         details: 'أُخفي الوكيل من الإدارة مع الاحتفاظ بسجل التدقيق.');
   }
@@ -227,6 +329,7 @@ class SubagentLifecycleManager {
     required String message,
     String? senderTaskId,
   }) async {
+    await restoreRequest(requestId);
     final record = _require(requestId, agentId);
     if (record.dismissed) throw StateError('Cannot message a dismissed subagent.');
     final normalized = message.trim();
@@ -239,7 +342,12 @@ class SubagentLifecycleManager {
       'timestamp': DateTime.now().toUtc().toIso8601String(),
     };
     final key = _key(requestId, agentId);
-    _mailboxes.putIfAbsent(key, () => <Map<String, Object?>>[]).add(item);
+    final mailbox = _mailboxes.putIfAbsent(key, () => <Map<String, Object?>>[]);
+    if (mailbox.length >= maxMailboxMessages) {
+      throw StateError('Subagent mailbox is full; consume pending messages before sending more.');
+    }
+    mailbox.add(item);
+    await _persistRequest(requestId);
     final waiters = _messageWaiters[key];
     if (waiters != null && waiters.isNotEmpty) {
       final waiter = waiters.removeAt(0);
@@ -255,13 +363,18 @@ class SubagentLifecycleManager {
     required int timeoutSeconds,
     bool Function()? isCancelled,
   }) async {
+    await restoreRequest(requestId);
     final record = _require(requestId, agentId);
     if (timeoutSeconds < 1 || timeoutSeconds > 30) {
       throw ArgumentError.value(timeoutSeconds, 'timeoutSeconds', 'Timeout must be 1–30 seconds.');
     }
     final key = _key(requestId, agentId);
     final mailbox = _mailboxes.putIfAbsent(key, () => <Map<String, Object?>>[]);
-    if (mailbox.isNotEmpty) return mailbox.removeAt(0);
+    if (mailbox.isNotEmpty) {
+      final message = mailbox.removeAt(0);
+      await _persistRequest(requestId);
+      return message;
+    }
     final waiter = Completer<void>();
     final waiters = _messageWaiters.putIfAbsent(key, () => <Completer<void>>[]);
     waiters.add(waiter);
@@ -286,17 +399,20 @@ class SubagentLifecycleManager {
     }
     if (mailbox.isEmpty) return null;
     final message = mailbox.removeAt(0);
+    await _persistRequest(requestId);
     await _emit(record, 'subagent_message_received',
         details: message['message']?.toString());
     return message;
   }
 
   Future<void> updateGoal(String requestId, String goal) async {
+    await restoreRequest(requestId);
     final normalized = goal.trim();
     if (requestId.trim().isEmpty || normalized.isEmpty || normalized.length > 2000) {
       throw ArgumentError('Updated goal must contain 1 to 2000 characters.');
     }
     _goals[requestId] = normalized;
+    await _persistRequest(requestId);
     await _onEvent(<String, Object?>{
       'id': 'goal_updated_${requestId}_${DateTime.now().microsecondsSinceEpoch}',
       'request_id': requestId,
