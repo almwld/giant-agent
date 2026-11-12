@@ -171,6 +171,7 @@ class TimelineEngine {
     TimelineStatus status = TimelineStatus.pending,
     String? description, String? agentId, String? parentAgentId,
     String? toolCallId, String? toolName, double? progress,
+    String? error,
     Map<String, dynamic> metadata = const {},
   }) {
     _ensureAlive();
@@ -178,7 +179,8 @@ class TimelineEngine {
       id: timelineNewId(), sessionId: sessionId, type: type, title: title,
       status: status, createdAt: DateTime.now(), description: description,
       agentId: agentId, parentAgentId: parentAgentId, toolCallId: toolCallId,
-      toolName: toolName, progress: _safeProgress(progress), metadata: metadata,
+      toolName: toolName, progress: _safeProgress(progress), error: error,
+      metadata: metadata,
     );
     _events.add(event);
     _publish(event);
