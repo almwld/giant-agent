@@ -47,7 +47,8 @@ class AgentEventBus {
     if (requestId.isNotEmpty) {
       event.putIfAbsent('attempt_id', () => requestId);
     }
-    event.putIfAbsent('sequence', () => ++_eventSequence);
+    final busSequence = ++_eventSequence;
+    event.putIfAbsent('sequence', () => busSequence);
     event.putIfAbsent('timestamp', () => now);
     event.putIfAbsent('type', () => 'unknown');
     event.putIfAbsent('status', () => 'pending');
