@@ -15,6 +15,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'settings_screen.dart';
 import '../models/chat_session.dart';
 import 'dart:convert';
+import '../core/timeline_engine.dart';
+import '../widgets/advanced_timeline_widget.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -853,186 +855,78 @@ class _ChatScreenState extends State<ChatScreen> {
 
   bool _timelineExpanded = true;
 
+  AgentTimelineEvent _toTimelineEvent(Map<String, dynamic> step) {
+    final rawType = (step['type'] ?? 'info').toString().toLowerCase();
+    final rawStatus = (step['status'] ?? '').toString().toLowerCase();
+    final type = switch (rawType) {
+      'task_started' || 'task_start' => TimelineEventType.taskStarted,
+      'task_completed' || 'task_complete' => TimelineEventType.taskCompleted,
+      'task_failed' => TimelineEventType.taskFailed,
+      'task_cancelled' || 'task_canceled' => TimelineEventType.taskCancelled,
+      'agent_created' => TimelineEventType.agentCreated,
+      'agent_started' || 'agent_start' => TimelineEventType.agentStarted,
+      'agent_progress' => TimelineEventType.agentProgress,
+      'agent_completed' || 'agent_complete' => TimelineEventType.agentCompleted,
+      'agent_failed' => TimelineEventType.agentFailed,
+      'tool_start' || 'tool_started' => TimelineEventType.toolStarted,
+      'tool_progress' => TimelineEventType.toolProgress,
+      'tool_output' || 'tool_completed' || 'tool_complete' => TimelineEventType.toolCompleted,
+      'tool_error' || 'tool_failed' => TimelineEventType.toolFailed,
+      'tool_cancelled' || 'tool_canceled' => TimelineEventType.toolCancelled,
+      'warning' => TimelineEventType.warning,
+      'error' => TimelineEventType.error,
+      'message' => TimelineEventType.message,
+      _ => TimelineEventType.info,
+    };
+    final status = switch (rawStatus) {
+      'running' || 'in_progress' => TimelineStatus.running,
+      'waiting' => TimelineStatus.waiting,
+      'pending' => TimelineStatus.pending,
+      'completed' || 'success' || 'done' => TimelineStatus.completed,
+      'failed' || 'error' => TimelineStatus.failed,
+      'cancelled' || 'canceled' || 'interrupted' => TimelineStatus.cancelled,
+      _ => type == TimelineEventType.toolStarted || type == TimelineEventType.agentStarted
+          ? TimelineStatus.running : TimelineStatus.completed,
+    };
+    final rawProgress = step['progress'] ?? step['progress_percent'];
+    final parsedProgress = rawProgress is num
+        ? rawProgress.toDouble()
+        : double.tryParse(rawProgress?.toString() ?? '');
+    final normalizedProgress = parsedProgress == null
+        ? null
+        : (parsedProgress > 1 ? parsedProgress / 100 : parsedProgress).clamp(0.0, 1.0).toDouble();
+    final rawTime = step['created_at'] ?? step['timestamp'];
+    final parsedTime = rawTime is num
+        ? DateTime.fromMillisecondsSinceEpoch(rawTime.toInt())
+        : DateTime.tryParse(rawTime?.toString() ?? '');
+    return AgentTimelineEvent(
+      id: (step['id'] ?? timelineNewId()).toString(),
+      sessionId: (step['session_id'] ?? _currentSessionId).toString(),
+      type: type,
+      title: (step['title'] ?? step['tool_name'] ?? 'Agent event').toString(),
+      status: status,
+      createdAt: parsedTime ?? DateTime.now(),
+      description: (step['description'] ?? step['details'] ?? step['content'])?.toString(),
+      agentId: step['agent_id']?.toString(),
+      parentAgentId: step['parent_agent_id']?.toString(),
+      toolCallId: (step['tool_call_id'] ?? step['toolCallId'])?.toString(),
+      toolName: step['tool_name']?.toString(),
+      progress: normalizedProgress,
+      error: (step['error'] ?? (status == TimelineStatus.failed ? step['output'] : null))?.toString(),
+      metadata: <String, dynamic>{
+        if (step['output'] != null) 'output': step['output'],
+        if (step['details'] != null) 'details': step['details'],
+      },
+    );
+  }
+
   Widget _buildAgentTimeline() {
     if (_agentSteps.isEmpty) return const SizedBox.shrink();
-    const cardColor = Color(0xFF1E1E1E);
-    const mutedColor = Color(0xFF9CA3AF);
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-      decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(.045)),
-      ),
-      child: Column(
-        children: [
-          InkWell(
-            borderRadius: BorderRadius.circular(16),
-            onTap: () => setState(() => _timelineExpanded = !_timelineExpanded),
-            child: Padding(
-              padding: const EdgeInsetsDirectional.fromSTEB(14, 13, 12, 13),
-              child: Row(
-                children: [
-                  const Icon(Icons.account_tree_outlined, color: mutedColor, size: 18),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('سجل تنفيذ الوكيل',
-                          style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
-                        const SizedBox(height: 3),
-                        Text('${_agentSteps.length} أحداث من المحرك',
-                          style: const TextStyle(color: mutedColor, fontSize: 10)),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'فتح الطرفية',
-                    visualDensity: VisualDensity.compact,
-                    icon: const Icon(Icons.terminal, color: Color(0xFF0D8274), size: 20),
-                    onPressed: _showTerminal,
-                  ),
-                  IconButton(
-                    tooltip: 'فتح مساحة عمل الوكيل',
-                    visualDensity: VisualDensity.compact,
-                    icon: const Icon(Icons.computer_outlined, color: Color(0xFF0D8274), size: 19),
-                    onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => AgentWorkspaceScreen(steps: List<Map<String, dynamic>>.from(_agentSteps)),
-                    )),
-                  ),
-                  Icon(_timelineExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
-                    color: mutedColor, size: 20),
-                ],
-              ),
-            ),
-          ),
-          AnimatedSize(
-            duration: const Duration(milliseconds: 240),
-            curve: Curves.easeInOut,
-            alignment: Alignment.topCenter,
-            child: _timelineExpanded
-                ? Column(
-                    children: List.generate(_agentSteps.length, (index) {
-                      final step = _agentSteps[index];
-                      final status = step['status']?.toString() ?? 'completed';
-                      final failed = status == 'failed' || status == 'interrupted';
-                      final running = status == 'running' || status == 'pending';
-                      final type = step['type']?.toString() ?? 'thought';
-                      final icon = _agentStepIcon(type);
-                      final color = failed
-                          ? const Color(0xFFEF6A6A)
-                          : (running ? const Color(0xFF0D8274) : mutedColor);
-                      final title = step['title']?.toString() ?? 'حدث من الوكيل';
-                      final subtitle = step['subtitle']?.toString();
-                      final opensTerminal = _opensTerminalFromStep(step);
-                      final hasPreview = opensTerminal ||
-                          step['content'] != null ||
-                          step['output'] != null ||
-                          step['command'] != null ||
-                          step['details'] != null ||
-                          step['file_name'] != null;
-                      final toolName = step['tool_name']?.toString() ?? '';
-                      final isTool = toolName.isNotEmpty ||
-                          type.contains('tool') ||
-                          type.contains('terminal') ||
-                          type == 'file_created' ||
-                          type == 'file_updated' ||
-                          type == 'file_read' ||
-                          _stepIsSvg(step);
-                      final statusLabel = running
-                          ? 'قيد التنفيذ'
-                          : failed
-                              ? 'فشل'
-                              : status == 'interrupted'
-                                  ? 'متوقف'
-                                  : 'مكتمل';
-                      return InkWell(
-                        onTap: hasPreview ? () => _showAgentStep(step) : null,
-                        child: Padding(
-                          padding: const EdgeInsetsDirectional.fromSTEB(12, 7, 12, 7),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 20,
-                                height: 22,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF2A2A2A),
-                                  borderRadius: BorderRadius.circular(5),
-                                ),
-                                alignment: Alignment.center,
-                                child: Icon(icon, size: 13, color: isTool ? const Color(0xFF0D8274) : mutedColor),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(title,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        color: failed ? const Color(0xFFFF9292) : Colors.white,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w500,
-                                      )),
-                                    if (subtitle != null && subtitle.isNotEmpty && !subtitle.contains('الجلسة #'))
-                                      Padding(
-                                        padding: const EdgeInsets.only(top: 2),
-                                        child: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(color: mutedColor, fontSize: 10)),
-                                      ),
-                                    const SizedBox(height: 3),
-                                    Text(statusLabel,
-                                      style: TextStyle(
-                                        color: failed
-                                            ? const Color(0xFFFF9292)
-                                            : running
-                                                ? const Color(0xFF54C7B7)
-                                                : mutedColor,
-                                        fontSize: 9,
-                                      )),
-                                  ],
-                                ),
-                              ),
-                              if (hasPreview)
-                                const Padding(
-                                  padding: EdgeInsetsDirectional.only(start: 5),
-                                  child: Icon(Icons.chevron_right, size: 17, color: mutedColor),
-                                ),
-                              const SizedBox(width: 5),
-                              AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 200),
-                                child: running
-                                    ? SizedBox(
-                                        key: const ValueKey('running'),
-                                        width: 14,
-                                        height: 14,
-                                        child: CircularProgressIndicator(strokeWidth: 2, color: color),
-                                      )
-                                    : Icon(
-                                        key: ValueKey(failed ? 'failed' : 'completed'),
-                                        failed
-                                            ? Icons.error_outline
-                                            : status == 'interrupted'
-                                                ? Icons.pause_circle_outline
-                                                : Icons.check_circle,
-                                        color: color,
-                                        size: 15,
-                                      ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }),
-                  )
-                : const SizedBox(width: double.infinity),
-          ),
-          if (_timelineExpanded)
-            const SizedBox(height: 7),
-        ],
-      ),
+    final events = _agentSteps.map((step) => _toTimelineEvent(step)).toList()
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    return AdvancedTimelineWidget(
+      events: events,
+      title: 'Agent execution timeline',
     );
   }
 

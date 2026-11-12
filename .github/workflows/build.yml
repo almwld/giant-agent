@@ -53,6 +53,19 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Analyze timeline implementation
+        run: >-
+          flutter analyze
+          lib/core/timeline_engine.dart
+          lib/core/tool_cancellation_manager.dart
+          lib/data/timeline_database.dart
+          lib/widgets/advanced_timeline_widget.dart
+          lib/examples/timeline_example.dart
+          test/timeline_engine_test.dart
+
+      - name: Run timeline unit tests
+        run: flutter test --no-pub test/timeline_engine_test.dart
+
       - name: Build universal release APK
         run: |
           flutter build apk --release
