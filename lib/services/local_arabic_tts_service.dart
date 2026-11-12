@@ -8,6 +8,8 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
 
+import 'local_voice_text_chunker.dart';
+
 /// Fully on-device Arabic neural speech synthesis using the 82M Nabra model
 /// exported for sherpa-onnx. The model is downloaded once into app-private
 /// storage; inference and playback never call a remote service.
@@ -154,7 +156,7 @@ class LocalArabicTtsService {
     final dir = await _directory();
     // Keep each inference comfortably below Nabra's 510-phoneme sequence cap.
     // This also bounds peak memory and makes interruption responsive.
-    for (final chunk in _boundedTextChunks(value, 180)) {
+    for (final chunk in LocalVoiceTextChunker.split(value, maxCharacters: 180)) {
       final generated = await Isolate.run(() => _synthesizeNabra({
         'model': '${dir.path}/model.int8.onnx',
         'voices': '${dir.path}/voices.bin',
@@ -181,38 +183,6 @@ class LocalArabicTtsService {
         if (await output.exists()) await output.delete();
       }
     }
-  }
-
-  static List<String> _boundedTextChunks(String text, int maxCharacters) {
-    final remaining = text.trim();
-    if (remaining.isEmpty) return const [];
-    final words = remaining.split(RegExp(r'\\s+'));
-    final chunks = <String>[];
-    var current = '';
-    for (final word in words) {
-      if (word.length > maxCharacters) {
-        if (current.isNotEmpty) {
-          chunks.add(current);
-          current = '';
-        }
-        for (var offset = 0; offset < word.length; offset += maxCharacters) {
-          chunks.add(word.substring(
-            offset,
-            (offset + maxCharacters).clamp(0, word.length),
-          ));
-        }
-        continue;
-      }
-      final candidate = current.isEmpty ? word : '$current $word';
-      if (candidate.length > maxCharacters && current.isNotEmpty) {
-        chunks.add(current);
-        current = word;
-      } else {
-        current = candidate;
-      }
-    }
-    if (current.isNotEmpty) chunks.add(current);
-    return chunks;
   }
 
   Future<void> stop() {
