@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "boosthis-gain-agents-24a987fb": {
+      "type": "http",
+      "url": "https://www.boosthis.com/mcp/gain-agents-24a987fb",
+      "headers": {
+        "Authorization": "Bearer ${BOOSTHIS_PROJECT_KEY}"
+      }
+    }
+  }
+}
