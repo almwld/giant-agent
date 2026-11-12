@@ -255,8 +255,7 @@ class AgentMemoryService {
     if (normalized.isEmpty || normalized.length > 1000) {
       throw ArgumentError('Chat recall query must contain 1–1000 characters.');
     }
-    final words = normalized
-        .toLowerCase()
+    final words = _normalizeMemoryText(normalized)
         .split(RegExp(r'[^\p{L}\p{N}]+', unicode: true))
         .where((word) => word.runes.length >= 3)
         .take(12)
@@ -273,12 +272,17 @@ class AgentMemoryService {
     for (final row in rows) {
       final user = (row['user_text'] ?? '').toString();
       final assistant = (row['assistant_text'] ?? '').toString();
-      final text = '$user $assistant'.toLowerCase();
-      final score = words.where(text.contains).length;
+      final text = '$user $assistant';
+      final score = _relevanceScore(
+        normalized,
+        words,
+        text,
+        timestamp: row['created_at'] as int? ?? 0,
+      );
       if (score > 0) matches.add(<String, Object?>{...row, '_score': score});
     }
     matches.sort((a, b) {
-      final relevance = (b['_score'] as int).compareTo(a['_score'] as int);
+      final relevance = (b['_score'] as num).compareTo(a['_score'] as num);
       if (relevance != 0) return relevance;
       return (b['created_at'] as int).compareTo(a['created_at'] as int);
     });
@@ -367,6 +371,44 @@ class AgentMemoryService {
     return rows.isEmpty ? null : Map<String, dynamic>.from(rows.first);
   }
 
+  String _normalizeMemoryText(String value) => value
+      .toLowerCase()
+      .replaceAll('ـ', '')
+      .replaceAll(RegExp(r'[\u064B-\u065F\u0670]'), '')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+
+  /// Hybrid lexical/recency/importance ranking for local episodic and factual
+  /// memory. This is not an embedding model: it improves retrieval using exact
+  /// phrase matches, term coverage, freshness and explicit fact importance.
+  double _relevanceScore(
+    String query,
+    Set<String> terms,
+    String content, {
+    required int timestamp,
+    int importance = 1,
+  }) {
+    if (terms.isEmpty) return 0;
+    final normalizedQuery = _normalizeMemoryText(query);
+    final normalizedContent = _normalizeMemoryText(content);
+    final matched = terms.where(normalizedContent.contains).length;
+    if (matched == 0) return 0;
+
+    final coverage = matched / terms.length;
+    final phraseBonus = normalizedQuery.length >= 4 &&
+            normalizedContent.contains(normalizedQuery)
+        ? 3.0
+        : 0.0;
+    final ageMillis = (DateTime.now().millisecondsSinceEpoch - timestamp)
+        .clamp(0, 31536000000)
+        .toDouble();
+    final ageDays = ageMillis / 86400000;
+    final recency = 1 / (1 + ageDays / 45);
+    final importanceBonus = importance.clamp(1, 5).toDouble() * 0.35;
+    return matched * 2.0 + coverage * 1.5 + phraseBonus +
+        importanceBonus + recency * 0.75;
+  }
+
   /// Builds a relevance-ranked, budget-bounded context without cutting a
   /// record in the middle. The budget is a conservative character-to-token
   /// estimate (not a model tokenizer); high-importance facts always rank first.
@@ -376,7 +418,7 @@ class AgentMemoryService {
     String conversationId = 'global',
     int maxTokens = 900,
   }) async {
-    final normalizedQuery = query.toLowerCase();
+    final normalizedQuery = _normalizeMemoryText(query);
     final words = normalizedQuery
         .split(RegExp(r'[^\p{L}\p{N}]+', unicode: true))
         .where((word) => word.runes.length >= 3)
@@ -395,12 +437,17 @@ class AgentMemoryService {
     for (final row in turnRows) {
       final user = (row['user_text'] ?? '').toString();
       final answer = (row['assistant_text'] ?? '').toString();
-      final haystack = '$user $answer'.toLowerCase();
-      final score = words.where(haystack.contains).length;
+      final haystack = '$user $answer';
+      final score = _relevanceScore(
+        query,
+        words,
+        haystack,
+        timestamp: row['created_at'] as int? ?? 0,
+      );
       if (score > 0) rankedTurns.add({...row, '_score': score});
     }
     rankedTurns.sort((a, b) {
-      final relevance = (b['_score'] as int).compareTo(a['_score'] as int);
+      final relevance = (b['_score'] as num).compareTo(a['_score'] as num);
       if (relevance != 0) return relevance;
       return (b['created_at'] as int).compareTo(a['created_at'] as int);
     });
@@ -411,12 +458,18 @@ class AgentMemoryService {
       limit: 80,
     );
     final rankedFacts = allFacts.map((row) {
-      final haystack = '${row['fact_key']} ${row['fact_value']}'.toLowerCase();
-      final score = words.where(haystack.contains).length;
+      final haystack = '${row['fact_key']} ${row['fact_value']}';
+      final score = _relevanceScore(
+        query,
+        words,
+        haystack,
+        timestamp: row['updated_at'] as int? ?? 0,
+        importance: row['importance'] as int? ?? 1,
+      );
       return <String, Object?>{...row, '_score': score};
-    }).where((row) => (row['_score'] as int) > 0).toList()
+    }).where((row) => (row['_score'] as num) > 0).toList()
       ..sort((a, b) {
-        final relevance = (b['_score'] as int).compareTo(a['_score'] as int);
+        final relevance = (b['_score'] as num).compareTo(a['_score'] as num);
         if (relevance != 0) return relevance;
         final importance = (b['importance'] as int).compareTo(a['importance'] as int);
         if (importance != 0) return importance;
