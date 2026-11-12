@@ -10,6 +10,10 @@ class VoiceOutputService {
   bool _initialized = false;
   bool _speaking = false;
   String? _selectedArabicVoice;
+  String _streamBuffer = '';
+  Future<void> _streamQueue = Future<void>.value();
+  bool _streaming = false;
+  int _streamedCharacters = 0;
 
   bool get isSpeaking => _speaking;
   bool get hasOfflineArabicVoice => _selectedArabicVoice != null;
@@ -66,6 +70,60 @@ class VoiceOutputService {
     _initialized = true;
   }
 
+  Future<void> beginStreaming() async {
+    await initialize();
+    _streamBuffer = '';
+    _streamedCharacters = 0;
+    _streamQueue = Future<void>.value();
+    _streaming = true;
+  }
+
+  /// Adds safe user-visible answer text to the local speech queue. Complete
+  /// sentence-sized chunks are spoken while the model is still generating.
+  void addStreamingText(String delta) {
+    if (!_streaming || delta.isEmpty) return;
+    _streamBuffer += delta;
+    final boundary = RegExp(r'[.!?؟؛،\\n。！？]');
+    var cut = -1;
+    for (var i = 0; i < _streamBuffer.length; i++) {
+      if (boundary.hasMatch(_streamBuffer[i]) &&
+          _streamBuffer.substring(0, i + 1).trim().length >= 18) {
+        cut = i + 1;
+      }
+    }
+    if (cut < 0) return;
+    final chunk = _streamBuffer.substring(0, cut).trim();
+    _streamBuffer = _streamBuffer.substring(cut).trimLeft();
+    if (chunk.isEmpty) return;
+    _streamedCharacters += chunk.length;
+    _streamQueue = _streamQueue.then((_) => _speakSegment(chunk));
+  }
+
+  Future<void> finishStreaming(String fallbackText) async {
+    if (!_streaming) {
+      await speak(fallbackText, waitForCompletion: true);
+      return;
+    }
+    _streaming = false;
+    final tail = _streamBuffer.trim();
+    _streamBuffer = '';
+    if (tail.isNotEmpty) {
+      _streamedCharacters += tail.length;
+      _streamQueue = _streamQueue.then((_) => _speakSegment(tail));
+    }
+    if (_streamedCharacters == 0 && fallbackText.trim().isNotEmpty) {
+      _streamQueue = _streamQueue.then((_) => _speakSegment(fallbackText.trim()));
+    }
+    await _streamQueue;
+    await _tts.awaitSpeakCompletion(false);
+  }
+
+  Future<void> _speakSegment(String text) async {
+    if (text.trim().isEmpty) return;
+    await _tts.awaitSpeakCompletion(true);
+    await _tts.speak(text.trim());
+  }
+
   Future<void> speak(
     String text, {
     bool waitForCompletion = false,
@@ -73,6 +131,8 @@ class VoiceOutputService {
     final value = text.trim();
     if (value.isEmpty) return;
     await initialize();
+    _streaming = false;
+    _streamBuffer = '';
     await _tts.stop();
     await _tts.awaitSpeakCompletion(waitForCompletion);
     try {
@@ -85,6 +145,8 @@ class VoiceOutputService {
   }
 
   Future<void> stop() async {
+    _streaming = false;
+    _streamBuffer = '';
     await _tts.stop();
     _speaking = false;
   }
