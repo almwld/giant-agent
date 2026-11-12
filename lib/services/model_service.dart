@@ -13,6 +13,7 @@ import '../agent/architecture/agent_event_bus.dart';
 import '../agent/architecture/tool_call_registry.dart';
 import '../agent/architecture/subagent_lifecycle_manager.dart';
 import 'agent_memory_service.dart';
+import '../agent/skills/agent_skill_registry.dart';
 import 'openai_compatible_provider.dart';
 import 'model_provider_settings.dart';
 import '../tools/tool_manager.dart';
@@ -1442,8 +1443,17 @@ ${queuedMessages.isEmpty ? 'لا توجد رسائل.' : queuedMessages}
       if (shouldCancel?.call() == true) {
         return 'تم إيقاف تنفيذ الوكيل بناءً على طلب المستخدم.';
       }
+      final skillContext = await AgentSkillRegistry.instance.buildPromptContext(input);
+      if (shouldCancel?.call() == true) {
+        return 'تم إيقاف تنفيذ الوكيل بناءً على طلب المستخدم.';
+      }
+      final promptSections = <String>[
+        if (context.isNotEmpty) context,
+        if (skillContext.isNotEmpty) skillContext,
+        'طلب المستخدم: $input',
+      ];
       final response = await _processInput(
-        context.isEmpty ? input : '$context\n\nطلب المستخدم: $input',
+        promptSections.join('\n\n'),
         allowedTools: allowedTools,
         shouldCancel: shouldCancel,
       );
