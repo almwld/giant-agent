@@ -1600,7 +1600,29 @@ $prompt
         if (!await _llama.isLoaded()) {
           throw StateError('لم يتم تحميل نموذج GGUF المحلي. حمّل نموذجاً من قائمة النماذج أو اختر OpenRouter.');
         }
-        return _llama.generate(prompt, maxTokens: maxTokens, temperature: temperature);
+        if (shouldCancel?.call() == true || _cancelRequested) {
+          return 'تم إيقاف التوليد قبل بدء الاستدلال المحلي.';
+        }
+        var cancellationSent = false;
+        final cancellationPoll = Timer.periodic(
+          const Duration(milliseconds: 100),
+          (_) {
+            if (!cancellationSent &&
+                (_cancelRequested || shouldCancel?.call() == true)) {
+              cancellationSent = true;
+              unawaited(_llama.cancel());
+            }
+          },
+        );
+        try {
+          return await _llama.generate(
+            prompt,
+            maxTokens: maxTokens,
+            temperature: temperature,
+          );
+        } finally {
+          cancellationPoll.cancel();
+        }
       case ModelProviderMode.openRouter:
         return OpenAICompatibleProvider.instance.generateStreaming(
           prompt,
