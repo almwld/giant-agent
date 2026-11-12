@@ -1088,6 +1088,7 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
             capability: MediaCapability.generateImage,
             args: args,
             prompt: args['prompt']?.toString() ?? '',
+            isCancelled: isCancelled,
           );
           break;
         case 'edit_image':
@@ -1095,6 +1096,7 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
             capability: MediaCapability.editImage,
             args: args,
             prompt: args['prompt']?.toString() ?? '',
+            isCancelled: isCancelled,
           );
           break;
         case 'image_search':
@@ -1103,6 +1105,7 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
             capability: MediaCapability.searchImagesByText,
             args: args,
             prompt: args['query']?.toString() ?? '',
+            isCancelled: isCancelled,
           );
           break;
         case 'search_image_by_image':
@@ -1110,6 +1113,7 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
             capability: MediaCapability.searchImagesByImage,
             args: args,
             prompt: args['query']?.toString() ?? 'Find visually similar images.',
+            isCancelled: isCancelled,
           );
           break;
         case 'generate_sound_effects':
@@ -1117,6 +1121,7 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
             capability: MediaCapability.generateSoundEffects,
             args: args,
             prompt: args['prompt']?.toString() ?? '',
+            isCancelled: isCancelled,
           );
           break;
         case 'find_asset_bbox':
@@ -1124,6 +1129,7 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
             capability: MediaCapability.findAssetBboxes,
             args: args,
             prompt: args['prompt']?.toString() ?? 'Find asset bounding boxes in the source image.',
+            isCancelled: isCancelled,
           );
           break;
         case 'crop_and_replicate_assets_in_image':
@@ -1131,6 +1137,7 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
             capability: MediaCapability.cropAndReplicateAssets,
             args: args,
             prompt: args['prompt']?.toString() ?? '',
+            isCancelled: isCancelled,
           );
           break;
         case 'dmail':
@@ -1272,6 +1279,7 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
     required MediaCapability capability,
     required Map<String, dynamic> args,
     required String prompt,
+    bool Function()? isCancelled,
   }) async {
     final rawPaths = args['input_paths'] ??
         (args['input_path'] is String ? <dynamic>[args['input_path']] : const <dynamic>[]);
@@ -1291,6 +1299,7 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
         prompt: prompt,
         inputPaths: rawPaths.map((path) => path.toString()).toList(growable: false),
         options: options,
+        isCancelled: isCancelled,
       ),
       providerId: providerId == null || providerId.isEmpty ? null : providerId,
     );
