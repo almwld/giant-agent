@@ -255,8 +255,7 @@ class AgentMemoryService {
     if (normalized.isEmpty || normalized.length > 1000) {
       throw ArgumentError('Chat recall query must contain 1–1000 characters.');
     }
-    final words = normalized
-        .toLowerCase()
+    final words = _normalizeMemoryText(normalized)
         .split(RegExp(r'[^\p{L}\p{N}]+', unicode: true))
         .where((word) => word.runes.length >= 3)
         .take(12)
@@ -401,7 +400,8 @@ class AgentMemoryService {
         ? 3.0
         : 0.0;
     final ageMillis = (DateTime.now().millisecondsSinceEpoch - timestamp)
-        .clamp(0, 31536000000);
+        .clamp(0, 31536000000)
+        .toDouble();
     final ageDays = ageMillis / 86400000;
     final recency = 1 / (1 + ageDays / 45);
     final importanceBonus = importance.clamp(1, 5).toDouble() * 0.35;
