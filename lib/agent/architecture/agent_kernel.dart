@@ -10,8 +10,6 @@ import 'agent_timeline_event.dart';
 import 'agent_event_bus.dart';
 import 'fifo_task_queue.dart';
 import 'subagent_orchestrator.dart';
-import 'subagent_lifecycle_manager.dart';
-import '../../domain/kernel/agent_kernel_store.dart';
 
 /// Lifecycle states exposed by the agent orchestration layer.
 enum AgentKernelState {
@@ -59,12 +57,6 @@ class AgentKernel {
   static final AgentKernel instance = AgentKernel._();
 
   final ModelService _models = ModelService();
-  final AgentKernelStore _lifecycleStore = AgentKernelStore();
-  late final SubagentLifecycleManager subagentLifecycle = SubagentLifecycleManager(
-    onEvent: (event) => AgentEventBus.instance.publish(event),
-    loadState: _lifecycleStore.loadSubagentRuntimeState,
-    saveState: _lifecycleStore.saveSubagentRuntimeState,
-  );
   final PlannerService _planner = PlannerService();
   final StreamController<AgentTimelineEvent> _events =
       StreamController<AgentTimelineEvent>.broadcast();
@@ -175,11 +167,6 @@ class AgentKernel {
       if (_state == AgentKernelState.failed) _state = AgentKernelState.idle;
     }
   }
-
-  /// Restores durable dynamic-subagent mailbox/goal state before a caller
-  /// interacts with the request-scoped lifecycle manager.
-  Future<void> restoreSubagentState(String requestId) =>
-      subagentLifecycle.restoreRequest(requestId);
 
   /// FIFO admission: each caller receives the result of its own request.
   Future<AgentResponse> execute(AgentRequest request) {

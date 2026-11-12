@@ -12,6 +12,7 @@ import '../agent/task_manager.dart';
 import '../agent/architecture/agent_event_bus.dart';
 import '../agent/architecture/tool_call_registry.dart';
 import '../agent/architecture/subagent_lifecycle_manager.dart';
+import '../domain/kernel/agent_kernel_store.dart';
 import 'agent_memory_service.dart';
 import '../agent/skills/agent_skill_registry.dart';
 import 'openai_compatible_provider.dart';
@@ -39,7 +40,12 @@ class ModelService {
   Future<bool> Function(String serverId, McpRemoteTool tool, Map<String, dynamic> arguments)? requestMcpApproval;
   AgentUserInputHandler? requestUserInput;
   Future<void> Function()? requestBrowserSession;
-  late final SubagentLifecycleManager _subagents = SubagentLifecycleManager(onEvent: AgentEventBus.instance.publish);
+  late final AgentKernelStore _subagentStore = AgentKernelStore();
+  late final SubagentLifecycleManager _subagents = SubagentLifecycleManager(
+    onEvent: AgentEventBus.instance.publish,
+    loadState: _subagentStore.loadSubagentRuntimeState,
+    saveState: _subagentStore.saveSubagentRuntimeState,
+  );
   final GainTerminalTool _gainTerminal = GainTerminalTool();
   Future<void> _requestTail = Future<void>.value();
   Future<void> _toolTail = Future<void>.value();
@@ -1207,6 +1213,7 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
     bool Function()? isCancelled,
   }) async {
     final requestId = _activeRequestId;
+    await _subagents.restoreRequest(requestId);
     final child = _subagents.get(requestId, agentId);
     if (child == null) throw StateError('Subagent not found: $agentId');
     await _subagents.start(requestId, agentId);
@@ -1218,7 +1225,7 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
         final dependency = _subagents.get(requestId, dependencyId)!;
         return 'نتيجة الوكيل السابق $dependencyId:\n${dependency.result ?? ''}';
       }).join('\n\n');
-      final queuedMessages = _subagents.drainMessages(requestId, agentId)
+      final queuedMessages = (await _subagents.drainMessages(requestId, agentId))
           .map((item) => item['message']?.toString() ?? '')
           .where((message) => message.isNotEmpty)
           .join('\n');
