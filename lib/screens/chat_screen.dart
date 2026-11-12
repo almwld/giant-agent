@@ -21,7 +21,7 @@ import 'settings_screen.dart';
 import 'ai_voice_assistant_screen.dart';
 import '../models/chat_session.dart';
 import 'dart:convert';
-import 'package:speech_to_text/speech_to_text.dart';
+import '../services/local_speech_recognition_service.dart';
 import '../services/voice_output_service.dart';
 import '../services/openai_compatible_provider.dart';
 import '../services/model_provider_settings.dart';
@@ -67,14 +67,13 @@ class _ChatScreenState extends State<ChatScreen> {
   static const String _toolCallClose = '</tool_call>';
   final Terminal _terminal = Terminal(maxLines: 5000);
   bool _terminalHasActivity = false;
-  final SpeechToText _speech = SpeechToText();
+  final LocalSpeechRecognitionService _localSpeech = LocalSpeechRecognitionService.instance;
+  Timer? _voiceSilenceTimer;
   final VoiceOutputService _voiceOutput = VoiceOutputService.instance;
   bool _isListening = false;
   bool _finalizingVoiceInput = false;
   bool _voiceOrbVisible = false;
   bool _voiceRequestActive = false;
-  bool _speechInitialized = false;
-  bool _voiceListenStarted = false;
   AgentState _voiceOrbState = AgentState.idle;
   bool _webSearchEnabled = false;
   bool _agentBrowserDialogOpen = false;
@@ -1822,9 +1821,9 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _stopVoiceInteraction() async {
     _finalizingVoiceInput = true;
     _voiceRequestActive = false;
-    _voiceListenStarted = false;
+    _voiceSilenceTimer?.cancel();
     try {
-      await _speech.stop();
+      await _localSpeech.cancelListening();
       await _voiceOutput.stop();
       if (_isLoading && _agentModeEnabled) await _cancelAgent();
     } catch (_) {}
@@ -1836,10 +1835,76 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  Future<bool> _prepareLocalSpeechModel() async {
+    if (_localSpeech.isModelReady) return true;
+    final installed = await _localSpeech.installedModel();
+    if (installed != null) return _localSpeech.initialize();
+
+    var progress = 0.0;
+    var downloading = false;
+    var error = '';
+    final accepted = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, updateDialog) => AlertDialog(
+          backgroundColor: GiantPalette.surface,
+          title: const Text('تجهيز التعرف الصوتي المحلي'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'يلزم تنزيل نموذج Whisper متعدد اللغات (نحو 145 MB) مرة واحدة. بعد اكتمال التنزيل، يعمل التعرف على الكلام دون اتصال أو إرسال الصوت إلى خادم.',
+                style: TextStyle(color: Colors.white70, height: 1.45),
+              ),
+              if (downloading) ...[
+                const SizedBox(height: 16),
+                LinearProgressIndicator(value: progress > 0 ? progress : null),
+                const SizedBox(height: 8),
+                Text('${(progress * 100).toStringAsFixed(0)}%',
+                    style: const TextStyle(color: Colors.white70)),
+              ],
+              if (error.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(error, style: const TextStyle(color: Colors.redAccent)),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: downloading ? null : () => Navigator.pop(dialogContext, false),
+              child: const Text('لاحقاً'),
+            ),
+            FilledButton(
+              onPressed: downloading ? null : () async {
+                updateDialog(() { downloading = true; error = ''; });
+                try {
+                  await _localSpeech.downloadModel(onProgress: (value) {
+                    updateDialog(() => progress = value);
+                  });
+                  if (dialogContext.mounted) Navigator.pop(dialogContext, true);
+                } catch (failure) {
+                  updateDialog(() {
+                    downloading = false;
+                    error = 'تعذر تنزيل النموذج: $failure';
+                  });
+                }
+              },
+              child: Text(downloading ? 'جارٍ التنزيل…' : 'تنزيل النموذج'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (accepted != true || !mounted) return false;
+    return _localSpeech.initialize();
+  }
+
   Widget _buildVoiceOrbOverlay() {
     final status = switch (_voiceOrbState) {
       AgentState.idle => 'جاهز للاستماع',
-      AgentState.listening => 'أستمع إليك الآن…',
+      AgentState.listening => 'أستمع إليك محلياً…',
       AgentState.thinking => 'أعالج طلبك داخل المحادثة…',
       AgentState.speaking => 'أجيبك صوتياً…',
       AgentState.error => 'تعذر إكمال الاتصال الصوتي',
@@ -1858,36 +1923,26 @@ class _ChatScreenState extends State<ChatScreen> {
                   children: [
                     GlowingOrb(state: _voiceOrbState, size: 238),
                     const SizedBox(height: 22),
-                    Text(
-                      status,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                    Text(status, textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white, fontSize: 16,
+                        fontWeight: FontWeight.w600)),
                     if (transcript.isNotEmpty) ...[
                       const SizedBox(height: 12),
-                      Text(
-                        transcript,
-                        maxLines: 3,
+                      Text(transcript, maxLines: 3,
                         overflow: TextOverflow.ellipsis,
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Color(0xFFCBD5E1),
-                          fontSize: 13,
-                          height: 1.5,
-                        ),
-                      ),
+                        style: const TextStyle(color: Color(0xFFCBD5E1),
+                          fontSize: 13, height: 1.5)),
                     ],
+                    const SizedBox(height: 14),
+                    const Text('التعرف على الكلام يعمل على الجهاز',
+                      style: TextStyle(color: GiantPalette.muted, fontSize: 11)),
                   ],
                 ),
               ),
             ),
             PositionedDirectional(
-              top: 12,
-              end: 12,
+              top: 12, end: 12,
               child: IconButton.filledTonal(
                 tooltip: 'إيقاف المساعد الصوتي',
                 onPressed: _stopVoiceInteraction,
@@ -1901,7 +1956,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _toggleVoiceInput() async {
-    if (_speech.isListening || _voiceOrbVisible) {
+    if (_localSpeech.isListening || _voiceOrbVisible) {
       await _stopVoiceInteraction();
       return;
     }
@@ -1915,134 +1970,100 @@ class _ChatScreenState extends State<ChatScreen> {
     await _startVoiceRecognition();
   }
 
-  Future<void> _startVoiceRecognition() async {
-    if (!mounted || !_voiceOrbVisible) return;
-    _finalizingVoiceInput = false;
-
-    var available = _speechInitialized;
-    if (!available) {
-      available = await _speech.initialize(
-        onStatus: (_) {
-          if (!mounted || !_voiceOrbVisible) return;
-          final listening = _speech.isListening;
-          setState(() => _isListening = listening);
-          if (_voiceListenStarted && !listening && !_finalizingVoiceInput) {
-            _voiceListenStarted = false;
-            setState(() {
-              _isListening = false;
-              _voiceOrbVisible = false;
-              _voiceOrbState = AgentState.idle;
-            });
-          }
-        },
-        onError: (error) {
-          if (!mounted) return;
-          _voiceListenStarted = false;
-          setState(() {
-            _isListening = false;
-            _voiceOrbVisible = false;
-            _voiceOrbState = AgentState.error;
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('تعذر تشغيل الإدخال الصوتي: ${error.errorMsg}')),
-          );
-        },
-      );
-      _speechInitialized = available;
-    }
-
-    if (!available || !mounted || !_voiceOrbVisible) {
+  Future<void> _finishLocalVoiceTurn() async {
+    if (!mounted || !_voiceOrbVisible || _finalizingVoiceInput) return;
+    _finalizingVoiceInput = true;
+    _voiceSilenceTimer?.cancel();
+    try {
+      final transcript = await _localSpeech.stopListening();
+      if (transcript.isNotEmpty) {
+        _controller.text = transcript;
+        _controller.selection = TextSelection.collapsed(offset: transcript.length);
+      }
+      if (_controller.text.trim().isEmpty) {
+        _finalizingVoiceInput = false;
+        if (mounted && _voiceOrbVisible) await _startVoiceRecognition();
+        return;
+      }
+      _voiceRequestActive = true;
+      if (mounted) setState(() {
+        _isListening = false;
+        _voiceOrbState = AgentState.thinking;
+      });
+      await _sendMessage();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تعذر إنهاء التعرف الصوتي المحلي: $error')),
+        );
+      }
+    } finally {
+      _voiceRequestActive = false;
+      _finalizingVoiceInput = false;
       if (mounted && _voiceOrbVisible) {
         setState(() {
+          _isListening = false;
+          _voiceOrbState = AgentState.listening;
+        });
+        await _startVoiceRecognition();
+      }
+    }
+  }
+
+  Future<void> _startVoiceRecognition() async {
+    if (!mounted || !_voiceOrbVisible || _localSpeech.isListening) return;
+    _finalizingVoiceInput = false;
+    try {
+      final ready = await _prepareLocalSpeechModel();
+      if (!ready || !mounted || !_voiceOrbVisible) {
+        if (mounted) setState(() {
           _voiceOrbVisible = false;
           _voiceOrbState = AgentState.idle;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('خدمة التعرف على الكلام غير متاحة على هذا الجهاز.')),
-        );
+        return;
       }
-      return;
-    }
-
-    try {
-      final locales = await _speech.locales();
-      if (!mounted || !_voiceOrbVisible) return;
-      final arabic = locales
-          .where((item) => item.localeId.toLowerCase().startsWith('ar'))
-          .toList();
-      _voiceListenStarted = true;
-      await _speech.listen(
-        localeId: arabic.isNotEmpty ? arabic.first.localeId : null,
-        listenFor: const Duration(seconds: 60),
-        pauseFor: const Duration(seconds: 5),
-        listenOptions: SpeechListenOptions(
-          partialResults: true,
-          cancelOnError: true,
-          listenMode: ListenMode.dictation,
-        ),
-        onResult: (result) {
-          if (!mounted || !_voiceOrbVisible || result.recognizedWords.isEmpty) {
-            return;
-          }
+      await _localSpeech.startListening(
+        onText: (text) {
+          if (!mounted || !_voiceOrbVisible || _finalizingVoiceInput) return;
           setState(() {
-            _controller.text = result.recognizedWords;
-            _controller.selection = TextSelection.collapsed(
-              offset: _controller.text.length,
-            );
+            _controller.text = text;
+            _controller.selection = TextSelection.collapsed(offset: text.length);
+            _isListening = true;
+            _voiceOrbState = AgentState.listening;
           });
-          if (result.finalResult && !_finalizingVoiceInput) {
-            _finalizingVoiceInput = true;
-            _voiceListenStarted = false;
-            _voiceRequestActive = true;
-            final stopListening = _speech.stop();
-            setState(() {
-              _isListening = false;
-              _voiceOrbState = AgentState.thinking;
-            });
-            Future<void>.delayed(const Duration(milliseconds: 180), () async {
-              if (!mounted || !_voiceOrbVisible) {
-                _voiceRequestActive = false;
-                return;
-              }
-              try {
-                await stopListening;
-                // Reuse the current chat pipeline: every spoken turn is saved
-                // in this conversation and executed by its shared runtime.
-                await _sendMessage();
-              } catch (error) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('تعذر إكمال الطلب الصوتي: $error')),
-                  );
-                }
-              } finally {
-                _voiceRequestActive = false;
-                if (mounted && _voiceOrbVisible) {
-                  setState(() {
-                    _isListening = false;
-                    _voiceOrbState = AgentState.listening;
-                  });
-                  // Keep live voice mode open for the next conversational turn.
-                  await _startVoiceRecognition();
-                }
-              }
-            });
-          }
+          // Whisper streams provisional text in overlapping windows. A short
+          // quiet window closes the turn; the final stop() flushes its tail.
+          _voiceSilenceTimer?.cancel();
+          _voiceSilenceTimer = Timer(const Duration(milliseconds: 2200), () {
+            _finishLocalVoiceTurn();
+          });
+        },
+        onError: (error) {
+          if (!mounted) return;
+          setState(() {
+            _isListening = false;
+            _voiceOrbState = AgentState.error;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('خطأ في محرك Whisper المحلي: $error')),
+          );
         },
       );
       if (mounted && _voiceOrbVisible) {
-        setState(() => _isListening = _speech.isListening);
+        setState(() {
+          _isListening = true;
+          _voiceOrbState = AgentState.listening;
+        });
       }
     } catch (error) {
       if (!mounted) return;
-      _voiceListenStarted = false;
       setState(() {
         _isListening = false;
-        _voiceOrbVisible = false;
         _voiceOrbState = AgentState.error;
+        _voiceOrbVisible = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذر بدء الاستماع: $error')),
+        SnackBar(content: Text('تعذر بدء التعرف المحلي: $error')),
       );
     }
   }
@@ -2554,7 +2575,8 @@ class _ChatScreenState extends State<ChatScreen> {
     _modelService.requestMcpApproval = null;
     _modelService.requestUserInput = null;
     _modelService.requestBrowserSession = null;
-    _speech.stop();
+    _voiceSilenceTimer?.cancel();
+    _localSpeech.cancelListening();
     _voiceOutput.stop();
     _controller.dispose();
     _scrollController.dispose();
