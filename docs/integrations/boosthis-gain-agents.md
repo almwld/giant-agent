@@ -12,6 +12,22 @@ This repository's Boosthis integration currently has two distinct layers:
 - MCP endpoint: `https://www.boosthis.com/mcp/gain-agents-24a987fb`
 - Required environment variable: `BOOSTHIS_PROJECT_KEY`
 
+## Configure the MCP client
+
+For Codex CLI, register the project endpoint with the exact server name used in `.mcp.json`:
+
+```sh
+codex mcp add boosthis-gain-agents-24a987fb --url https://www.boosthis.com/mcp/gain-agents-24a987fb
+```
+
+If the server offers an OAuth login flow, start it with:
+
+```sh
+codex mcp login boosthis-gain-agents-24a987fb
+```
+
+The repository `.mcp.json` entry is the equivalent project-level configuration. Do not pass the project key as a command-line argument; keep credential material out of shell history and process listings.
+
 ## Configure the key locally
 
 Set the project key in the environment of the MCP-capable developer tool. Never put the key in `.mcp.json`, source files, CI logs, or commits.
