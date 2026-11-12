@@ -127,7 +127,7 @@ Treat tool calls as independently identified operations. Propagate cancellation 
     }
     final custom = await _loadCustom();
     final updated = custom.where((item) => item.id != id).toList();
-    if (updated.length >= _maxCustomSkills) {
+    if (updated.length >= _maxCustomSkills && !custom.any((item) => item.id == id)) {
       throw StateError('The custom skill limit has been reached.');
     }
     updated.add(AgentSkill(
@@ -165,7 +165,7 @@ Treat tool calls as independently identified operations. Propagate cancellation 
       if (score != 0) return score;
       return a.skill.id.compareTo(b.skill.id);
     });
-    final selected = ranked.take(maxSkills.clamp(1, 5)).toList();
+    final selected = ranked.take(maxSkills.clamp(1, 5).toInt()).toList();
     if (selected.isEmpty) return '';
     final body = selected.map((item) =>
         '### ${item.skill.name}\n${item.skill.instructions.trim()}').join('\n\n');

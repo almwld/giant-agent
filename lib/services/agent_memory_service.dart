@@ -378,7 +378,7 @@ class AgentMemoryService {
   }) async {
     final normalizedQuery = query.toLowerCase();
     final words = normalizedQuery
-        .split(RegExp(r'[^\\p{L}\\p{N}]+', unicode: true))
+        .split(RegExp(r'[^\p{L}\p{N}]+', unicode: true))
         .where((word) => word.runes.length >= 3)
         .take(12)
         .toSet();
@@ -465,7 +465,7 @@ class AgentMemoryService {
   String _clipMemoryRecord(String value, int maxLength) {
     final normalized = value.trim();
     if (normalized.length <= maxLength) return normalized;
-    var boundary = normalized.lastIndexOf(RegExp(r'[\\s،؛.!؟]', unicode: true), maxLength);
+    var boundary = normalized.lastIndexOf(RegExp(r'[\s،؛.!؟]', unicode: true), maxLength);
     if (boundary < maxLength ~/ 2) boundary = maxLength;
     return '${normalized.substring(0, boundary).trimRight()}…';
   }
