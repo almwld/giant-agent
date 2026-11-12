@@ -21,7 +21,8 @@ class DynamicSubagentRecord {
     this.result,
     this.error,
     this.dismissed = false,
-  }) : createdAt = DateTime.now().toUtc();
+    DateTime? createdAt,
+  }) : createdAt = createdAt ?? DateTime.now().toUtc();
 
   final String id;
   final String taskId;
@@ -46,6 +47,25 @@ class DynamicSubagentRecord {
           'STATUS_TERMINATED',
         _ => 'STATUS_UNSPECIFIED',
       };
+
+  factory DynamicSubagentRecord.fromMap(Map<String, dynamic> map) =>
+      DynamicSubagentRecord(
+        id: map['id']?.toString() ?? '',
+        taskId: map['task_id']?.toString() ?? '',
+        parentRequestId: map['parent_request_id']?.toString() ?? '',
+        conversationId: map['conversation_id']?.toString() ?? 'global',
+        title: map['title']?.toString() ?? '',
+        prompt: map['prompt']?.toString() ?? '',
+        agentType: map['agent_type']?.toString() ?? 'explore',
+        dependsOn: (map['depends_on'] as List? ?? const <dynamic>[])
+            .map((item) => item.toString()).toList(growable: false),
+        status: map['status']?.toString() ?? 'idle',
+        progressPercent: map['progress_percent'] as int?,
+        result: map['result']?.toString(),
+        error: map['error']?.toString(),
+        dismissed: map['dismissed'] == true,
+        createdAt: DateTime.tryParse(map['created_at']?.toString() ?? ''),
+      );
 
   Map<String, Object?> toMap() => <String, Object?>{
         'id': id,
@@ -100,6 +120,20 @@ class SubagentLifecycleManager {
     if (state != null) {
       final goal = state['current_goal']?.toString();
       if (goal != null && goal.isNotEmpty) _goals[requestId] = goal;
+      final rawRecords = state['records'];
+      if (rawRecords is Map) {
+        final restored = <String, DynamicSubagentRecord>{};
+        for (final entry in rawRecords.entries) {
+          if (entry.value is! Map) continue;
+          final record = DynamicSubagentRecord.fromMap(
+            Map<String, dynamic>.from(entry.value as Map),
+          );
+          if (record.id.isNotEmpty && record.parentRequestId == requestId) {
+            restored[record.id] = record;
+          }
+        }
+        if (restored.isNotEmpty) _requests[requestId] = restored;
+      }
       final rawMailboxes = state['mailboxes'];
       if (rawMailboxes is Map) {
         for (final entry in rawMailboxes.entries) {
@@ -119,6 +153,10 @@ class SubagentLifecycleManager {
     final save = _saveState;
     if (save == null) return;
     final mailboxes = <String, Object?>{};
+    final records = <String, Object?>{
+      for (final entry in (_requests[requestId] ?? const <String, DynamicSubagentRecord>{}).entries)
+        entry.key: entry.value.toMap(),
+    };
     final prefix = '$requestId::';
     for (final entry in _mailboxes.entries) {
       if (entry.key.startsWith(prefix) && entry.value.isNotEmpty) {
@@ -128,6 +166,7 @@ class SubagentLifecycleManager {
     }
     await save(requestId, <String, Object?>{
       'current_goal': _goals[requestId],
+      'records': records,
       'mailboxes': mailboxes,
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     });
@@ -185,6 +224,7 @@ class SubagentLifecycleManager {
       dependsOn: List<String>.unmodifiable(dependsOn),
     );
     children[id] = record;
+    await _persistRequest(requestId);
     await _emit(record, 'subagent_created', details: 'تم تسجيل الوكيل؛ لم يبدأ التنفيذ بعد.');
     return record;
   }
@@ -197,12 +237,14 @@ class SubagentLifecycleManager {
         _requests[requestId]?.values ?? const <DynamicSubagentRecord>[],
       );
 
-  List<Map<String, Object?>> drainMessages(String requestId, String agentId) {
+  Future<List<Map<String, Object?>>> drainMessages(String requestId, String agentId) async {
+    await restoreRequest(requestId);
     final key = _key(requestId, agentId);
     final mailbox = _mailboxes[key];
     if (mailbox == null || mailbox.isEmpty) return const <Map<String, Object?>>[];
     final messages = List<Map<String, Object?>>.unmodifiable(mailbox);
     mailbox.clear();
+    await _persistRequest(requestId);
     return messages;
   }
 
@@ -225,6 +267,7 @@ class SubagentLifecycleManager {
       ..status = 'running'
       ..progressPercent = null
       ..error = null;
+    await _persistRequest(requestId);
     await _emit(record, 'subagent_started');
   }
 
@@ -238,6 +281,7 @@ class SubagentLifecycleManager {
       ..progressPercent = 100
       ..result = result
       ..error = null;
+    await _persistRequest(requestId);
     await _emit(record, 'subagent_completed',
         details: result.length > 1200 ? '${result.substring(0, 1200)}…' : result,
         result: result);
@@ -254,6 +298,7 @@ class SubagentLifecycleManager {
     record
       ..status = interrupted ? 'interrupted' : 'failed'
       ..error = error.toString();
+    await _persistRequest(requestId);
     await _emit(
       record,
       interrupted ? 'subagent_interrupted' : 'subagent_failed',
@@ -273,6 +318,7 @@ class SubagentLifecycleManager {
       await _emit(record, 'subagent_cancelled', details: 'أُلغي الوكيل قبل بدء التنفيذ.');
     }
     record.dismissed = true;
+    await _persistRequest(requestId);
     await _emit(record, 'subagent_dismissed',
         details: 'أُخفي الوكيل من الإدارة مع الاحتفاظ بسجل التدقيق.');
   }
