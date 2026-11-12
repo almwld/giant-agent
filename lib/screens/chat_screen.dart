@@ -17,14 +17,21 @@ import 'package:xterm/xterm.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'settings_screen.dart';
+import 'ai_voice_assistant_screen.dart';
 import '../models/chat_session.dart';
 import 'dart:convert';
 import 'package:speech_to_text/speech_to_text.dart';
+import '../services/voice_output_service.dart';
 import '../services/openai_compatible_provider.dart';
+import '../services/model_provider_settings.dart';
 import '../services/github_repository_service.dart';
 import '../services/cloud_storage_service.dart';
 import '../services/web_search_service.dart';
+import '../services/browser_session_service.dart';
+import '../widgets/agent_browser_dialog.dart';
 import '../agent/task_manager.dart';
+import '../domain/kernel/agent_kernel_store.dart';
+import '../domain/mcp/mcp_client.dart';
 import '../agent/architecture/agent_event_bus.dart';
 import '../theme/giant_palette.dart';
 
@@ -60,11 +67,34 @@ class _ChatScreenState extends State<ChatScreen> {
   final Terminal _terminal = Terminal(maxLines: 5000);
   bool _terminalHasActivity = false;
   final SpeechToText _speech = SpeechToText();
+  final VoiceOutputService _voiceOutput = VoiceOutputService.instance;
   bool _isListening = false;
+  bool _finalizingVoiceInput = false;
+  bool _voiceOrbVisible = false;
+  bool _voiceRequestActive = false;
+  bool _speechInitialized = false;
+  bool _voiceListenStarted = false;
+  AgentState _voiceOrbState = AgentState.idle;
   bool _webSearchEnabled = false;
+  bool _agentBrowserDialogOpen = false;
   bool _includeGithubContext = false;
   bool _externalProviderEnabled = false;
   bool _agentModeEnabled = true;
+  int _bubbleScale = 1; // 0 = compact, 1 = standard, 2 = wide
+
+  Future<void> _loadBubbleScale() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() => _bubbleScale = (prefs.getInt('giant_chat_bubble_scale') ?? 1).clamp(0, 2).toInt());
+  }
+
+  Future<void> _setBubbleScale(int value) async {
+    final next = value.clamp(0, 2).toInt();
+    if (next == _bubbleScale) return;
+    setState(() => _bubbleScale = next);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('giant_chat_bubble_scale', next);
+  }
 
   // Keep tool-call JSON out of the user-facing answer stream. The actual
   // invocation and result are represented by structured native tool events.
@@ -136,12 +166,12 @@ class _ChatScreenState extends State<ChatScreen> {
       if (path != null && path.isNotEmpty) _processSharedFilePath(path);
       return;
     }
-    if (step['tool_name'] == 'execute_python') {
+    if (step['tool_name'] == 'execute_python' || step['tool_name'] == 'ipython' || step['tool_name'] == 'gain_terminal') {
       _terminalHasActivity = true;
       final type = step['type']?.toString();
       if (type == 'tool_start') {
-        _terminal.write('\r\n\x1B[33m>>> Python execution started\x1B[0m\r\n');
-        final code = step['content']?.toString() ?? '';
+        _terminal.write('\r\n\x1B[33m>>> ${step['tool_name'] == 'gain_terminal' ? 'Gain terminal' : step['tool_name'] == 'ipython' ? 'IPython REPL' : 'Python execution'} started\x1B[0m\r\n');
+        final code = step['content']?.toString() ?? step['command']?.toString() ?? '';
         if (code.isNotEmpty) _terminal.write('\x1B[90m$code\x1B[0m\r\n');
       } else if (type == 'tool_output') {
         final output = step['output']?.toString() ?? '';
@@ -294,7 +324,8 @@ class _ChatScreenState extends State<ChatScreen> {
           )
         : null;
     final activeTaskId = taskId ?? tracked!['id'].toString();
-    await manager.markRunning(activeTaskId);
+    await manager.markRunning(activeTaskId, requestId: requestId);
+    await _refreshTaskJournalEvents(taskId: activeTaskId);
     try {
       final output = await _generateWithStages(prompt, requestId: requestId);
       if (_isInterruptedTaskOutput(output)) {
@@ -307,9 +338,11 @@ class _ChatScreenState extends State<ChatScreen> {
       } else {
         await manager.markCompleted(activeTaskId, output);
       }
+      await _refreshTaskJournalEvents(taskId: activeTaskId);
       return output;
     } catch (error) {
       await manager.markFailed(activeTaskId, error.toString());
+      await _refreshTaskJournalEvents(taskId: activeTaskId);
       rethrow;
     }
   }
@@ -325,6 +358,11 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    _modelService.requestTerminalApproval = _requestTerminalApproval;
+    _modelService.requestMcpApproval = _requestMcpApproval;
+    _modelService.requestUserInput = _requestAgentInput;
+    _modelService.requestBrowserSession = _ensureAgentBrowser;
+    _loadBubbleScale();
     _initDatabase();
     // The screen consumes exactly one event stream. ModelService and the
     // kernel publish directly; the Android EventChannel is bridged into it.
@@ -372,7 +410,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final dir = await getApplicationDocumentsDirectory();
     _db = await openDatabase(
       '${dir.path}/conversations.db',
-      version: 6,
+      version: 7,
       onCreate: (db, version) async {
         await db.execute('''CREATE TABLE sessions (
           id TEXT PRIMARY KEY, title TEXT NOT NULL,
@@ -380,7 +418,8 @@ class _ChatScreenState extends State<ChatScreen> {
         )''');
         await db.execute('''CREATE TABLE messages (
           id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL,
-          content TEXT, isUser INTEGER, timestamp INTEGER, request_id TEXT
+          content TEXT, isUser INTEGER, timestamp INTEGER, request_id TEXT,
+          attachment_path TEXT, attachment_name TEXT
         )''');
         await db.execute('''CREATE TABLE agent_events (
           id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL,
@@ -458,6 +497,10 @@ class _ChatScreenState extends State<ChatScreen> {
         }
         if (oldVersion < 6) {
           await db.execute('DROP TRIGGER IF EXISTS agent_execution_logs_no_delete');
+        }
+        if (oldVersion < 7) {
+          await db.execute('ALTER TABLE messages ADD COLUMN attachment_path TEXT');
+          await db.execute('ALTER TABLE messages ADD COLUMN attachment_name TEXT');
         }
       },
     );
@@ -542,6 +585,91 @@ class _ChatScreenState extends State<ChatScreen> {
     return '';
   }
 
+  Map<String, dynamic> _taskJournalEventToTimeline(
+    String taskId,
+    Map<String, dynamic> task,
+    KernelEventRecord event,
+  ) {
+    final payload = event.payload;
+    final titles = <String, String>{
+      'task_created': 'تم إنشاء المهمة',
+      'task_started': 'بدأ تنفيذ المهمة',
+      'task_resumed': 'استؤنف تنفيذ المهمة',
+      'task_resume_requested': 'تم تسجيل طلب استئناف المهمة',
+      'step_started': 'بدأت خطوة التنفيذ',
+      'step_completed': 'اكتملت خطوة التنفيذ',
+      'step_interrupted': 'انقطعت خطوة التنفيذ وحالتها غير مؤكدة',
+      'step_failed': 'فشلت خطوة التنفيذ',
+      'task_paused': 'أوقفت المهمة مؤقتاً',
+      'task_completed': 'اكتملت المهمة',
+      'task_failed': 'فشلت المهمة',
+      'task_cancelled': 'أُلغيت المهمة',
+      'task_interrupted_on_restart': 'استُعيدت مهمة بعد إغلاق التطبيق',
+    };
+    final detail = (payload['error'] ??
+            payload['note'] ??
+            payload['reason'] ??
+            payload['result'] ??
+            payload['description'] ??
+            payload['policy'] ??
+            '')
+        .toString();
+    return <String, dynamic>{
+      'id': 'kernel_${event.id}',
+      'task_id': taskId,
+      'request_id': payload['request_id']?.toString() ??
+          task['request_id']?.toString() ??
+          '',
+      'session_id': _currentSessionId,
+      'type': event.type,
+      'title': payload['title']?.toString() ?? titles[event.type] ?? event.type,
+      'tool_name': payload['tool_name']?.toString(),
+      'file_name': payload['file_name']?.toString(),
+      'output': payload['output']?.toString(),
+      'content': payload['content']?.toString(),
+      'status': event.status,
+      'details': detail.length > 1800 ? '${detail.substring(0, 1800)}…' : detail,
+      'timestamp': event.createdAt.toIso8601String(),
+      'source': 'sqlite_task_journal',
+    };
+  }
+
+  Future<void> _refreshTaskJournalEvents({String? taskId}) async {
+    final manager = TaskManager();
+    final tasks = taskId == null
+        ? await manager.getTasksForConversation(_currentSessionId)
+        : manager.getTasks().where((task) => task['id'] == taskId).toList();
+    final existingIds = _agentSteps.map((event) => event['id']?.toString()).toSet();
+    final additions = <Map<String, dynamic>>[];
+    for (final task in tasks) {
+      final id = task['id']?.toString() ?? '';
+      if (id.isEmpty || task['conversation_id']?.toString() != _currentSessionId) {
+        continue;
+      }
+      final events = await manager.eventsForTask(id);
+      for (final event in events) {
+        final timelineEvent = _taskJournalEventToTimeline(id, task, event);
+        if (existingIds.add(timelineEvent['id'].toString())) {
+          additions.add(timelineEvent);
+        }
+      }
+    }
+    if (additions.isEmpty) return;
+    additions.sort((a, b) =>
+        (DateTime.tryParse(a['timestamp']?.toString() ?? '') ??
+                DateTime.fromMillisecondsSinceEpoch(0))
+            .compareTo(
+          DateTime.tryParse(b['timestamp']?.toString() ?? '') ??
+              DateTime.fromMillisecondsSinceEpoch(0),
+        ));
+    if (mounted) {
+      setState(() => _agentSteps.addAll(additions));
+    } else {
+      _agentSteps.addAll(additions);
+    }
+    AgentWorkflowScreen.publish(_agentSteps, finalOutputText: _latestAssistantOutput);
+  }
+
   Future<void> _loadHistory() async {
     final messages = await _db?.query('messages', where: 'session_id = ?', whereArgs: [_currentSessionId], orderBy: 'timestamp ASC');
     final events = await _db?.query('agent_events', where: 'session_id = ?', whereArgs: [_currentSessionId], orderBy: 'timestamp ASC');
@@ -552,6 +680,8 @@ class _ChatScreenState extends State<ChatScreen> {
       'content': msg['content'] as String,
       'time': DateTime.fromMillisecondsSinceEpoch(msg['timestamp'] as int),
       'requestId': msg['request_id']?.toString() ?? '',
+      'attachmentPath': msg['attachment_path']?.toString(),
+      'attachmentName': msg['attachment_name']?.toString(),
     }).toList();
     for (final message in restoredMessages) {
       if (message['isUser'] == true && (message['requestId']?.toString() ?? '').isEmpty) {
@@ -578,6 +708,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _messages..clear()..addAll(restoredMessages);
       _agentSteps..clear()..addAll(restoredEvents);
     });
+    await _refreshTaskJournalEvents();
     AgentWorkflowScreen.publish(_agentSteps, finalOutputText: _latestAssistantOutput);
     _scrollToBottom();
   }
@@ -748,7 +879,13 @@ class _ChatScreenState extends State<ChatScreen> {
     await _loadSessions();
   }
 
-  Future<void> _saveMessage(String content, bool isUser, {String? requestId}) async {
+  Future<void> _saveMessage(
+    String content,
+    bool isUser, {
+    String? requestId,
+    String? attachmentPath,
+    String? attachmentName,
+  }) async {
     if (!_sessionReady || _currentSessionId.isEmpty) return;
     final now = DateTime.now().millisecondsSinceEpoch;
     final insertedId = await _db?.insert('messages', {
@@ -757,6 +894,8 @@ class _ChatScreenState extends State<ChatScreen> {
       'isUser': isUser ? 1 : 0,
       'timestamp': now,
       'request_id': requestId,
+      'attachment_path': attachmentPath,
+      'attachment_name': attachmentName,
     });
     if (insertedId != null) {
       for (final message in _messages.reversed) {
@@ -773,6 +912,209 @@ class _ChatScreenState extends State<ChatScreen> {
     if (!isUser) {
       AgentWorkflowScreen.publish(_agentSteps, finalOutputText: _latestAssistantOutput);
     }
+  }
+
+  Future<bool> _requestMcpApproval(
+    String serverId,
+    McpRemoteTool tool,
+    Map<String, dynamic> arguments,
+  ) async {
+    if (!mounted) return false;
+    final destructive = tool.annotations['destructiveHint'] == true;
+    final openWorld = tool.annotations['openWorldHint'] == true;
+    final approved = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(destructive ? 'السماح بإجراء MCP مؤثر؟' : 'السماح باستدعاء أداة MCP؟'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('الخادم: $serverId'),
+                const SizedBox(height: 6),
+                Text('الأداة: ${tool.name}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                if (tool.description.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(tool.description),
+                ],
+                const SizedBox(height: 12),
+                Text(destructive
+                    ? 'تحذير: يعلن الخادم أن هذه الأداة قد تُحدث تغييرات أو آثاراً لا يمكن التراجع عنها.'
+                    : 'هذه أداة من خادم خارجي. راجع الوسائط ومصدر الخادم قبل السماح.'),
+                if (openWorld) const Text('قد تتصل الأداة بخدمات أو موارد خارجية.'),
+                const SizedBox(height: 12),
+                const Text('الوسائط التي ستُرسل:'),
+                const SizedBox(height: 6),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF111827),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: SelectableText(
+                    const JsonEncoder.withIndent('  ').convert(arguments),
+                    style: const TextStyle(
+                      color: Colors.greenAccent,
+                      fontFamily: 'monospace',
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('رفض'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('السماح لهذه المرة فقط'),
+          ),
+        ],
+      ),
+    );
+    return approved == true && mounted;
+  }
+
+  Future<void> _ensureAgentBrowser() async {
+    if (!mounted) throw StateError('Chat screen is no longer active.');
+    if (!BrowserSessionService.instance.isAttached && !_agentBrowserDialogOpen) {
+      _agentBrowserDialogOpen = true;
+      unawaited(
+        showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => const AgentBrowserDialog(),
+        ).whenComplete(() {
+          _agentBrowserDialogOpen = false;
+        }),
+      );
+    }
+    await BrowserSessionService.instance.waitUntilReady();
+  }
+
+  Future<String?> _requestAgentInput({
+    required String question,
+    required List<String> choices,
+    bool Function()? isCancelled,
+  }) async {
+    if (!mounted || isCancelled?.call() == true) return null;
+    final controller = TextEditingController();
+    BuildContext? activeDialogContext;
+    Timer? cancellationTimer;
+    try {
+      final dialog = showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) {
+          activeDialogContext = dialogContext;
+          return AlertDialog(
+          title: const Text('مطلوب توضيح من المستخدم'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(question),
+                if (choices.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  for (final choice in choices)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(dialogContext, choice),
+                          child: Text(choice),
+                        ),
+                      ),
+                    ),
+                ],
+                const SizedBox(height: 8),
+                TextField(
+                  controller: controller,
+                  minLines: 1,
+                  maxLines: 4,
+                  decoration: const InputDecoration(
+                    labelText: 'إجابة أخرى (اختياري)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('إلغاء'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final answer = controller.text.trim();
+                if (answer.isNotEmpty) Navigator.pop(dialogContext, answer);
+              },
+              child: const Text('إرسال الإجابة'),
+            ),
+          ],
+        );
+        },
+      );
+      cancellationTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
+        final dialogContext = activeDialogContext;
+        if (isCancelled?.call() == true &&
+            dialogContext != null &&
+            dialogContext.mounted) {
+          Navigator.of(dialogContext).pop();
+        }
+      });
+      return await dialog;
+    } finally {
+      cancellationTimer?.cancel();
+      controller.dispose();
+    }
+  }
+
+  Future<bool> _requestTerminalApproval(String command) async {
+    if (!mounted) return false;
+    final approved = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('السماح بتنفيذ أمر طرفية؟'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('سيُنفذ النص التالي حرفياً داخل Android shell بصلاحيات التطبيق الحالية. لا توجد صلاحيات root. لا توافق إلا إذا كنت تفهم الأمر ومصدره.'),
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(10)),
+                  child: SelectableText(command, style: const TextStyle(color: Colors.greenAccent, fontFamily: 'monospace', fontSize: 12)),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('رفض')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('تنفيذ هذا الأمر مرة واحدة')),
+        ],
+      ),
+    );
+    return approved == true && mounted;
   }
 
   Future<void> _clearAllSessions() async {
@@ -829,7 +1171,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void _showTerminal({Map<String, dynamic>? step}) {
     if (step == null && !_terminalHasActivity) {
       _terminal.write('\x1B[2J\x1B[H');
-      _terminal.write('\x1B[32mroot@giant-agent\x1B[0m:\x1B[34m~\x1B[0m# Waiting for commands...\r\n');
+      _terminal.write('Giant Agent — سجل مخرجات الوكيل فقط؛ هذه ليست جلسة Shell تفاعلية.\r\n');
     }
     if (step != null) {
       _terminal.write('\x1B[2J\x1B[H');
@@ -863,7 +1205,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   const Icon(Icons.terminal, color: GiantPalette.primaryLight),
                   const SizedBox(width: 8),
                   Expanded(child: Text(
-                    step == null ? 'Agent Terminal' : (step['title']?.toString() ?? 'نتيجة التنفيذ'),
+                    step == null ? 'Agent Output Console' : (step['title']?.toString() ?? 'نتيجة التنفيذ'),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
@@ -872,7 +1214,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     onPressed: () {
                       _terminal.write('\x1B[2J\x1B[H');
                       _terminalHasActivity = false;
-                      _terminal.write('\x1B[32mroot@giant-agent\x1B[0m:\x1B[34m~\x1B[0m# Waiting for commands...\r\n');
+                      _terminal.write('Giant Agent — سجل مخرجات الوكيل فقط؛ هذه ليست جلسة Shell تفاعلية.\r\n');
                     },
                     icon: const Icon(Icons.delete_sweep, color: Colors.white70),
                   ),
@@ -890,7 +1232,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _init() async {
     await AgentService.instance.initialize();
-    final remoteEnabled = await OpenAICompatibleProvider.instance.isEnabled();
+    final selectedMode = await ModelProviderSettings.instance.getMode();
+    final remoteEnabled = selectedMode != ModelProviderMode.local;
     if (!mounted) return;
     setState(() {
       _models = _modelService.getModels();
@@ -1029,6 +1372,17 @@ class _ChatScreenState extends State<ChatScreen> {
       await prefs.remove('giant_pending_task');
       await prefs.remove('giant_pending_session_id');
       await prefs.remove('giant_pending_task_id');
+      return;
+    }
+
+    try {
+      await TaskManager().recordResumeIntent(taskId);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تعذر تسجيل طلب الاستئناف بأمان: $error')),
+        );
+      }
       return;
     }
 
@@ -1275,6 +1629,24 @@ class _ChatScreenState extends State<ChatScreen> {
       _isLoading = _pendingChatRequests > 0;
     });
     await _saveMessage(response, false, requestId: requestId);
+    // The text reply is already rendered; audio playback starts without
+    // blocking the chat or changing the active conversation.
+    if (_voiceRequestActive && mounted) {
+      setState(() => _voiceOrbState = AgentState.speaking);
+    }
+    try {
+      await _voiceOutput.speak(response, waitForCompletion: _voiceRequestActive);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تعذر تشغيل الصوت. تحقق من تثبيت صوت اللغة العربية على الجهاز.')),
+        );
+      }
+    } finally {
+      if (_voiceRequestActive && mounted) {
+        setState(() => _voiceOrbState = AgentState.idle);
+      }
+    }
     _scrollToBottom();
   }
 
@@ -1357,154 +1729,497 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _pickImage() async {
-    final picker = ImagePicker();
-    final image = await picker.pickImage(source: ImageSource.gallery);
-    if (image == null || !mounted) return;
-    final requestId = DateTime.now().microsecondsSinceEpoch.toString();
-    _activeAgentRequestId = requestId;
-    setState(() {
-      _messages.add({
-        'isUser': true,
-        'content': 'صورة مرفقة: ${image.name}',
-        'time': DateTime.now(),
-        'requestId': requestId,
-      });
-      _isLoading = true;
-    });
-    await _saveMessage('صورة مرفقة: ${image.name}', true, requestId: requestId);
-    String response;
+    if (_isLoading) return;
     try {
-      // The current bundled GGUF model is text-only. Report this capability
-      // boundary honestly instead of asking it to guess from a filename.
-      response = await ImageRecognitionService.analyzeImage(File(image.path));
+      final picker = ImagePicker();
+      final image = await picker.pickImage(source: ImageSource.gallery);
+      if (image == null || !mounted) return;
+
+      // Keep a durable app-private copy. ImagePicker's cache path is temporary
+      // and must never be stored as the conversation's long-term attachment.
+      final documents = await getApplicationDocumentsDirectory();
+      final attachmentDirectory = Directory(
+        '${documents.path}${Platform.pathSeparator}chat_attachments',
+      );
+      await attachmentDirectory.create(recursive: true);
+      final extension = image.name.contains('.')
+          ? image.name.split('.').last.toLowerCase().replaceAll(
+                RegExp(r'[^a-z0-9]'),
+                '',
+              )
+          : 'jpg';
+      final requestId = DateTime.now().microsecondsSinceEpoch.toString();
+      final storedImage = await File(image.path).copy(
+        '${attachmentDirectory.path}${Platform.pathSeparator}$requestId.${extension.isEmpty ? 'jpg' : extension}',
+      );
+      final attachmentText = 'صورة مرفقة: ${image.name}';
+      _activeAgentRequestId = requestId;
+      setState(() {
+        _messages.add({
+          'isUser': true,
+          'content': attachmentText,
+          'time': DateTime.now(),
+          'requestId': requestId,
+          'attachmentPath': storedImage.path,
+          'attachmentName': image.name,
+        });
+        _isLoading = true;
+      });
+      await _saveMessage(
+        attachmentText,
+        true,
+        requestId: requestId,
+        attachmentPath: storedImage.path,
+        attachmentName: image.name,
+      );
+
+      String response;
+      String localOcr = '';
+      try {
+        // Arabic and Latin OCR stays on-device; the original image remains
+        // attached to the user message and visible in the conversation.
+        localOcr = await ImageRecognitionService.analyzeImage(storedImage);
+      } catch (error) {
+        localOcr = 'تعذر استخراج النص محلياً: $error';
+      }
+
+      final providerMode = await ModelProviderSettings.instance.getMode();
+      if (providerMode == ModelProviderMode.openRouter) {
+        try {
+          final visualAnalysis = await _modelService.processImage(storedImage);
+          response = 'الفهم البصري بواسطة النموذج متعدد الوسائط:\n$visualAnalysis'
+              '\n\nنتيجة OCR والتصنيف المحلي:\n$localOcr';
+        } catch (error) {
+          response = '$localOcr\n\nتعذر تحليل الصورة بواسطة النموذج السحابي: $error';
+        }
+      } else {
+        response = '$localOcr\n\nلتحليل محتوى الصورة وفهم المشهد، فعّل نموذج OpenRouter يدعم الرؤية. '
+            'النموذج المحلي الحالي مخصص للنص فقط.';
+      }
+      if (!mounted) return;
+      setState(() {
+        _messages.add({
+          'isUser': false,
+          'content': response,
+          'time': DateTime.now(),
+          'requestId': requestId,
+        });
+        _isLoading = false;
+      });
+      await _saveMessage(response, false, requestId: requestId);
+      _scrollToBottom();
     } catch (error) {
-      response = 'تعذر استقبال الصورة: $error';
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذر إرفاق الصورة: $error')),
+      );
     }
-    if (!mounted) return;
-    setState(() {
-      _messages.add({'isUser': false, 'content': response, 'time': DateTime.now()});
-      _isLoading = false;
-    });
-    await _saveMessage(response, false);
   }
 
 
-  Future<void> _toggleVoiceInput() async {
-    if (_speech.isListening) {
+  Future<void> _stopVoiceInteraction() async {
+    _finalizingVoiceInput = true;
+    _voiceRequestActive = false;
+    _voiceListenStarted = false;
+    try {
       await _speech.stop();
-      if (mounted) setState(() => _isListening = false);
-      return;
-    }
-    final available = await _speech.initialize(
-      onStatus: (_) {
-        if (mounted) setState(() => _isListening = _speech.isListening);
-      },
-      onError: (error) {
-        if (mounted) {
-          setState(() => _isListening = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('تعذر تشغيل الإدخال الصوتي: ' + error.errorMsg)),
-          );
-        }
-      },
-    );
-    if (!available || !mounted) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('خدمة التعرف على الكلام غير متاحة على هذا الجهاز.')),
-      );
-      return;
-    }
-    final locales = await _speech.locales();
-    final arabic = locales.where((item) => item.localeId.toLowerCase().startsWith('ar')).toList();
-    await _speech.listen(
-      localeId: arabic.isNotEmpty ? arabic.first.localeId : null,
-      listenFor: const Duration(seconds: 60),
-      pauseFor: const Duration(seconds: 5),
-      listenOptions: SpeechListenOptions(
-        partialResults: true,
-        cancelOnError: true,
-        listenMode: ListenMode.dictation,
+      await _voiceOutput.stop();
+      if (_isLoading && _agentModeEnabled) await _cancelAgent();
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() {
+      _isListening = false;
+      _voiceOrbVisible = false;
+      _voiceOrbState = AgentState.idle;
+    });
+  }
+
+  Widget _buildVoiceOrbOverlay() {
+    final status = switch (_voiceOrbState) {
+      AgentState.idle => 'جاهز للاستماع',
+      AgentState.listening => 'أستمع إليك الآن…',
+      AgentState.thinking => 'أعالج طلبك داخل المحادثة…',
+      AgentState.speaking => 'أجيبك صوتياً…',
+      AgentState.error => 'تعذر إكمال الاتصال الصوتي',
+    };
+    final transcript = _controller.text.trim();
+    return Material(
+      color: const Color(0xE610131B),
+      child: SafeArea(
+        child: Stack(
+          children: [
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 28),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    GlowingOrb(state: _voiceOrbState, size: 238),
+                    const SizedBox(height: 22),
+                    Text(
+                      status,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    if (transcript.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        transcript,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Color(0xFFCBD5E1),
+                          fontSize: 13,
+                          height: 1.5,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            PositionedDirectional(
+              top: 12,
+              end: 12,
+              child: IconButton.filledTonal(
+                tooltip: 'إيقاف المساعد الصوتي',
+                onPressed: _stopVoiceInteraction,
+                icon: const Icon(Icons.close_rounded),
+              ),
+            ),
+          ],
+        ),
       ),
-      onResult: (result) {
-        if (!mounted || result.recognizedWords.isEmpty) return;
-        setState(() {
-          _controller.text = result.recognizedWords;
-          _controller.selection = TextSelection.collapsed(offset: _controller.text.length);
-        });
-      },
     );
-    if (mounted) setState(() => _isListening = _speech.isListening);
+  }
+
+  Future<void> _toggleVoiceInput() async {
+    if (_speech.isListening || _voiceOrbVisible) {
+      await _stopVoiceInteraction();
+      return;
+    }
+    if (!mounted) return;
+    _finalizingVoiceInput = false;
+    _voiceRequestActive = false;
+    setState(() {
+      _voiceOrbVisible = true;
+      _voiceOrbState = AgentState.listening;
+    });
+    await _startVoiceRecognition();
+  }
+
+  Future<void> _startVoiceRecognition() async {
+    if (!mounted || !_voiceOrbVisible) return;
+    _finalizingVoiceInput = false;
+
+    var available = _speechInitialized;
+    if (!available) {
+      available = await _speech.initialize(
+        onStatus: (_) {
+          if (!mounted || !_voiceOrbVisible) return;
+          final listening = _speech.isListening;
+          setState(() => _isListening = listening);
+          if (_voiceListenStarted && !listening && !_finalizingVoiceInput) {
+            _voiceListenStarted = false;
+            setState(() {
+              _isListening = false;
+              _voiceOrbVisible = false;
+              _voiceOrbState = AgentState.idle;
+            });
+          }
+        },
+        onError: (error) {
+          if (!mounted) return;
+          _voiceListenStarted = false;
+          setState(() {
+            _isListening = false;
+            _voiceOrbVisible = false;
+            _voiceOrbState = AgentState.error;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('تعذر تشغيل الإدخال الصوتي: ${error.errorMsg}')),
+          );
+        },
+      );
+      _speechInitialized = available;
+    }
+
+    if (!available || !mounted || !_voiceOrbVisible) {
+      if (mounted && _voiceOrbVisible) {
+        setState(() {
+          _voiceOrbVisible = false;
+          _voiceOrbState = AgentState.idle;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('خدمة التعرف على الكلام غير متاحة على هذا الجهاز.')),
+        );
+      }
+      return;
+    }
+
+    try {
+      final locales = await _speech.locales();
+      if (!mounted || !_voiceOrbVisible) return;
+      final arabic = locales
+          .where((item) => item.localeId.toLowerCase().startsWith('ar'))
+          .toList();
+      _voiceListenStarted = true;
+      await _speech.listen(
+        localeId: arabic.isNotEmpty ? arabic.first.localeId : null,
+        listenFor: const Duration(seconds: 60),
+        pauseFor: const Duration(seconds: 5),
+        listenOptions: SpeechListenOptions(
+          partialResults: true,
+          cancelOnError: true,
+          listenMode: ListenMode.dictation,
+        ),
+        onResult: (result) {
+          if (!mounted || !_voiceOrbVisible || result.recognizedWords.isEmpty) {
+            return;
+          }
+          setState(() {
+            _controller.text = result.recognizedWords;
+            _controller.selection = TextSelection.collapsed(
+              offset: _controller.text.length,
+            );
+          });
+          if (result.finalResult && !_finalizingVoiceInput) {
+            _finalizingVoiceInput = true;
+            _voiceListenStarted = false;
+            _voiceRequestActive = true;
+            final stopListening = _speech.stop();
+            setState(() {
+              _isListening = false;
+              _voiceOrbState = AgentState.thinking;
+            });
+            Future<void>.delayed(const Duration(milliseconds: 180), () async {
+              if (!mounted || !_voiceOrbVisible) {
+                _voiceRequestActive = false;
+                return;
+              }
+              try {
+                await stopListening;
+                // Reuse the current chat pipeline: every spoken turn is saved
+                // in this conversation and executed by its shared runtime.
+                await _sendMessage();
+              } catch (error) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('تعذر إكمال الطلب الصوتي: $error')),
+                  );
+                }
+              } finally {
+                _voiceRequestActive = false;
+                if (mounted && _voiceOrbVisible) {
+                  setState(() {
+                    _isListening = false;
+                    _voiceOrbState = AgentState.listening;
+                  });
+                  // Keep live voice mode open for the next conversational turn.
+                  await _startVoiceRecognition();
+                }
+              }
+            });
+          }
+        },
+      );
+      if (mounted && _voiceOrbVisible) {
+        setState(() => _isListening = _speech.isListening);
+      }
+    } catch (error) {
+      if (!mounted) return;
+      _voiceListenStarted = false;
+      setState(() {
+        _isListening = false;
+        _voiceOrbVisible = false;
+        _voiceOrbState = AgentState.error;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذر بدء الاستماع: $error')),
+      );
+    }
   }
 
   Future<void> _openExternalProviderDialog() async {
-    final keyController = TextEditingController(text: await OpenAICompatibleProvider.instance.getApiKey() ?? '');
-    final modelController = TextEditingController(text: await OpenAICompatibleProvider.instance.getModel());
-    final endpointController = TextEditingController(text: await OpenAICompatibleProvider.instance.getBaseUrl());
-    var enabled = await OpenAICompatibleProvider.instance.isEnabled();
+    final settings = ModelProviderSettings.instance;
+    var mode = await settings.getMode();
+    final legacyEndpointConflict =
+        mode == ModelProviderMode.openRouter &&
+        await OpenAICompatibleProvider.instance.hasLegacyNonOpenRouterEndpoint();
+    final keyController = TextEditingController(
+      text: mode == ModelProviderMode.openRouter && !legacyEndpointConflict
+          ? (await OpenAICompatibleProvider.instance.getApiKey() ?? '')
+          : '',
+    );
+    final modelController = TextEditingController(
+      text: mode == ModelProviderMode.openRouter
+          ? await OpenAICompatibleProvider.instance.getModel()
+          : OpenAICompatibleProvider.defaultModel,
+    );
     var busy = false;
     var error = '';
-    if (!mounted) { keyController.dispose(); modelController.dispose(); endpointController.dispose(); return; }
+    if (!mounted) {
+      keyController.dispose();
+      modelController.dispose();
+      return;
+    }
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, updateDialog) => AlertDialog(
           backgroundColor: GiantPalette.surface,
-          title: const Text('ربط مزوّد نموذج خارجي', style: TextStyle(color: Colors.white)),
+          title: const Text(
+            'اختيار محرك الذكاء الاصطناعي',
+            style: TextStyle(color: Colors.white),
+          ),
           content: SingleChildScrollView(
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              const Text('أدخل مفتاح أي مزوّد يدعم واجهة OpenAI-compatible مع عنوان API الخاص به. يُحفظ المفتاح مشفراً على الجهاز.',
-                style: TextStyle(color: GiantPalette.muted, fontSize: 12)),
-              const SizedBox(height: 6),
-              const Text('أمثلة للعناوين: OpenRouter: https://openrouter.ai/api/v1 • Gemini: https://generativelanguage.googleapis.com/v1beta/openai • Groq: https://api.groq.com/openai/v1 • DeepSeek: https://api.deepseek.com/v1',
-                style: TextStyle(color: GiantPalette.primaryLight, fontSize: 11)),
-              const SizedBox(height: 12),
-              TextField(controller: keyController, obscureText: true, autocorrect: false,
-                decoration: const InputDecoration(labelText: 'API Key', hintText: 'أدخل مفتاح المزوّد', border: OutlineInputBorder())),
-              const SizedBox(height: 10),
-              TextField(controller: endpointController, keyboardType: TextInputType.url, autocorrect: false,
-                decoration: const InputDecoration(labelText: 'API Base URL', hintText: 'https://api.example.com/v1', border: OutlineInputBorder())),
-              const SizedBox(height: 10),
-              TextField(controller: modelController,
-                decoration: const InputDecoration(labelText: 'معرّف النموذج', hintText: 'openai/gpt-4o-mini', border: OutlineInputBorder())),
-              SwitchListTile(contentPadding: EdgeInsets.zero, value: enabled,
-                onChanged: (v) => updateDialog(() => enabled = v),
-                title: const Text('استخدام مزوّد النموذج الخارجي للاستدلال')),
-              if (error.isNotEmpty) Text(error, style: const TextStyle(color: Colors.redAccent, fontSize: 12)),
-              if (busy) const LinearProgressIndicator(),
-            ]),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<ModelProviderMode>(
+                  value: mode,
+                  decoration: const InputDecoration(
+                    labelText: 'مصدر التوليد',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: ModelProviderMode.local,
+                      child: Text('محلي — GGUF'),
+                    ),
+                    DropdownMenuItem(
+                      value: ModelProviderMode.openRouter,
+                      child: Text('سحابي — OpenRouter فقط'),
+                    ),
+                  ],
+                  onChanged: busy ? null : (value) async {
+                    if (value == null) return;
+                    final conflict = value == ModelProviderMode.openRouter &&
+                        await OpenAICompatibleProvider.instance
+                            .hasLegacyNonOpenRouterEndpoint();
+                    final savedKey = value == ModelProviderMode.openRouter && !conflict
+                        ? await OpenAICompatibleProvider.instance.getApiKey()
+                        : null;
+                    final savedModel = value == ModelProviderMode.openRouter
+                        ? await OpenAICompatibleProvider.instance.getModel()
+                        : OpenAICompatibleProvider.defaultModel;
+                    if (!dialogContext.mounted) return;
+                    updateDialog(() {
+                      mode = value;
+                      keyController.text = savedKey ?? '';
+                      modelController.text = savedModel;
+                      error = conflict
+                          ? 'تم تعطيل عنوان API قديم غير تابع لـ OpenRouter. أدخل مفتاح OpenRouter الرسمي.'
+                          : '';
+                    });
+                  },
+                ),
+                if (mode == ModelProviderMode.openRouter) ...[
+                  const SizedBox(height: 12),
+                  const Text(
+                    'الاتصال السحابي الوحيد المدعوم هو OpenRouter الرسمي عبر https://openrouter.ai/api/v1. يُحفظ المفتاح مشفراً على الجهاز.',
+                    style: TextStyle(color: GiantPalette.muted, fontSize: 12),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: keyController,
+                    obscureText: true,
+                    autocorrect: false,
+                    decoration: const InputDecoration(
+                      labelText: 'OpenRouter API Key',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: modelController,
+                    autocorrect: false,
+                    decoration: InputDecoration(
+                      labelText: 'معرّف نموذج OpenRouter',
+                      hintText: OpenAICompatibleProvider.defaultModel,
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+                if (error.isNotEmpty)
+                  Text(
+                    error,
+                    style: const TextStyle(color: Colors.redAccent, fontSize: 12),
+                  ),
+                if (busy) const LinearProgressIndicator(),
+              ],
+            ),
           ),
           actions: [
-            TextButton(onPressed: busy ? null : () async {
-              await OpenAICompatibleProvider.instance.disconnect();
-              if (mounted) setState(() => _externalProviderEnabled = false);
-              if (dialogContext.mounted) Navigator.pop(dialogContext);
-              if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('تم فصل المزوّد وحذف بياناته.')));
-            }, child: const Text('فصل وحذف المفتاح')),
-            TextButton(onPressed: busy ? null : () => Navigator.pop(dialogContext), child: const Text('إلغاء')),
-            FilledButton(onPressed: busy ? null : () async {
-              updateDialog(() { busy = true; error = ''; });
-              try {
-                if (keyController.text.trim().isNotEmpty) {
-                  await OpenAICompatibleProvider.instance.configure(
-                    apiKey: keyController.text, model: modelController.text,
-                    baseUrl: endpointController.text, enable: enabled);
-                } else {
-                  await OpenAICompatibleProvider.instance.setEnabled(enabled);
-                }
-                if (mounted) setState(() => _externalProviderEnabled = enabled);
+            TextButton(
+              onPressed: busy ? null : () async {
+                await OpenAICompatibleProvider.instance.disconnect();
+                await settings.setMode(ModelProviderMode.local);
+                if (mounted) setState(() => _externalProviderEnabled = false);
                 if (dialogContext.mounted) Navigator.pop(dialogContext);
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                  content: Text(enabled ? 'تم تفعيل المزوّد: ' + modelController.text.trim() : 'تم تعطيل المزوّد.')));
-              } catch (e) { updateDialog(() { busy = false; error = e.toString(); }); }
-            }, child: const Text('حفظ')),
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('تم فصل OpenRouter والعودة إلى الوضع المحلي.')),
+                  );
+                }
+              },
+              child: const Text('فصل OpenRouter'),
+            ),
+            TextButton(
+              onPressed: busy ? null : () => Navigator.pop(dialogContext),
+              child: const Text('إلغاء'),
+            ),
+            FilledButton(
+              onPressed: busy ? null : () async {
+                updateDialog(() { busy = true; error = ''; });
+                try {
+                  switch (mode) {
+                    case ModelProviderMode.local:
+                      await settings.setMode(ModelProviderMode.local);
+                      break;
+                    case ModelProviderMode.openRouter:
+                      await OpenAICompatibleProvider.instance.configure(
+                        apiKey: keyController.text,
+                        model: modelController.text,
+                        baseUrl: OpenAICompatibleProvider.defaultBaseUrl,
+                        enable: true,
+                      );
+                      await settings.setMode(ModelProviderMode.openRouter);
+                      break;
+                  }
+                  if (mounted) {
+                    setState(() {
+                      _externalProviderEnabled = mode == ModelProviderMode.openRouter;
+                    });
+                  }
+                  if (dialogContext.mounted) Navigator.pop(dialogContext);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(mode == ModelProviderMode.local
+                            ? 'تم اختيار النموذج المحلي.'
+                            : 'تم اختيار OpenRouter: ${modelController.text.trim()}'),
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  updateDialog(() { busy = false; error = e.toString(); });
+                }
+              },
+              child: const Text('حفظ واستخدام'),
+            ),
           ],
         ),
       ),
     );
     keyController.dispose();
     modelController.dispose();
-    endpointController.dispose();
   }
 
   Future<void> _openGitHubDialog() async {
@@ -1756,7 +2471,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ? await OpenAICompatibleProvider.instance.getModel()
         : _activeModel['name']?.toString();
     if (!mounted) return;
-    final provider = openRouterEnabled ? 'خارجي (OpenAI-compatible)' : 'محلي (GGUF)';
+    final provider = openRouterEnabled ? 'OpenRouter (سحابي)' : 'محلي (GGUF)';
     final selectedModel = modelName?.isNotEmpty == true
         ? modelName!
         : 'لم يتم تحديد نموذج';
@@ -1834,7 +2549,12 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _agentEventSubscription?.cancel();
     _nativeAgentEventSubscription?.cancel();
+    _modelService.requestTerminalApproval = null;
+    _modelService.requestMcpApproval = null;
+    _modelService.requestUserInput = null;
+    _modelService.requestBrowserSession = null;
     _speech.stop();
+    _voiceOutput.stop();
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -1852,7 +2572,17 @@ class _ChatScreenState extends State<ChatScreen> {
       case 'tool_output': return Icons.terminal;
       case 'todo': return Icons.checklist;
       case 'thought': return Icons.psychology_alt_outlined;
-      case 'task_interrupted': return Icons.pause_circle_outline;
+      case 'task_interrupted':
+      case 'subagent_interrupted': return Icons.pause_circle_outline;
+      case 'subagent_created': return Icons.person_add_alt_1_outlined;
+      case 'subagent_started': return Icons.smart_toy_outlined;
+      case 'subagent_completed': return Icons.check_circle_outline;
+      case 'subagent_failed': return Icons.error_outline;
+      case 'subagent_cancelled':
+      case 'subagent_dismissed': return Icons.person_off_outlined;
+      case 'subagent_message_sent':
+      case 'subagent_message_received': return Icons.forum_outlined;
+      case 'goal_updated': return Icons.flag_outlined;
       case 'tool_error': return Icons.error_outline;
       default: return Icons.circle_outlined;
     }
@@ -1874,6 +2604,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final title = step['title']?.toString().toLowerCase() ?? '';
     final toolName = step['tool_name']?.toString().toLowerCase() ?? '';
     return toolName == 'execute_python' ||
+        toolName == 'gain_terminal' ||
         type == 'terminal' ||
         type == 'terminal_run' ||
         type == 'terminal_output' ||
@@ -2008,6 +2739,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           step['details'] != null ||
                           step['file_name'] != null;
                       final toolName = step['tool_name']?.toString() ?? '';
+                      final toolCallId = step['tool_call_id']?.toString() ?? '';
                       final isTool = toolName.isNotEmpty ||
                           type.contains('tool') ||
                           type.contains('terminal') ||
@@ -2077,6 +2809,23 @@ class _ChatScreenState extends State<ChatScreen> {
                                   ],
                                 ),
                               ),
+                              if (running && toolCallId.isNotEmpty)
+                                IconButton(
+                                  tooltip: 'إيقاف استدعاء الأداة هذا',
+                                  visualDensity: VisualDensity.compact,
+                                  constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+                                  padding: EdgeInsets.zero,
+                                  icon: const Icon(Icons.stop_circle_outlined,
+                                    size: 17, color: Color(0xFFFF9292)),
+                                  onPressed: () {
+                                    final cancelled = AgentService.instance.cancelToolCall(toolCallId);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text(cancelled
+                                        ? 'أُرسل طلب إيقاف الأداة المحددة.'
+                                        : 'انتهى استدعاء الأداة أو لم يعد نشطاً.')),
+                                    );
+                                  },
+                                ),
                               if (hasPreview)
                                 const Padding(
                                   padding: EdgeInsetsDirectional.only(start: 5),
@@ -2280,6 +3029,11 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ),
         actions: [
+          IconButton(
+            tooltip: 'بدء المحادثة الصوتية داخل الجلسة الحالية',
+            onPressed: _toggleVoiceInput,
+            icon: const Icon(Icons.mic_none_rounded, color: Color(0xFF22D3EE), size: 19),
+          ),
           IconButton(
             tooltip: 'محادثة جديدة',
             onPressed: _newConversation,
@@ -2528,7 +3282,8 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ),
       ),
-      body: Container(
+      body: Stack(children: [
+        Container(
         margin: const EdgeInsets.fromLTRB(12, 8, 12, 10),
         decoration: BoxDecoration(
           color: const Color(0xFF18181B),
@@ -2548,6 +3303,8 @@ class _ChatScreenState extends State<ChatScreen> {
                 final msg = _messages[index];
                 final isUser = msg['isUser'] as bool;
                 final requestId = msg['requestId']?.toString() ?? '';
+                final attachmentPath = msg['attachmentPath']?.toString();
+                final attachmentName = msg['attachmentName']?.toString() ?? 'صورة مرفقة';
                 final messageEvents = isUser && requestId.isNotEmpty
                     ? _agentSteps.where((event) =>
                         event['request_id']?.toString() == requestId &&
@@ -2561,9 +3318,13 @@ class _ChatScreenState extends State<ChatScreen> {
                   alignment: isUser ? AlignmentDirectional.centerEnd : AlignmentDirectional.centerStart,
                   child: Container(
                     margin: const EdgeInsetsDirectional.only(bottom: 12),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: _bubbleScale == 0 ? 11 : (_bubbleScale == 2 ? 19 : 16),
+                      vertical: _bubbleScale == 0 ? 8 : (_bubbleScale == 2 ? 15 : 12),
+                    ),
                     constraints: BoxConstraints(
-                      maxWidth: MediaQuery.of(context).size.width * 0.8,
+                      maxWidth: MediaQuery.of(context).size.width *
+                          (_bubbleScale == 0 ? 0.68 : (_bubbleScale == 2 ? 0.94 : 0.8)),
                     ),
                     decoration: BoxDecoration(
                       color: isUser ? GiantPalette.primary : GiantPalette.surface,
@@ -2577,12 +3338,82 @@ class _ChatScreenState extends State<ChatScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        if (attachmentPath != null && attachmentPath.isNotEmpty) ...[
+                          GestureDetector(
+                            onTap: () => showDialog<void>(
+                              context: context,
+                              barrierColor: Colors.black87,
+                              builder: (previewContext) => Dialog(
+                                backgroundColor: Colors.transparent,
+                                insetPadding: const EdgeInsets.all(12),
+                                child: Stack(
+                                  children: [
+                                    InteractiveViewer(
+                                      minScale: 0.7,
+                                      maxScale: 5,
+                                      child: Center(
+                                        child: Image.file(
+                                          File(attachmentPath),
+                                          fit: BoxFit.contain,
+                                          errorBuilder: (_, __, ___) => const Padding(
+                                            padding: EdgeInsets.all(24),
+                                            child: Text('تعذر تحميل الصورة المحفوظة',
+                                                style: TextStyle(color: Colors.white)),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    Positioned(
+                                      top: 4,
+                                      right: 4,
+                                      child: IconButton(
+                                        onPressed: () => Navigator.pop(previewContext),
+                                        icon: const Icon(Icons.close, color: Colors.white),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  maxWidth: MediaQuery.of(context).size.width * 0.68,
+                                  maxHeight: 280,
+                                ),
+                                child: Image.file(
+                                  File(attachmentPath),
+                                  fit: BoxFit.contain,
+                                  errorBuilder: (_, __, ___) => Container(
+                                    width: 220,
+                                    padding: const EdgeInsets.all(18),
+                                    color: Colors.black26,
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(Icons.broken_image_outlined,
+                                            color: Colors.white70, size: 34),
+                                        const SizedBox(height: 6),
+                                        Text(attachmentName,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
                         Directionality(
                           textDirection: _contentDirection(msg['content']?.toString() ?? ''),
                           child: SelectableText(
                             msg['content'],
                             textAlign: TextAlign.start,
-                            style: const TextStyle(color: Colors.white, fontSize: 14),
+                            style: TextStyle(color: Colors.white, fontSize: _bubbleScale == 0 ? 13 : (_bubbleScale == 2 ? 15 : 14)),
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -2651,6 +3482,17 @@ class _ChatScreenState extends State<ChatScreen> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          PopupMenuButton<int>(
+                            tooltip: 'حجم الفقاعة',
+                            icon: const Icon(Icons.format_size_rounded, color: Colors.white60, size: 18),
+                            color: const Color(0xFF182B2A),
+                            onSelected: _setBubbleScale,
+                            itemBuilder: (context) => const [
+                              PopupMenuItem(value: 0, child: Text('مضغوط')),
+                              PopupMenuItem(value: 1, child: Text('عادي')),
+                              PopupMenuItem(value: 2, child: Text('واسع')),
+                            ],
+                          ),
                           _messageActionButton(
                             icon: Icons.copy_rounded,
                             tooltip: 'نسخ الرسالة',
@@ -2732,27 +3574,32 @@ class _ChatScreenState extends State<ChatScreen> {
                     textDirection: TextDirection.ltr,
                     children: [
                       _composerIconButton(
-                        icon: _isLoading && _controller.text.trim().isEmpty
-                            ? Icons.stop_rounded
-                            : Icons.arrow_upward_rounded,
-                        tooltip: _isLoading && _controller.text.trim().isEmpty
-                            ? 'إيقاف الوكيل'
-                            : (_isLoading ? 'إضافة الطلب إلى قائمة الانتظار' : 'إرسال الرسالة'),
-                        background: _isLoading && _controller.text.trim().isEmpty
-                            ? Colors.white : GiantPalette.primary,
-                        foreground: _isLoading && _controller.text.trim().isEmpty
+                        icon: _voiceOrbVisible
+                            ? Icons.graphic_eq_rounded
+                            : (_isLoading && _controller.text.trim().isEmpty
+                                ? Icons.stop_rounded
+                                : (_controller.text.trim().isNotEmpty
+                                    ? Icons.arrow_upward_rounded
+                                    : (_isListening ? Icons.graphic_eq_rounded : Icons.mic_none_rounded))),
+                        tooltip: _voiceOrbVisible
+                            ? 'إيقاف المساعد الصوتي'
+                            : (_isLoading && _controller.text.trim().isEmpty
+                                ? 'إيقاف الوكيل'
+                                : (_controller.text.trim().isNotEmpty
+                                    ? 'إرسال الرسالة'
+                                    : 'بدء التحدث')),
+                        background: !_voiceOrbVisible && _isLoading && _controller.text.trim().isEmpty
+                            ? Colors.white
+                            : GiantPalette.primary,
+                        foreground: !_voiceOrbVisible && _isLoading && _controller.text.trim().isEmpty
                             ? const Color(0xFF18181B) : Colors.white,
-                        onPressed: _isLoading && _controller.text.trim().isEmpty
-                            ? _cancelAgent : _sendMessage,
+                        onPressed: _voiceOrbVisible
+                            ? _stopVoiceInteraction
+                            : (_isLoading && _controller.text.trim().isEmpty
+                                ? _cancelAgent
+                                : (_controller.text.trim().isNotEmpty
+                                    ? _sendMessage : _toggleVoiceInput)),
                         prominent: true,
-                      ),
-                      const SizedBox(width: 8),
-                      _composerIconButton(
-                        icon: _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
-                        tooltip: _isListening ? 'إيقاف الإدخال الصوتي' : 'الإملاء الصوتي',
-                        foreground: _isListening ? Colors.white : GiantPalette.muted,
-                        background: _isListening ? GiantPalette.primary : GiantPalette.border,
-                        onPressed: _toggleVoiceInput,
                       ),
                       const SizedBox(width: 8),
                       Expanded(
@@ -2873,6 +3720,9 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ),
       ),
+      if (_voiceOrbVisible)
+        Positioned.fill(child: _buildVoiceOrbOverlay()),
+    ]),
     );
   }
 }

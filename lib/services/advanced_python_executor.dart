@@ -33,6 +33,40 @@ class AdvancedPythonExecutor {
     }
   }
 
+  Future<Map<String, dynamic>> executeRepl(
+    String code,
+    String sessionId,
+  ) async {
+    try {
+      final result = await _models.executePythonRepl(
+        code: code,
+        sessionId: sessionId,
+      );
+      return <String, dynamic>{
+        'success': result['ok'] == true,
+        'output': result['output']?.toString() ?? '',
+        'error': result['error']?.toString() ?? '',
+        'session_id': result['session_id'] ?? sessionId,
+      };
+    } catch (error) {
+      return <String, dynamic>{
+        'success': false,
+        'output': '',
+        'error': error.toString(),
+        'session_id': sessionId,
+      };
+    }
+  }
+
+  Future<bool> resetRepl(String sessionId) async {
+    try {
+      final result = await _models.resetPythonRepl(sessionId: sessionId);
+      return result['ok'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<String> createDataSciencePipeline(String description) async {
     return 'لم يتم إنشاء بيانات تجريبية أو نتائج وهمية. '
         'أرفق ملف البيانات الفعلي أو ضعه في مساحة العمل، ثم اطلب تحليله. '

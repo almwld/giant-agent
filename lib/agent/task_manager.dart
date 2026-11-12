@@ -1,9 +1,8 @@
-import 'dart:async';
 import 'dart:convert';
 
-import 'package:shared_preferences/shared_preferences.dart';
-
 import '../services/agent_service.dart';
+import '../domain/kernel/agent_kernel_store.dart';
+import '../domain/kernel/task_recovery_engine.dart';
 
 /// Persistent task lifecycle backed by the real local agent runtime.
 /// Task history survives process restarts; completion is recorded only after
@@ -15,17 +14,26 @@ enum TaskExecutionOutcome {
 }
 
 class TaskManager {
-  TaskManager._internal();
+  TaskManager._internal({AgentKernelStore? store})
+      : _store = store ?? AgentKernelStore(),
+        _agent = AgentService.instance;
+
+  TaskManager.withStore(AgentKernelStore store)
+      : _store = store,
+        _agent = AgentService.instance;
+
   static final TaskManager _instance = TaskManager._internal();
   factory TaskManager() => _instance;
 
-  static const String _storageKey = 'giant_agent.tasks.v1';
-  final AgentService _agent = AgentService.instance;
+  final AgentKernelStore _store;
+  final AgentService _agent;
   final List<Map<String, dynamic>> _tasks = [];
   String _currentTask = '';
   bool _executing = false;
   Future<void>? _loading;
-  Future<void> _writeTail = Future<void>.value();
+
+  /// Loads and reconciles the durable task snapshot during app startup.
+  Future<void> initialize() => _ensureLoaded();
 
   Future<void> _ensureLoaded() {
     _loading ??= _load();
@@ -33,58 +41,51 @@ class TaskManager {
   }
 
   Future<void> _load() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_storageKey);
-    if (raw == null || raw.isEmpty) return;
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! List) return;
-      _tasks
-        ..clear()
-        ..addAll(decoded.whereType<Map>().map((item) {
-          final task = Map<String, dynamic>.from(item);
-          // A process may die while a task is running. Never report it as
-          // actively executing after restart; it is explicitly resumable.
-          if (task['status'] == 'running') {
-            task['status'] = 'paused';
-            task['recovery_note'] = 'توقف التطبيق أثناء التنفيذ؛ يمكن استئناف المهمة.';
-            final steps = task['steps'];
-            if (steps is List) {
-              for (final rawStep in steps) {
-                if (rawStep is Map && rawStep['status'] == 'running') {
-                  rawStep['status'] = 'pending';
-                }
-              }
-            }
-          }
-          return task;
-        }));
-      if (_tasks.isNotEmpty) {
-        _currentTask = _tasks.last['id']?.toString() ?? '';
-      }
+    // Compatibility import is isolated in the data layer. TaskManager itself
+    // never reads or writes SharedPreferences.
+    await _store.migrateLegacyTaskSnapshot();
+    await RecoveryEngine(_store).recoverInterruptedTasks();
+    final persisted = await _store.getTasks();
+    _tasks
+      ..clear()
+      ..addAll(persisted.map(_normalizeRecoveredTask));
+    if (_tasks.isNotEmpty) {
+      _currentTask = _tasks.last['id']?.toString() ?? '';
+    }
+    if (_tasks.any((task) => task['status'] == 'paused')) {
       await _persist();
-    } on FormatException {
-      // Keep a corrupt preference untouched for diagnosis; start with an
-      // empty in-memory queue rather than crashing the agent UI.
     }
   }
 
-  Future<void> _persist() {
-    final snapshot = jsonEncode(_tasks);
-    final completer = Completer<void>();
-    final previous = _writeTail;
-    _writeTail = completer.future;
-    return () async {
-      await previous.catchError((_) {});
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString(_storageKey, snapshot);
-        completer.complete();
-      } catch (error, stack) {
-        completer.completeError(error, stack);
-        rethrow;
+  Map<String, dynamic> _normalizeRecoveredTask(
+    Map<String, dynamic> source,
+  ) {
+    final task = Map<String, dynamic>.from(source);
+    // A process may die while a task is running. Never report it as actively
+    // executing after restart; ambiguous work remains paused for reconciliation.
+    if (task['status'] == 'running') {
+      task['status'] = 'paused';
+      task['recovery_note'] =
+          'توقف التطبيق أثناء التنفيذ؛ راجع الحالة قبل استئناف المهمة.';
+      final steps = task['steps'];
+      if (steps is List) {
+        for (final rawStep in steps) {
+          if (rawStep is Map && rawStep['status'] == 'running') {
+            rawStep['status'] = 'pending';
+          }
+        }
       }
-    }();
+    }
+    return task;
+  }
+
+  Future<void> _persist() async {
+    // Task snapshots are updated in-place, but each SQLite upsert is atomic.
+    // Do not hide storage errors: callers must know if a state transition
+    // was not durably committed.
+    for (final task in _tasks) {
+      await _store.saveTask(task);
+    }
   }
 
   Map<String, dynamic> _copyTask(Map<String, dynamic> task) =>
@@ -98,7 +99,7 @@ class TaskManager {
     final goal = description.trim();
     if (goal.isEmpty) throw ArgumentError.value(description, 'description');
     final now = DateTime.now();
-    final id = now.microsecondsSinceEpoch.toString();
+    final id = '${now.microsecondsSinceEpoch}_${_tasks.length + 1}';
     final task = <String, dynamic>{
       'id': id,
       'description': goal,
@@ -117,7 +118,16 @@ class TaskManager {
     };
     _tasks.add(task);
     _currentTask = id;
-    await _persist();
+    await _store.saveTaskWithEvents(task, events: [
+      {
+        'type': 'task_created',
+        'status': 'pending',
+        'payload': <String, Object?>{
+          'conversation_id': conversationId,
+          'description': goal,
+        },
+      },
+    ]);
     return _copyTask(task);
   }
 
@@ -136,9 +146,26 @@ class TaskManager {
     return Map<String, dynamic>.from(steps.first as Map);
   }
 
-  /// Marks a task as running when execution is owned by ChatScreen/AgentKernel.
-  /// This keeps the persisted task lifecycle in sync without executing it twice.
-  Future<void> markRunning(String taskId) async {
+  /// Records an explicit user decision to resume an ambiguous task.
+  /// This does not execute anything; the caller must request confirmation first.
+  Future<void> recordResumeIntent(String taskId) async {
+    await _ensureLoaded();
+    final task = _findTask(taskId);
+    if (task == null) throw StateError('المهمة غير موجودة.');
+    if (task['status'] != 'paused' && task['status'] != 'failed') {
+      throw StateError('المهمة ليست متوقفة أو قابلة للاستئناف.');
+    }
+    await _store.appendTaskEvent(
+      taskId,
+      'task_resume_requested',
+      'paused',
+      payload: const {'authorization': 'explicit_user_confirmation'},
+    );
+  }
+
+  /// Marks the task as running and journals the transition before model execution.
+  /// Resuming a paused/failed task requires a preceding explicit resume intent.
+  Future<void> markRunning(String taskId, {String? requestId}) async {
     await _ensureLoaded();
     if (_executing && _currentTask != taskId) {
       throw StateError('يوجد تنفيذ مهمة جارٍ بالفعل.');
@@ -147,6 +174,13 @@ class TaskManager {
     if (task == null) throw StateError('المهمة غير موجودة.');
     if (task['status'] == 'completed' || task['status'] == 'cancelled') {
       throw StateError('لا يمكن تشغيل مهمة منتهية.');
+    }
+    final isResume = task['status'] == 'paused' || task['status'] == 'failed';
+    if (isResume) {
+      final priorEvents = await _store.taskEvents(taskId);
+      if (priorEvents.isEmpty || priorEvents.last.type != 'task_resume_requested') {
+        throw StateError('يجب تسجيل موافقة صريحة على الاستئناف أولاً.');
+      }
     }
     _currentTask = taskId;
     _executing = true;
@@ -158,7 +192,27 @@ class TaskManager {
     task['updated_at'] = DateTime.now().toIso8601String();
     task.remove('error');
     task.remove('recovery_note');
-    await _persist();
+    if (requestId != null && requestId.isNotEmpty) {
+      task['request_id'] = requestId;
+    }
+    await _store.saveTaskWithEvents(task, events: [
+      {
+        'type': isResume ? 'task_resumed' : 'task_started',
+        'status': 'running',
+        'payload': <String, Object?>{
+          if (requestId != null && requestId.isNotEmpty) 'request_id': requestId,
+          if (isResume) 'resume_authorized': true,
+        },
+      },
+      {
+        'type': 'step_started',
+        'status': 'running',
+        'payload': <String, Object?>{
+          'step': step['step'],
+          'action': step['action'],
+        },
+      },
+    ]);
   }
 
   Future<void> markCompleted(String taskId, String result) async {
@@ -175,7 +229,18 @@ class TaskManager {
     task['updated_at'] = task['completed_at'];
     task.remove('error');
     if (_currentTask == taskId) _executing = false;
-    await _persist();
+    await _store.saveTaskWithEvents(task, events: [
+      {
+        'type': 'step_completed',
+        'status': 'completed',
+        'payload': <String, Object?>{'step': step['step'], 'result': result},
+      },
+      {
+        'type': 'task_completed',
+        'status': 'completed',
+        'payload': <String, Object?>{'result': result},
+      },
+    ]);
   }
 
   Future<void> markFailed(String taskId, String error) async {
@@ -190,7 +255,18 @@ class TaskManager {
     task['error'] = error;
     task['updated_at'] = DateTime.now().toIso8601String();
     if (_currentTask == taskId) _executing = false;
-    await _persist();
+    await _store.saveTaskWithEvents(task, events: [
+      {
+        'type': 'step_failed',
+        'status': 'failed',
+        'payload': <String, Object?>{'step': step['step'], 'error': error},
+      },
+      {
+        'type': 'task_failed',
+        'status': 'failed',
+        'payload': <String, Object?>{'error': error},
+      },
+    ]);
   }
 
   Future<void> markInterrupted(String taskId, String note) async {
@@ -198,13 +274,25 @@ class TaskManager {
     final task = _findTask(taskId);
     if (task == null) return;
     final step = _firstStep(task);
-    step['status'] = 'pending';
+    step['status'] = 'uncertain';
+    step['recovery_state'] = 'side_effect_unknown';
     (task['steps'] as List)[0] = step;
     task['status'] = 'paused';
     task['recovery_note'] = note;
     task['updated_at'] = DateTime.now().toIso8601String();
     if (_currentTask == taskId) _executing = false;
-    await _persist();
+    await _store.saveTaskWithEvents(task, events: [
+      {
+        'type': 'step_interrupted',
+        'status': 'uncertain',
+        'payload': <String, Object?>{'step': step['step'], 'note': note},
+      },
+      {
+        'type': 'task_paused',
+        'status': 'paused',
+        'payload': <String, Object?>{'reason': note},
+      },
+    ]);
   }
 
   Future<void> markCancelled(String taskId) async {
@@ -217,7 +305,13 @@ class TaskManager {
     task['status'] = 'cancelled';
     task['updated_at'] = DateTime.now().toIso8601String();
     if (_currentTask == taskId) _executing = false;
-    await _persist();
+    await _store.saveTaskWithEvents(task, events: [
+      {
+        'type': 'task_cancelled',
+        'status': 'cancelled',
+        'payload': <String, Object?>{'step': step['step']},
+      },
+    ]);
   }
 
   Future<bool> selectTask(String taskId) async {
@@ -253,10 +347,20 @@ class TaskManager {
         .trim();
     if (checkpoint.isNotEmpty) task['resume_context'] = checkpoint;
     task['status'] = 'pending';
+    task['resume_authorized'] = true;
     task.remove('error');
     task.remove('recovery_note');
     task['updated_at'] = DateTime.now().toIso8601String();
-    await _persist();
+    await _store.saveTaskWithEvents(task, events: [
+      {
+        'type': 'task_resume_requested',
+        'status': 'pending',
+        'payload': <String, Object?>{
+          'policy': 'explicit_user_action',
+          'previous_step_state': step['status'],
+        },
+      },
+    ]);
     return executeNextStep();
   }
 
@@ -268,7 +372,6 @@ class TaskManager {
       return TaskExecutionOutcome.interrupted;
     }
     if (output.isEmpty ||
-        output.startsWith('استغرق النموذج وقتاً طويلاً دون إصدار رموز جديدة') ||
         output.startsWith('ERROR:') ||
         output.startsWith('تعذر تشغيل النموذج المحلي:') ||
         output.startsWith('تعذر تحليل استدعاء الأداة أو تنفيذه:') ||
@@ -293,13 +396,31 @@ class TaskManager {
     }
 
     _executing = true;
+    final isResume = task.remove('resume_authorized') == true;
     final step = (task['steps'] as List).first as Map<String, dynamic>;
     task['status'] = 'running';
     task['started_at'] ??= DateTime.now().toIso8601String();
     task['updated_at'] = DateTime.now().toIso8601String();
     step['status'] = 'running';
     try {
-      await _persist();
+      await _store.saveTaskWithEvents(task, events: [
+        {
+          'type': isResume ? 'task_resumed' : 'task_started',
+          'status': 'running',
+          'payload': <String, Object?>{
+            'execution_path': 'task_manager',
+            if (isResume) 'resume_authorized': true,
+          },
+        },
+        {
+          'type': 'step_started',
+          'status': 'running',
+          'payload': <String, Object?>{
+            'step': step['step'],
+            'action': step['action'],
+          },
+        },
+      ]);
       final originalPrompt = task['description'] as String;
       final checkpoint = task['resume_context']?.toString().trim() ?? '';
       final executionPrompt = checkpoint.isEmpty
@@ -319,13 +440,25 @@ $checkpoint
       );
       final outcome = classifyResult(result);
       if (outcome == TaskExecutionOutcome.interrupted) {
-        step['status'] = 'pending';
+        step['status'] = 'uncertain';
+        step['recovery_state'] = 'side_effect_unknown';
         step['result'] = result;
         task['resume_context'] = result;
         task['status'] = 'paused';
-        task['recovery_note'] = 'توقف التنفيذ قبل اكتمال المهمة؛ يمكن استئنافها.';
+        task['recovery_note'] = 'توقف التنفيذ قبل اكتمال المهمة؛ افحص التأثيرات قبل الاستئناف.';
         task['updated_at'] = DateTime.now().toIso8601String();
-        await _persist();
+        await _store.saveTaskWithEvents(task, events: [
+          {
+            'type': 'step_interrupted',
+            'status': 'uncertain',
+            'payload': <String, Object?>{'step': step['step'], 'result': result},
+          },
+          {
+            'type': 'task_paused',
+            'status': 'paused',
+            'payload': <String, Object?>{'reason': task['recovery_note']},
+          },
+        ]);
         return {
           'status': 'paused',
           'step': step['step'],
@@ -341,7 +474,18 @@ $checkpoint
         task['status'] = 'failed';
         task['error'] = result;
         task['updated_at'] = DateTime.now().toIso8601String();
-        await _persist();
+        await _store.saveTaskWithEvents(task, events: [
+          {
+            'type': 'step_failed',
+            'status': 'failed',
+            'payload': <String, Object?>{'step': step['step'], 'error': result},
+          },
+          {
+            'type': 'task_failed',
+            'status': 'failed',
+            'payload': <String, Object?>{'error': result},
+          },
+        ]);
         return {'status': 'failed', 'error': result, 'task_summary': _copyTask(task)};
       }
       step['status'] = 'completed';
@@ -352,7 +496,18 @@ $checkpoint
       task['result'] = result;
       task.remove('resume_context');
       task.remove('recovery_note');
-      await _persist();
+      await _store.saveTaskWithEvents(task, events: [
+        {
+          'type': 'step_completed',
+          'status': 'completed',
+          'payload': <String, Object?>{'step': step['step'], 'result': result},
+        },
+        {
+          'type': 'task_completed',
+          'status': 'completed',
+          'payload': <String, Object?>{'result': result},
+        },
+      ]);
       return {
         'status': 'completed',
         'step': step['step'],
@@ -367,7 +522,18 @@ $checkpoint
       task['status'] = 'failed';
       task['error'] = error.toString();
       task['updated_at'] = DateTime.now().toIso8601String();
-      await _persist();
+      await _store.saveTaskWithEvents(task, events: [
+        {
+          'type': 'step_failed',
+          'status': 'failed',
+          'payload': <String, Object?>{'step': step['step'], 'error': error.toString()},
+        },
+        {
+          'type': 'task_failed',
+          'status': 'failed',
+          'payload': <String, Object?>{'error': error.toString()},
+        },
+      ]);
       return {'status': 'failed', 'error': error.toString(), 'task_summary': _copyTask(task)};
     } finally {
       _executing = false;
@@ -391,6 +557,9 @@ $checkpoint
     return accepted;
   }
 
+  String get currentTaskId => _currentTask;
+  bool get isExecuting => _executing;
+
   String getProgress() {
     final task = _tasks.cast<Map<String, dynamic>>().firstWhere(
       (item) => item['id'] == _currentTask,
@@ -412,6 +581,10 @@ $checkpoint
   List<Map<String, dynamic>> getTasks() =>
       _tasks.map(_copyTask).toList(growable: false);
 
+  /// Replays the immutable lifecycle journal for a task in insertion order.
+  Future<List<KernelEventRecord>> eventsForTask(String taskId) =>
+      _store.taskEvents(taskId);
+
   Future<List<Map<String, dynamic>>> getTasksForConversation(
     String conversationId, {
     String? status,
@@ -430,6 +603,9 @@ $checkpoint
     if (_executing) throw StateError('لا يمكن مسح المهام أثناء التنفيذ.');
     _tasks.clear();
     _currentTask = '';
-    await _persist();
+    await _store.clearTasks();
   }
+
+  /// Closes an injected store in tests; the process singleton remains open.
+  Future<void> closeForTesting() => _store.close();
 }

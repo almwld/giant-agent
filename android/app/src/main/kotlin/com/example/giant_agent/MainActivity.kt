@@ -1,7 +1,19 @@
 package com.example.giant_agent
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.content.Intent
 import android.net.Uri
+import android.webkit.MimeTypeMap
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -21,6 +33,13 @@ import com.google.mlkit.vision.label.ImageLabeling
 import com.google.mlkit.vision.label.defaults.ImageLabelerOptions
 
 class MainActivity: FlutterActivity() {
+    override fun provideFlutterEngine(context: Context): FlutterEngine? =
+        AgentRuntime.flutterEngine
+
+    // AgentForegroundService keeps this process alive while durable work runs;
+    // retaining the engine also retains the one shared Dart ModelService/LlamaService facade.
+    override fun shouldDestroyEngineWithHost(): Boolean = false
+
     private val CHANNEL = "file_receiver"
     private val AI_CHANNEL = "giant_agent/llama"
     private val AGENT_EVENTS_CHANNEL = "giant_agent_stream"
@@ -30,11 +49,54 @@ class MainActivity: FlutterActivity() {
     private val aiExecutor = AgentRuntime.aiExecutor
     private val llamaBridge = AgentRuntime.llamaBridge
     private var pendingModelResult: MethodChannel.Result? = null
-    companion object { private const val REQUEST_OPEN_MODEL = 7402 }
+    companion object {
+        private const val REQUEST_OPEN_MODEL = 7402
+        private const val REQUEST_LOCATION_PERMISSION = 7403
+    }
+    private var pendingLocationPermissionResult: MethodChannel.Result? = null
+    private var pendingLocationListener: LocationListener? = null
+    private var pendingLocationTimeout: Runnable? = null
+    private val locationHandler = Handler(Looper.getMainLooper())
     
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+        AgentRuntime.retainFlutterEngine(flutterEngine)
         super.configureFlutterEngine(flutterEngine)
         NotificationBridge.register(this, flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "giant_agent/background")
+            .setMethodCallHandler { call, result ->
+                try {
+                    when (call.method) {
+                        "startTask" -> {
+                            dispatchBackgroundService(
+                                AgentForegroundService.ACTION_START_TASK,
+                                call.argument<String>("title"),
+                                call.argument<String>("body")
+                            )
+                            result.success(true)
+                        }
+                        "updateTask" -> {
+                            AgentForegroundService.updateNotification(
+                                applicationContext,
+                                call.argument<String>("title") ?: "Giant Agent",
+                                call.argument<String>("body") ?: "يواصل الوكيل تنفيذ المهمة في الخلفية"
+                            )
+                            result.success(true)
+                        }
+                        "runtimeReady" -> {
+                            dispatchBackgroundService(AgentForegroundService.ACTION_RUNTIME, null, null)
+                            result.success(true)
+                        }
+                        "stop" -> {
+                            applicationContext.stopService(Intent(applicationContext, AgentForegroundService::class.java))
+                            result.success(true)
+                        }
+                        else -> result.notImplemented()
+                    }
+                } catch (error: Throwable) {
+                    result.error("BACKGROUND_SERVICE_FAILED", error.message, null)
+                }
+            }
+        GainPtyBridge.register(this, flutterEngine.dartExecutor.binaryMessenger)
 
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, AGENT_EVENTS_CHANNEL)
             .setStreamHandler(object : EventChannel.StreamHandler {
@@ -89,8 +151,8 @@ class MainActivity: FlutterActivity() {
                         require(content.toByteArray(Charsets.UTF_8).size <= 1024 * 1024) {
                             "File content exceeds the 1 MB limit."
                         }
-                        val file = resolveAgentFile(relativePath)
-                        require(file.isFile) { "Only existing workspace files can be edited." }
+                        val file = resolveAgentFile(relativePath, textWorkspaceExtensions)
+                        require(file.isFile) { "Only existing text/code workspace files can be edited." }
                         file.writeText(content, Charsets.UTF_8)
                         emitAgentFileUpdated(relativePath, content, eventId)
                         result.success(mapOf("ok" to true, "path" to relativePath))
@@ -99,12 +161,27 @@ class MainActivity: FlutterActivity() {
                         result.error("WRITE_FILE_FAILED", t.message ?: "File update failed", null)
                     }
                 }
+                "inspectWorkspaceFile" -> {
+                    try {
+                        val relativePath = call.argument<String>("path").orEmpty()
+                        val file = resolveAgentFile(relativePath)
+                        require(file.isFile && file.canRead()) { "Workspace file does not exist or cannot be read." }
+                        result.success(mapOf(
+                            "ok" to true,
+                            "path" to relativePath,
+                            "size_bytes" to file.length(),
+                            "extension" to file.extension.lowercase()
+                        ))
+                    } catch (t: Throwable) {
+                        result.error("WORKSPACE_FILE_INSPECT_FAILED", t.message ?: "Unable to inspect workspace file.", null)
+                    }
+                }
                 "readFile" -> {
                     val relativePath = call.argument<String>("path").orEmpty()
                     val eventId = "tool_${System.nanoTime()}"
                     emitAgentToolStart(eventId, "read_file", relativePath)
                     try {
-                        val file = resolveAgentFile(relativePath)
+                        val file = resolveAgentFile(relativePath, textWorkspaceExtensions)
                         require(file.isFile && file.canRead()) { "File does not exist or cannot be read." }
                         require(file.length() <= 1024 * 1024) { "File exceeds the 1 MB read limit." }
                         val content = file.readText(Charsets.UTF_8)
@@ -211,6 +288,7 @@ class MainActivity: FlutterActivity() {
                         }
                     }
                 }
+                "getCurrentLocation" -> requestCurrentLocation(result)
                 "executePython" -> {
                     val code = call.argument<String>("code").orEmpty()
                     val eventId = "python_${System.nanoTime()}"
@@ -235,6 +313,124 @@ class MainActivity: FlutterActivity() {
                             emitPythonEvent("tool_error", code, message, "failed", eventId)
                             runOnUiThread { result.success(mapOf("ok" to false, "output" to "", "error" to message)) }
                         }
+                    }
+                }
+                "executePythonRepl" -> {
+                    val code = call.argument<String>("code").orEmpty()
+                    val sessionId = call.argument<String>("sessionId").orEmpty()
+                    require(sessionId.matches(Regex("[A-Za-z0-9_-]{1,128}"))) {
+                        "Invalid Python REPL session id."
+                    }
+                    val eventId = "ipython_${System.nanoTime()}"
+                    emitPythonEvent("tool_start", code, null, "running", eventId, "ipython")
+                    aiExecutor.execute {
+                        try {
+                            if (!Python.isStarted()) Python.start(AndroidPlatform(this))
+                            val workspace = File(filesDir, "agent_workspace").apply { mkdirs() }.canonicalPath
+                            val pyResult = Python.getInstance().getModule("sandbox")
+                                .callAttr("run_repl", code, workspace, sessionId)
+                            val status = pyResult.get("status")?.toString() ?: "error"
+                            val output = pyResult.get("output")?.toString() ?: ""
+                            val error = pyResult.get("error")?.toString() ?: ""
+                            val ok = status == "success"
+                            emitPythonEvent(if (ok) "tool_output" else "tool_error", code,
+                                if (ok) output else error, if (ok) "completed" else "failed", eventId, "ipython")
+                            runOnUiThread {
+                                result.success(mapOf("ok" to ok, "output" to output, "error" to error, "session_id" to sessionId))
+                            }
+                        } catch (t: Throwable) {
+                            val message = t.message ?: "Python REPL failed"
+                            emitPythonEvent("tool_error", code, message, "failed", eventId, "ipython")
+                            runOnUiThread { result.success(mapOf("ok" to false, "output" to "", "error" to message, "session_id" to sessionId)) }
+                        }
+                    }
+                }
+                "resetPythonRepl" -> {
+                    val sessionId = call.argument<String>("sessionId").orEmpty()
+                    require(sessionId.matches(Regex("[A-Za-z0-9_-]{1,128}"))) {
+                        "Invalid Python REPL session id."
+                    }
+                    aiExecutor.execute {
+                        try {
+                            if (!Python.isStarted()) Python.start(AndroidPlatform(this))
+                            val reset = Python.getInstance().getModule("sandbox")
+                                .callAttr("reset_repl", sessionId)
+                            runOnUiThread {
+                                result.success(mapOf(
+                                    "ok" to (reset.get("ok")?.toString()?.toBoolean() ?: false),
+                                    "reset" to (reset.get("reset")?.toString()?.toBoolean() ?: false),
+                                    "session_id" to sessionId
+                                ))
+                            }
+                        } catch (t: Throwable) {
+                            runOnUiThread { result.success(mapOf("ok" to false, "error" to (t.message ?: "Python REPL reset failed"))) }
+                        }
+                    }
+                }
+                "shareWorkspace" -> {
+                    aiExecutor.execute {
+                        try {
+                            val requestedPaths = call.argument<List<String>>("paths").orEmpty().distinct()
+                            require(requestedPaths.isNotEmpty() && requestedPaths.size <= 100) {
+                                "Select between 1 and 100 generated files to share."
+                            }
+                            val workspace = File(filesDir, "agent_workspace").apply { mkdirs() }.canonicalFile
+                            val exportFile = File(cacheDir, "giant-agent-task-outputs.zip")
+                            var count = 0
+                            ZipOutputStream(FileOutputStream(exportFile)).use { zip ->
+                                requestedPaths.forEach { relativePath ->
+                                    val file = resolveAgentFile(relativePath)
+                                    require(file.isFile && file.canRead()) { "Output file is missing: $relativePath" }
+                                    val canonical = file.canonicalFile
+                                    require(canonical.path.startsWith(workspace.path + File.separator) &&
+                                        canonical.absolutePath == file.absolutePath) {
+                                        "Output file escapes the workspace or uses a symbolic link."
+                                    }
+                                    zip.putNextEntry(ZipEntry(canonical.relativeTo(workspace).invariantSeparatorsPath))
+                                    file.inputStream().use { input -> input.copyTo(zip) }
+                                    zip.closeEntry()
+                                    count++
+                                }
+                            }
+                            val uri = FileProvider.getUriForFile(
+                                this@MainActivity, "$packageName.fileprovider", exportFile
+                            )
+                            runOnUiThread {
+                                val send = Intent(Intent.ACTION_SEND).apply {
+                                    type = "application/zip"
+                                    putExtra(Intent.EXTRA_STREAM, uri)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                startActivity(Intent.createChooser(send, "مشاركة مخرجات المهمة المحددة"))
+                                result.success(mapOf("ok" to true, "files" to count))
+                            }
+                        } catch (t: Throwable) {
+                            runOnUiThread { result.error("WORKSPACE_SHARE_FAILED", t.message ?: "Workspace sharing failed.", null) }
+                        }
+                    }
+                }
+                "readImagePreview" -> {
+                    try {
+                        val relativePath = call.argument<String>("path").orEmpty()
+                        val file = resolveAgentFile(relativePath)
+                        require(file.isFile && file.canRead()) { "Image does not exist or cannot be read." }
+                        require(file.extension.lowercase() in setOf("png", "jpg", "jpeg", "webp", "gif", "bmp")) {
+                            "Unsupported image format."
+                        }
+                        require(file.length() in 1..(2L * 1024L * 1024L)) {
+                            "Image preview is limited to 2 MB."
+                        }
+                        val mime = when (file.extension.lowercase()) {
+                            "png" -> "image/png"
+                            "jpg", "jpeg" -> "image/jpeg"
+                            "webp" -> "image/webp"
+                            "gif" -> "image/gif"
+                            else -> "image/bmp"
+                        }
+                        val encoded = android.util.Base64.encodeToString(file.readBytes(), android.util.Base64.NO_WRAP)
+                        result.success(mapOf("ok" to true, "mime_type" to mime, "base64" to encoded))
+                    } catch (t: Throwable) {
+                        result.error("IMAGE_PREVIEW_FAILED", t.message ?: "Image preview failed.", null)
                     }
                 }
                 "exportWorkspace" -> {
@@ -294,8 +490,7 @@ class MainActivity: FlutterActivity() {
                     val threads = (call.argument<Int>("threads") ?: 2).coerceIn(1, 8)
                     if (path.isBlank() || !File(path).isFile || !File(path).canRead()) result.success(false)
                     else {
-                        if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(Intent(this, AgentForegroundService::class.java))
-                        else startService(Intent(this, AgentForegroundService::class.java))
+                        dispatchBackgroundService(AgentForegroundService.ACTION_RUNTIME, null, null)
                         aiExecutor.execute {
                             val ok = try { llamaBridge.nativeLoadModel(path, threads, null, 1.0f) }
                             catch (t: Throwable) { android.util.Log.e("GiantLLM", "GGUF load failed", t); false }
@@ -396,6 +591,20 @@ class MainActivity: FlutterActivity() {
         }
     }
 
+    private fun dispatchBackgroundService(action: String, title: String?, body: String?) {
+        val appContext = applicationContext
+        val intent = Intent(appContext, AgentForegroundService::class.java).apply {
+            this.action = action
+            if (!title.isNullOrBlank()) putExtra("task_title", title)
+            if (!body.isNullOrBlank()) putExtra("task_body", body)
+        }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            appContext.startForegroundService(intent)
+        } else {
+            appContext.startService(intent)
+        }
+    }
+
     private fun emitAgentEvent(
         id: String,
         title: String,
@@ -421,13 +630,13 @@ class MainActivity: FlutterActivity() {
         }
     }
 
-    private fun emitPythonEvent(type: String, code: String, output: String?, status: String, eventId: String) {
+    private fun emitPythonEvent(type: String, code: String, output: String?, status: String, eventId: String, toolName: String = "execute_python") {
         runOnUiThread {
             agentEventSink?.success(mapOf(
                 "id" to eventId,
                 "type" to type,
-                "tool_name" to "execute_python",
-                "title" to if (type == "tool_start") "تشغيل Python" else if (type == "tool_output") "مخرجات Python" else "خطأ Python",
+                "tool_name" to toolName,
+                "title" to if (toolName == "ipython") { if (type == "tool_start") "تشغيل جلسة IPython" else if (type == "tool_output") "مخرجات IPython" else "خطأ IPython" } else if (type == "tool_start") "تشغيل Python" else if (type == "tool_output") "مخرجات Python" else "خطأ Python",
                 "content" to code,
                 "output" to output,
                 "status" to status
@@ -435,15 +644,27 @@ class MainActivity: FlutterActivity() {
         }
     }
 
-    private fun resolveAgentFile(relativePath: String): File {
+    private val textWorkspaceExtensions = setOf(
+        "dart", "md", "txt", "json", "yaml", "yml", "html", "css", "js", "kt", "java",
+        "cpp", "h", "c", "cc", "hpp", "ts", "tsx", "jsx", "py", "go", "rs", "sql",
+        "sh", "xml", "toml", "gradle", "svg"
+    )
+    private val workspaceExtensions = textWorkspaceExtensions + setOf(
+        "png", "jpg", "jpeg", "webp", "gif", "bmp", "svg", "pdf", "doc", "docx",
+        "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "zip"
+    )
+
+    private fun resolveAgentFile(
+        relativePath: String,
+        allowedExtensions: Set<String> = workspaceExtensions
+    ): File {
         require(relativePath.isNotBlank()) { "File path is required." }
         require(!relativePath.startsWith("/") && !relativePath.startsWith("\\")) { "Absolute paths are not allowed." }
         require(!relativePath.contains("\\") && relativePath.split("/").none { it.isBlank() || it == "." || it == ".." }) {
             "Invalid relative path."
         }
-        val allowed = setOf("dart", "md", "txt", "json", "yaml", "yml", "html", "css", "js", "kt", "java", "cpp", "h")
         val name = relativePath.substringAfterLast("/")
-        require(name.substringAfterLast(".", "").lowercase() in allowed) { "File extension is not allowed." }
+        require(name.substringAfterLast(".", "").lowercase() in allowedExtensions) { "File extension is not allowed." }
         val root = File(filesDir, "agent_workspace").apply { mkdirs() }.canonicalFile
         val candidate = File(root, relativePath)
         val canonical = candidate.canonicalFile
@@ -524,9 +745,9 @@ class MainActivity: FlutterActivity() {
 
     private fun createAgentFile(relativePath: String, content: String): Pair<String, String> {
         require(content.toByteArray(Charsets.UTF_8).size <= 1024 * 1024) { "File content exceeds the 1 MB limit." }
-        val target = resolveAgentFile(relativePath)
+        val target = resolveAgentFile(relativePath, textWorkspaceExtensions)
         target.parentFile?.mkdirs()
-        val canonical = resolveAgentFile(relativePath)
+        val canonical = resolveAgentFile(relativePath, textWorkspaceExtensions)
         require(!canonical.exists()) { "A file with this path already exists." }
         canonical.writeText(content, Charsets.UTF_8)
         return Pair(relativePath, canonical.name)
@@ -603,6 +824,137 @@ class MainActivity: FlutterActivity() {
             partialCopy?.delete()
             android.util.Log.e("GiantAgent", "Unable to import shared file", error)
             null
+        }
+    }
+
+    private fun hasLocationPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun requestCurrentLocation(result: MethodChannel.Result) {
+        if (pendingLocationPermissionResult != null || pendingLocationListener != null) {
+            result.success(mapOf("ok" to false, "error" to "A location request is already active."))
+            return
+        }
+        if (!hasLocationPermission()) {
+            pendingLocationPermissionResult = result
+            try {
+                requestPermissions(
+                    arrayOf(
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    ),
+                    REQUEST_LOCATION_PERMISSION
+                )
+            } catch (t: Throwable) {
+                pendingLocationPermissionResult = null
+                result.success(mapOf("ok" to false, "error" to (t.message ?: "Location permission request failed.")))
+            }
+            return
+        }
+        fetchCurrentLocation(result)
+    }
+
+    private fun fetchCurrentLocation(result: MethodChannel.Result) {
+        try {
+            val manager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+            val fineGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+            val provider = when {
+                fineGranted && manager.isProviderEnabled(LocationManager.GPS_PROVIDER) -> LocationManager.GPS_PROVIDER
+                manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER) -> LocationManager.NETWORK_PROVIDER
+                fineGranted && manager.isProviderEnabled(LocationManager.PASSIVE_PROVIDER) -> LocationManager.PASSIVE_PROVIDER
+                else -> null
+            }
+            if (provider == null) {
+                result.success(mapOf("ok" to false, "error" to "No foreground location provider is enabled."))
+                return
+            }
+            val lastKnown = try { manager.getLastKnownLocation(provider) } catch (_: SecurityException) { null }
+            if (lastKnown != null && System.currentTimeMillis() - lastKnown.time <= 120_000L) {
+                result.success(locationPayload(lastKnown, "last_known"))
+                return
+            }
+
+            val listener = object : LocationListener {
+                override fun onLocationChanged(location: Location) {
+                    finishLocationRequest(manager, result, locationPayload(location, "current"))
+                }
+                override fun onProviderEnabled(providerName: String) {}
+                override fun onProviderDisabled(providerName: String) {}
+                @Deprecated("Deprecated in Android")
+                override fun onStatusChanged(providerName: String?, status: Int, extras: Bundle?) {}
+            }
+            pendingLocationListener = listener
+            val timeout = Runnable {
+                finishLocationRequest(
+                    manager,
+                    result,
+                    mapOf("ok" to false, "error" to "Location request timed out after 15 seconds.")
+                )
+            }
+            pendingLocationTimeout = timeout
+            locationHandler.postDelayed(timeout, 15_000L)
+            manager.requestSingleUpdate(provider, listener, Looper.getMainLooper())
+        } catch (t: Throwable) {
+            pendingLocationTimeout?.let { locationHandler.removeCallbacks(it) }
+            pendingLocationTimeout = null
+            pendingLocationListener?.let {
+                try {
+                    (getSystemService(Context.LOCATION_SERVICE) as LocationManager).removeUpdates(it)
+                } catch (_: Throwable) {}
+            }
+            pendingLocationListener = null
+            result.success(mapOf("ok" to false, "error" to (t.message ?: "Unable to obtain current location.")))
+        }
+    }
+
+    private fun locationPayload(location: Location, source: String): Map<String, Any> {
+        return mapOf(
+            "ok" to true,
+            "latitude" to location.latitude,
+            "longitude" to location.longitude,
+            "accuracy_meters" to location.accuracy,
+            "provider" to (location.provider ?: "unknown"),
+            "timestamp_ms" to location.time,
+            "source" to source,
+            "background_location" to false
+        )
+    }
+
+    private fun finishLocationRequest(
+        manager: LocationManager,
+        result: MethodChannel.Result,
+        payload: Map<String, Any>
+    ) {
+        if (pendingLocationListener == null && pendingLocationTimeout == null) return
+        pendingLocationTimeout?.let { locationHandler.removeCallbacks(it) }
+        pendingLocationTimeout = null
+        pendingLocationListener?.let {
+            try { manager.removeUpdates(it) } catch (_: SecurityException) {}
+        }
+        pendingLocationListener = null
+        runOnUiThread { result.success(payload) }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != REQUEST_LOCATION_PERMISSION) return
+        val callback = pendingLocationPermissionResult
+        pendingLocationPermissionResult = null
+        if (callback == null) return
+        if (grantResults.any { it == PackageManager.PERMISSION_GRANTED } && hasLocationPermission()) {
+            fetchCurrentLocation(callback)
+        } else {
+            callback.success(mapOf(
+                "ok" to false,
+                "permission_denied" to true,
+                "error" to "Location permission was denied."
+            ))
         }
     }
 

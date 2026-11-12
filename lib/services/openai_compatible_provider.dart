@@ -1,25 +1,50 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
+import 'streaming/server_sent_event_parser.dart';
 
-/// Provider adapter for any OpenAI-compatible chat-completions endpoint.
-/// Supports OpenRouter and other compatible services through a configurable Base URL.
+/// OpenRouter-only OpenAI-compatible adapter. Arbitrary base URLs are rejected.
+class _OpenRouterStreamInterrupted implements Exception {
+  const _OpenRouterStreamInterrupted();
+}
+
 class OpenAICompatibleProvider {
   OpenAICompatibleProvider._();
+
   static final OpenAICompatibleProvider instance = OpenAICompatibleProvider._();
   static const _storage = FlutterSecureStorage();
   static const _keyName = 'giant_openrouter_api_key';
   static const _modelName = 'giant_openrouter_model';
   static const _enabledName = 'giant_openrouter_enabled';
-  static const _baseUrlName = 'giant_openrouter_base_url';
+  static const _legacyBaseUrlName = 'giant_openrouter_base_url';
   static const defaultBaseUrl = 'https://openrouter.ai/api/v1';
   static const defaultModel = 'openai/gpt-4o-mini';
+  static const requestTimeout = Duration(seconds: 120);
 
   Future<String?> getApiKey() => _storage.read(key: _keyName);
 
-  Future<String> getBaseUrl() async {
-    final value = (await _storage.read(key: _baseUrlName))?.trim();
-    return value == null || value.isEmpty ? defaultBaseUrl : value;
+  /// Kept for compatibility with older UI code. The endpoint is fixed.
+  Future<String> getBaseUrl() async => defaultBaseUrl;
+
+  Future<bool> hasLegacyNonOpenRouterEndpoint() async {
+    final stored = (await _storage.read(key: _legacyBaseUrlName))?.trim();
+    if (stored == null || stored.isEmpty) return false;
+    return !isOfficialBaseUrl(stored);
+  }
+
+  static bool isOfficialBaseUrl(String value) {
+    final endpoint = Uri.tryParse(value.trim());
+    return endpoint != null &&
+        endpoint.scheme == 'https' &&
+        endpoint.host.toLowerCase() == 'openrouter.ai' &&
+        endpoint.path.replaceFirst(RegExp(r'/+$'), '') == '/api/v1' &&
+        !endpoint.hasQuery &&
+        !endpoint.hasFragment &&
+        endpoint.userInfo.isEmpty &&
+        (endpoint.hasPort == false || endpoint.port == 443);
   }
 
   Future<String> getModel() async {
@@ -39,27 +64,21 @@ class OpenAICompatibleProvider {
   }) async {
     final key = apiKey.trim();
     final modelId = model.trim();
-    final endpoint = baseUrl.trim().replaceFirst(RegExp(r'/+$'), '');
-
-    if (key.isEmpty) throw ArgumentError('أدخل مفتاح API أولاً.');
-    final uri = Uri.tryParse(endpoint);
-    if (uri == null ||
-        !uri.hasScheme ||
-        !{'http', 'https'}.contains(uri.scheme) ||
-        uri.host.isEmpty) {
-      throw ArgumentError('عنوان API غير صحيح. أدخل عنواناً متوافقاً مع OpenAI.');
+    if (key.isEmpty) throw ArgumentError('أدخل مفتاح OpenRouter أولاً.');
+    if (!isOfficialBaseUrl(baseUrl)) {
+      throw ArgumentError('يُسمح بعنوان OpenRouter الرسمي فقط: $defaultBaseUrl');
     }
-    if (modelId.isEmpty) throw ArgumentError('أدخل معرّف النموذج.');
+    if (modelId.isEmpty) throw ArgumentError('أدخل معرّف نموذج OpenRouter.');
 
     await _storage.write(key: _keyName, value: key);
     await _storage.write(key: _modelName, value: modelId);
-    await _storage.write(key: _baseUrlName, value: endpoint);
+    await _storage.delete(key: _legacyBaseUrlName);
     await _storage.write(key: _enabledName, value: enable ? 'true' : 'false');
   }
 
   Future<void> setEnabled(bool enabled) async {
     if (enabled && (await getApiKey())?.trim().isNotEmpty != true) {
-      throw StateError('احفظ مفتاح API أولاً.');
+      throw StateError('احفظ مفتاح OpenRouter أولاً.');
     }
     await _storage.write(key: _enabledName, value: enabled ? 'true' : 'false');
   }
@@ -67,87 +86,30 @@ class OpenAICompatibleProvider {
   Future<void> disconnect() async {
     await _storage.delete(key: _keyName);
     await _storage.delete(key: _modelName);
-    await _storage.delete(key: _baseUrlName);
+    await _storage.delete(key: _legacyBaseUrlName);
     await _storage.delete(key: _enabledName);
   }
 
-  /// Builds the standard chat-completions URL without duplicating the path.
   static Uri chatCompletionsUri(String baseUrl) {
-    final endpoint = baseUrl.trim().replaceFirst(RegExp(r'/+$'), '');
-    return Uri.parse(endpoint.endsWith('/chat/completions')
-        ? endpoint
-        : '$endpoint/chat/completions');
+    if (!isOfficialBaseUrl(baseUrl)) {
+      throw ArgumentError('OpenRouter endpoint must be https://openrouter.ai/api/v1');
+    }
+    return Uri.parse('$defaultBaseUrl/chat/completions');
   }
 
-  Future<String> generate(
-    String prompt, {
-    int maxTokens = 768,
-    double temperature = 0.25,
-  }) async {
-    final key = (await getApiKey())?.trim();
-    if (key == null || key.isEmpty || !await isEnabled()) {
-      throw StateError('المزوّد الخارجي غير مفعّل أو لا يوجد مفتاح محفوظ.');
-    }
+  /// Decode JSON from raw response bytes without relying on a server charset header.
+  static dynamic decodeJsonResponse(List<int> bodyBytes) {
+    return jsonDecode(utf8.decode(bodyBytes, allowMalformed: false));
+  }
 
-    final baseUrl = await getBaseUrl();
-    final response = await http
-        .post(
-          chatCompletionsUri(baseUrl),
-          headers: {
-            'Authorization': 'Bearer $key',
-            'Content-Type': 'application/json',
-            if (baseUrl.contains('openrouter.ai')) ...{
-              'HTTP-Referer': 'https://github.com/almwld/giant-agent',
-              'X-Title': 'Giant Agent',
-            },
-          },
-          body: jsonEncode({
-            'model': await getModel(),
-            'messages': [
-              {'role': 'user', 'content': prompt}
-            ],
-            'max_tokens': maxTokens,
-            'temperature': temperature,
-          }),
-        )
-        .timeout(const Duration(seconds: 90));
-
-    final dynamic decoded;
-    try {
-      decoded = jsonDecode(response.body);
-    } on FormatException {
-      throw StateError(
-        'استجابة المزوّد ليست JSON صالحاً (HTTP ${response.statusCode}). '
-        'تحقق من عنوان API والاتصال ثم أعد المحاولة.',
-      );
-    }
-
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      final detail = decoded is Map
-          ? (decoded['error'] is Map
-              ? decoded['error']['message']?.toString()
-              : decoded['error']?.toString())
-          : null;
-      throw StateError(
-        'API (${response.statusCode}): '
-        '${detail?.trim().isNotEmpty == true ? detail : 'تعذر تنفيذ الطلب.'}',
-      );
-    }
-
-    if (decoded is! Map<String, dynamic>) {
-      throw StateError('تنسيق استجابة المزوّد غير متوقع.');
-    }
+  static String extractText(Map<String, dynamic> decoded) {
     final choices = decoded['choices'];
-    if (choices is! List || choices.isEmpty) {
-      throw StateError('لم يُرجع المزوّد أي إجابة.');
+    if (choices is! List || choices.isEmpty || choices.first is! Map) {
+      throw StateError('لم يُرجع OpenRouter أي اختيار للإجابة.');
     }
-    final firstChoice = choices.first;
-    if (firstChoice is! Map) {
-      throw StateError('تنسيق اختيار الإجابة غير صالح.');
-    }
-    final message = firstChoice['message'];
+    final message = (choices.first as Map)['message'];
     if (message is! Map) {
-      throw StateError('الاستجابة لا تحتوي رسالة صالحة.');
+      throw StateError('استجابة OpenRouter لا تحتوي رسالة صالحة.');
     }
     final content = message['content'];
     if (content is String && content.trim().isNotEmpty) return content.trim();
@@ -159,6 +121,333 @@ class OpenAICompatibleProvider {
           .join('\n');
       if (text.trim().isNotEmpty) return text.trim();
     }
-    throw StateError('استجابة المزوّد لا تحتوي نصاً قابلاً للعرض.');
+    throw StateError('استجابة OpenRouter لا تحتوي نصاً قابلاً للعرض.');
+  }
+
+
+  /// Sends an image to a vision-capable OpenRouter model using the standard
+  /// OpenAI multimodal content format. The selected model must support vision.
+  Future<String> generateWithImage(
+    File image, {
+    required String prompt,
+    int maxTokens = 1024,
+    double temperature = 0.2,
+  }) async {
+    if (!await image.exists()) throw FileSystemException('Image does not exist.', image.path);
+    final bytes = await image.readAsBytes();
+    if (bytes.isEmpty || bytes.length > 12 * 1024 * 1024) {
+      throw FileSystemException('Image must be between 1 byte and 12 MB.', image.path);
+    }
+    final key = (await getApiKey())?.trim();
+    if (key == null || key.isEmpty || !await isEnabled()) {
+      throw StateError('OpenRouter غير مفعّل أو لا يوجد مفتاح محفوظ.');
+    }
+    final extension = image.path.toLowerCase().split('.').last;
+    final mime = switch (extension) {
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      'gif' => 'image/gif',
+      _ => 'image/jpeg',
+    };
+    final dataUrl = 'data:$mime;base64,${base64Encode(bytes)}';
+    final client = http.Client();
+    try {
+      final request = http.Request('POST', chatCompletionsUri(defaultBaseUrl))
+        ..followRedirects = false
+        ..headers.addAll({
+          'Authorization': 'Bearer $key',
+          'Content-Type': 'application/json; charset=utf-8',
+          'HTTP-Referer': 'https://github.com/almwld/giant-agent',
+          'X-Title': 'Giant Agent',
+        })
+        ..body = jsonEncode({
+          'model': await getModel(),
+          'messages': [{
+            'role': 'user',
+            'content': [
+              {'type': 'text', 'text': prompt},
+              {'type': 'image_url', 'image_url': {'url': dataUrl}},
+            ],
+          }],
+          'max_tokens': maxTokens,
+          'temperature': temperature,
+        });
+      final response = await client.send(request).then((streamed) {
+        if (streamed.isRedirect) {
+          throw StateError('رفض OpenRouter إعادة توجيه طلب الصورة (HTTP ${streamed.statusCode}).');
+        }
+        return http.Response.fromStream(streamed);
+      }).timeout(requestTimeout);
+      final dynamic decoded;
+      try {
+        decoded = decodeJsonResponse(response.bodyBytes);
+      } on FormatException {
+        throw StateError('أعاد OpenRouter استجابة غير JSON (HTTP ${response.statusCode}).');
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final detail = decoded is Map
+            ? (decoded['error'] is Map
+                ? decoded['error']['message']?.toString()
+                : decoded['error']?.toString())
+            : null;
+        throw StateError('OpenRouter vision HTTP ${response.statusCode}: ${detail ?? 'تعذر تحليل الصورة.'}');
+      }
+      if (decoded is! Map<String, dynamic>) throw StateError('تنسيق استجابة OpenRouter غير متوقع.');
+      return extractText(decoded);
+    } on TimeoutException {
+      throw TimeoutException('انتهت مهلة تحليل الصورة عبر OpenRouter.');
+    } finally {
+      client.close();
+    }
+  }
+
+  /// Incremental OpenRouter SSE generation using this provider singleton.
+  Future<String> generateStreaming(
+    String prompt, {
+    int maxTokens = 768,
+    double temperature = 0.25,
+    void Function(String delta)? onDelta,
+    bool Function()? isCancelled,
+  }) async {
+    final key = (await getApiKey())?.trim();
+    if (key == null || key.isEmpty || !await isEnabled()) {
+      throw StateError('OpenRouter غير مفعّل أو لا يوجد مفتاح محفوظ.');
+    }
+    if (isCancelled?.call() == true) throw const _OpenRouterStreamInterrupted();
+
+    final client = http.Client();
+    final parser = ServerSentEventParser();
+    final output = StringBuffer();
+    try {
+      final request = http.Request('POST', chatCompletionsUri(defaultBaseUrl))
+        ..followRedirects = false
+        ..headers.addAll({
+          'Authorization': 'Bearer $key',
+          'Content-Type': 'application/json; charset=utf-8',
+          'Accept': 'text/event-stream',
+          'HTTP-Referer': 'https://github.com/almwld/giant-agent',
+          'X-Title': 'Giant Agent',
+        })
+        ..body = jsonEncode({
+          'model': await getModel(),
+          'messages': [{'role': 'user', 'content': prompt}],
+          'max_tokens': maxTokens,
+          'temperature': temperature,
+          'stream': true,
+        });
+      final sendFuture = client.send(request);
+      final sendCancellationPoll = Timer.periodic(const Duration(milliseconds: 100), (_) {
+        if (isCancelled?.call() == true) client.close();
+      });
+      late final http.StreamedResponse response;
+      try {
+        response = await sendFuture.timeout(requestTimeout);
+      } catch (error) {
+        if (isCancelled?.call() == true) {
+          throw StateError('تم إيقاف تدفق OpenRouter بناءً على طلب المستخدم.');
+        }
+        rethrow;
+      } finally {
+        sendCancellationPoll.cancel();
+      }
+      if (response.isRedirect) {
+        throw StateError('رفض OpenRouter إعادة توجيه HTTP ${response.statusCode}.');
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final body = await response.stream.bytesToString();
+        String detail = body;
+        try {
+          final decoded = jsonDecode(body);
+          if (decoded is Map) {
+            final error = decoded['error'];
+            detail = error is Map
+                ? error['message']?.toString() ?? body
+                : error?.toString() ?? body;
+          }
+        } catch (_) {}
+        throw StateError('OpenRouter streaming HTTP ${response.statusCode}: $detail');
+      }
+      final contentType = response.headers['content-type']?.toLowerCase() ?? '';
+      if (!contentType.contains('text/event-stream')) {
+        throw StateError('OpenRouter لم يُرجع قناة SSE صالحة (Content-Type: $contentType).');
+      }
+
+      final completed = Completer<void>();
+      late final StreamSubscription<List<int>> subscription;
+      Timer? idleTimer;
+      void resetIdleTimer() {
+        idleTimer?.cancel();
+        idleTimer = Timer(requestTimeout, () {
+          if (!completed.isCompleted) {
+            completed.completeError(TimeoutException(
+              'انتهت مهلة عدم وصول بيانات من OpenRouter بعد ${requestTimeout.inSeconds} ثانية.',
+            ));
+            unawaited(subscription.cancel());
+          }
+        });
+      }
+      var receivedDone = false;
+
+      void consumeEvents(List<ServerSentEvent> events) {
+        for (final event in events) {
+          if (completed.isCompleted) return;
+          if (event.data.trim() == '[DONE]') {
+            receivedDone = true;
+            completed.complete();
+            unawaited(subscription.cancel());
+            return;
+          }
+          final dynamic decoded;
+          try {
+            decoded = jsonDecode(event.data);
+          } on FormatException {
+            throw StateError('أرسل OpenRouter حدث SSE غير صالح بصيغة JSON.');
+          }
+          if (decoded is! Map) continue;
+          if (decoded['error'] != null) {
+            throw StateError('OpenRouter streaming error: ${decoded['error']}');
+          }
+          final choices = decoded['choices'];
+          if (choices is! List || choices.isEmpty || choices.first is! Map) continue;
+          final delta = (choices.first as Map)['delta'];
+          if (delta is! Map) continue;
+          final content = delta['content'];
+          final textDelta = content is String
+              ? content
+              : content is List
+                  ? content.whereType<Map>().map((part) => part['text']?.toString() ?? '').join()
+                  : '';
+          if (textDelta.isNotEmpty) {
+            output.write(textDelta);
+            onDelta?.call(textDelta);
+          }
+        }
+      }
+
+      resetIdleTimer();
+      subscription = response.stream.listen(
+        (bytes) {
+          resetIdleTimer();
+          try {
+            if (isCancelled?.call() == true) {
+              if (!completed.isCompleted) completed.completeError(const _OpenRouterStreamInterrupted());
+              unawaited(subscription.cancel());
+              return;
+            }
+            consumeEvents(parser.add(bytes));
+          } catch (error, stack) {
+            if (!completed.isCompleted) completed.completeError(error, stack);
+            unawaited(subscription.cancel());
+          }
+        },
+        onError: (Object error, StackTrace stack) {
+          if (!completed.isCompleted) completed.completeError(error, stack);
+        },
+        onDone: () {
+          try {
+            if (!receivedDone) consumeEvents(parser.close());
+            if (!completed.isCompleted) completed.complete();
+          } catch (error, stack) {
+            if (!completed.isCompleted) completed.completeError(error, stack);
+          }
+        },
+        cancelOnError: true,
+      );
+      final cancellationPoll = Timer.periodic(const Duration(milliseconds: 100), (_) {
+        if (isCancelled?.call() == true && !completed.isCompleted) {
+          completed.completeError(const _OpenRouterStreamInterrupted());
+          unawaited(subscription.cancel());
+        }
+      });
+      try {
+        await completed.future;
+      } finally {
+        cancellationPoll.cancel();
+        idleTimer?.cancel();
+        await subscription.cancel();
+      }
+
+      if (isCancelled?.call() == true) throw const _OpenRouterStreamInterrupted();
+      if (output.isEmpty) throw StateError('انتهى تدفق OpenRouter دون محتوى نصي.');
+      return output.toString();
+    } on _OpenRouterStreamInterrupted {
+      throw StateError('تم إيقاف تدفق OpenRouter بناءً على طلب المستخدم.');
+    } on TimeoutException {
+      throw TimeoutException('انتهت مهلة تدفق OpenRouter بعد ${requestTimeout.inSeconds} ثانية.');
+    } finally {
+      client.close();
+    }
+  }
+
+
+  Future<String> generate(
+    String prompt, {
+    int maxTokens = 768,
+    double temperature = 0.25,
+  }) async {
+    final key = (await getApiKey())?.trim();
+    if (key == null || key.isEmpty || !await isEnabled()) {
+      throw StateError('OpenRouter غير مفعّل أو لا يوجد مفتاح محفوظ.');
+    }
+
+    final client = http.Client();
+    try {
+      final request = http.Request('POST', chatCompletionsUri(defaultBaseUrl))
+        ..followRedirects = false
+        ..headers.addAll({
+          'Authorization': 'Bearer $key',
+          'Content-Type': 'application/json; charset=utf-8',
+          'HTTP-Referer': 'https://github.com/almwld/giant-agent',
+          'X-Title': 'Giant Agent',
+        })
+        ..body = jsonEncode({
+          'model': await getModel(),
+          'messages': [
+            {'role': 'user', 'content': prompt}
+          ],
+          'max_tokens': maxTokens,
+          'temperature': temperature,
+        });
+
+      final response = await client.send(request).then((streamed) {
+        if (streamed.isRedirect) {
+          throw StateError(
+            'رفض OpenRouter إعادة توجيه HTTP ${streamed.statusCode}. تحقق من الاتصال أو إعدادات الشبكة.',
+          );
+        }
+        return http.Response.fromStream(streamed);
+      }).timeout(requestTimeout);
+
+      final dynamic decoded;
+      try {
+        decoded = decodeJsonResponse(response.bodyBytes);
+      } on FormatException {
+        throw StateError(
+          'أعاد OpenRouter استجابة غير JSON (HTTP ${response.statusCode}).',
+        );
+      }
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final detail = decoded is Map
+            ? (decoded['error'] is Map
+                ? decoded['error']['message']?.toString()
+                : decoded['error']?.toString())
+            : null;
+        throw StateError(
+          'OpenRouter HTTP ${response.statusCode}: '
+          '${detail?.trim().isNotEmpty == true ? detail : 'تعذر تنفيذ الطلب.'}',
+        );
+      }
+      if (decoded is! Map<String, dynamic>) {
+        throw StateError('تنسيق استجابة OpenRouter غير متوقع.');
+      }
+      return extractText(decoded);
+    } on TimeoutException {
+      throw TimeoutException(
+        'انتهت مهلة OpenRouter بعد ${requestTimeout.inSeconds} ثانية. تحقق من الاتصال أو جرّب نموذجاً أسرع.',
+      );
+    } finally {
+      client.close();
+    }
   }
 }

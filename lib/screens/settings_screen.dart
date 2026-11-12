@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/app_preferences.dart';
+import 'mcp_settings_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -27,6 +28,17 @@ class SettingsScreen extends StatelessWidget {
           ])),
           const SizedBox(height: 18),
           _heading(context, prefs.locale.languageCode == 'ar' ? 'التشغيل' : 'Runtime'),
+          Card(child: ListTile(
+            leading: const Icon(Icons.hub_outlined),
+            title: Text(prefs.locale.languageCode == 'ar' ? 'خوادم MCP' : 'MCP servers'),
+            subtitle: Text(prefs.locale.languageCode == 'ar'
+              ? 'إدارة الخوادم واكتشاف الأدوات والموارد الخارجية.'
+              : 'Manage servers and discover external tools and resources.'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const McpSettingsScreen()),
+            ),
+          )),
           Card(child: ListTile(leading: const Icon(Icons.memory_outlined),
             title: Text(prefs.locale.languageCode == 'ar' ? 'النموذج المحلي GGUF' : 'Local GGUF model'),
             subtitle: Text(prefs.locale.languageCode == 'ar'

@@ -10,9 +10,15 @@ class AgentTimelineEvent {
     required this.status,
     required this.timestamp,
     this.stepId,
+    this.toolCallId,
     this.attemptId,
     this.sequence,
     this.details,
+    this.result,
+    this.taskId,
+    this.agentType,
+    this.taskPrompt,
+    this.dependsOn = const <String>[],
   });
 
   final String id;
@@ -22,9 +28,15 @@ class AgentTimelineEvent {
   final String status;
   final DateTime timestamp;
   final String? stepId;
+  final String? toolCallId;
   final String? attemptId;
   final int? sequence;
   final String? details;
+  final String? result;
+  final String? taskId;
+  final String? agentType;
+  final String? taskPrompt;
+  final List<String> dependsOn;
 
   Map<String, dynamic> toMap() => <String, dynamic>{
         'id': id,
@@ -35,8 +47,14 @@ class AgentTimelineEvent {
         'status': status,
         'timestamp': timestamp.toUtc().toIso8601String(),
         if (stepId != null && stepId!.isNotEmpty) 'step_id': stepId,
+        if (toolCallId != null && toolCallId!.isNotEmpty) 'tool_call_id': toolCallId,
         if (sequence != null) 'sequence': sequence,
         if (details != null && details!.isNotEmpty) 'details': details,
+        if (result != null && result!.isNotEmpty) 'result': result,
+        if (taskId != null && taskId!.isNotEmpty) 'task_id': taskId,
+        if (agentType != null && agentType!.isNotEmpty) 'agent_type': agentType,
+        if (taskPrompt != null && taskPrompt!.isNotEmpty) 'task_prompt': taskPrompt,
+        if (dependsOn.isNotEmpty) 'depends_on': dependsOn,
       };
 
   factory AgentTimelineEvent.fromMap(Map<String, dynamic> map) {
@@ -53,12 +71,18 @@ class AgentTimelineEvent {
       requestId: (map['request_id'] ?? map['requestId'])?.toString() ?? '',
       attemptId: (map['attempt_id'] ?? map['request_id'] ?? map['requestId'])?.toString(),
       stepId: (map['step_id'] ?? map['stepId'])?.toString(),
+      toolCallId: (map['tool_call_id'] ?? map['toolCallId'])?.toString(),
       sequence: rawSequence is num ? rawSequence.toInt() : int.tryParse(rawSequence?.toString() ?? ''),
       type: map['type']?.toString() ?? 'unknown',
       title: map['title']?.toString() ?? '',
       status: map['status']?.toString() ?? 'pending',
       timestamp: timestamp,
       details: map['details']?.toString(),
+      result: map['result']?.toString(),
+      taskId: map['task_id']?.toString(),
+      agentType: map['agent_type']?.toString(),
+      taskPrompt: map['task_prompt']?.toString(),
+      dependsOn: (map['depends_on'] as List?)?.map((item) => item.toString()).toList(growable: false) ?? const <String>[],
     );
   }
 }
