@@ -58,6 +58,7 @@ The read-only observability extension exposes:
 - Optional exact event-type and status filters.
 - Conversation aggregates for request states, event counts, distinct tool calls, tool failures, tool success rate, and average reported tool latency.
 - Aggregate responses never include prompts, model responses, tool arguments, or tool output. Full event details remain available only through the local app database API.
+- The chat app bar opens the local Gain Agents diagnostics screen for the active conversation. It provides summary cards, status filtering, refresh, and cursor-based older-event loading.
 
 Tool latency is reported only when a producer includes a non-negative `duration_ms` or `latency_ms` field. Missing measurements remain absent; they are never treated as zero.
 
@@ -73,7 +74,7 @@ Tool latency is reported only when a producer includes a non-negative `duration_
 
 ## Verification
 
-The durable-service tests cover request persistence, FIFO execution, and subagent event journaling. Dedicated observability tests cover stable cursor pagination, type/status filtering, conversation isolation, request-state aggregates, distinct tool outcomes, and latency aggregation. Event-bus tests cover correlation normalization and process sequence metadata. Extend these tests whenever the event contract, persistence policy, or recovery behavior changes. CI must run Flutter analysis, unit tests, and release APK builds before merge.
+The durable-service tests cover request persistence, FIFO execution, and subagent event journaling. Dedicated observability tests cover stable cursor pagination, type/status filtering, conversation isolation, request-state aggregates, distinct tool outcomes, and latency aggregation. Event-bus tests cover correlation normalization and process sequence metadata. The chat app bar exposes the diagnostics screen without adding a remote service or a second runtime. Extend these tests whenever the event contract, persistence policy, or recovery behavior changes. CI must run Flutter analysis, unit tests, and release APK builds before merge.
 
 ## Removed vendor integration
 
