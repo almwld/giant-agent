@@ -404,7 +404,7 @@ class AgentMemoryService {
         .clamp(0, 31536000000);
     final ageDays = ageMillis / 86400000;
     final recency = 1 / (1 + ageDays / 45);
-    final importanceBonus = importance.clamp(1, 5) * 0.35;
+    final importanceBonus = importance.clamp(1, 5).toDouble() * 0.35;
     return matched * 2.0 + coverage * 1.5 + phraseBonus +
         importanceBonus + recency * 0.75;
   }
@@ -418,7 +418,7 @@ class AgentMemoryService {
     String conversationId = 'global',
     int maxTokens = 900,
   }) async {
-    final normalizedQuery = query.toLowerCase();
+    final normalizedQuery = _normalizeMemoryText(query);
     final words = normalizedQuery
         .split(RegExp(r'[^\p{L}\p{N}]+', unicode: true))
         .where((word) => word.runes.length >= 3)
