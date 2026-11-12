@@ -328,27 +328,79 @@ class ModelService {
     return result;
   }
 
-  Future<Map<String, dynamic>> executePython({required String code}) async {
-    final result = await _agentTools.invokeMapMethod<String, dynamic>('executePython', {'code': code});
-    if (result == null) {
-      throw PlatformException(code: 'PYTHON_FAILED', message: 'Python runtime returned no result.');
+  Future<Map<String, dynamic>> _invokePythonCancellable(
+    String method,
+    Map<String, Object?> arguments, {
+    String? invocationId,
+    bool Function()? isCancelled,
+    required String failureCode,
+  }) async {
+    final invocation = invocationId?.trim() ?? '';
+    var cancellationSent = false;
+    Timer? cancellationPoll;
+    if (invocation.isNotEmpty && isCancelled != null) {
+      cancellationPoll = Timer.periodic(const Duration(milliseconds: 50), (_) {
+        if (!cancellationSent && isCancelled()) {
+          cancellationSent = true;
+          unawaited(_agentTools.invokeMethod<bool>(
+            'cancelPythonExecution',
+            <String, Object?>{'invocationId': invocation},
+          ).catchError((Object _) => false));
+        }
+      });
     }
-    return result;
+    try {
+      final result = await _agentTools.invokeMapMethod<String, dynamic>(
+        method,
+        <String, Object?>{
+          ...arguments,
+          if (invocation.isNotEmpty) 'invocationId': invocation,
+        },
+      );
+      if (isCancelled?.call() == true || result?['cancelled'] == true) {
+        return <String, dynamic>{
+          ...?result,
+          'ok': false,
+          'cancelled': true,
+          'error': 'Python execution was cancelled for this tool call.',
+        };
+      }
+      if (result == null) {
+        throw PlatformException(
+          code: failureCode,
+          message: 'Python runtime returned no result.',
+        );
+      }
+      return result;
+    } finally {
+      cancellationPoll?.cancel();
+    }
   }
+
+  Future<Map<String, dynamic>> executePython({
+    required String code,
+    String? invocationId,
+    bool Function()? isCancelled,
+  }) => _invokePythonCancellable(
+        'executePython',
+        <String, Object?>{'code': code},
+        invocationId: invocationId,
+        isCancelled: isCancelled,
+        failureCode: 'PYTHON_FAILED',
+      );
 
   Future<Map<String, dynamic>> executePythonRepl({
     required String code,
     required String sessionId,
-  }) async {
-    final result = await _agentTools.invokeMapMethod<String, dynamic>(
-      'executePythonRepl',
-      <String, dynamic>{'code': code, 'sessionId': sessionId},
-    );
-    if (result == null) {
-      throw PlatformException(code: 'IPYTHON_FAILED', message: 'Python REPL returned no result.');
-    }
-    return result;
-  }
+    String? invocationId,
+    bool Function()? isCancelled,
+  }) => _invokePythonCancellable(
+        'executePythonRepl',
+        <String, Object?>{'code': code, 'sessionId': sessionId},
+        invocationId: invocationId,
+        isCancelled: isCancelled,
+        failureCode: 'IPYTHON_FAILED',
+      );
 
   Future<Map<String, dynamic>> resetPythonRepl({required String sessionId}) async {
     final result = await _agentTools.invokeMapMethod<String, dynamic>(
@@ -408,6 +460,8 @@ class ModelService {
           result = await executePythonRepl(
             code: args['code']?.toString() ?? '',
             sessionId: sessionId,
+            invocationId: toolCallId,
+            isCancelled: isCancelled,
           );
           break;
         case 'reset_ipython':
@@ -415,7 +469,11 @@ class ModelService {
           result = await resetPythonRepl(sessionId: sessionId);
           break;
         case 'execute_python':
-          result = await executePython(code: args['code']?.toString() ?? '');
+          result = await executePython(
+            code: args['code']?.toString() ?? '',
+            invocationId: toolCallId,
+            isCancelled: isCancelled,
+          );
           break;
         case 'mcp_read_resource':
           final serverId = args['server_id']?.toString() ?? '';
