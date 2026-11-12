@@ -1,7 +1,5 @@
 import 'dart:convert';
 
-import 'package:sqflite/sqflite.dart';
-
 import 'agent_kernel_store.dart';
 
 /// A locally persisted execution event with a stable SQLite cursor.
