@@ -26,6 +26,7 @@ class LocalArabicTtsService {
   bool _ready = false;
   Directory? _modelDirectory;
   bool _downloading = false;
+  int _generationId = 0;
 
   bool get isReady => _ready;
   bool get isDownloading => _downloading;
@@ -149,6 +150,7 @@ class LocalArabicTtsService {
     final value = text.trim();
     if (value.isEmpty) return;
     await initialize();
+    final generationId = ++_generationId;
     final dir = await _directory();
     // Keep each inference comfortably below Nabra's 510-phoneme sequence cap.
     // This also bounds peak memory and makes interruption responsive.
@@ -161,6 +163,7 @@ class LocalArabicTtsService {
         'text': chunk,
         'speed': speed,
       }));
+      if (generationId != _generationId) return;
       final samples = generated['samples'] as Float32List;
       final sampleRate = generated['sampleRate'] as int;
       if (samples.isEmpty || sampleRate <= 0) {
@@ -212,7 +215,10 @@ class LocalArabicTtsService {
     return chunks;
   }
 
-  Future<void> stop() => _player.stop();
+  Future<void> stop() {
+    _generationId++;
+    return _player.stop();
+  }
 
   Future<void> dispose() async {
     await stop();
