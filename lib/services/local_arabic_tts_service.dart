@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
@@ -167,23 +168,24 @@ class LocalArabicTtsService {
     final value = text.trim();
     if (value.isEmpty) return;
     await initialize();
-    final audio = _tts!.generateWithConfig(
-      text: value,
-      config: sherpa.OfflineTtsGenerationConfig(
-        sid: 0,
-        speed: speed,
-        silenceScale: 0.2,
-        extra: const {'lang': 'ar'},
-      ),
-    );
-    if (audio.samples.isEmpty || audio.sampleRate <= 0) {
+    final dir = await _directory();
+    final generated = await Isolate.run(() => _synthesizeNabra({
+      'model': '${dir.path}/model.int8.onnx',
+      'voices': '${dir.path}/voices.bin',
+      'tokens': '${dir.path}/tokens.txt',
+      'dataDir': '${dir.path}/espeak-ng-data',
+      'text': value,
+      'speed': speed,
+    }));
+    final samples = generated['samples'] as Float32List;
+    final sampleRate = generated['sampleRate'] as int;
+    if (samples.isEmpty || sampleRate <= 0) {
       throw StateError('Arabic TTS returned an empty audio buffer.');
     }
-    final dir = await _directory();
     final output = File(
       '${dir.path}/speech-${DateTime.now().microsecondsSinceEpoch}.wav',
     );
-    await output.writeAsBytes(_encodeWave(audio.samples, audio.sampleRate));
+    await output.writeAsBytes(_encodeWave(samples, sampleRate));
     try {
       final completed = _player.onPlayerComplete.first;
       await _player.play(DeviceFileSource(output.path));
@@ -231,5 +233,44 @@ class LocalArabicTtsService {
       bytes.setInt16(44 + i * 2, pcm, Endian.little);
     }
     return bytes.buffer.asUint8List();
+  }
+}
+
+Future<Map<String, Object>> _synthesizeNabra(Map<String, Object> args) async {
+  await sherpa.initBindingsAsync();
+  final config = sherpa.OfflineTtsConfig(
+    model: sherpa.OfflineTtsModelConfig(
+      kokoro: sherpa.OfflineTtsKokoroModelConfig(
+        model: args['model']! as String,
+        voices: args['voices']! as String,
+        tokens: args['tokens']! as String,
+        dataDir: args['dataDir']! as String,
+        lang: 'ar',
+        lengthScale: 1.0,
+      ),
+      numThreads: 2,
+      debug: false,
+      provider: 'cpu',
+    ),
+    maxNumSenetences: 1,
+    silenceScale: 0.2,
+  );
+  final engine = sherpa.OfflineTts(config);
+  try {
+    final audio = engine.generateWithConfig(
+      text: args['text']! as String,
+      config: sherpa.OfflineTtsGenerationConfig(
+        sid: 0,
+        speed: args['speed']! as double,
+        silenceScale: 0.2,
+        extra: const {'lang': 'ar'},
+      ),
+    );
+    return <String, Object>{
+      'samples': audio.samples,
+      'sampleRate': audio.sampleRate,
+    };
+  } finally {
+    engine.free();
   }
 }
