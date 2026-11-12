@@ -16,12 +16,23 @@ class MediaTaskRequest {
     required this.prompt,
     this.inputPaths = const [],
     this.options = const {},
+    this.isCancelled,
   });
 
   final MediaCapability capability;
   final String prompt;
   final List<String> inputPaths;
   final Map<String, Object?> options;
+  /// Invocation-scoped cancellation predicate supplied by ModelService.
+  /// Providers should abort their transport when possible and check this at
+  /// every safe boundary before publishing or persisting an asset.
+  final bool Function()? isCancelled;
+
+  void throwIfCancelled() {
+    if (isCancelled?.call() == true) {
+      throw StateError('Media tool call cancelled.');
+    }
+  }
 
   bool get requiresInputMedia =>
       capability == MediaCapability.editImage ||

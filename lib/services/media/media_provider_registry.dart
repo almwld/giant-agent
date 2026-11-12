@@ -27,6 +27,7 @@ class MediaProviderRegistry {
     MediaTaskRequest request, {
     String? providerId,
   }) async {
+    request.throwIfCancelled();
     if (request.prompt.trim().isEmpty) {
       throw ArgumentError('يجب إدخال وصف للعملية الإعلامية.');
     }
@@ -44,6 +45,9 @@ class MediaProviderRegistry {
         'لا يوجد مزوّد متصل يدعم العملية: ${request.capability.name}.',
       );
     }
-    return provider.execute(request);
+    request.throwIfCancelled();
+    final result = await provider.execute(request);
+    request.throwIfCancelled();
+    return result;
   }
 }
