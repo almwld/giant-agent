@@ -80,7 +80,7 @@ class TerminalToolCoordinator {
     try {
       final result = _executeCancellable == null
           ? await _execute(normalized, timeout)
-          : await _executeCancellable(normalized, timeout, isCancelled);
+          : await _executeCancellable!.call(normalized, timeout, isCancelled);
       final ok = result.succeeded;
       if (result.cancelled) {
         _emit('tool_interrupted', 'تم إيقاف أمر الطرفية المحدد', 'interrupted', command: normalized, output: result.output, details: 'exit_code=' + result.exitCode.toString() + '; cancelled=true');
