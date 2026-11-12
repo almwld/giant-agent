@@ -49,3 +49,26 @@ Obtain the original Boosthis one-time setup page or official Flutter/Android int
 - privacy/consent and data-retention requirements.
 
 Only after those are available should a separate app-side implementation add the SDK, typed event adapter, lifecycle instrumentation, tests, and Android release verification. This document deliberately marks that boundary rather than inventing a non-existent API.
+
+
+## Vendor-published Flutter kit facts (reviewed 2026-11-12)
+
+The public Boosthis documentation confirms that a Flutter kit exists, but deliberately does not publish the private per-project install command or archive URL. Those are generated on the project's own Project Keys → key → Setup page. The public Help page says the archive is downloaded from that page (or its one-line command), unpacked, and wired using the snippet generated for that key. Do not substitute a guessed pub.dev package or invent a package name.
+
+Before approving app instrumentation, account for these documented behaviours:
+
+- The Flutter kit's key is embedded in the shipped application. Boosthis says this key is scoped so it can register installs and submit fabricated readings, but cannot read project measurements or access billing, teams, or other projects. It is not a server secret.
+- Initialisation registers the install automatically; the public docs state there is no end-user consent prompt before that first registration.
+- The Flutter kit observes requests made through Dart's default HTTP client (including package:http and Dio's default adapter). It adds three trace headers to every watched outbound host unless `BOOSTHIS_DISABLED=1` is set at build time. This is a cross-host propagation concern and must be reviewed against the app's third-party API traffic.
+- Detailed request spans depend on the project's Full telemetry setting. The optional Dio add-on is separate and must not be added without an explicit need.
+- The kit's `forget()` path stops reporting and erases its install state. A release archive includes `BOOSTHIS_CHECKSUMS.txt`; verify it with `sha256sum -c BOOSTHIS_CHECKSUMS.txt`. Boosthis also documents signed release verification and publishes its release signing key.
+
+References:
+- https://www.boosthis.com/help
+- https://www.boosthis.com/docs/connect-your-ai
+- https://www.boosthis.com/docs/before-you-install
+- https://www.boosthis.com/docs/what-boosthis-collects
+
+## Integration gate
+
+The implementation can proceed as soon as the generated Setup-page install command/archive and snippet are available. That exact material is project-specific and sits behind the account's Setup page; public documentation does not expose it. Until then the safe completed scope is the MCP connection configuration and the two unrelated Dart compile fixes. Do not ship a speculative SDK integration or silently enable outbound trace headers to third-party hosts.
