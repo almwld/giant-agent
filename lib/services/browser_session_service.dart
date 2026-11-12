@@ -16,6 +16,39 @@ class BrowserSessionService {
 
   bool get isAttached => _controller != null;
 
+  void _checkCancelled(bool Function()? isCancelled) {
+    if (isCancelled?.call() == true) {
+      throw StateError('Browser tool call cancelled.');
+    }
+  }
+
+  Future<T> _awaitCancellable<T>(
+    Future<T> operation,
+    bool Function()? isCancelled,
+  ) async {
+    if (isCancelled == null) return operation;
+    _checkCancelled(isCancelled);
+    final result = Completer<T>();
+    final poll = Timer.periodic(const Duration(milliseconds: 75), (_) {
+      if (!result.isCompleted && isCancelled()) {
+        result.completeError(StateError('Browser tool call cancelled.'));
+      }
+    });
+    operation.then(
+      (value) {
+        if (!result.isCompleted) result.complete(value);
+      },
+      onError: (Object error, StackTrace stack) {
+        if (!result.isCompleted) result.completeError(error, stack);
+      },
+    );
+    try {
+      return await result.future;
+    } finally {
+      poll.cancel();
+    }
+  }
+
   void attach(WebViewController controller) {
     _controller = controller;
     if (!_ready.isCompleted) _ready.complete();
@@ -30,9 +63,9 @@ class BrowserSessionService {
     _pageError = null;
   }
 
-  Future<void> waitUntilReady({Duration timeout = const Duration(seconds: 15)}) async {
+  Future<void> waitUntilReady({Duration timeout = const Duration(seconds: 15), bool Function()? isCancelled}) async {
     if (_controller != null) return;
-    await _ready.future.timeout(timeout);
+    await _awaitCancellable(_ready.future.timeout(timeout), isCancelled);
     if (_controller == null) throw StateError('Browser session was closed.');
   }
 
@@ -83,13 +116,15 @@ class BrowserSessionService {
     return controller;
   }
 
-  Future<Map<String, dynamic>> visit(String url) async {
+  Future<Map<String, dynamic>> visit(String url, {bool Function()? isCancelled}) async {
+    _checkCancelled(isCancelled);
     final uri = _validateUrl(url);
     final controller = _requireController();
     markPageStarted();
-    await controller.loadRequest(uri);
+    await _awaitCancellable(controller.loadRequest(uri), isCancelled);
+    _checkCancelled(isCancelled);
     try {
-      await _pageLoaded.future.timeout(const Duration(seconds: 30));
+      await _awaitCancellable(_pageLoaded.future.timeout(const Duration(seconds: 30)), isCancelled);
     } on TimeoutException {
       return <String, dynamic>{
         'ok': false,
@@ -104,14 +139,17 @@ class BrowserSessionService {
         'error': _pageError,
       };
     }
-    return state();
+    _checkCancelled(isCancelled);
+    return state(isCancelled: isCancelled);
   }
 
-  Future<Map<String, dynamic>> state() async {
+  Future<Map<String, dynamic>> state({bool Function()? isCancelled}) async {
     final controller = _requireController();
-    final raw = await controller.runJavaScriptReturningResult(
+    _checkCancelled(isCancelled);
+    final raw = await _awaitCancellable(controller.runJavaScriptReturningResult(
       'JSON.stringify({url:location.href,title:document.title,text:(document.body?document.body.innerText:" ").slice(0,10000)})',
-    );
+    ), isCancelled);
+    _checkCancelled(isCancelled);
     final decoded = _decode(raw);
     if (decoded is! Map) throw const FormatException('Browser state returned an invalid payload.');
     return <String, dynamic>{
@@ -122,17 +160,19 @@ class BrowserSessionService {
     };
   }
 
-  Future<Map<String, dynamic>> find(String query) async {
+  Future<Map<String, dynamic>> find(String query, {bool Function()? isCancelled}) async {
     final value = query.trim();
     if (value.isEmpty || value.length > 300) throw ArgumentError('Browser find query must contain 1–300 characters.');
+    _checkCancelled(isCancelled);
     final controller = _requireController();
     final encoded = jsonEncode(value);
-    final raw = await controller.runJavaScriptReturningResult('''(() => {
+    final raw = await _awaitCancellable(controller.runJavaScriptReturningResult('''(() => {
       const q=$encoded;
       const text=(document.body?.innerText||'');
       const index=text.toLocaleLowerCase().indexOf(q.toLocaleLowerCase());
       return JSON.stringify({ok:true,query:q,found:index>=0,index,snippet:index<0?'':text.slice(Math.max(0,index-180),Math.min(text.length,index+q.length+300))});
-    })()''');
+    })()'''), isCancelled);
+    _checkCancelled(isCancelled);
     final decoded = _decode(raw);
     if (decoded is! Map) throw const FormatException('Browser find returned an invalid payload.');
     return Map<String, dynamic>.from(decoded);
@@ -141,13 +181,15 @@ class BrowserSessionService {
   Future<Map<String, dynamic>> click(
     String visibleText, {
     bool allowSensitive = false,
+    bool Function()? isCancelled,
   }) async {
     final value = visibleText.trim();
     if (value.isEmpty || value.length > 200) throw ArgumentError('Click target must contain 1–200 characters.');
+    _checkCancelled(isCancelled);
     final controller = _requireController();
     final encoded = jsonEncode(value);
     final approval = allowSensitive ? 'true' : 'false';
-    final raw = await controller.runJavaScriptReturningResult('''(() => {
+    final raw = await _awaitCancellable(controller.runJavaScriptReturningResult('''(() => {
       const target=$encoded, allowSensitive=$approval;
       const norm=s=>(s||'').replace(/\\s+/g,' ').trim().toLocaleLowerCase();
       const nodes=[...document.querySelectorAll('a,button,[role="button"],input[type="submit"]')];
@@ -161,7 +203,8 @@ class BrowserSessionService {
         return JSON.stringify({ok:false,requires_confirmation:true,clicked:target,tag:node.tagName});
       node.click();
       return JSON.stringify({ok:true,clicked:target,tag:node.tagName});
-    })()''');
+    })()'''), isCancelled);
+    _checkCancelled(isCancelled);
     final decoded = _decode(raw);
     if (decoded is! Map) throw const FormatException('Browser click returned an invalid payload.');
     return Map<String, dynamic>.from(decoded);
@@ -171,16 +214,18 @@ class BrowserSessionService {
     String selector,
     String value, {
     bool allowSensitive = false,
+    bool Function()? isCancelled,
   }) async {
     final cleanSelector = selector.trim();
     if (cleanSelector.isEmpty || cleanSelector.length > 300 || value.length > 4000) {
       throw ArgumentError('Input requires a CSS selector (1–300 chars) and value (max 4000 chars).');
     }
+    _checkCancelled(isCancelled);
     final controller = _requireController();
     final selectorJson = jsonEncode(cleanSelector);
     final valueJson = jsonEncode(value);
     final approval = allowSensitive ? 'true' : 'false';
-    final raw = await controller.runJavaScriptReturningResult('''(() => {
+    final raw = await _awaitCancellable(controller.runJavaScriptReturningResult('''(() => {
       const selector=$selectorJson, value=$valueJson, allowSensitive=$approval;
       let element;
       try { element=document.querySelector(selector); } catch(e) {
@@ -196,28 +241,32 @@ class BrowserSessionService {
       element.dispatchEvent(new Event('input',{bubbles:true}));
       element.dispatchEvent(new Event('change',{bubbles:true}));
       return JSON.stringify({ok:true,selector,tag:element.tagName,type:element.type||''});
-    })()''');
+    })()'''), isCancelled);
+    _checkCancelled(isCancelled);
     final decoded = _decode(raw);
     if (decoded is! Map) throw const FormatException('Browser input returned an invalid payload.');
     return Map<String, dynamic>.from(decoded);
   }
 
-  Future<Map<String, dynamic>> scroll({required bool down}) async {
+  Future<Map<String, dynamic>> scroll({required bool down, bool Function()? isCancelled}) async {
+    _checkCancelled(isCancelled);
     final controller = _requireController();
     final offset = down ? '0.8' : '-0.8';
-    await controller.runJavaScript(
+    await _awaitCancellable(controller.runJavaScript(
       'window.scrollBy({top:window.innerHeight*$offset,behavior:"smooth"})',
-    );
+    ), isCancelled);
+    _checkCancelled(isCancelled);
     return <String, dynamic>{'ok': true, 'direction': down ? 'down' : 'up'};
   }
 
-  Future<List<Map<String, dynamic>>> fetchUrls(List<String> urls) async {
+  Future<List<Map<String, dynamic>>> fetchUrls(List<String> urls, {bool Function()? isCancelled}) async {
     if (urls.isEmpty || urls.length > 5) {
       throw ArgumentError('fetch_urls accepts 1–5 URLs per call.');
     }
     final results = <Map<String, dynamic>>[];
     for (final url in urls) {
-      final result = await visit(url);
+      _checkCancelled(isCancelled);
+      final result = await visit(url, isCancelled: isCancelled);
       results.add(result);
       if (result['ok'] != true) break;
     }
