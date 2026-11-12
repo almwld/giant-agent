@@ -108,8 +108,7 @@ void main() {
       'chat-a',
       limit: 2,
     );
-    expect(first.events.map((event) => event.type), ['request_completed', 'tool_failed']);
-    expect(first.events.last.id, 'tool-3');
+    expect(first.events.map((event) => event.type), ['request_queued', 'request_completed']);
     expect(first.hasMore, isTrue);
     expect(first.nextCursor, isNotNull);
 
@@ -118,7 +117,7 @@ void main() {
       limit: 2,
       beforeRowId: first.nextCursor,
     );
-    expect(second.events.map((event) => event.id), ['tool-2', 'tool-1']);
+    expect(second.events.map((event) => event.id), ['tool-3', 'tool-2']);
     expect(second.hasMore, isTrue);
 
     final third = await store.observabilityEventsForConversation(
@@ -126,8 +125,16 @@ void main() {
       limit: 2,
       beforeRowId: second.nextCursor,
     );
-    expect(third.events.map((event) => event.type), ['request_started', 'request_queued']);
-    expect(third.hasMore, isFalse);
+    expect(third.events.map((event) => event.type), ['tool_started', 'request_started']);
+    expect(third.hasMore, isTrue);
+
+    final fourth = await store.observabilityEventsForConversation(
+      'chat-a',
+      limit: 2,
+      beforeRowId: third.nextCursor,
+    );
+    expect(fourth.events.map((event) => event.type), ['request_queued']);
+    expect(fourth.hasMore, isFalse);
 
     final failed = await store.observabilityEventsForConversation(
       'chat-a',
