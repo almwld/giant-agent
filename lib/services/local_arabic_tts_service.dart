@@ -150,30 +150,66 @@ class LocalArabicTtsService {
     if (value.isEmpty) return;
     await initialize();
     final dir = await _directory();
-    final generated = await Isolate.run(() => _synthesizeNabra({
-      'model': '${dir.path}/model.int8.onnx',
-      'voices': '${dir.path}/voices.bin',
-      'tokens': '${dir.path}/tokens.txt',
-      'dataDir': '${dir.path}/espeak-ng-data',
-      'text': value,
-      'speed': speed,
-    }));
-    final samples = generated['samples'] as Float32List;
-    final sampleRate = generated['sampleRate'] as int;
-    if (samples.isEmpty || sampleRate <= 0) {
-      throw StateError('Arabic TTS returned an empty audio buffer.');
+    // Keep each inference comfortably below Nabra's 510-phoneme sequence cap.
+    // This also bounds peak memory and makes interruption responsive.
+    for (final chunk in _boundedTextChunks(value, 180)) {
+      final generated = await Isolate.run(() => _synthesizeNabra({
+        'model': '${dir.path}/model.int8.onnx',
+        'voices': '${dir.path}/voices.bin',
+        'tokens': '${dir.path}/tokens.txt',
+        'dataDir': '${dir.path}/espeak-ng-data',
+        'text': chunk,
+        'speed': speed,
+      }));
+      final samples = generated['samples'] as Float32List;
+      final sampleRate = generated['sampleRate'] as int;
+      if (samples.isEmpty || sampleRate <= 0) {
+        throw StateError('Arabic TTS returned an empty audio buffer.');
+      }
+      final output = File(
+        '${dir.path}/speech-${DateTime.now().microsecondsSinceEpoch}.wav',
+      );
+      await output.writeAsBytes(_encodeWave(samples, sampleRate));
+      try {
+        final completed = _player.onPlayerComplete.first;
+        await _player.play(DeviceFileSource(output.path));
+        await completed;
+      } finally {
+        if (await output.exists()) await output.delete();
+      }
     }
-    final output = File(
-      '${dir.path}/speech-${DateTime.now().microsecondsSinceEpoch}.wav',
-    );
-    await output.writeAsBytes(_encodeWave(samples, sampleRate));
-    try {
-      final completed = _player.onPlayerComplete.first;
-      await _player.play(DeviceFileSource(output.path));
-      await completed;
-    } finally {
-      if (await output.exists()) await output.delete();
+  }
+
+  static List<String> _boundedTextChunks(String text, int maxCharacters) {
+    final remaining = text.trim();
+    if (remaining.isEmpty) return const [];
+    final words = remaining.split(RegExp(r'\\s+'));
+    final chunks = <String>[];
+    var current = '';
+    for (final word in words) {
+      if (word.length > maxCharacters) {
+        if (current.isNotEmpty) {
+          chunks.add(current);
+          current = '';
+        }
+        for (var offset = 0; offset < word.length; offset += maxCharacters) {
+          chunks.add(word.substring(
+            offset,
+            (offset + maxCharacters).clamp(0, word.length),
+          ));
+        }
+        continue;
+      }
+      final candidate = current.isEmpty ? word : '$current $word';
+      if (candidate.length > maxCharacters && current.isNotEmpty) {
+        chunks.add(current);
+        current = word;
+      } else {
+        current = candidate;
+      }
     }
+    if (current.isNotEmpty) chunks.add(current);
+    return chunks;
   }
 
   Future<void> stop() => _player.stop();
