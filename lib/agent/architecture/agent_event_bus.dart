@@ -10,6 +10,7 @@ class AgentEventBus {
   final StreamController<Map<String, dynamic>> _controller =
       StreamController<Map<String, dynamic>>.broadcast();
   int _fallbackSequence = 0;
+  int _eventSequence = 0;
   final Map<String, String> _requestSessions = <String, String>{};
 
   Stream<Map<String, dynamic>> get events => _controller.stream;
@@ -24,18 +25,44 @@ class AgentEventBus {
 
   void publish(Map<dynamic, dynamic> source) {
     final event = _jsonSafeMap(source);
+    _copyAlias(event, 'request_id', 'requestId');
+    _copyAlias(event, 'session_id', 'sessionId');
+    _copyAlias(event, 'task_id', 'taskId');
+    _copyAlias(event, 'step_id', 'stepId');
+    _copyAlias(event, 'tool_call_id', 'toolCallId');
+    _copyAlias(event, 'attempt_id', 'attemptId');
+
     final now = DateTime.now().toUtc().toIso8601String();
     final id = event['id']?.toString() ?? '';
     if (id.isEmpty) {
-      event['id'] = 'bus_${DateTime.now().microsecondsSinceEpoch}_${++_fallbackSequence}';
+      event['id'] =
+          'bus_${DateTime.now().microsecondsSinceEpoch}_${++_fallbackSequence}';
     }
     final requestId = event['request_id']?.toString() ?? '';
-    final sessionId = _requestSessions[requestId];
-    if (sessionId != null) event.putIfAbsent('session_id', () => sessionId);
+    final sessionId = _requestSessions[requestId] ??
+        event['conversation_id']?.toString();
+    if (sessionId != null && sessionId.isNotEmpty) {
+      event.putIfAbsent('session_id', () => sessionId);
+    }
+    if (requestId.isNotEmpty) {
+      event.putIfAbsent('attempt_id', () => requestId);
+    }
+    event.putIfAbsent('sequence', () => ++_eventSequence);
     event.putIfAbsent('timestamp', () => now);
     event.putIfAbsent('type', () => 'unknown');
     event.putIfAbsent('status', () => 'pending');
     _controller.add(Map<String, dynamic>.unmodifiable(event));
+  }
+
+  void _copyAlias(
+    Map<String, dynamic> event,
+    String canonical,
+    String alias,
+  ) {
+    if (!event.containsKey(canonical) && event.containsKey(alias)) {
+      event[canonical] = event[alias];
+    }
+    event.remove(alias);
   }
 
   Map<String, dynamic> _jsonSafeMap(Map<dynamic, dynamic> source) {
@@ -52,7 +79,9 @@ class AgentEventBus {
     }
     if (value is DateTime) return value.toUtc().toIso8601String();
     if (value is Map) return _jsonSafeMap(value);
-    if (value is Iterable) return value.map(_jsonSafeValue).toList(growable: false);
+    if (value is Iterable) {
+      return value.map(_jsonSafeValue).toList(growable: false);
+    }
     return value.toString();
   }
 }
