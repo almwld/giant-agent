@@ -1129,6 +1129,7 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
             capability: MediaCapability.findAssetBboxes,
             args: args,
             prompt: args['prompt']?.toString() ?? 'Find asset bounding boxes in the source image.',
+            isCancelled: isCancelled,
           );
           break;
         case 'crop_and_replicate_assets_in_image':
