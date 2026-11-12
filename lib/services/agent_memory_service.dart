@@ -282,7 +282,7 @@ class AgentMemoryService {
       if (score > 0) matches.add(<String, Object?>{...row, '_score': score});
     }
     matches.sort((a, b) {
-      final relevance = (b['_score'] as int).compareTo(a['_score'] as int);
+      final relevance = (b['_score'] as num).compareTo(a['_score'] as num);
       if (relevance != 0) return relevance;
       return (b['created_at'] as int).compareTo(a['created_at'] as int);
     });
@@ -447,7 +447,7 @@ class AgentMemoryService {
       if (score > 0) rankedTurns.add({...row, '_score': score});
     }
     rankedTurns.sort((a, b) {
-      final relevance = (b['_score'] as int).compareTo(a['_score'] as int);
+      final relevance = (b['_score'] as num).compareTo(a['_score'] as num);
       if (relevance != 0) return relevance;
       return (b['created_at'] as int).compareTo(a['created_at'] as int);
     });
@@ -467,9 +467,9 @@ class AgentMemoryService {
         importance: row['importance'] as int? ?? 1,
       );
       return <String, Object?>{...row, '_score': score};
-    }).where((row) => (row['_score'] as int) > 0).toList()
+    }).where((row) => (row['_score'] as num) > 0).toList()
       ..sort((a, b) {
-        final relevance = (b['_score'] as int).compareTo(a['_score'] as int);
+        final relevance = (b['_score'] as num).compareTo(a['_score'] as num);
         if (relevance != 0) return relevance;
         final importance = (b['importance'] as int).compareTo(a['importance'] as int);
         if (importance != 0) return importance;
