@@ -445,7 +445,7 @@ class AgentMemoryService {
     }
 
     final turnLines = <String>[];
-    for (final row in rankedTurns.take(limit.clamp(1, 10))) {
+    for (final row in rankedTurns.take(limit.clamp(1, 10).toInt())) {
       final user = (row['user_text'] ?? '').toString();
       final answer = (row['assistant_text'] ?? '').toString();
       final userPart = _clipMemoryRecord(user, 420);
