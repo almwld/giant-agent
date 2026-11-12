@@ -1922,6 +1922,20 @@ class _ChatScreenState extends State<ChatScreen> {
     return _localSpeech.initialize();
   }
 
+  Future<void> _interruptAssistantAndListen() async {
+    _finalizingVoiceInput = true;
+    _voiceSilenceTimer?.cancel();
+    await _voiceOutput.stop();
+    await _localSpeech.cancelListening();
+    if (!mounted || !_voiceOrbVisible) return;
+    _finalizingVoiceInput = false;
+    setState(() {
+      _isListening = false;
+      _voiceOrbState = AgentState.listening;
+    });
+    await _startVoiceRecognition();
+  }
+
   Widget _buildVoiceOrbOverlay() {
     final status = switch (_voiceOrbState) {
       AgentState.idle => 'جاهز للاستماع',
@@ -1956,6 +1970,13 @@ class _ChatScreenState extends State<ChatScreen> {
                           fontSize: 13, height: 1.5)),
                     ],
                     const SizedBox(height: 14),
+                    if (_voiceOrbState == AgentState.speaking)
+                      FilledButton.tonalIcon(
+                        onPressed: _interruptAssistantAndListen,
+                        icon: const Icon(Icons.hearing_rounded),
+                        label: const Text('قاطعني — استمع الآن'),
+                      ),
+                    const SizedBox(height: 8),
                     const Text('التعرف على الكلام يعمل على الجهاز',
                       style: TextStyle(color: GiantPalette.muted, fontSize: 11)),
                   ],
