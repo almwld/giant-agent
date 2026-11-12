@@ -3,8 +3,15 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/services.dart';
 import '../services/llama_service.dart';
+import '../services/web_search_service.dart';
+import '../services/browser_session_service.dart';
+import '../services/media/media_capability.dart';
+import '../services/media/media_provider_registry.dart';
+import '../services/voice_output_service.dart';
+import '../agent/task_manager.dart';
 import '../agent/architecture/agent_event_bus.dart';
 import '../agent/architecture/tool_call_registry.dart';
+import '../agent/architecture/subagent_lifecycle_manager.dart';
 import 'agent_memory_service.dart';
 import 'openai_compatible_provider.dart';
 import 'model_provider_settings.dart';
@@ -14,6 +21,8 @@ import '../tools/terminal_tool_coordinator.dart';
 import '../domain/harness/evaluator_service.dart';
 import '../domain/harness/reflexion_service.dart';
 import '../domain/mcp/mcp_client.dart';
+
+typedef AgentUserInputHandler = Future<String?> Function({required String question, required List<String> choices, bool Function()? isCancelled});
 
 class ModelService {
   static final ModelService _instance = ModelService._internal();
@@ -27,6 +36,9 @@ class ModelService {
   bool _cancelRequested = false;
   Future<bool> Function(String command)? requestTerminalApproval;
   Future<bool> Function(String serverId, McpRemoteTool tool, Map<String, dynamic> arguments)? requestMcpApproval;
+  AgentUserInputHandler? requestUserInput;
+  Future<void> Function()? requestBrowserSession;
+  late final SubagentLifecycleManager _subagents = SubagentLifecycleManager(onEvent: AgentEventBus.instance.publish);
   final GainTerminalTool _gainTerminal = GainTerminalTool();
   Future<void> _requestTail = Future<void>.value();
   Future<void> _toolTail = Future<void>.value();
@@ -38,8 +50,12 @@ class ModelService {
   static const Object _parallelProviderZoneKey = #giantAgentParallelProvider;
   static const Object _taskIdZoneKey = #giantAgentTaskId;
   static const Object _agentTypeZoneKey = #giantAgentAgentType;
+  static const Object _conversationIdZoneKey = #giantAgentConversationId;
+  static const Object _toolLockOwnerZoneKey = #giantAgentToolLockOwner;
+  Object? _activeToolLockOwner;
   String get _activeTaskId => Zone.current[_taskIdZoneKey] as String? ?? '';
   String get _activeAgentType => Zone.current[_agentTypeZoneKey] as String? ?? '';
+  String get _activeConversationId => Zone.current[_conversationIdZoneKey] as String? ?? 'global';
   String get _activeRequestId =>
       Zone.current[_requestIdZoneKey] as String? ?? _fallbackRequestId;
 
@@ -102,13 +118,20 @@ class ModelService {
 
   /// One FIFO lock protects every operation that touches the mutable JNI model.
   Future<T> _withToolLock<T>(Future<T> Function() operation) async {
+    final inheritedOwner = Zone.current[_toolLockOwnerZoneKey];
+    if (inheritedOwner != null && identical(inheritedOwner, _activeToolLockOwner)) {
+      return operation();
+    }
     final gate = Completer<void>();
     final previous = _toolTail;
     _toolTail = gate.future;
+    await previous;
+    final owner = Object();
+    _activeToolLockOwner = owner;
     try {
-      await previous;
-      return await operation();
+      return await runZoned(operation, zoneValues: <Object, Object?>{_toolLockOwnerZoneKey: owner});
     } finally {
+      if (identical(_activeToolLockOwner, owner)) _activeToolLockOwner = null;
       if (!gate.isCompleted) gate.complete();
     }
   }
@@ -212,7 +235,11 @@ class ModelService {
     return result;
   }
 
-  bool cancelToolCall(String toolCallId) => _toolCalls.cancel(toolCallId);
+  bool cancelToolCall(String toolCallId) {
+    final cancelled = _toolCalls.cancel(toolCallId);
+    if (cancelled) unawaited(_llama.cancel());
+    return cancelled;
+  }
 
   Future<bool> cancelGeneration() async {
     _cancelRequested = true;
@@ -275,9 +302,35 @@ class ModelService {
     return result;
   }
 
+  Future<Map<String, dynamic>> executePythonRepl({
+    required String code,
+    required String sessionId,
+  }) async {
+    final result = await _agentTools.invokeMapMethod<String, dynamic>(
+      'executePythonRepl',
+      <String, dynamic>{'code': code, 'sessionId': sessionId},
+    );
+    if (result == null) {
+      throw PlatformException(code: 'IPYTHON_FAILED', message: 'Python REPL returned no result.');
+    }
+    return result;
+  }
+
+  Future<Map<String, dynamic>> resetPythonRepl({required String sessionId}) async {
+    final result = await _agentTools.invokeMapMethod<String, dynamic>(
+      'resetPythonRepl',
+      <String, dynamic>{'sessionId': sessionId},
+    );
+    if (result == null) {
+      throw PlatformException(code: 'IPYTHON_RESET_FAILED', message: 'Python REPL reset returned no result.');
+    }
+    return result;
+  }
+
   Future<Map<String, dynamic>> _executeToolUnlocked(
     Map<String, dynamic> payload, {
     String? stepId,
+    String? toolCallId,
     Set<String>? allowedTools,
     bool Function()? isCancelled,
   }) async {
@@ -306,6 +359,7 @@ class ModelService {
         case 'read_file':
           result = await readFile(path: path);
           break;
+        case 'edit_file':
         case 'write_file':
           result = await writeFile(path: path, content: content);
           break;
@@ -314,6 +368,17 @@ class ModelService {
             'ok': true,
             'files': await listWorkspaceFiles(),
           };
+          break;
+        case 'ipython':
+          final sessionId = base64Url.encode(utf8.encode(_activeConversationId)).replaceAll('=', '');
+          result = await executePythonRepl(
+            code: args['code']?.toString() ?? '',
+            sessionId: sessionId,
+          );
+          break;
+        case 'reset_ipython':
+          final sessionId = base64Url.encode(utf8.encode(_activeConversationId)).replaceAll('=', '');
+          result = await resetPythonRepl(sessionId: sessionId);
           break;
         case 'execute_python':
           result = await executePython(code: args['code']?.toString() ?? '');
@@ -371,6 +436,663 @@ class ModelService {
             if (mcpResult.structuredContent != null) 'structuredContent': mcpResult.structuredContent,
           };
           break;
+        case 'create_subagent':
+          if (_activeTaskId.isNotEmpty) {
+            throw StateError('A child agent cannot create another child agent.');
+          }
+          final rawDependencies = args['depends_on'] ?? const <dynamic>[];
+          if (rawDependencies is! List || rawDependencies.any((item) => item is! String)) {
+            throw const FormatException('depends_on must be a list of agent ids.');
+          }
+          final created = await _subagents.create(
+            requestId: _activeRequestId,
+            conversationId: _activeConversationId,
+            id: args['id']?.toString() ?? '',
+            title: args['title']?.toString() ?? '',
+            prompt: args['prompt']?.toString() ?? '',
+            agentType: args['agent_type']?.toString() ?? 'explore',
+            dependsOn: rawDependencies.map((item) => item.toString()).toList(),
+            creatorTaskId: _activeTaskId,
+          );
+          result = <String, dynamic>{'ok': true, 'subagent': created.toMap()};
+          break;
+        case 'spawn_subagent':
+          result = await _spawnDynamicSubagent(
+            args['id']?.toString() ?? '',
+            isCancelled: isCancelled,
+          );
+          break;
+        case 'delete_subagent':
+          final agentId = args['id']?.toString() ?? '';
+          await _subagents.delete(_activeRequestId, agentId);
+          final deleted = _subagents.get(_activeRequestId, agentId);
+          result = <String, dynamic>{'ok': deleted != null && deleted.dismissed, 'subagent': deleted?.toMap()};
+          break;
+        case 'check_subagent_status':
+          final agentId = args['id']?.toString() ?? '';
+          final snapshot = _subagents.get(_activeRequestId, agentId);
+          if (snapshot == null) throw StateError('Subagent not found: $agentId');
+          result = <String, dynamic>{'ok': true, 'subagent': snapshot.toMap()};
+          break;
+        case 'send_message':
+          final agentId = args['agent_id']?.toString() ?? '';
+          await _subagents.sendMessage(
+            requestId: _activeRequestId,
+            agentId: agentId,
+            message: args['message']?.toString() ?? '',
+            senderTaskId: _activeTaskId.isEmpty ? null : _activeTaskId,
+          );
+          result = <String, dynamic>{'ok': true, 'message_queued': true, 'agent_id': agentId};
+          break;
+        case 'wait_for_message':
+          final agentId = args['agent_id']?.toString() ?? '';
+          final timeout = args['timeout_seconds'] is int ? args['timeout_seconds'] as int : 10;
+          final message = await _subagents.waitForMessage(
+            requestId: _activeRequestId,
+            agentId: agentId,
+            timeoutSeconds: timeout,
+            isCancelled: isCancelled,
+          );
+          result = <String, dynamic>{
+            'ok': true,
+            'received': message != null,
+            if (message != null) 'message': message,
+            if (message == null) 'timed_out': true,
+          };
+          break;
+        case 'ask_user':
+          if (_activeTaskId.isNotEmpty) {
+            throw StateError('Only the coordinating agent may ask the user.');
+          }
+          final question = args['question']?.toString().trim() ?? '';
+          final rawChoices = args['choices'] ?? const <dynamic>[];
+          if (question.isEmpty || question.length > 1000 ||
+              rawChoices is! List || rawChoices.length > 6 ||
+              rawChoices.any((item) => item is! String)) {
+            throw const FormatException('ask_user requires a question and up to six string choices.');
+          }
+          final handler = requestUserInput;
+          if (handler == null) {
+            result = <String, dynamic>{'ok': false, 'error': 'User input UI is unavailable; no answer was fabricated.'};
+            break;
+          }
+          final answer = await handler(
+            question: question,
+            choices: rawChoices.map((item) => item.toString()).toList(),
+            isCancelled: isCancelled,
+          );
+          if (isCancelled?.call() == true) throw ToolCallInterrupted(toolCallId ?? 'ask_user');
+          result = <String, dynamic>{'ok': true, 'cancelled': answer == null, if (answer != null) 'answer': answer};
+          break;
+        case 'update_goal':
+          if (_activeTaskId.isNotEmpty) {
+            throw StateError('Only the coordinating agent may update the request goal.');
+          }
+          final goal = args['goal']?.toString() ?? '';
+          await _subagents.updateGoal(_activeRequestId, goal);
+          result = <String, dynamic>{'ok': true, 'goal': _subagents.currentGoal(_activeRequestId)};
+          break;
+        case 'web_search':
+          final query = args['query']?.toString() ?? '';
+          final limit = args['limit'] is int ? (args['limit'] as int).clamp(1, 8).toInt() : 5;
+          final searchResults = await WebSearchService.instance.search(query, limit: limit);
+          result = <String, dynamic>{'ok': true, 'query': query, 'results': searchResults};
+          break;
+        case 'task':
+          final manager = TaskManager();
+          final action = args['action']?.toString() ?? 'list';
+          final taskId = args['task_id']?.toString() ?? '';
+          switch (action) {
+            case 'list':
+            case 'read':
+              final taskList = await manager.getTasksForConversation(
+                _activeConversationId,
+                status: args['status']?.toString(),
+              );
+              result = <String, dynamic>{'ok': true, 'tasks': taskList};
+              break;
+            case 'create':
+            case 'add':
+              final description = args['description']?.toString() ?? '';
+              final createdTask = await manager.createTask(
+                description,
+                conversationId: _activeConversationId,
+              );
+              result = <String, dynamic>{'ok': true, 'task': createdTask};
+              break;
+            case 'status':
+              final taskList = await manager.getTasksForConversation(_activeConversationId);
+              Map<String, dynamic>? task;
+              for (final item in taskList) {
+                if (item['id'] == taskId) { task = item; break; }
+              }
+              result = <String, dynamic>{
+                'ok': task != null,
+                if (task != null) 'task': task,
+                if (task == null) 'error': 'Task not found in this conversation.',
+              };
+              break;
+            case 'select':
+              final taskList = await manager.getTasksForConversation(_activeConversationId);
+              final exists = taskList.any((item) => item['id'] == taskId);
+              final selected = exists && await manager.selectTask(taskId);
+              result = <String, dynamic>{
+                'ok': selected,
+                'task_id': taskId,
+                if (!selected) 'error': 'Task is not in this conversation or another task is executing.',
+              };
+              break;
+            case 'cancel':
+              final taskList = await manager.getTasksForConversation(_activeConversationId);
+              Map<String, dynamic>? selectedTask;
+              for (final item in taskList) {
+                if (item['id'] == taskId) { selectedTask = item; break; }
+              }
+              if (selectedTask == null) throw StateError('Task not found in this conversation: $taskId');
+              final status = selectedTask['status']?.toString() ?? '';
+              final terminal = status == 'completed' || status == 'cancelled';
+              final cancelled = terminal
+                  ? false
+                  : manager.isExecuting && manager.currentTaskId == taskId
+                      ? await manager.cancelTask()
+                      : manager.isExecuting
+                          ? false
+                          : await manager.markCancelled(taskId).then((_) => true);
+              result = <String, dynamic>{
+                'ok': cancelled,
+                'task_id': taskId,
+                if (!cancelled) 'error': terminal ? 'A terminal task cannot be cancelled.' : 'A different task is currently executing.',
+              };
+              break;
+            case 'resume':
+              if (taskId.isEmpty) throw const FormatException('task_id is required to resume.');
+              final taskList = await manager.getTasksForConversation(_activeConversationId);
+              if (!taskList.any((item) => item['id'] == taskId)) {
+                throw StateError('Task not found in this conversation: $taskId');
+              }
+              final approvalHandler = requestUserInput;
+              if (approvalHandler == null ||
+                  await approvalHandler(
+                    question: 'هل تسمح باستئناف المهمة "$taskId"؟ سيبدأ التنفيذ من نقطة الاستعادة المحفوظة.',
+                    choices: const <String>['السماح', 'إلغاء'],
+                  ) != 'السماح') {
+                result = <String, dynamic>{'ok': true, 'cancelled': true, 'task_id': taskId};
+                break;
+              }
+              final resumed = await manager.resumeTask(taskId);
+              result = <String, dynamic>{'ok': true, 'resume_result': resumed};
+              break;
+            default:
+              throw ArgumentError.value(action, 'action', 'Supported task actions: list, create, status, select, cancel, resume.');
+          }
+          break;
+        case 'todo_read':
+          final status = args['status']?.toString();
+          final tasks = await TaskManager().getTasksForConversation(
+            _activeConversationId,
+            status: status == null || status.isEmpty ? null : status,
+          );
+          result = <String, dynamic>{'ok': true, 'tasks': tasks};
+          break;
+        case 'todo_write':
+          final description = args['description']?.toString() ?? '';
+          final task = await TaskManager().createTask(
+            description,
+            conversationId: _activeConversationId,
+          );
+          result = <String, dynamic>{'ok': true, 'task': task, 'execution_started': false};
+          break;
+        case 'memory_space_insert':
+          final memoryKey = args['key']?.toString() ?? '';
+          final memoryValue = args['value']?.toString() ?? '';
+          final importance = args['importance'] is int ? args['importance'] as int : 1;
+          await AgentMemoryService.instance.remember(
+            memoryKey, memoryValue, importance: importance,
+          );
+          result = <String, dynamic>{'ok': true, 'key': memoryKey, 'stored': true};
+          break;
+        case 'memory_space_update':
+          final memoryKey = args['key']?.toString() ?? '';
+          final memoryValue = args['value']?.toString() ?? '';
+          final importance = args['importance'] is int ? args['importance'] as int? : null;
+          final updated = await AgentMemoryService.instance.updateFact(
+            memoryKey, memoryValue, importance: importance,
+          );
+          result = <String, dynamic>{
+            'ok': updated,
+            'key': memoryKey,
+            if (!updated) 'error': 'Memory key does not exist; use memory_space_insert first.',
+          };
+          break;
+        case 'memory_space_delete':
+          final memoryKey = args['key']?.toString() ?? '';
+          final deleted = await AgentMemoryService.instance.deleteFact(memoryKey);
+          result = <String, dynamic>{
+            'ok': deleted,
+            'key': memoryKey,
+            if (!deleted) 'error': 'Memory key does not exist.',
+          };
+          break;
+        case 'memory_space_edits':
+          final limit = args['limit'] is int ? (args['limit'] as int).clamp(1, 500).toInt() : 100;
+          result = <String, dynamic>{
+            'ok': true,
+            'facts': await AgentMemoryService.instance.getFacts(limit: limit),
+            'edits': await AgentMemoryService.instance.getFactEdits(limit: limit),
+          };
+          break;
+        case 'generate_speech':
+          final speechText = args['text']?.toString() ?? '';
+          if (speechText.trim().isEmpty) throw const FormatException('Speech text must not be empty.');
+          await VoiceOutputService.instance.speak(speechText, waitForCompletion: true);
+          result = <String, dynamic>{
+            'ok': true,
+            'played': true,
+            'saved_audio_file': false,
+            'message': 'تم تشغيل النص عبر محرك TTS في الجهاز.',
+          };
+          break;
+        case 'get_available_voices':
+          result = <String, dynamic>{
+            'ok': true,
+            'voices': await VoiceOutputService.instance.getAvailableVoices(),
+          };
+          break;
+        case 'get_data_source':
+          final servers = await McpClient.instance.servers();
+          result = <String, dynamic>{
+            'ok': true,
+            'servers': servers.map((server) => <String, dynamic>{
+              'id': server.id,
+              'name': server.name,
+              'host': Uri.parse(server.endpoint).host,
+            }).toList(growable: false),
+          };
+          break;
+        case 'get_data_source_desc':
+          final serverId = args['server_id']?.toString() ?? '';
+          final servers = await McpClient.instance.servers();
+          McpServerConfig? selected;
+          for (final server in servers) {
+            if (server.id == serverId) { selected = server; break; }
+          }
+          if (selected == null) throw StateError('MCP data source is not configured: $serverId');
+          final info = await McpClient.instance.initialize(serverId, isCancelled: isCancelled);
+          final tools = await McpClient.instance.listTools(serverId, isCancelled: isCancelled);
+          final resources = await McpClient.instance.listResources(serverId, isCancelled: isCancelled);
+          result = <String, dynamic>{
+            'ok': true,
+            'server': <String, dynamic>{
+              'id': selected.id,
+              'name': selected.name,
+              'host': Uri.parse(selected.endpoint).host,
+              'server_info': info,
+            },
+            'tools': tools.map((tool) => <String, dynamic>{
+              'name': tool.name,
+              'description': tool.description,
+              'input_schema': tool.inputSchema,
+              'annotations': tool.annotations,
+            }).toList(growable: false),
+            'resources': resources,
+          };
+          break;
+        case 'generate_slides_outline':
+          final topic = args['topic']?.toString().trim() ?? '';
+          final count = args['slides'] is int ? (args['slides'] as int).clamp(3, 20).toInt() : 8;
+          if (topic.isEmpty) throw const FormatException('A slide topic is required.');
+          final outline = await _generateText(
+            _boundPrompt('''أنشئ مخطط عرض تقديمي من $count شرائح حول الموضوع التالي: $topic
+أعد JSON صالحاً فقط بالشكل {"title":"...","slides":[{"title":"...","bullets":["..."]}]}.
+اجعل المحتوى موجزاً ودقيقاً، ولا تخترع بيانات أو مصادر.'''),
+            maxTokens: 1200,
+            temperature: .2,
+            shouldCancel: isCancelled,
+          );
+          result = <String, dynamic>{'ok': outline.trim().isNotEmpty, 'outline': outline.trim()};
+          break;
+        case 'slides_generator':
+          final slidePath = args['path']?.toString() ?? '';
+          final presentationTitle = args['title']?.toString() ?? 'Giant Agent Presentation';
+          final rawSlides = args['slides'];
+          if (slidePath.trim().isEmpty || rawSlides is! List ||
+              rawSlides.isEmpty || rawSlides.length > 40 ||
+              rawSlides.any((slide) => slide is! Map)) {
+            throw const FormatException('slides_generator requires a path and 1–40 slide objects.');
+          }
+          final escape = const HtmlEscape();
+          final buffer = StringBuffer('''<!doctype html>
+<html lang="ar"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${escape.convert(presentationTitle)}</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#0b1220;color:#e5edf7;font-family:Arial,sans-serif}
+.deck{min-height:100vh;display:grid;place-items:center;padding:24px}
+.slide{display:none;width:min(1100px,96vw);min-height:min(680px,88vh);padding:clamp(24px,6vw,72px);border:1px solid #334155;border-radius:24px;background:linear-gradient(145deg,#17243a,#101827);box-shadow:0 24px 70px #0008}
+.slide.active{display:block}.slide h1{font-size:clamp(30px,5vw,56px);color:#5eead4;margin:0 0 28px}
+.slide p,.slide li{font-size:clamp(18px,2.4vw,28px);line-height:1.6}
+.controls{position:fixed;bottom:18px;left:0;right:0;display:flex;justify-content:center;gap:12px}
+button{border:0;border-radius:12px;padding:12px 20px;background:#2563eb;color:white;font-size:16px}
+.counter{position:fixed;top:18px;right:22px;color:#94a3b8}
+</style></head><body><div class="counter" id="counter"></div><main class="deck">''');
+          for (var index = 0; index < rawSlides.length; index++) {
+            final slide = Map<String, dynamic>.from(rawSlides[index] as Map);
+            final slideTitle = escape.convert(slide['title']?.toString() ?? 'Slide ${index + 1}');
+            final body = slide['body']?.toString() ?? '';
+            final bullets = slide['bullets'];
+            buffer.write('<section class="slide${index == 0 ? ' active' : ''}"><h1>$slideTitle</h1>');
+            if (bullets is List && bullets.isNotEmpty) {
+              buffer.write('<ul>');
+              for (final bullet in bullets.take(12)) {
+                buffer.write('<li>${escape.convert(bullet.toString())}</li>');
+              }
+              buffer.write('</ul>');
+            } else if (body.isNotEmpty) {
+              buffer.write('<p>${escape.convert(body)}</p>');
+            }
+            buffer.write('</section>');
+          }
+          buffer.write('''</main><nav class="controls"><button id="prev">السابق</button><button id="next">التالي</button></nav>
+<script>
+const slides=[...document.querySelectorAll('.slide')];let current=0;
+function show(n){current=Math.max(0,Math.min(slides.length-1,n));slides.forEach((s,i)=>s.classList.toggle('active',i===current));document.getElementById('counter').textContent=(current+1)+' / '+slides.length;}
+document.getElementById('prev').onclick=()=>show(current-1);document.getElementById('next').onclick=()=>show(current+1);
+document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowDown')show(current+1);if(e.key==='ArrowLeft'||e.key==='ArrowUp')show(current-1);});show(0);
+</script></body></html>''');
+          final created = await createFile(path: slidePath, content: buffer.toString());
+          result = <String, dynamic>{
+            'ok': true,
+            'path': slidePath,
+            'slide_count': rawSlides.length,
+            'created_file': created,
+            'format': 'self-contained HTML slides',
+            'powerpoint_file_created': false,
+          };
+          break;
+        case 'website_version_manager':
+          final action = args['action']?.toString() ?? 'list';
+          final websitePath = args['path']?.toString() ?? '';
+          if (websitePath.trim().isEmpty) throw const FormatException('A workspace website file path is required.');
+          if (action == 'snapshot') {
+            final currentFile = await readFile(path: websitePath);
+            if (currentFile['ok'] != true || currentFile['content'] is! String) {
+              throw StateError('Cannot snapshot a file that could not be read.');
+            }
+            final snapshot = await AgentMemoryService.instance.saveWorkspaceVersion(
+              websitePath,
+              currentFile['content'] as String,
+              label: args['label']?.toString() ?? '',
+            );
+            result = <String, dynamic>{'ok': true, 'action': 'snapshot', 'version': snapshot};
+          } else if (action == 'list') {
+            result = <String, dynamic>{
+              'ok': true,
+              'action': 'list',
+              'versions': await AgentMemoryService.instance.getWorkspaceVersions(websitePath),
+            };
+          } else {
+            throw ArgumentError.value(action, 'action', 'Supported actions: snapshot, list.');
+          }
+          break;
+        case 'website_version_manager_rollback':
+          final websitePath = args['path']?.toString() ?? '';
+          final versionId = args['version_id']?.toString() ?? '';
+          if (websitePath.trim().isEmpty || versionId.trim().isEmpty) {
+            throw const FormatException('Rollback requires path and version_id.');
+          }
+          final snapshot = await AgentMemoryService.instance.getWorkspaceVersion(versionId);
+          if (snapshot == null || snapshot['file_path'] != websitePath) {
+            throw StateError('Version does not belong to the requested workspace file.');
+          }
+          final approvalHandler = requestUserInput;
+          if (approvalHandler == null ||
+              await approvalHandler(
+                question: 'هل تسمح باستعادة الملف "$websitePath" إلى النسخة ${snapshot['version_number']}؟ سيتم حفظ الحالة الحالية أولاً.',
+                choices: const <String>['السماح', 'إلغاء'],
+              ) != 'السماح') {
+            result = <String, dynamic>{'ok': true, 'cancelled': true, 'version_id': versionId};
+            break;
+          }
+          final currentFile = await readFile(path: websitePath);
+          if (currentFile['ok'] != true || currentFile['content'] is! String) {
+            throw StateError('Rollback stopped because the current file could not be snapshotted safely.');
+          }
+          await AgentMemoryService.instance.saveWorkspaceVersion(
+            websitePath,
+            currentFile['content'] as String,
+            label: 'before rollback to $versionId',
+          );
+          final restored = await writeFile(
+            path: websitePath,
+            content: snapshot['content']?.toString() ?? '',
+          );
+          final postRollback = await readFile(path: websitePath);
+          final rollbackVerified = restored['ok'] == true &&
+              postRollback['ok'] == true &&
+              postRollback['content'] == snapshot['content'];
+          result = <String, dynamic>{
+            'ok': rollbackVerified,
+            'path': websitePath,
+            'version_id': versionId,
+            'cancelled': false,
+            'verified': rollbackVerified,
+          };
+          break;
+        case 'lbs_tool':
+          final approvalHandler = requestUserInput;
+          if (approvalHandler == null ||
+              await approvalHandler(
+                question: 'هل تسمح بمشاركة موقعك الحالي مع الوكيل لهذه المهمة؟ سيطلب Android إذن الموقع أثناء استخدام التطبيق فقط.',
+                choices: const <String>['السماح', 'إلغاء'],
+              ) != 'السماح') {
+            result = <String, dynamic>{'ok': true, 'cancelled': true, 'location_accessed': false};
+            break;
+          }
+          final location = await _agentTools.invokeMapMethod<String, dynamic>('getCurrentLocation');
+          result = location ?? <String, dynamic>{
+            'ok': false,
+            'error': 'Native location provider returned no result.',
+          };
+          break;
+        case 'fetch_urls':
+          final rawUrls = args['urls'];
+          if (rawUrls is! List || rawUrls.isEmpty || rawUrls.length > 5 ||
+              rawUrls.any((item) => item is! String)) {
+            throw const FormatException('fetch_urls accepts a list of 1–5 HTTP(S) URLs.');
+          }
+          await _ensureBrowserSession();
+          final fetched = await BrowserSessionService.instance.fetchUrls(
+            rawUrls.map((item) => item.toString()).toList(),
+          );
+          result = <String, dynamic>{'ok': fetched.isNotEmpty && fetched.every((item) => item['ok'] == true), 'results': fetched};
+          break;
+        case 'visit':
+        case 'browser_visit':
+          await _ensureBrowserSession();
+          result = await BrowserSessionService.instance.visit(args['url']?.toString() ?? '');
+          break;
+        case 'click':
+        case 'browser_click':
+          final clickText = args['text']?.toString() ?? '';
+          var clickResult = await BrowserSessionService.instance.click(clickText);
+          if (clickResult['requires_confirmation'] == true) {
+            final approved = await _confirmBrowserAction(
+              'يتطلب النقر على "$clickText" موافقتك لأنه قد يغيّر حالة الصفحة أو ينفذ إجراءً.',
+            );
+            clickResult = approved
+                ? await BrowserSessionService.instance.click(clickText, allowSensitive: true)
+                : <String, dynamic>{'ok': true, 'cancelled': true, 'reason': 'user_denied'};
+          }
+          result = clickResult;
+          break;
+        case 'input':
+        case 'browser_input':
+          final selector = args['selector']?.toString() ?? '';
+          final inputValue = args['value']?.toString() ?? '';
+          var inputResult = await BrowserSessionService.instance.input(selector, inputValue);
+          if (inputResult['requires_confirmation'] == true) {
+            final approved = await _confirmBrowserAction(
+              'هذا الحقل يبدو حساساً ($selector). هل تسمح بإدخال القيمة التي طلبتها؟',
+            );
+            inputResult = approved
+                ? await BrowserSessionService.instance.input(selector, inputValue, allowSensitive: true)
+                : <String, dynamic>{'ok': true, 'cancelled': true, 'reason': 'user_denied'};
+          }
+          result = inputResult;
+          break;
+        case 'find':
+        case 'browser_find':
+          result = await BrowserSessionService.instance.find(
+            args['query']?.toString() ?? '',
+          );
+          break;
+        case 'scrollup':
+        case 'browser_scroll_up':
+          result = await BrowserSessionService.instance.scroll(down: false);
+          break;
+        case 'scrolldown':
+        case 'browser_scroll_down':
+          result = await BrowserSessionService.instance.scroll(down: true);
+          break;
+        case 'browser_state':
+          result = await BrowserSessionService.instance.state();
+          break;
+        case 'generate_image':
+          result = await _executeMediaTool(
+            capability: MediaCapability.generateImage,
+            args: args,
+            prompt: args['prompt']?.toString() ?? '',
+          );
+          break;
+        case 'edit_image':
+          result = await _executeMediaTool(
+            capability: MediaCapability.editImage,
+            args: args,
+            prompt: args['prompt']?.toString() ?? '',
+          );
+          break;
+        case 'image_search':
+        case 'search_image_by_text':
+          result = await _executeMediaTool(
+            capability: MediaCapability.searchImagesByText,
+            args: args,
+            prompt: args['query']?.toString() ?? '',
+          );
+          break;
+        case 'search_image_by_image':
+          result = await _executeMediaTool(
+            capability: MediaCapability.searchImagesByImage,
+            args: args,
+            prompt: args['query']?.toString() ?? 'Find visually similar images.',
+          );
+          break;
+        case 'generate_sound_effects':
+          result = await _executeMediaTool(
+            capability: MediaCapability.generateSoundEffects,
+            args: args,
+            prompt: args['prompt']?.toString() ?? '',
+          );
+          break;
+        case 'find_asset_bbox':
+          result = await _executeMediaTool(
+            capability: MediaCapability.findAssetBboxes,
+            args: args,
+            prompt: args['prompt']?.toString() ?? 'Find asset bounding boxes in the source image.',
+          );
+          break;
+        case 'crop_and_replicate_assets_in_image':
+          result = await _executeMediaTool(
+            capability: MediaCapability.cropAndReplicateAssets,
+            args: args,
+            prompt: args['prompt']?.toString() ?? '',
+          );
+          break;
+        case 'dmail':
+          final recallQuery = args['query']?.toString() ?? '';
+          final recallLimit = args['limit'] is int
+              ? (args['limit'] as int).clamp(1, 10).toInt()
+              : 5;
+          final recalledChats = await AgentMemoryService.instance.recallChats(
+            recallQuery,
+            limit: recallLimit,
+          );
+          result = <String, dynamic>{
+            'ok': true,
+            'query': recallQuery,
+            'results': recalledChats,
+            'source': 'local_sqlite_conversation_history',
+            'email_sent': false,
+          };
+          break;
+        case 'show_widget':
+          final widgetType = args['widget_type']?.toString() ?? '';
+          final widgetTitle = args['title']?.toString().trim() ?? '';
+          final rawPayload = args['payload'];
+          if (!const {'metric', 'progress', 'table', 'list', 'notice'}.contains(widgetType) ||
+              widgetTitle.isEmpty || widgetTitle.length > 100 ||
+              rawPayload is! Map || rawPayload.length > 12) {
+            throw const FormatException('show_widget requires a supported widget_type, title and bounded payload object.');
+          }
+          final widgetPayload = Map<String, dynamic>.from(rawPayload);
+          switch (widgetType) {
+            case 'metric':
+              if (widgetPayload['value'] == null ||
+                  widgetPayload['value'].toString().length > 200 ||
+                  (widgetPayload['label']?.toString().length ?? 0) > 120) {
+                throw const FormatException('metric requires a value and an optional short label.');
+              }
+              break;
+            case 'progress':
+              final progress = widgetPayload['value'];
+              if (progress is! num || progress < 0 || progress > 100 ||
+                  (widgetPayload['label']?.toString().length ?? 0) > 120) {
+                throw const FormatException('progress value must be a number from 0 to 100.');
+              }
+              break;
+            case 'table':
+              final columns = widgetPayload['columns'];
+              final rows = widgetPayload['rows'];
+              if (columns is! List || columns.isEmpty || columns.length > 8 ||
+                  columns.any((item) => item is! String || item.length > 80) ||
+                  rows is! List || rows.length > 20 ||
+                  rows.any((row) => row is! List || row.length != columns.length ||
+                      row.any((cell) => cell.toString().length > 200))) {
+                throw const FormatException('table requires up to 8 columns and 20 bounded rows.');
+              }
+              break;
+            case 'list':
+              final items = widgetPayload['items'];
+              if (items is! List || items.length > 20 ||
+                  items.any((item) => item is! String || item.length > 300)) {
+                throw const FormatException('list requires up to 20 short text items.');
+              }
+              break;
+            case 'notice':
+              final message = widgetPayload['message']?.toString() ?? '';
+              if (message.isEmpty || message.length > 1000 ||
+                  !const {'info', 'success', 'warning', 'error'}.contains(widgetPayload['tone'] ?? 'info')) {
+                throw const FormatException('notice requires a message and an optional supported tone.');
+              }
+              break;
+          }
+          final widgetId = 'widget_${_activeRequestId}_${DateTime.now().microsecondsSinceEpoch}';
+          AgentEventBus.instance.publish(<String, dynamic>{
+            'id': widgetId,
+            'request_id': _activeRequestId,
+            'session_id': _activeConversationId,
+            'type': 'agent_widget',
+            'status': 'completed',
+            'title': widgetTitle,
+            'widget_type': widgetType,
+            'payload': widgetPayload,
+            'timestamp': DateTime.now().toUtc().toIso8601String(),
+          });
+          result = <String, dynamic>{
+            'ok': true,
+            'widget_id': widgetId,
+            'widget_type': widgetType,
+            'title': widgetTitle,
+          };
+          break;
         case 'gain_terminal':
           final approval = requestTerminalApproval;
           if (approval == null) {
@@ -392,10 +1114,11 @@ class ModelService {
       }
       final ok = result['ok'] == true;
       final output = (result['output'] ?? result['path'] ?? result['error'] ?? result).toString();
-      if (ok && name == 'create_file') {
-        _emitToolEvent('file_created', 'تم إنشاء الملف', toolName: name, path: path,
+      if (ok && (name == 'create_file' || name == 'slides_generator')) {
+        final createdPath = name == 'slides_generator' ? args['path']?.toString() ?? path : path;
+        _emitToolEvent('file_created', 'تم إنشاء الملف', toolName: name, path: createdPath,
             output: output, details: 'أنشأ المحرك الملف داخل مساحة العمل فعلياً.', stepId: toolStepId);
-      } else if (ok && name == 'write_file') {
+      } else if (ok && (name == 'write_file' || name == 'edit_file')) {
         _emitToolEvent('file_updated', 'تم تحديث الملف', toolName: name, path: path,
             output: output, details: 'حُفظت التغييرات في مساحة العمل فعلياً.', stepId: toolStepId);
       }
@@ -416,14 +1139,214 @@ class ModelService {
     }
   }
 
+  Future<Map<String, dynamic>> _executeMediaTool({
+    required MediaCapability capability,
+    required Map<String, dynamic> args,
+    required String prompt,
+  }) async {
+    final rawPaths = args['input_paths'] ??
+        (args['input_path'] is String ? <dynamic>[args['input_path']] : const <dynamic>[]);
+    if (rawPaths is! List || rawPaths.any((path) => path is! String)) {
+      throw const FormatException('input_paths must be a list of workspace image paths.');
+    }
+    final providerId = args['provider_id']?.toString();
+    final options = Map<String, Object?>.from(args)
+      ..remove('prompt')
+      ..remove('query')
+      ..remove('input_paths')
+      ..remove('input_path')
+      ..remove('provider_id');
+    final mediaResult = await MediaProviderRegistry.instance.execute(
+      MediaTaskRequest(
+        capability: capability,
+        prompt: prompt,
+        inputPaths: rawPaths.map((path) => path.toString()).toList(growable: false),
+        options: options,
+      ),
+      providerId: providerId == null || providerId.isEmpty ? null : providerId,
+    );
+    return <String, dynamic>{
+      'ok': mediaResult.assets.isNotEmpty,
+      'provider_id': mediaResult.providerId,
+      'message': mediaResult.message,
+      'assets': mediaResult.assets.map((asset) => <String, dynamic>{
+        'mime_type': asset.mimeType,
+        'local_path': asset.localPath,
+        'remote_url': asset.remoteUrl?.toString(),
+        'file_name': asset.fileName,
+        'metadata': asset.metadata,
+      }).toList(growable: false),
+      'metadata': mediaResult.metadata,
+    };
+  }
+
+  Future<bool> _confirmBrowserAction(String question) async {
+    final handler = requestUserInput;
+    if (handler == null) return false;
+    final answer = await handler(
+      question: question,
+      choices: const <String>['السماح', 'إلغاء'],
+    );
+    return answer == 'السماح';
+  }
+
+  Future<void> _ensureBrowserSession() async {
+    final request = requestBrowserSession;
+    if (request == null) {
+      throw StateError('The visible agent browser is unavailable in this execution context.');
+    }
+    await request();
+    await BrowserSessionService.instance.waitUntilReady();
+  }
+
+  Future<Map<String, dynamic>> _spawnDynamicSubagent(
+    String agentId, {
+    bool Function()? isCancelled,
+  }) async {
+    final requestId = _activeRequestId;
+    final child = _subagents.get(requestId, agentId);
+    if (child == null) throw StateError('Subagent not found: $agentId');
+    await _subagents.start(requestId, agentId);
+    try {
+      if (_cancelRequested || isCancelled?.call() == true) {
+        throw const ToolCallInterrupted('dynamic_subagent');
+      }
+      final dependencies = child.dependsOn.map((dependencyId) {
+        final dependency = _subagents.get(requestId, dependencyId)!;
+        return 'نتيجة الوكيل السابق $dependencyId:\n${dependency.result ?? ''}';
+      }).join('\n\n');
+      final queuedMessages = _subagents.drainMessages(requestId, agentId)
+          .map((item) => item['message']?.toString() ?? '')
+          .where((message) => message.isNotEmpty)
+          .join('\n');
+      final goal = _subagents.currentGoal(requestId);
+      final allowedTools = switch (child.agentType) {
+        'explore' || 'plan' || 'reviewer' => const <String>{
+            'read_file', 'list_files', 'web_search', 'fetch_urls', 'visit', 'click', 'input', 'find', 'scrollup', 'scrolldown',
+            'browser_visit', 'browser_click', 'browser_find', 'browser_input', 'browser_state', 'browser_scroll_up', 'browser_scroll_down',
+            'mcp_call', 'mcp_read_resource', 'send_message', 'wait_for_message',
+          },
+        'coder' => const <String>{
+            'create_file', 'read_file', 'write_file', 'list_files', 'web_search',
+            'execute_python', 'gain_terminal', 'mcp_call', 'mcp_read_resource',
+            'send_message', 'wait_for_message',
+          },
+        _ => throw ArgumentError('Unknown subagent role: ${child.agentType}'),
+      };
+      final childConversationId = '$_activeConversationId::dynamic_subagent::$agentId';
+      final childPrompt = '''
+أنت وكيل فرعي مستقل من نوع ${child.agentType}.
+الهدف الحالي:
+${goal ?? 'الهدف الأصلي للطلب.'}
+المهمة:
+${child.prompt}
+نتائج التبعيات:
+${dependencies.isEmpty ? 'لا توجد تبعيات.' : dependencies}
+رسائل واردة:
+${queuedMessages.isEmpty ? 'لا توجد رسائل.' : queuedMessages}
+قواعد:
+- استخدم محرك النموذج والأدوات الحالية فقط؛ لا تنشئ وكيلاً فرعياً آخر.
+- explore وplan وreviewer للقراءة والتحليل فقط؛ coder وحده يعدل الملفات.
+- أوامر الطرفية تتطلب موافقة المستخدم كالمعتاد.
+- افحص الحالة قبل تكرار أي أثر جانبي، ولا تدّع نجاحاً دون نتيجة أداة.
+- أعد النتيجة والأدلة والملفات المتغيرة وما بقي غير منجز.
+- لا تعرض التفكير الداخلي.
+''';
+      final context = await AgentMemoryService.instance.buildContext(
+        childPrompt,
+        conversationId: childConversationId,
+      );
+      final output = (await runZoned(
+        () => _processInput(
+          context.isEmpty ? childPrompt : '$context\n\nمهمة الوكيل: $childPrompt',
+          allowedTools: allowedTools,
+          shouldCancel: () => _cancelRequested || isCancelled?.call() == true,
+        ),
+        zoneValues: <Object, Object?>{
+          _requestIdZoneKey: requestId,
+          _parallelProviderZoneKey: Zone.current[_parallelProviderZoneKey] == true,
+          _taskIdZoneKey: child.taskId,
+          _agentTypeZoneKey: child.agentType,
+          _conversationIdZoneKey: childConversationId,
+        },
+      )).trim();
+      if (_cancelRequested || isCancelled?.call() == true ||
+          output.startsWith('تم إيقاف') || output.contains('[تم إيقاف التوليد]')) {
+        await _subagents.fail(requestId, agentId, 'تم إيقاف الوكيل الفرعي.', interrupted: true);
+        return <String, dynamic>{'ok': false, 'status': 'interrupted', 'error': 'تم إيقاف الوكيل الفرعي.', 'subagent': child.toMap()};
+      }
+      if (output.isEmpty || output.startsWith('تعذر إكمال الطلب:') ||
+          output.startsWith('وصل الوكيل إلى الحد الآمن')) {
+        await _subagents.fail(requestId, agentId, output.isEmpty ? 'Empty subagent result.' : output);
+        return <String, dynamic>{'ok': false, 'status': 'failed', 'error': output.isEmpty ? 'Empty subagent result.' : output, 'subagent': child.toMap()};
+      }
+      await _subagents.complete(requestId, agentId, output);
+      return <String, dynamic>{'ok': true, 'status': 'completed', 'subagent': child.toMap()};
+    } catch (error) {
+      await _subagents.fail(requestId, agentId, error, interrupted: error is ToolCallInterrupted);
+      return <String, dynamic>{'ok': false, 'status': child.status, 'error': error.toString(), 'subagent': child.toMap()};
+    }
+  }
+
   String _toolStartTitle(String name) {
     switch (name) {
       case 'create_file': return 'ينشئ ملفاً في مساحة العمل';
       case 'write_file': return 'يحدّث ملفاً موجوداً';
       case 'read_file': return 'يقرأ ملفاً من مساحة العمل';
+      case 'ipython': return 'يشغل جلسة Python مستمرة';
+      case 'reset_ipython': return 'يعيد ضبط جلسة Python';
       case 'execute_python': return 'يشغّل كود Python';
       case 'gain_terminal': return 'يطلب موافقة لتنفيذ أمر طرفية';
       case 'list_files': return 'يعرض ملفات مساحة العمل';
+      case 'web_search': return 'يبحث على الويب';
+      case 'image_search':
+      case 'search_image_by_text': return 'يبحث عن صور عبر مزوّد الصور';
+      case 'search_image_by_image': return 'يبحث بصرياً عن صور مشابهة';
+      case 'generate_image': return 'يولّد صورة عبر مزوّد متصل';
+      case 'edit_image': return 'يحرر صورة عبر مزوّد متصل';
+      case 'generate_sound_effects': return 'يولّد مؤثرات صوتية';
+      case 'find_asset_bbox': return 'يحدد حدود الأصول في الصورة';
+      case 'crop_and_replicate_assets_in_image': return 'يقص ويعيد إنتاج الأصول';
+      case 'website_version_manager': return 'يدير نسخ ملفات الموقع';
+      case 'website_version_manager_rollback': return 'يستعيد نسخة سابقة بموافقة المستخدم';
+      case 'lbs_tool': return 'يطلب موقع الجهاز بإذن المستخدم';
+      case 'fetch_urls': return 'يجلب صفحات الويب';
+      case 'visit':
+      case 'browser_visit': return 'يفتح صفحة في المتصفح';
+      case 'click':
+      case 'browser_click': return 'ينقر على عنصر في الصفحة';
+      case 'input':
+      case 'browser_input': return 'يدخل قيمة في نموذج الويب';
+      case 'find':
+      case 'browser_find': return 'يبحث داخل الصفحة';
+      case 'scrollup':
+      case 'browser_scroll_up': return 'يمرر الصفحة إلى أعلى';
+      case 'scrolldown':
+      case 'browser_scroll_down': return 'يمرر الصفحة إلى أسفل';
+      case 'browser_state': return 'يقرأ حالة المتصفح';
+      case 'dmail': return 'يسترجع محادثات سابقة';
+      case 'show_widget': return 'يعرض عنصراً مرئياً منظماً';
+      case 'task': return 'يدير مهمة محفوظة';
+      case 'todo_read': return 'يقرأ قائمة المهام';
+      case 'todo_write': return 'يسجل مهمة محلية';
+      case 'memory_space_insert': return 'يحفظ حقيقة في الذاكرة';
+      case 'memory_space_update': return 'يحدث حقيقة في الذاكرة';
+      case 'memory_space_delete': return 'يحذف حقيقة من الذاكرة';
+      case 'memory_space_edits': return 'يراجع سجل تعديلات الذاكرة';
+      case 'generate_speech': return 'يشغل القراءة الصوتية';
+      case 'get_available_voices': return 'يستعرض أصوات الجهاز';
+      case 'get_data_source': return 'يعرض مصادر MCP';
+      case 'get_data_source_desc': return 'يفحص مصدر بيانات MCP';
+      case 'generate_slides_outline': return 'ينشئ مخطط شرائح';
+      case 'slides_generator': return 'ينشئ عرض شرائح HTML';
+      case 'create_subagent': return 'يسجل وكيلاً فرعياً جديداً';
+      case 'spawn_subagent': return 'يشغل وكيلاً فرعياً مسجلاً';
+      case 'delete_subagent': return 'يخفي وكيلاً فرعياً من الإدارة';
+      case 'check_subagent_status': return 'يفحص حالة وكيل فرعي';
+      case 'send_message': return 'يرسل رسالة إلى وكيل فرعي';
+      case 'wait_for_message': return 'ينتظر رسالة من صندوق الوارد';
+      case 'ask_user': return 'يطلب توضيحاً من المستخدم';
+      case 'update_goal': return 'يحدث هدف المهمة';
       default: return 'ينفّذ أداة';
     }
   }
@@ -431,11 +1354,63 @@ class ModelService {
   String _toolCompleteTitle(String name) {
     switch (name) {
       case 'create_file': return 'اكتمل إنشاء الملف';
+      case 'edit_file':
       case 'write_file': return 'اكتمل تحديث الملف';
       case 'read_file': return 'اكتملت قراءة الملف';
+      case 'ipython': return 'اكتمل تنفيذ جلسة Python';
+      case 'reset_ipython': return 'اكتملت إعادة ضبط جلسة Python';
       case 'execute_python': return 'اكتمل تنفيذ Python';
       case 'gain_terminal': return 'اكتمل تنفيذ أمر الطرفية';
       case 'list_files': return 'اكتمل استعراض الملفات';
+      case 'web_search': return 'اكتمل البحث على الويب';
+      case 'image_search':
+      case 'search_image_by_text': return 'اكتمل البحث عن الصور';
+      case 'search_image_by_image': return 'اكتمل البحث البصري';
+      case 'generate_image': return 'اكتمل توليد الصورة';
+      case 'edit_image': return 'اكتمل تحرير الصورة';
+      case 'generate_sound_effects': return 'اكتمل توليد المؤثرات';
+      case 'find_asset_bbox': return 'اكتمل تحديد حدود الأصول';
+      case 'crop_and_replicate_assets_in_image': return 'اكتمل قص الأصول وإعادة إنتاجها';
+      case 'website_version_manager': return 'اكتملت إدارة نسخ الموقع';
+      case 'website_version_manager_rollback': return 'اكتملت الاستعادة والتحقق';
+      case 'lbs_tool': return 'اكتمل طلب الموقع أو أُلغي';
+      case 'fetch_urls': return 'اكتمل جلب صفحات الويب';
+      case 'visit':
+      case 'browser_visit': return 'اكتمل فتح الصفحة';
+      case 'click':
+      case 'browser_click': return 'اكتمل إجراء النقر';
+      case 'input':
+      case 'browser_input': return 'اكتمل إدخال قيمة النموذج';
+      case 'find':
+      case 'browser_find': return 'اكتمل البحث داخل الصفحة';
+      case 'scrollup':
+      case 'browser_scroll_up': return 'اكتمل التمرير إلى أعلى';
+      case 'scrolldown':
+      case 'browser_scroll_down': return 'اكتمل التمرير إلى أسفل';
+      case 'browser_state': return 'اكتملت قراءة حالة المتصفح';
+      case 'dmail': return 'اكتمل استرجاع المحادثات';
+      case 'show_widget': return 'تم عرض العنصر في سجل الجلسة';
+      case 'task': return 'اكتملت عملية إدارة المهمة';
+      case 'todo_read': return 'اكتملت قراءة المهام';
+      case 'todo_write': return 'تم تسجيل المهمة المحلية';
+      case 'memory_space_insert': return 'تم حفظ الحقيقة';
+      case 'memory_space_update': return 'تم تحديث الحقيقة';
+      case 'memory_space_delete': return 'تم حذف الحقيقة';
+      case 'memory_space_edits': return 'اكتملت مراجعة سجل الذاكرة';
+      case 'generate_speech': return 'اكتملت القراءة الصوتية';
+      case 'get_available_voices': return 'اكتمل استعراض الأصوات';
+      case 'get_data_source': return 'اكتمل استعراض مصادر MCP';
+      case 'get_data_source_desc': return 'اكتمل فحص مصدر البيانات';
+      case 'generate_slides_outline': return 'اكتمل مخطط الشرائح';
+      case 'slides_generator': return 'اكتمل إنشاء عرض HTML';
+      case 'create_subagent': return 'اكتمل تسجيل الوكيل الفرعي';
+      case 'spawn_subagent': return 'اكتمل تشغيل الوكيل الفرعي';
+      case 'delete_subagent': return 'اكتمل إخفاء الوكيل الفرعي';
+      case 'check_subagent_status': return 'اكتمل فحص حالة الوكيل';
+      case 'send_message': return 'أُرسلت الرسالة إلى الوكيل';
+      case 'wait_for_message': return 'اكتمل انتظار الرسالة';
+      case 'ask_user': return 'وصل رد المستخدم';
+      case 'update_goal': return 'اكتمل تحديث هدف المهمة';
       default: return 'اكتمل تنفيذ الأداة';
     }
   }
@@ -485,6 +1460,7 @@ class ModelService {
       _parallelProviderZoneKey: parallelProvider,
       _taskIdZoneKey: taskId ?? '',
       _agentTypeZoneKey: agentType ?? '',
+      _conversationIdZoneKey: conversationId,
     };
     if (parallelProvider) {
       _parallelExecutions++;
@@ -767,6 +1743,7 @@ $toolCatalog
             result = await _executeToolUnlocked(
               payload,
               stepId: toolStepId,
+              toolCallId: toolCallId,
               allowedTools: allowedTools,
               isCancelled: () => toolCall.isCancelled || isCancelled(),
             );

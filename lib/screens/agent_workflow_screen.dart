@@ -69,6 +69,7 @@ class AgentWorkflowScreen extends StatelessWidget {
 
   IconData _eventIcon(String type, String tool, String title) {
     final value = '$type $tool $title'.toLowerCase();
+    if (value.contains('agent_widget') || value.contains('widget')) return Icons.dashboard_customize_outlined;
     if (value.contains('python') || value.contains('terminal') ||
         value.contains('tool') || value.contains('أداة') ||
         value.contains('طرفية')) {
@@ -156,6 +157,7 @@ class AgentWorkflowScreen extends StatelessWidget {
                   border: Border.all(color: color.withOpacity(.28)),
                 ),
                 child: ExpansionTile(
+                  initiallyExpanded: eventType == 'agent_widget',
                   iconColor: Colors.white70,
                   collapsedIconColor: Colors.white54,
                   leading: Container(
@@ -214,6 +216,7 @@ class AgentWorkflowScreen extends StatelessWidget {
                     ),
                   ),
                   children: [
+                    if (eventType == 'agent_widget') _agentWidget(event),
                     if (event['agent_type'] != null)
                       _detailBlock('نوع الوكيل الفرعي', _agentRoleLabel(event['agent_type'].toString())),
                     if (event['task_id'] != null)
@@ -341,7 +344,7 @@ class AgentWorkflowScreen extends StatelessWidget {
                     ...event.entries.where((entry) => !{
                       'id','title','status','tool_name','type','details','content',
                       'file_name','command','output','subtitle','request_id','agent_type','task_id',
-                      'session_id','timestamp'
+                      'session_id','timestamp','payload','widget_type'
                     }.contains(entry.key)).map((entry) => _detailBlock(
                       entry.key,
                       entry.value is String ? entry.value as String : entry.value.toString(),
@@ -375,6 +378,120 @@ class AgentWorkflowScreen extends StatelessWidget {
     );
   }
 
+
+  Widget _agentWidget(Map<String, dynamic> event) {
+    final type = event['widget_type']?.toString() ?? '';
+    final raw = event['payload'];
+    if (raw is! Map) return const SizedBox.shrink();
+    final payload = Map<String, dynamic>.from(raw);
+    final border = Border.all(color: GiantPalette.primaryLight.withOpacity(.25));
+    final decoration = BoxDecoration(
+      color: GiantPalette.background,
+      borderRadius: BorderRadius.circular(12),
+      border: border,
+    );
+    switch (type) {
+      case 'metric':
+        return Container(
+          margin: const EdgeInsets.fromLTRB(14, 8, 14, 14),
+          padding: const EdgeInsets.all(16),
+          decoration: decoration,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(payload['label']?.toString() ?? event['title']?.toString() ?? 'Metric',
+                style: const TextStyle(color: Colors.white60, fontSize: 12)),
+            const SizedBox(height: 5),
+            Text(payload['value']?.toString() ?? '—',
+                style: const TextStyle(color: GiantPalette.primaryLight, fontSize: 30, fontWeight: FontWeight.w800)),
+          ]),
+        );
+      case 'progress':
+        final value = (payload['value'] as num).clamp(0, 100).toDouble();
+        return Container(
+          margin: const EdgeInsets.fromLTRB(14, 8, 14, 14),
+          padding: const EdgeInsets.all(16),
+          decoration: decoration,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(child: Text(payload['label']?.toString() ?? 'Progress',
+                  style: const TextStyle(color: Colors.white70, fontSize: 12))),
+              Text('${value.toStringAsFixed(0)}%',
+                  style: const TextStyle(color: GiantPalette.primaryLight, fontWeight: FontWeight.w700)),
+            ]),
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: LinearProgressIndicator(
+                value: value / 100,
+                minHeight: 9,
+                backgroundColor: Colors.white12,
+                valueColor: const AlwaysStoppedAnimation<Color>(GiantPalette.primaryLight),
+              ),
+            ),
+          ]),
+        );
+      case 'table':
+        final columns = (payload['columns'] as List).cast<String>();
+        final rows = (payload['rows'] as List);
+        return Container(
+          margin: const EdgeInsets.fromLTRB(8, 8, 8, 14),
+          decoration: decoration,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: DataTable(
+              headingTextStyle: const TextStyle(color: GiantPalette.primaryLight, fontWeight: FontWeight.w700),
+              dataTextStyle: const TextStyle(color: Colors.white70, fontSize: 12),
+              columns: columns.map((column) => DataColumn(label: Text(column))).toList(growable: false),
+              rows: rows.map((row) => DataRow(
+                cells: (row as List).map((cell) => DataCell(Text(cell.toString()))).toList(growable: false),
+              )).toList(growable: false),
+            ),
+          ),
+        );
+      case 'list':
+        final items = (payload['items'] as List).cast<String>();
+        return Container(
+          margin: const EdgeInsets.fromLTRB(14, 8, 14, 14),
+          padding: const EdgeInsets.all(12),
+          decoration: decoration,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: items.map((item) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 5),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Icon(Icons.check_circle_outline, color: GiantPalette.primaryLight, size: 17),
+                const SizedBox(width: 8),
+                Expanded(child: Text(item, style: const TextStyle(color: Colors.white70, height: 1.4))),
+              ]),
+            )).toList(growable: false),
+          ),
+        );
+      case 'notice':
+        final tone = payload['tone']?.toString() ?? 'info';
+        final color = switch (tone) {
+          'success' => GiantPalette.success,
+          'warning' => const Color(0xFFFBBF24),
+          'error' => const Color(0xFFF87171),
+          _ => GiantPalette.primaryLight,
+        };
+        return Container(
+          margin: const EdgeInsets.fromLTRB(14, 8, 14, 14),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: color.withOpacity(.08),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: color.withOpacity(.3)),
+          ),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Icon(Icons.info_outline, color: color, size: 19),
+            const SizedBox(width: 9),
+            Expanded(child: Text(payload['message']?.toString() ?? '',
+                style: const TextStyle(color: Colors.white70, height: 1.45))),
+          ]),
+        );
+      default:
+        return const SizedBox.shrink();
+    }
+  }
 
   Widget _outputArtifactsCard(
     List<Map<String, dynamic>> rows,

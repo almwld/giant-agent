@@ -1,9 +1,18 @@
 package com.example.giant_agent
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.content.Intent
 import android.net.Uri
 import android.webkit.MimeTypeMap
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -40,7 +49,14 @@ class MainActivity: FlutterActivity() {
     private val aiExecutor = AgentRuntime.aiExecutor
     private val llamaBridge = AgentRuntime.llamaBridge
     private var pendingModelResult: MethodChannel.Result? = null
-    companion object { private const val REQUEST_OPEN_MODEL = 7402 }
+    companion object {
+        private const val REQUEST_OPEN_MODEL = 7402
+        private const val REQUEST_LOCATION_PERMISSION = 7403
+    }
+    private var pendingLocationPermissionResult: MethodChannel.Result? = null
+    private var pendingLocationListener: LocationListener? = null
+    private var pendingLocationTimeout: Runnable? = null
+    private val locationHandler = Handler(Looper.getMainLooper())
     
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         AgentRuntime.retainFlutterEngine(flutterEngine)
@@ -272,6 +288,7 @@ class MainActivity: FlutterActivity() {
                         }
                     }
                 }
+                "getCurrentLocation" -> requestCurrentLocation(result)
                 "executePython" -> {
                     val code = call.argument<String>("code").orEmpty()
                     val eventId = "python_${System.nanoTime()}"
@@ -295,6 +312,58 @@ class MainActivity: FlutterActivity() {
                             val message = t.message ?: "Python runtime failed"
                             emitPythonEvent("tool_error", code, message, "failed", eventId)
                             runOnUiThread { result.success(mapOf("ok" to false, "output" to "", "error" to message)) }
+                        }
+                    }
+                }
+                "executePythonRepl" -> {
+                    val code = call.argument<String>("code").orEmpty()
+                    val sessionId = call.argument<String>("sessionId").orEmpty()
+                    require(sessionId.matches(Regex("[A-Za-z0-9_-]{1,128}"))) {
+                        "Invalid Python REPL session id."
+                    }
+                    val eventId = "ipython_${System.nanoTime()}"
+                    emitPythonEvent("tool_start", code, null, "running", eventId, "ipython")
+                    aiExecutor.execute {
+                        try {
+                            if (!Python.isStarted()) Python.start(AndroidPlatform(this))
+                            val workspace = File(filesDir, "agent_workspace").apply { mkdirs() }.canonicalPath
+                            val pyResult = Python.getInstance().getModule("sandbox")
+                                .callAttr("run_repl", code, workspace, sessionId)
+                            val status = pyResult.get("status")?.toString() ?: "error"
+                            val output = pyResult.get("output")?.toString() ?: ""
+                            val error = pyResult.get("error")?.toString() ?: ""
+                            val ok = status == "success"
+                            emitPythonEvent(if (ok) "tool_output" else "tool_error", code,
+                                if (ok) output else error, if (ok) "completed" else "failed", eventId, "ipython")
+                            runOnUiThread {
+                                result.success(mapOf("ok" to ok, "output" to output, "error" to error, "session_id" to sessionId))
+                            }
+                        } catch (t: Throwable) {
+                            val message = t.message ?: "Python REPL failed"
+                            emitPythonEvent("tool_error", code, message, "failed", eventId, "ipython")
+                            runOnUiThread { result.success(mapOf("ok" to false, "output" to "", "error" to message, "session_id" to sessionId)) }
+                        }
+                    }
+                }
+                "resetPythonRepl" -> {
+                    val sessionId = call.argument<String>("sessionId").orEmpty()
+                    require(sessionId.matches(Regex("[A-Za-z0-9_-]{1,128}"))) {
+                        "Invalid Python REPL session id."
+                    }
+                    aiExecutor.execute {
+                        try {
+                            if (!Python.isStarted()) Python.start(AndroidPlatform(this))
+                            val reset = Python.getInstance().getModule("sandbox")
+                                .callAttr("reset_repl", sessionId)
+                            runOnUiThread {
+                                result.success(mapOf(
+                                    "ok" to (reset.get("ok")?.toString()?.toBoolean() ?: false),
+                                    "reset" to (reset.get("reset")?.toString()?.toBoolean() ?: false),
+                                    "session_id" to sessionId
+                                ))
+                            }
+                        } catch (t: Throwable) {
+                            runOnUiThread { result.success(mapOf("ok" to false, "error" to (t.message ?: "Python REPL reset failed"))) }
                         }
                     }
                 }
@@ -561,13 +630,13 @@ class MainActivity: FlutterActivity() {
         }
     }
 
-    private fun emitPythonEvent(type: String, code: String, output: String?, status: String, eventId: String) {
+    private fun emitPythonEvent(type: String, code: String, output: String?, status: String, eventId: String, toolName: String = "execute_python") {
         runOnUiThread {
             agentEventSink?.success(mapOf(
                 "id" to eventId,
                 "type" to type,
-                "tool_name" to "execute_python",
-                "title" to if (type == "tool_start") "تشغيل Python" else if (type == "tool_output") "مخرجات Python" else "خطأ Python",
+                "tool_name" to toolName,
+                "title" to if (toolName == "ipython") { if (type == "tool_start") "تشغيل جلسة IPython" else if (type == "tool_output") "مخرجات IPython" else "خطأ IPython" } else if (type == "tool_start") "تشغيل Python" else if (type == "tool_output") "مخرجات Python" else "خطأ Python",
                 "content" to code,
                 "output" to output,
                 "status" to status
@@ -755,6 +824,137 @@ class MainActivity: FlutterActivity() {
             partialCopy?.delete()
             android.util.Log.e("GiantAgent", "Unable to import shared file", error)
             null
+        }
+    }
+
+    private fun hasLocationPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun requestCurrentLocation(result: MethodChannel.Result) {
+        if (pendingLocationPermissionResult != null || pendingLocationListener != null) {
+            result.success(mapOf("ok" to false, "error" to "A location request is already active."))
+            return
+        }
+        if (!hasLocationPermission()) {
+            pendingLocationPermissionResult = result
+            try {
+                requestPermissions(
+                    arrayOf(
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    ),
+                    REQUEST_LOCATION_PERMISSION
+                )
+            } catch (t: Throwable) {
+                pendingLocationPermissionResult = null
+                result.success(mapOf("ok" to false, "error" to (t.message ?: "Location permission request failed.")))
+            }
+            return
+        }
+        fetchCurrentLocation(result)
+    }
+
+    private fun fetchCurrentLocation(result: MethodChannel.Result) {
+        try {
+            val manager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+            val fineGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+            val provider = when {
+                fineGranted && manager.isProviderEnabled(LocationManager.GPS_PROVIDER) -> LocationManager.GPS_PROVIDER
+                manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER) -> LocationManager.NETWORK_PROVIDER
+                fineGranted && manager.isProviderEnabled(LocationManager.PASSIVE_PROVIDER) -> LocationManager.PASSIVE_PROVIDER
+                else -> null
+            }
+            if (provider == null) {
+                result.success(mapOf("ok" to false, "error" to "No foreground location provider is enabled."))
+                return
+            }
+            val lastKnown = try { manager.getLastKnownLocation(provider) } catch (_: SecurityException) { null }
+            if (lastKnown != null && System.currentTimeMillis() - lastKnown.time <= 120_000L) {
+                result.success(locationPayload(lastKnown, "last_known"))
+                return
+            }
+
+            val listener = object : LocationListener {
+                override fun onLocationChanged(location: Location) {
+                    finishLocationRequest(manager, result, locationPayload(location, "current"))
+                }
+                override fun onProviderEnabled(providerName: String) {}
+                override fun onProviderDisabled(providerName: String) {}
+                @Deprecated("Deprecated in Android")
+                override fun onStatusChanged(providerName: String?, status: Int, extras: Bundle?) {}
+            }
+            pendingLocationListener = listener
+            val timeout = Runnable {
+                finishLocationRequest(
+                    manager,
+                    result,
+                    mapOf("ok" to false, "error" to "Location request timed out after 15 seconds.")
+                )
+            }
+            pendingLocationTimeout = timeout
+            locationHandler.postDelayed(timeout, 15_000L)
+            manager.requestSingleUpdate(provider, listener, Looper.getMainLooper())
+        } catch (t: Throwable) {
+            pendingLocationTimeout?.let { locationHandler.removeCallbacks(it) }
+            pendingLocationTimeout = null
+            pendingLocationListener?.let {
+                try {
+                    (getSystemService(Context.LOCATION_SERVICE) as LocationManager).removeUpdates(it)
+                } catch (_: Throwable) {}
+            }
+            pendingLocationListener = null
+            result.success(mapOf("ok" to false, "error" to (t.message ?: "Unable to obtain current location.")))
+        }
+    }
+
+    private fun locationPayload(location: Location, source: String): Map<String, Any> {
+        return mapOf(
+            "ok" to true,
+            "latitude" to location.latitude,
+            "longitude" to location.longitude,
+            "accuracy_meters" to location.accuracy,
+            "provider" to (location.provider ?: "unknown"),
+            "timestamp_ms" to location.time,
+            "source" to source,
+            "background_location" to false
+        )
+    }
+
+    private fun finishLocationRequest(
+        manager: LocationManager,
+        result: MethodChannel.Result,
+        payload: Map<String, Any>
+    ) {
+        if (pendingLocationListener == null && pendingLocationTimeout == null) return
+        pendingLocationTimeout?.let { locationHandler.removeCallbacks(it) }
+        pendingLocationTimeout = null
+        pendingLocationListener?.let {
+            try { manager.removeUpdates(it) } catch (_: SecurityException) {}
+        }
+        pendingLocationListener = null
+        runOnUiThread { result.success(payload) }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != REQUEST_LOCATION_PERMISSION) return
+        val callback = pendingLocationPermissionResult
+        pendingLocationPermissionResult = null
+        if (callback == null) return
+        if (grantResults.any { it == PackageManager.PERMISSION_GRANTED } && hasLocationPermission()) {
+            fetchCurrentLocation(callback)
+        } else {
+            callback.success(mapOf(
+                "ok" to false,
+                "permission_denied" to true,
+                "error" to "Location permission was denied."
+            ))
         }
     }
 

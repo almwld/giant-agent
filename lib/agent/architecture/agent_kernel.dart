@@ -382,8 +382,8 @@ class AgentKernel {
         'نتيجة المهمة السابقة ${entry.key}:\n${entry.value}'
       ).join('\n\n');
       final allowedTools = switch (agentType) {
-        'explore' || 'plan' || 'reviewer' => const <String>{'read_file', 'list_files', 'mcp_call', 'mcp_read_resource'},
-        'coder' => const <String>{'create_file', 'read_file', 'write_file', 'list_files', 'execute_python', 'gain_terminal', 'mcp_call', 'mcp_read_resource'},
+        'explore' || 'plan' || 'reviewer' => const <String>{'read_file', 'list_files', 'web_search', 'mcp_call', 'mcp_read_resource'},
+        'coder' => const <String>{'create_file', 'read_file', 'write_file', 'list_files', 'web_search', 'execute_python', 'gain_terminal', 'mcp_call', 'mcp_read_resource'},
         _ => throw ArgumentError('Unknown recovered agent type: $agentType'),
       };
       _emit(requestId: parentRequestId, taskId: taskId, agentType: agentType,
@@ -569,7 +569,7 @@ ${result.output ?? result.error ?? 'لا توجد نتيجة نصية.'}
 
         final allowedTools = switch (task.agentType) {
           'explore' || 'plan' || 'reviewer' =>
-            const <String>{'read_file', 'list_files', 'mcp_call', 'mcp_read_resource'},
+            const <String>{'read_file', 'list_files', 'web_search', 'mcp_call', 'mcp_read_resource'},
           'coder' => const <String>{
               'create_file',
               'read_file',
@@ -763,13 +763,55 @@ ${result.output ?? result.error ?? 'لم تُنتج نتيجة.'}
 $evidence
 
 اكتب الإجابة النهائية اعتماداً على النتائج أعلاه فقط.
-لا تنفذ أدوات جديدة في هذه المرحلة، ولا تضف نتائج غير موجودة.
+إذا بقيت فجوة جوهرية لا يمكن حسمها من الأدلة، يمكنك تنفيذ جولة ديناميكية محدودة عبر create_subagent ثم spawn_subagent، مع check_subagent_status عند الحاجة. لا تتجاوز ستة وكلاء إضافيين، ولا تكرر عملاً مكتملًا.
+يمكنك استخدام web_search للتحقق من معلومة خارجية فقط عند الحاجة، وask_user فقط إذا كان القرار لا يمكن استنتاجه بأمان.
+لا تنفذ تعديلات مباشرة على الملفات في مرحلة التجميع؛ التعديلات البرمجية مسؤولية الوكلاء المصرح لهم في خطة التنفيذ. يُسمح فقط باستعادة نسخة محلية عبر website_version_manager_rollback بعد موافقة المستخدم الصريحة التي تطلبها الأداة.
 ميّز بوضوح بين ما نُفذ فعلياً وما فشل أو تم تجاوزه أو لم يمكن التحقق منه.
-إذا كانت بعض المهام فاشلة، قدم نتيجة جزئية مع بيان الفجوات ولا تصف المهمة بأنها مكتملة بالكامل.
+إذا بقيت مهام فاشلة، قدم نتيجة جزئية مع بيان الفجوات ولا تصف المهمة بأنها مكتملة بالكامل.
 ''',
       conversationId: conversationId,
       persistTurn: false,
-      allowedTools: const <String>{},
+      allowedTools: const <String>{
+        'ipython',
+        'reset_ipython',
+        'task',
+        'dmail',
+        'show_widget',
+        'create_subagent',
+        'spawn_subagent',
+        'delete_subagent',
+        'check_subagent_status',
+        'send_message',
+        'wait_for_message',
+        'ask_user',
+        'update_goal',
+        'web_search',
+        'website_version_manager',
+        'website_version_manager_rollback',
+        'lbs_tool',
+        'fetch_urls',
+        'visit',
+        'click',
+        'input',
+        'find',
+        'scrollup',
+        'scrolldown',
+        'browser_visit',
+        'browser_click',
+        'browser_find',
+        'browser_input',
+        'browser_state',
+        'browser_scroll_up',
+        'browser_scroll_down',
+        'image_search',
+        'search_image_by_text',
+        'search_image_by_image',
+        'generate_image',
+        'edit_image',
+        'generate_sound_effects',
+        'find_asset_bbox',
+        'crop_and_replicate_assets_in_image',
+      },
       requestId: requestId,
       shouldCancel: () => _cancellationRequested,
     );

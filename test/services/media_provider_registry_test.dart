@@ -51,6 +51,29 @@ void main() {
     );
   });
 
+  test('image search, sound and asset operations remain provider-gated', () async {
+    expect(MediaTaskRequest(
+      capability: MediaCapability.searchImagesByImage,
+      prompt: 'Find similar images',
+    ).requiresInputMedia, isTrue);
+    expect(MediaTaskRequest(
+      capability: MediaCapability.findAssetBboxes,
+      prompt: 'Find object bounds',
+    ).requiresInputMedia, isTrue);
+    expect(MediaTaskRequest(
+      capability: MediaCapability.cropAndReplicateAssets,
+      prompt: 'Crop the icon',
+    ).requiresInputMedia, isTrue);
+
+    await expectLater(
+      registry.execute(const MediaTaskRequest(
+        capability: MediaCapability.generateSoundEffects,
+        prompt: 'A short notification chime',
+      )),
+      throwsA(isA<StateError>()),
+    );
+  });
+
   test('routes an image generation request to a capable provider', () async {
     registry.register(_FakeMediaProvider());
     final result = await registry.execute(const MediaTaskRequest(

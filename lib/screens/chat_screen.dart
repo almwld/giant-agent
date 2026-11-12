@@ -27,6 +27,8 @@ import '../services/model_provider_settings.dart';
 import '../services/github_repository_service.dart';
 import '../services/cloud_storage_service.dart';
 import '../services/web_search_service.dart';
+import '../services/browser_session_service.dart';
+import '../widgets/agent_browser_dialog.dart';
 import '../agent/task_manager.dart';
 import '../domain/kernel/agent_kernel_store.dart';
 import '../domain/mcp/mcp_client.dart';
@@ -74,6 +76,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _voiceListenStarted = false;
   AgentState _voiceOrbState = AgentState.idle;
   bool _webSearchEnabled = false;
+  bool _agentBrowserDialogOpen = false;
   bool _includeGithubContext = false;
   bool _externalProviderEnabled = false;
   bool _agentModeEnabled = true;
@@ -163,11 +166,11 @@ class _ChatScreenState extends State<ChatScreen> {
       if (path != null && path.isNotEmpty) _processSharedFilePath(path);
       return;
     }
-    if (step['tool_name'] == 'execute_python' || step['tool_name'] == 'gain_terminal') {
+    if (step['tool_name'] == 'execute_python' || step['tool_name'] == 'ipython' || step['tool_name'] == 'gain_terminal') {
       _terminalHasActivity = true;
       final type = step['type']?.toString();
       if (type == 'tool_start') {
-        _terminal.write('\r\n\x1B[33m>>> ${step['tool_name'] == 'gain_terminal' ? 'Gain terminal' : 'Python execution'} started\x1B[0m\r\n');
+        _terminal.write('\r\n\x1B[33m>>> ${step['tool_name'] == 'gain_terminal' ? 'Gain terminal' : step['tool_name'] == 'ipython' ? 'IPython REPL' : 'Python execution'} started\x1B[0m\r\n');
         final code = step['content']?.toString() ?? step['command']?.toString() ?? '';
         if (code.isNotEmpty) _terminal.write('\x1B[90m$code\x1B[0m\r\n');
       } else if (type == 'tool_output') {
@@ -357,6 +360,8 @@ class _ChatScreenState extends State<ChatScreen> {
     super.initState();
     _modelService.requestTerminalApproval = _requestTerminalApproval;
     _modelService.requestMcpApproval = _requestMcpApproval;
+    _modelService.requestUserInput = _requestAgentInput;
+    _modelService.requestBrowserSession = _ensureAgentBrowser;
     _loadBubbleScale();
     _initDatabase();
     // The screen consumes exactly one event stream. ModelService and the
@@ -977,6 +982,104 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
     return approved == true && mounted;
+  }
+
+  Future<void> _ensureAgentBrowser() async {
+    if (!mounted) throw StateError('Chat screen is no longer active.');
+    if (!BrowserSessionService.instance.isAttached && !_agentBrowserDialogOpen) {
+      _agentBrowserDialogOpen = true;
+      unawaited(
+        showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => const AgentBrowserDialog(),
+        ).whenComplete(() {
+          _agentBrowserDialogOpen = false;
+        }),
+      );
+    }
+    await BrowserSessionService.instance.waitUntilReady();
+  }
+
+  Future<String?> _requestAgentInput({
+    required String question,
+    required List<String> choices,
+    bool Function()? isCancelled,
+  }) async {
+    if (!mounted || isCancelled?.call() == true) return null;
+    final controller = TextEditingController();
+    BuildContext? activeDialogContext;
+    Timer? cancellationTimer;
+    try {
+      final dialog = showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) {
+          activeDialogContext = dialogContext;
+          return AlertDialog(
+          title: const Text('مطلوب توضيح من المستخدم'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(question),
+                if (choices.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  for (final choice in choices)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(dialogContext, choice),
+                          child: Text(choice),
+                        ),
+                      ),
+                    ),
+                ],
+                const SizedBox(height: 8),
+                TextField(
+                  controller: controller,
+                  minLines: 1,
+                  maxLines: 4,
+                  decoration: const InputDecoration(
+                    labelText: 'إجابة أخرى (اختياري)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('إلغاء'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final answer = controller.text.trim();
+                if (answer.isNotEmpty) Navigator.pop(dialogContext, answer);
+              },
+              child: const Text('إرسال الإجابة'),
+            ),
+          ],
+        );
+        },
+      );
+      cancellationTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
+        final dialogContext = activeDialogContext;
+        if (isCancelled?.call() == true &&
+            dialogContext != null &&
+            dialogContext.mounted) {
+          Navigator.of(dialogContext).pop();
+        }
+      });
+      return await dialog;
+    } finally {
+      cancellationTimer?.cancel();
+      controller.dispose();
+    }
   }
 
   Future<bool> _requestTerminalApproval(String command) async {
@@ -2448,6 +2551,8 @@ class _ChatScreenState extends State<ChatScreen> {
     _nativeAgentEventSubscription?.cancel();
     _modelService.requestTerminalApproval = null;
     _modelService.requestMcpApproval = null;
+    _modelService.requestUserInput = null;
+    _modelService.requestBrowserSession = null;
     _speech.stop();
     _voiceOutput.stop();
     _controller.dispose();
@@ -2467,7 +2572,17 @@ class _ChatScreenState extends State<ChatScreen> {
       case 'tool_output': return Icons.terminal;
       case 'todo': return Icons.checklist;
       case 'thought': return Icons.psychology_alt_outlined;
-      case 'task_interrupted': return Icons.pause_circle_outline;
+      case 'task_interrupted':
+      case 'subagent_interrupted': return Icons.pause_circle_outline;
+      case 'subagent_created': return Icons.person_add_alt_1_outlined;
+      case 'subagent_started': return Icons.smart_toy_outlined;
+      case 'subagent_completed': return Icons.check_circle_outline;
+      case 'subagent_failed': return Icons.error_outline;
+      case 'subagent_cancelled':
+      case 'subagent_dismissed': return Icons.person_off_outlined;
+      case 'subagent_message_sent':
+      case 'subagent_message_received': return Icons.forum_outlined;
+      case 'goal_updated': return Icons.flag_outlined;
       case 'tool_error': return Icons.error_outline;
       default: return Icons.circle_outlined;
     }
