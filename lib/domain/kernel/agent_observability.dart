@@ -68,7 +68,7 @@ class AgentObservabilitySummary {
 
   double get toolSuccessRate => toolCallCount == 0
       ? 1
-      : (toolCallCount - toolFailureCount).clamp(0, toolCallCount) /
+      : (toolCallCount - toolFailureCount).clamp(0, toolCallCount).toDouble() /
           toolCallCount;
 }
 
@@ -83,7 +83,7 @@ extension AgentKernelObservability on AgentKernelStore {
     String? type,
     String? status,
   }) async {
-    final boundedLimit = limit.clamp(1, 200);
+    final boundedLimit = limit.clamp(1, 200).toInt();
     final where = <String>['r.conversation_id = ?'];
     final args = <Object?>[conversationId];
     if (beforeRowId != null) {
