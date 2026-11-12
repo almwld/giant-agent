@@ -22,6 +22,7 @@ import 'ai_voice_assistant_screen.dart';
 import '../models/chat_session.dart';
 import 'dart:convert';
 import '../services/local_speech_recognition_service.dart';
+import '../services/local_arabic_tts_service.dart';
 import '../services/voice_output_service.dart';
 import '../services/openai_compatible_provider.dart';
 import '../services/model_provider_settings.dart';
@@ -1997,6 +1998,75 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  Future<void> _prepareLocalTtsModel() async {
+    final tts = LocalArabicTtsService.instance;
+    if (await tts.isInstalled()) return;
+    var progress = 0.0;
+    var currentFile = '';
+    var downloading = false;
+    var error = '';
+    final accepted = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, updateDialog) => AlertDialog(
+          backgroundColor: GiantPalette.surface,
+          title: const Text('تثبيت الصوت العربي العصبي'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'نموذج Nabra-82M INT8 يعمل محلياً (نحو 83 MB للنموذج، إضافة إلى ملفات النطق). بعد تثبيته لن يحتاج تحويل النص إلى كلام إلى الإنترنت. يمكنك التخطي واستخدام صوت Android المحلي إن كان مثبتاً.',
+                style: TextStyle(color: Colors.white70, height: 1.45),
+              ),
+              if (downloading) ...[
+                const SizedBox(height: 16),
+                LinearProgressIndicator(value: progress > 0 ? progress : null),
+                const SizedBox(height: 8),
+                Text('$currentFile • ${(progress * 100).toStringAsFixed(0)}%',
+                    style: const TextStyle(color: Colors.white70, fontSize: 11)),
+              ],
+              if (error.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(error, style: const TextStyle(color: Colors.redAccent)),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: downloading ? null : () => Navigator.pop(dialogContext, false),
+              child: const Text('استخدام صوت الجهاز'),
+            ),
+            FilledButton(
+              onPressed: downloading ? null : () async {
+                updateDialog(() { downloading = true; error = ''; });
+                try {
+                  await tts.install(onProgress: (file, value) {
+                    updateDialog(() {
+                      currentFile = file;
+                      progress = value;
+                    });
+                  });
+                  if (dialogContext.mounted) Navigator.pop(dialogContext, true);
+                } catch (failure) {
+                  updateDialog(() {
+                    downloading = false;
+                    error = 'تعذر تثبيت نموذج الصوت: $failure';
+                  });
+                }
+              },
+              child: Text(downloading ? 'جارٍ التثبيت…' : 'تثبيت Nabra'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (accepted == true) {
+      await tts.initialize();
+    }
+  }
+
   Future<void> _toggleVoiceInput() async {
     if (_localSpeech.isListening || _voiceOrbVisible) {
       await _stopVoiceInteraction();
@@ -2009,6 +2079,8 @@ class _ChatScreenState extends State<ChatScreen> {
       _voiceOrbVisible = true;
       _voiceOrbState = AgentState.listening;
     });
+    await _prepareLocalTtsModel();
+    if (!mounted || !_voiceOrbVisible) return;
     await _startVoiceRecognition();
   }
 
