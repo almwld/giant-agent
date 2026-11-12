@@ -1013,27 +1013,35 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
               rawUrls.any((item) => item is! String)) {
             throw const FormatException('fetch_urls accepts a list of 1–5 HTTP(S) URLs.');
           }
-          await _ensureBrowserSession();
+          await _ensureBrowserSession(isCancelled: isCancelled);
           final fetched = await BrowserSessionService.instance.fetchUrls(
             rawUrls.map((item) => item.toString()).toList(),
+            isCancelled: isCancelled,
           );
           result = <String, dynamic>{'ok': fetched.isNotEmpty && fetched.every((item) => item['ok'] == true), 'results': fetched};
           break;
         case 'visit':
         case 'browser_visit':
-          await _ensureBrowserSession();
-          result = await BrowserSessionService.instance.visit(args['url']?.toString() ?? '');
+          await _ensureBrowserSession(isCancelled: isCancelled);
+          result = await BrowserSessionService.instance.visit(
+            args['url']?.toString() ?? '',
+            isCancelled: isCancelled,
+          );
           break;
         case 'click':
         case 'browser_click':
           final clickText = args['text']?.toString() ?? '';
-          var clickResult = await BrowserSessionService.instance.click(clickText);
+          var clickResult = await BrowserSessionService.instance.click(clickText, isCancelled: isCancelled);
           if (clickResult['requires_confirmation'] == true) {
             final approved = await _confirmBrowserAction(
               'يتطلب النقر على "$clickText" موافقتك لأنه قد يغيّر حالة الصفحة أو ينفذ إجراءً.',
+              isCancelled: isCancelled,
             );
+            if (approved == null || isCancelled?.call() == true) {
+              throw StateError('Browser click cancelled while awaiting approval.');
+            }
             clickResult = approved
-                ? await BrowserSessionService.instance.click(clickText, allowSensitive: true)
+                ? await BrowserSessionService.instance.click(clickText, allowSensitive: true, isCancelled: isCancelled)
                 : <String, dynamic>{'ok': true, 'cancelled': true, 'reason': 'user_denied'};
           }
           result = clickResult;
@@ -1042,13 +1050,17 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
         case 'browser_input':
           final selector = args['selector']?.toString() ?? '';
           final inputValue = args['value']?.toString() ?? '';
-          var inputResult = await BrowserSessionService.instance.input(selector, inputValue);
+          var inputResult = await BrowserSessionService.instance.input(selector, inputValue, isCancelled: isCancelled);
           if (inputResult['requires_confirmation'] == true) {
             final approved = await _confirmBrowserAction(
               'هذا الحقل يبدو حساساً ($selector). هل تسمح بإدخال القيمة التي طلبتها؟',
+              isCancelled: isCancelled,
             );
+            if (approved == null || isCancelled?.call() == true) {
+              throw StateError('Browser input cancelled while awaiting approval.');
+            }
             inputResult = approved
-                ? await BrowserSessionService.instance.input(selector, inputValue, allowSensitive: true)
+                ? await BrowserSessionService.instance.input(selector, inputValue, allowSensitive: true, isCancelled: isCancelled)
                 : <String, dynamic>{'ok': true, 'cancelled': true, 'reason': 'user_denied'};
           }
           result = inputResult;
@@ -1057,18 +1069,19 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
         case 'browser_find':
           result = await BrowserSessionService.instance.find(
             args['query']?.toString() ?? '',
+            isCancelled: isCancelled,
           );
           break;
         case 'scrollup':
         case 'browser_scroll_up':
-          result = await BrowserSessionService.instance.scroll(down: false);
+          result = await BrowserSessionService.instance.scroll(down: false, isCancelled: isCancelled);
           break;
         case 'scrolldown':
         case 'browser_scroll_down':
-          result = await BrowserSessionService.instance.scroll(down: true);
+          result = await BrowserSessionService.instance.scroll(down: true, isCancelled: isCancelled);
           break;
         case 'browser_state':
-          result = await BrowserSessionService.instance.state();
+          result = await BrowserSessionService.instance.state(isCancelled: isCancelled);
           break;
         case 'generate_image':
           result = await _executeMediaTool(
@@ -1296,23 +1309,38 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
     };
   }
 
-  Future<bool> _confirmBrowserAction(String question) async {
+  Future<bool?> _confirmBrowserAction(
+    String question, {
+    bool Function()? isCancelled,
+  }) async {
     final handler = requestUserInput;
     if (handler == null) return false;
-    final answer = await handler(
-      question: question,
-      choices: const <String>['السماح', 'إلغاء'],
+    return _awaitToolApproval(
+      () async {
+        final answer = await handler(
+          question: question,
+          choices: const <String>['السماح', 'إلغاء'],
+          isCancelled: isCancelled,
+        );
+        return answer == 'السماح';
+      },
+      isCancelled,
     );
-    return answer == 'السماح';
   }
 
-  Future<void> _ensureBrowserSession() async {
+  Future<void> _ensureBrowserSession({bool Function()? isCancelled}) async {
+    if (isCancelled?.call() == true) {
+      throw StateError('Browser tool call cancelled before opening the session.');
+    }
     final request = requestBrowserSession;
     if (request == null) {
       throw StateError('The visible agent browser is unavailable in this execution context.');
     }
     await request();
-    await BrowserSessionService.instance.waitUntilReady();
+    if (isCancelled?.call() == true) {
+      throw StateError('Browser tool call cancelled while opening the session.');
+    }
+    await BrowserSessionService.instance.waitUntilReady(isCancelled: isCancelled);
   }
 
   Future<Map<String, dynamic>> _spawnDynamicSubagent(

@@ -164,7 +164,6 @@ class BrowserSessionService {
     final value = query.trim();
     if (value.isEmpty || value.length > 300) throw ArgumentError('Browser find query must contain 1–300 characters.');
     _checkCancelled(isCancelled);
-    _checkCancelled(isCancelled);
     final controller = _requireController();
     final encoded = jsonEncode(value);
     final raw = await _awaitCancellable(controller.runJavaScriptReturningResult('''(() => {
@@ -186,6 +185,7 @@ class BrowserSessionService {
   }) async {
     final value = visibleText.trim();
     if (value.isEmpty || value.length > 200) throw ArgumentError('Click target must contain 1–200 characters.');
+    _checkCancelled(isCancelled);
     final controller = _requireController();
     final encoded = jsonEncode(value);
     final approval = allowSensitive ? 'true' : 'false';
