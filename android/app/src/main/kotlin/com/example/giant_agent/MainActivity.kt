@@ -342,10 +342,10 @@ class MainActivity: FlutterActivity() {
                     val sessionId = call.argument<String>("sessionId").orEmpty()
                     val invocationId = call.argument<String>("invocationId").orEmpty()
                     val executionId = invocationId.ifBlank { "ipython_${System.nanoTime()}" }
-                    if (invocationId.isNotBlank()) activePythonExecutionIds.add(executionId)
                     require(sessionId.matches(Regex("[A-Za-z0-9_-]{1,128}"))) {
                         "Invalid Python REPL session id."
                     }
+                    if (invocationId.isNotBlank()) activePythonExecutionIds.add(executionId)
                     val eventId = "ipython_${System.nanoTime()}"
                     emitPythonEvent("tool_start", code, null, "running", eventId, "ipython")
                     aiExecutor.execute {
