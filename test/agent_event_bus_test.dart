@@ -20,6 +20,8 @@ void main() {
 
     final event = await received;
     expect(event['session_id'], 'session-a');
+    expect(event['attempt_id'], requestId);
+    expect(event['sequence'], isA<int>());
     expect(event['timestamp'], '2026-11-10T00:00:00.000Z');
     expect(event['metadata'], {'attempt': 1, 'valid': true});
     expect(() => event['type'] = 'changed', throwsUnsupportedError);
@@ -34,5 +36,6 @@ void main() {
     expect(event['id'], isA<String>());
     expect((event['id'] as String), isNotEmpty);
     expect(event['status'], 'pending');
+    expect(event['sequence'], isA<int>());
   });
 }
