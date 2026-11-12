@@ -21,15 +21,18 @@ class AgentContextCompactor {
   }) {
     if (history.length <= maxCharacters) return history;
     final firstMarker = history.indexOf(_toolMarker);
-    if (firstMarker < 0) return _clip(history, maxCharacters);
+    // Never truncate the initial system/tool contract or user request merely
+    // to satisfy a soft budget. If no tool history exists, preserve it intact.
+    if (firstMarker < 0) return history;
 
     final header = history.substring(0, firstMarker);
     final segments = _splitToolResults(history.substring(firstMarker));
-    if (segments.isEmpty) return _clip(history, maxCharacters);
+    if (segments.isEmpty) return history;
 
     var remaining = maxCharacters - header.length -
         _compactionNotice.length - 8;
-    if (remaining <= 0) return _clip(history, maxCharacters);
+    // The immutable header is higher priority than the soft context budget.
+    if (remaining <= 0) return history;
 
     final selected = List<String?>.filled(segments.length, null);
     final recentStart = (segments.length - recentFullResults)
