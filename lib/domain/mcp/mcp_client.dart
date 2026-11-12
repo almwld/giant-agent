@@ -267,8 +267,15 @@ class McpClient {
     return result;
   }
 
-  Future<McpRemoteTool> findTool(String serverId, String toolName) async {
-    final available = _toolCache[serverId] ?? await listTools(serverId);
+  Future<McpRemoteTool> findTool(
+    String serverId,
+    String toolName, {
+    bool Function()? isCancelled,
+  }) async {
+    if (isCancelled?.call() == true) throw StateError('MCP tool discovery cancelled.');
+    final available = _toolCache[serverId] ??
+        await listTools(serverId, isCancelled: isCancelled);
+    if (isCancelled?.call() == true) throw StateError('MCP tool discovery cancelled.');
     for (final tool in available) {
       if (tool.name == toolName) return tool;
     }
