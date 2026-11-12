@@ -242,11 +242,10 @@ class ModelService {
     return result;
   }
 
-  bool cancelToolCall(String toolCallId) {
-    final cancelled = _toolCalls.cancel(toolCallId);
-    if (cancelled) unawaited(_llama.cancel());
-    return cancelled;
-  }
+  /// Cancels only the identified invocation. The tool's own cancellation
+  /// callback interrupts its HTTP request, PTY process, or wait operation;
+  /// cancelling a tool must never cancel the shared model generation context.
+  bool cancelToolCall(String toolCallId) => _toolCalls.cancel(toolCallId);
 
   Future<bool> cancelGeneration() async {
     _cancelRequested = true;

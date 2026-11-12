@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'gain_terminal_tool.dart';
@@ -28,6 +29,36 @@ class TerminalToolCoordinator {
     });
   }
 
+  Future<bool?> _requestApprovalCancellable(
+    String command,
+    bool Function()? isCancelled,
+  ) async {
+    if (isCancelled == null) return _requestApproval(command);
+    if (isCancelled()) return null;
+
+    final result = Completer<bool?>();
+    final approval = _requestApproval(command);
+    final cancellationPoll = Timer.periodic(
+      const Duration(milliseconds: 75),
+      (_) {
+        if (!result.isCompleted && isCancelled()) result.complete(null);
+      },
+    );
+    approval.then(
+      (approved) {
+        if (!result.isCompleted) result.complete(approved);
+      },
+      onError: (Object error, StackTrace stack) {
+        if (!result.isCompleted) result.completeError(error, stack);
+      },
+    );
+    try {
+      return await result.future;
+    } finally {
+      cancellationPoll.cancel();
+    }
+  }
+
   Future<Map<String, dynamic>> execute({required String command, int timeoutSeconds = 60, bool Function()? isCancelled}) async {
     final normalized = command.trim();
     if (normalized.isEmpty || normalized.length > 2000 || normalized.contains('\u0000')) {
@@ -36,8 +67,11 @@ class TerminalToolCoordinator {
     final timeout = Duration(seconds: timeoutSeconds.clamp(1, 900).toInt());
     _emit('approval_requested', 'موافقة مطلوبة لتنفيذ أمر طرفية', 'running', command: normalized);
     if (isCancelled?.call() == true) return <String, dynamic>{'ok': false, 'cancelled': true, 'command': normalized, 'error': 'Tool call cancelled before approval.'};
-    final approved = await _requestApproval(normalized);
-    if (isCancelled?.call() == true) return <String, dynamic>{'ok': false, 'cancelled': true, 'command': normalized, 'error': 'Tool call cancelled while awaiting approval.'};
+    final approved = await _requestApprovalCancellable(normalized, isCancelled);
+    if (approved == null || isCancelled?.call() == true) {
+      _emit('approval_cancelled', 'أُلغي طلب موافقة الطرفية قبل التنفيذ', 'interrupted', command: normalized);
+      return <String, dynamic>{'ok': false, 'cancelled': true, 'command': normalized, 'error': 'Tool call cancelled while awaiting approval.'};
+    }
     if (!approved) {
       _emit('approval_denied', 'رفض المستخدم تنفيذ أمر الطرفية', 'failed', command: normalized);
       return <String, dynamic>{'ok': false, 'denied': true, 'command': normalized, 'error': 'User denied execution. The command was not run.'};
