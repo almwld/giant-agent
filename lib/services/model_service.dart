@@ -1102,11 +1102,13 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
           final coordinator = TerminalToolCoordinator(
             requestApproval: approval,
             execute: (command, timeout) => _gainTerminal.execute(command, timeout: timeout),
+            executeCancellable: (command, timeout, isCancelled) => _gainTerminal.execute(command, timeout: timeout, isCancelled: isCancelled),
             onEvent: (event) => AgentEventBus.instance.publish(event),
           );
           result = await coordinator.execute(
             command: args['command']?.toString() ?? '',
             timeoutSeconds: args['timeout_seconds'] is int ? args['timeout_seconds'] as int : 60,
+            isCancelled: isCancelled,
           );
           break;
         default:
@@ -1598,7 +1600,29 @@ $prompt
         if (!await _llama.isLoaded()) {
           throw StateError('لم يتم تحميل نموذج GGUF المحلي. حمّل نموذجاً من قائمة النماذج أو اختر OpenRouter.');
         }
-        return _llama.generate(prompt, maxTokens: maxTokens, temperature: temperature);
+        if (shouldCancel?.call() == true || _cancelRequested) {
+          return 'تم إيقاف التوليد قبل بدء الاستدلال المحلي.';
+        }
+        var cancellationSent = false;
+        final cancellationPoll = Timer.periodic(
+          const Duration(milliseconds: 100),
+          (_) {
+            if (!cancellationSent &&
+                (_cancelRequested || shouldCancel?.call() == true)) {
+              cancellationSent = true;
+              unawaited(_llama.cancel());
+            }
+          },
+        );
+        try {
+          return await _llama.generate(
+            prompt,
+            maxTokens: maxTokens,
+            temperature: temperature,
+          );
+        } finally {
+          cancellationPoll.cancel();
+        }
       case ModelProviderMode.openRouter:
         return OpenAICompatibleProvider.instance.generateStreaming(
           prompt,
