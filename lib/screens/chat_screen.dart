@@ -1652,21 +1652,19 @@ class _ChatScreenState extends State<ChatScreen> {
     if (_voiceRequestActive && mounted) {
       setState(() => _voiceOrbState = AgentState.speaking);
     }
-    try {
-      if (_voiceRequestActive) {
+    if (_voiceRequestActive) {
+      try {
         await _voiceOutput.finishStreaming(response);
-      } else {
-        await _voiceOutput.speak(response);
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('تعذر تشغيل الصوت. تحقق من تثبيت صوت اللغة العربية على الجهاز.')),
-        );
-      }
-    } finally {
-      if (_voiceRequestActive && mounted) {
-        setState(() => _voiceOrbState = AgentState.idle);
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('تعذر تشغيل الصوت العربي المحلي. افحص تثبيت نموذج Nabra أو صوت Android غير المتصل.')),
+          );
+        }
+      } finally {
+        if (_voiceRequestActive && mounted) {
+          setState(() => _voiceOrbState = AgentState.idle);
+        }
       }
     }
     _scrollToBottom();
@@ -2148,7 +2146,7 @@ class _ChatScreenState extends State<ChatScreen> {
           // Whisper streams provisional text in overlapping windows. A short
           // quiet window closes the turn; the final stop() flushes its tail.
           _voiceSilenceTimer?.cancel();
-          _voiceSilenceTimer = Timer(const Duration(milliseconds: 2200), () {
+          _voiceSilenceTimer = Timer(const Duration(milliseconds: 3000), () {
             _finishLocalVoiceTurn();
           });
         },
