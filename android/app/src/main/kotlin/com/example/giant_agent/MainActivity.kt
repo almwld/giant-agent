@@ -14,6 +14,11 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import com.google.mlkit.vision.label.ImageLabeling
+import com.google.mlkit.vision.label.defaults.ImageLabelerOptions
 
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "file_receiver"
@@ -21,6 +26,7 @@ class MainActivity: FlutterActivity() {
     private val AGENT_EVENTS_CHANNEL = "giant_agent_stream"
     private val AGENT_TOOLS_CHANNEL = "giant_agent/tools"
     @Volatile private var agentEventSink: EventChannel.EventSink? = null
+    private val pendingSharedFiles = java.util.concurrent.ConcurrentLinkedQueue<String>()
     private val aiExecutor = AgentRuntime.aiExecutor
     private val llamaBridge = AgentRuntime.llamaBridge
     private var pendingModelResult: MethodChannel.Result? = null
@@ -28,11 +34,16 @@ class MainActivity: FlutterActivity() {
     
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        NotificationBridge.register(this, flutterEngine)
 
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, AGENT_EVENTS_CHANNEL)
             .setStreamHandler(object : EventChannel.StreamHandler {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
                     agentEventSink = events
+                    while (true) {
+                        val path = pendingSharedFiles.poll() ?: break
+                        events?.success(mapOf("id" to "shared_${System.nanoTime()}", "type" to "shared_file", "path" to path))
+                    }
                 }
                 override fun onCancel(arguments: Any?) {
                     agentEventSink = null
@@ -102,6 +113,102 @@ class MainActivity: FlutterActivity() {
                     } catch (t: Throwable) {
                         emitAgentToolError("read_file", t.message ?: "File read failed", eventId)
                         result.error("READ_FILE_FAILED", t.message ?: "File read failed", null)
+                    }
+                }
+                "recognizeText" -> {
+                    val imagePath = call.argument<String>("path").orEmpty()
+                    try {
+                        val imageFile = File(imagePath)
+                        require(imageFile.isFile && imageFile.length() in 1..(12L * 1024L * 1024L)) {
+                            "Image must exist and be no larger than 12 MB."
+                        }
+                        val input = InputImage.fromFilePath(this, Uri.fromFile(imageFile))
+                        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+                        val labeler = ImageLabeling.getClient(ImageLabelerOptions.DEFAULT_OPTIONS)
+                        val ocrTask = recognizer.process(input)
+                        val labelTask = labeler.process(input)
+
+                        // Run OCR and visual labeling independently. A failure in one engine
+                        // must not discard useful output from the other engine.
+                        com.google.android.gms.tasks.Tasks.whenAllComplete(ocrTask, labelTask)
+                            .addOnCompleteListener {
+                                try {
+                                    val payload = mutableMapOf<String, Any>(
+                                        "ok" to true,
+                                        "text" to "",
+                                        "blocks" to 0,
+                                        "lines" to emptyList<Map<String, Any>>(),
+                                        "labels" to emptyList<Map<String, Any>>(),
+                                        "engines" to listOf(
+                                            "Google ML Kit Text Recognition (Latin script)",
+                                            "Google ML Kit Image Labeling (bundled offline model)"
+                                        )
+                                    )
+                                    if (ocrTask.isSuccessful) {
+                                        val visionText = ocrTask.result
+                                        payload["text"] = visionText.text
+                                        payload["blocks"] = visionText.textBlocks.size
+                                        payload["lines"] = visionText.textBlocks.flatMap { block ->
+                                            block.lines.map { line ->
+                                                val box = line.boundingBox
+                                                mapOf(
+                                                    "text" to line.text,
+                                                    "confidence" to line.confidence,
+                                                    "left" to (box?.left ?: 0),
+                                                    "top" to (box?.top ?: 0),
+                                                    "width" to (box?.width() ?: 0),
+                                                    "height" to (box?.height() ?: 0)
+                                                )
+                                            }
+                                        }
+                                    } else {
+                                        payload["ocr_warning"] = ocrTask.exception?.message ?: "OCR failed"
+                                    }
+                                    if (labelTask.isSuccessful) {
+                                        payload["labels"] = labelTask.result.map { label ->
+                                            mapOf(
+                                                "text" to label.text,
+                                                "confidence" to label.confidence,
+                                                "index" to label.index
+                                            )
+                                        }
+                                    } else {
+                                        payload["labeling_warning"] = labelTask.exception?.message
+                                            ?: "Image labeling unavailable"
+                                    }
+                                    runOnUiThread { result.success(payload) }
+                                } finally {
+                                    recognizer.close()
+                                    labeler.close()
+                                }
+                            }
+                    } catch (t: Throwable) {
+                        result.success(mapOf("ok" to false, "error" to (t.message ?: "Unable to read image")))
+                    }
+                }
+                "extractDocument" -> {
+                    val documentPath = call.argument<String>("path").orEmpty()
+                    aiExecutor.execute {
+                        try {
+                            require(documentPath.isNotBlank() && File(documentPath).isFile) {
+                                "Document path is invalid."
+                            }
+                            if (!Python.isStarted()) Python.start(AndroidPlatform(this))
+                            val parsed = Python.getInstance().getModule("document_parser")
+                                .callAttr("extract_document", documentPath)
+                            val payload = mapOf(
+                                "ok" to true,
+                                "text" to (parsed.get("text")?.toString() ?: ""),
+                                "characters_extracted" to (parsed.get("characters_extracted")?.toString()?.toIntOrNull() ?: 0),
+                                "truncated" to (parsed.get("truncated")?.toString()?.toBoolean() ?: false),
+                                "file_size" to (parsed.get("file_size")?.toString()?.toIntOrNull() ?: 0),
+                                "format" to (parsed.get("format")?.toString() ?: "")
+                            )
+                            runOnUiThread { result.success(payload) }
+                        } catch (t: Throwable) {
+                            val message = t.message ?: "Document extraction failed."
+                            runOnUiThread { result.success(mapOf("ok" to false, "error" to message)) }
+                        }
                     }
                 }
                 "executePython" -> {
@@ -202,19 +309,49 @@ class MainActivity: FlutterActivity() {
                     val tokens = (call.argument<Int>("maxTokens") ?: 256).coerceIn(1, 2048)
                     val temp = (call.argument<Double>("temperature") ?: 0.25).toFloat().coerceIn(0.05f, 1.5f)
                     if (prompt.isBlank()) result.success("") else aiExecutor.execute {
-                        emitAgentEvent("request", "تم استلام الطلب وتجهيز النموذج المحلي", "completed")
-                        emitAgentEvent("inference", "استدلال النموذج المحلي جارٍ", "running")
+                        // Keep each native inference cycle independently addressable in
+                        // the persisted timeline; reusing "request"/"inference" overwrote
+                        // earlier cycles in the same conversation.
+                        val requestId = "native_${System.nanoTime()}"
+                        var terminalStatus = "completed"
+                        emitAgentEvent("${requestId}_request", "تم استلام الطلب وتجهيز النموذج المحلي", "pending", requestId = requestId)
+                        emitAgentEvent("${requestId}_inference", "استدلال النموذج المحلي جارٍ", "running", requestId = requestId)
                         try {
                             val tokenCallback = object : TokenCallback {
-                                override fun onToken(token: String) { emitAgentToken(token) }
+                                override fun onToken(token: String) { emitAgentToken(token, requestId) }
                             }
                             val answer = llamaBridge.nativeGenerateStreaming(prompt, tokens, temp, tokenCallback)
-                            emitAgentEvent("inference", "اكتمل توليد الإجابة", "completed")
+                            terminalStatus = when {
+                                answer.startsWith("TIMEOUT:") || answer.startsWith("ERROR:") -> "failed"
+                                answer.startsWith("CANCELLED:") || answer.startsWith("تم إيقاف") || answer.contains("[تم إيقاف التوليد]") -> "interrupted"
+                                else -> "completed"
+                            }
+                            val terminalTitle = when (terminalStatus) {
+                                "completed" -> "اكتمل توليد الإجابة"
+                                "interrupted" -> "تم إيقاف المهمة بواسطة المستخدم"
+                                else -> if (answer.startsWith("TIMEOUT:")) "تم إيقاف النموذج بسبب عدم الاستجابة" else "تعذر إكمال الاستدلال المحلي"
+                            }
+                            emitAgentEvent(
+                                "${requestId}_inference",
+                                terminalTitle,
+                                terminalStatus,
+                                if (terminalStatus == "failed") answer else null,
+                                requestId
+                            )
                             runOnUiThread { result.success(answer) }
                         } catch (t: Throwable) {
+                            terminalStatus = "failed"
                             val message = t.message ?: "native inference failed"
-                            emitAgentEvent("inference", "تعذر إكمال الاستدلال المحلي", "failed", message)
+                            emitAgentEvent("${requestId}_inference", "تعذر إكمال الاستدلال المحلي", "failed", message, requestId)
                             runOnUiThread { result.error("INFERENCE_FAILED", message, null) }
+                        } finally {
+                            emitAgentEvent(
+                                "${requestId}_finished",
+                                if (terminalStatus == "completed") "انتهى تنفيذ الطلب" else if (terminalStatus == "interrupted") "توقف تنفيذ الطلب" else "انتهى الطلب بخطأ",
+                                terminalStatus,
+                                requestId = requestId,
+                                eventType = "task_finished"
+                            )
                         }
                     }
                 }
@@ -242,14 +379,44 @@ class MainActivity: FlutterActivity() {
         }
     }
     
-    private fun emitAgentEvent(id: String, title: String, status: String, details: String? = null) {
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.action == Intent.ACTION_SEND || intent.action == Intent.ACTION_VIEW) {
+            aiExecutor.execute {
+                // Capture this exact intent: a later share may replace Activity.intent
+                // before this background task reads the content URI.
+                val path = getSharedFile(intent) ?: return@execute
+                runOnUiThread {
+                    val event = mapOf("id" to "shared_${System.nanoTime()}", "type" to "shared_file", "path" to path)
+                    val sink = agentEventSink
+                    if (sink != null) sink.success(event) else pendingSharedFiles.add(path)
+                }
+            }
+        }
+    }
+
+    private fun emitAgentEvent(
+        id: String,
+        title: String,
+        status: String,
+        details: String? = null,
+        requestId: String? = null,
+        eventType: String = "agent_status"
+    ) {
         runOnUiThread {
             agentEventSink?.success(mapOf(
-                "id" to id,
-                "type" to "agent_status",
+                // A transition is immutable and gets a fresh ID. The caller's
+                // id remains a correlation key for the logical step only.
+                "id" to "native_event_${System.nanoTime()}_${java.util.UUID.randomUUID()}",
+                "step_id" to id,
+                "attempt_id" to requestId,
+                "request_id" to requestId,
+                "type" to eventType,
                 "title" to title,
                 "status" to status,
-                "details" to details
+                "details" to details,
+                "timestamp" to System.currentTimeMillis()
             ))
         }
     }
@@ -345,7 +512,7 @@ class MainActivity: FlutterActivity() {
     private fun emitAgentToolError(tool: String, message: String, eventId: String? = null) {
         runOnUiThread {
             agentEventSink?.success(mapOf(
-                "id" to eventId ?: "tool_error_${System.currentTimeMillis()}",
+                "id" to (eventId ?: "tool_error_${System.currentTimeMillis()}"),
                 "type" to "tool_error",
                 "tool_name" to tool,
                 "title" to "تعذر تنفيذ الأداة: $tool",
@@ -365,31 +532,80 @@ class MainActivity: FlutterActivity() {
         return Pair(relativePath, canonical.name)
     }
 
-    private fun emitAgentToken(token: String) {
+    private fun emitAgentToken(token: String, requestId: String) {
+        // Each callback carries only the newly decoded UTF-8 chunk from JNI.
+        // A unique id lets Dart safely discard a replay without suppressing
+        // legitimate adjacent chunks that happen to contain identical text.
+        val eventId = "token_${System.nanoTime()}"
         runOnUiThread {
-            agentEventSink?.success(mapOf("id" to "token", "type" to "stream_token", "text" to token))
+            agentEventSink?.success(mapOf(
+                "id" to eventId,
+                "request_id" to requestId,
+                "attempt_id" to requestId,
+                "step_id" to requestId,
+                "type" to "stream_token",
+                "text" to token,
+                "timestamp" to System.currentTimeMillis()
+            ))
         }
     }
 
-    private fun getSharedFile(): String? {
-        when (intent?.action) {
+    private fun getSharedFile(sourceIntent: Intent? = intent): String? {
+        val source = when (sourceIntent?.action) {
             Intent.ACTION_SEND -> {
-                if (intent.type?.startsWith("file/") == true || intent.type == "*/*") {
-                    val uri = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
-                    if (uri != null) {
-                        return uri.path
+                @Suppress("DEPRECATION")
+                sourceIntent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+            }
+            Intent.ACTION_VIEW -> sourceIntent.data
+            else -> null
+        } ?: return null
+
+        var partialCopy: File? = null
+        return try {
+            if (source.scheme == "file") {
+                val file = File(source.path ?: return null).canonicalFile
+                if (!file.isFile || !file.canRead()) return null
+                return file.absolutePath
+            }
+
+            require(source.scheme == "content") { "Unsupported shared-file URI scheme." }
+            val displayName = contentResolver.query(
+                source, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            } ?: "shared_file"
+            val safeName = displayName.substringAfterLast('/').substringAfterLast('\\')
+                .replace(Regex("[^A-Za-z0-9._-]"), "_").take(100).ifBlank { "shared_file" }
+            val destinationDir = File(cacheDir, "shared_files").apply { mkdirs() }.canonicalFile
+            val now = System.currentTimeMillis()
+            destinationDir.listFiles()?.filter { it.isFile && now - it.lastModified() > 24L * 60 * 60 * 1000 }?.forEach { it.delete() }
+            val destination = File(destinationDir, "${System.nanoTime()}_$safeName")
+            partialCopy = destination
+            val input = contentResolver.openInputStream(source)
+                ?: throw java.io.IOException("Unable to open the shared content URI.")
+            input.use { stream ->
+                FileOutputStream(destination).use { output ->
+                    val buffer = ByteArray(64 * 1024)
+                    var total = 0L
+                    while (true) {
+                        val count = stream.read(buffer)
+                        if (count < 0) break
+                        total += count
+                        require(total <= 8L * 1024 * 1024) { "Shared file exceeds the 8 MB text-analysis limit." }
+                        output.write(buffer, 0, count)
                     }
+                    output.fd.sync()
                 }
             }
-            Intent.ACTION_VIEW -> {
-                val uri = intent.data
-                if (uri != null) {
-                    return uri.path
-                }
-            }
+            partialCopy = null
+            destination.absolutePath
+        } catch (error: Throwable) {
+            partialCopy?.delete()
+            android.util.Log.e("GiantAgent", "Unable to import shared file", error)
+            null
         }
-        return null
     }
+
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != REQUEST_OPEN_MODEL) return

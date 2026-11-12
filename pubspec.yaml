@@ -1,5 +1,5 @@
 name: giant_agent_x
-description: AI Agent with TFLite Models
+description: Local-first AI agent powered by a shared GGUF runtime
 version: 6.0.0+1
 
 environment:
@@ -18,13 +18,24 @@ dependencies:
   cross_file: ^0.3.3+2
   sqflite: ^2.3.0
   shared_preferences: ^2.2.0
+  flutter_secure_storage: ^9.0.0
   xterm: ^3.5.0
   webview_flutter: ^4.5.0
+  http: ^1.1.0
+  connectivity_plus: ^5.0.2
+  flutter_local_notifications: ^16.3.3
+  timezone: ^0.9.2
+  translator: ^1.0.3
+  speech_to_text: 6.6.0
+  flutter_svg: ^2.0.10+1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
+  sqflite_common_ffi: ^2.3.0
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/branding/giant_mark.svg

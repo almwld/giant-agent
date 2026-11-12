@@ -38,6 +38,10 @@ class AuthService {
     return await _storage.read(key: 'user_name');
   }
   
+  Future<String?> getCurrentUser() => getUserName();
+
+  Future<void> signOut() => logout();
+
   // الحصول على نوع المستخدم
   Future<String?> getUserType() async {
     return await _storage.read(key: 'user_type');

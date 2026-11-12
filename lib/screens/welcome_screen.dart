@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import '../theme/giant_palette.dart';
 import 'chat_screen.dart';
 
 class WelcomeScreen extends StatefulWidget {
@@ -7,41 +9,119 @@ class WelcomeScreen extends StatefulWidget {
   @override
   State<WelcomeScreen> createState() => _WelcomeScreenState();
 }
-class _WelcomeScreenState extends State<WelcomeScreen> with SingleTickerProviderStateMixin {
+
+class _WelcomeScreenState extends State<WelcomeScreen>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
-    duration: const Duration(milliseconds: 900), vsync: this)..forward();
+    duration: const Duration(milliseconds: 1000),
+    vsync: this,
+  )..forward();
+
   @override
   void initState() {
     super.initState();
-    Timer(const Duration(milliseconds: 1600), () {
-      if (mounted) Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const ChatScreen()));
+    Timer(const Duration(milliseconds: 1700), () {
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const ChatScreen()),
+        );
+      }
     });
   }
+
   @override
-  void dispose() { _controller.dispose(); super.dispose(); }
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
     return Scaffold(
-      body: Container(width: double.infinity,
-        decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
-          colors: [colors.primary, colors.primaryContainer])),
-        child: FadeTransition(opacity: CurvedAnimation(parent: _controller, curve: Curves.easeOut),
-          child: ScaleTransition(scale: Tween<double>(begin: .88, end: 1).animate(
-            CurvedAnimation(parent: _controller, curve: Curves.easeOutBack)),
-            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Container(width: 104, height: 104, decoration: BoxDecoration(color: colors.surface, borderRadius: BorderRadius.circular(30)),
-                child: Icon(Icons.auto_awesome_rounded, size: 56, color: colors.primary)),
-              const SizedBox(height: 28),
-              Text('Giant Agent', style: TextStyle(color: colors.onPrimary, fontSize: 30, fontWeight: FontWeight.w800)),
-              const SizedBox(height: 8),
-              Text('الوكيل الذكي المحلي', style: TextStyle(color: colors.onPrimary.withOpacity(.8), fontSize: 15)),
-              const SizedBox(height: 32),
-              SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2, color: colors.onPrimary)),
-            ]),
+      backgroundColor: GiantPalette.background,
+      body: Container(
+        width: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              GiantPalette.background,
+              Color(0xFF102B28),
+              GiantPalette.background,
+            ],
+            stops: [0, .52, 1],
+          ),
+        ),
+        child: FadeTransition(
+          opacity: CurvedAnimation(parent: _controller, curve: Curves.easeOut),
+          child: ScaleTransition(
+            scale: Tween<double>(begin: .88, end: 1).animate(
+              CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 112,
+                  height: 112,
+                  decoration: BoxDecoration(
+                    color: GiantPalette.surface,
+                    borderRadius: BorderRadius.circular(32),
+                    border: Border.all(
+                      color: GiantPalette.primaryLight.withOpacity(.55),
+                      width: 1.4,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: GiantPalette.primary.withOpacity(.22),
+                        blurRadius: 34,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                  child: Center(
+                    child: SvgPicture.asset(
+                      'assets/branding/giant_mark.svg',
+                      width: 64,
+                      height: 64,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 30),
+                const Text(
+                  'Giant Agent',
+                  style: TextStyle(
+                    color: GiantPalette.text,
+                    fontSize: 30,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: .3,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'الوكيل الذكي المحلي',
+                  style: TextStyle(
+                    color: GiantPalette.muted,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 34),
+                const SizedBox(
+                  width: 23,
+                  height: 23,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.2,
+                    color: GiantPalette.primaryLight,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 }
+

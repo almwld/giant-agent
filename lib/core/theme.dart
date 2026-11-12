@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  // الألوان الرئيسية
   static const Color primary = Color(0xFF6366F1);
   static const Color primaryLight = Color(0xFF818CF8);
   static const Color primaryDark = Color(0xFF4F46E5);
@@ -13,33 +12,50 @@ class AppTheme {
   static const Color success = Color(0xFF22C55E);
   static const Color text = Color(0xFF1E293B);
   static const Color textLight = Color(0xFF64748B);
-  
-  // الألوان للوضع المظلم
+
   static const Color darkBackground = Color(0xFF0F172A);
   static const Color darkSurface = Color(0xFF1E293B);
   static const Color darkText = Color(0xFFF1F5F9);
   static const Color darkTextLight = Color(0xFF94A3B8);
-  
-  // تدرجات
+
+  // Compatibility tokens used by existing widgets.
+  static const Color primaryColor = primary;
+  static const Color textLightColor = textLight;
+  static const Color cosmicPurple = Color(0xFF7C3AED);
+  static const Color cyberBlue = Color(0xFF38BDF8);
+  static const Color neonPink = Color(0xFFEC4899);
+  static const Color glassDark = darkSurface;
+  static const Color gradientStart = Color(0xFF6C63FF);
+  static const Color gradientMiddle = Color(0xFF3F3D9E);
+  static const Color gradientEnd = Color(0xFF1A1A2E);
+
   static const LinearGradient primaryGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [primary, primaryLight],
   );
-  
   static const LinearGradient secondaryGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [secondary, Color(0xFF34D399)],
   );
-  
   static const LinearGradient darkGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [Color(0xFF0F172A), Color(0xFF1E1B4B)],
+    colors: [darkBackground, Color(0xFF1E1B4B)],
   );
-  
-  static ThemeData lightTheme = ThemeData(
+  static const LinearGradient premiumGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [gradientStart, gradientMiddle, gradientEnd],
+  );
+  static const BoxShadow glowShadow = BoxShadow(
+    color: Color(0x336C63FF),
+    blurRadius: 20,
+    spreadRadius: 5,
+  );
+
+  static final ThemeData lightTheme = ThemeData(
     brightness: Brightness.light,
     primaryColor: primary,
     scaffoldBackgroundColor: background,
@@ -69,34 +85,34 @@ class AppTheme {
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: Colors.grey.shade100,
+      fillColor: Color(0xFFF1F5F9),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(30),
+        borderRadius: BorderRadius.all(Radius.circular(30)),
         borderSide: BorderSide.none,
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(30),
+        borderRadius: BorderRadius.all(Radius.circular(30)),
         borderSide: BorderSide.none,
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(30),
-        borderSide: const BorderSide(color: primary, width: 2),
+        borderRadius: BorderRadius.all(Radius.circular(30)),
+        borderSide: BorderSide(color: primary, width: 2),
       ),
-      hintStyle: const TextStyle(color: textLight),
+      hintStyle: TextStyle(color: textLight),
     ),
     chipTheme: ChipThemeData(
-      backgroundColor: Colors.grey.shade100,
+      backgroundColor: Color(0xFFF1F5F9),
       selectedColor: primary,
-      labelStyle: const TextStyle(color: text),
-      secondaryLabelStyle: const TextStyle(color: Colors.white),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      labelStyle: TextStyle(color: text),
+      secondaryLabelStyle: TextStyle(color: Colors.white),
+      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.all(Radius.circular(20)),
       ),
     ),
   );
-  
-  static ThemeData darkTheme = ThemeData(
+
+  static final ThemeData darkTheme = ThemeData(
     brightness: Brightness.dark,
     primaryColor: primary,
     scaffoldBackgroundColor: darkBackground,
@@ -106,12 +122,12 @@ class AppTheme {
       surface: darkSurface,
       error: error,
     ),
-    appBarTheme: AppBarTheme(
+    appBarTheme: const AppBarTheme(
       backgroundColor: darkSurface,
       elevation: 0,
       centerTitle: true,
-      iconTheme: const IconThemeData(color: darkText),
-      titleTextStyle: const TextStyle(
+      iconTheme: IconThemeData(color: darkText),
+      titleTextStyle: TextStyle(
         color: darkText,
         fontSize: 20,
         fontWeight: FontWeight.w600,
@@ -121,52 +137,35 @@ class AppTheme {
       color: darkSurface,
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.all(Radius.circular(20)),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: darkSurface,
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(30),
+        borderRadius: BorderRadius.all(Radius.circular(30)),
         borderSide: BorderSide.none,
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(30),
+        borderRadius: BorderRadius.all(Radius.circular(30)),
         borderSide: BorderSide.none,
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(30),
-        borderSide: const BorderSide(color: primary, width: 2),
+        borderRadius: BorderRadius.all(Radius.circular(30)),
+        borderSide: BorderSide(color: primary, width: 2),
       ),
-      hintStyle: const TextStyle(color: darkTextLight),
+      hintStyle: TextStyle(color: darkTextLight),
     ),
     chipTheme: ChipThemeData(
       backgroundColor: darkSurface,
       selectedColor: primary,
-      labelStyle: const TextStyle(color: darkText),
-      secondaryLabelStyle: const TextStyle(color: Colors.white),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      labelStyle: TextStyle(color: darkText),
+      secondaryLabelStyle: TextStyle(color: Colors.white),
+      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.all(Radius.circular(20)),
       ),
     ),
   );
 }
-
-// ألوان إضافية
-static const Color gradientStart = Color(0xFF6C63FF);
-static const Color gradientMiddle = Color(0xFF3F3D9E);
-static const Color gradientEnd = Color(0xFF1A1A2E);
-
-static const LinearGradient premiumGradient = LinearGradient(
-  begin: Alignment.topLeft,
-  end: Alignment.bottomRight,
-  colors: [gradientStart, gradientMiddle, gradientEnd],
-);
-
-static const BoxShadow glowShadow = BoxShadow(
-  color: Color(0x336C63FF),
-  blurRadius: 20,
-  spreadRadius: 5,
-);

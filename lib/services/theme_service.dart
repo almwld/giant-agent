@@ -2,6 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ThemeService {
+  static const List<Map<String, dynamic>> themes = [
+    {'name': 'بنفسجي', 'icon': Icons.palette, 'mode': 'purple'},
+    {'name': 'أخضر', 'icon': Icons.eco, 'mode': 'green'},
+    {'name': 'أزرق', 'icon': Icons.water, 'mode': 'blue'},
+    {'name': 'برتقالي', 'icon': Icons.wb_sunny, 'mode': 'orange'},
+    {'name': 'وردي', 'icon': Icons.favorite, 'mode': 'pink'},
+  ];
   static const String _themeKey = 'theme_mode';
   static const String _colorKey = 'accent_color';
   

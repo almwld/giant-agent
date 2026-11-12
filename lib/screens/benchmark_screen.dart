@@ -1,73 +1,80 @@
-import 'packagefltter/material.dart'
-import '../services/agent_service.dart'
+import 'package:flutter/material.dart';
+import '../services/model_service.dart';
 
-class enchmarkcreen extends tateflidget {
-  const enchmarkcreen({sper.key})
+class BenchmarkScreen extends StatefulWidget {
+  const BenchmarkScreen({super.key});
 
-  override
-  tateenchmarkcreen createtate()  _enchmarkcreentate()
+  @override
+  State<BenchmarkScreen> createState() => _BenchmarkScreenState();
 }
 
-class _enchmarkcreentate extends tateenchmarkcreen {
-  final gentervice _agent  gentervice()
-  bool _isnning  false
-  tring _reslts  ''
+class _BenchmarkScreenState extends State<BenchmarkScreen> {
+  final ModelService _modelService = ModelService();
+  bool _isRunning = false;
+  String _result = '';
 
-  trevoid _rnenchmark() async {
-    settate(() {
-      _isnning  tre
-      _reslts  ''
-    })
-    
-    final reslt  await _agent.process('benchmark')
-    
-    settate(() {
-      _reslts  reslt
-      _isnning  false
-    })
+  Future<void> _runBenchmark() async {
+    if (_isRunning) return;
+    setState(() {
+      _isRunning = true;
+      _result = '';
+    });
+
+    final stopwatch = Stopwatch()..start();
+    String result;
+    try {
+      if (!_modelService.hasActiveModel() || !await _modelService.isModelLoaded()) {
+        result = 'لا يمكن إجراء القياس: لم يتم تحميل نموذج GGUF محلي.';
+      } else {
+        result = await _modelService.processInput(
+          'أجب بكلمة واحدة: جاهز',
+          conversationId: 'benchmark',
+        );
+        stopwatch.stop();
+        result = 'زمن الاستجابة: ${stopwatch.elapsedMilliseconds} ms\n'
+            'النموذج: ${_modelService.getActiveModelName()}\n\n'
+            'استجابة الاختبار:\n$result';
+      }
+    } catch (error) {
+      result = 'فشل اختبار الأداء: $error';
+    } finally {
+      stopwatch.stop();
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _result = result;
+      _isRunning = false;
+    });
   }
 
-  override
-  idget bild(ildontext context) {
-    retrn caffold(
-      appar ppar(
-        title const ext('  '),
-        centeritle tre,
-        backgrondolor olors.deeprple,
-      ),
-      body adding(
-        padding const dgensets.all(),
-        child olmn(
-          children 
-            levatedtton.icon(
-              onressed _isnning  nll  _rnenchmark,
-              icon const con(cons.speed),
-              label ext(_isnning  ' ...'  ' '),
-              style levatedtton.stylerom(
-                backgrondolor olors.deeprple,
-                minimmize const ize(doble.infinity, ),
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('اختبار الأداء'), centerTitle: true),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _isRunning ? null : _runBenchmark,
+                icon: const Icon(Icons.speed),
+                label: Text(_isRunning ? 'جارٍ القياس...' : 'بدء اختبار النموذج المحلي'),
               ),
             ),
-            const izedox(height ),
-            if (_reslts.isotmpty)
-              xpanded(
-                child inglehildcrolliew(
-                  child ontainer(
-                    padding const dgensets.all(),
-                    decoration oxecoration(
-                      color olors.grey.shade,
-                      borderadis orderadis.circlar(),
-                    ),
-                    child ext(
-                      _reslts,
-                      style const exttyle(fontamily 'monospace', fontize ),
-                    ),
-                  ),
+            const SizedBox(height: 16),
+            if (_isRunning) const LinearProgressIndicator(),
+            if (_result.isNotEmpty)
+              Expanded(
+                child: SingleChildScrollView(
+                  child: SelectableText(_result),
                 ),
               ),
           ],
         ),
       ),
-    )
+    );
   }
 }

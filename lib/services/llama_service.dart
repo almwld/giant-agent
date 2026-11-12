@@ -33,10 +33,17 @@ class LlamaService {
   Future<bool> isLoaded() async => await _channel.invokeMethod<bool>('isLoaded') ?? false;
   Future<String> generate(String prompt, {int maxTokens = 256, double temperature = .25}) async {
     if (!await isLoaded()) return 'ERROR: لم يتم تحميل نموذج GGUF محلي.';
-    return await _channel.invokeMethod<String>('generate', {
+    final response = await _channel.invokeMethod<String>('generate', {
       'prompt': prompt, 'maxTokens': maxTokens.clamp(1, 2048).toInt(),
       'temperature': temperature.clamp(.05, 1.5).toDouble(),
     }) ?? 'ERROR: لم يصل رد من llama.cpp.';
+    if (response.startsWith('TIMEOUT:')) {
+      return 'استغرق النموذج وقتاً طويلاً دون إصدار رموز جديدة لمدة 15 ثانية؛ تم إيقاف التوليد تلقائياً. يمكنك تقليل طول الطلب أو إعادة المحاولة.';
+    }
+    if (response.startsWith('CANCELLED:')) {
+      return 'تم إيقاف المهمة بواسطة المستخدم.';
+    }
+    return response;
   }
   Future<bool> cancel() async => await _channel.invokeMethod<bool>('cancelGeneration') ?? false;
   Future<void> unload() => _channel.invokeMethod<void>('freeModel');

@@ -35,24 +35,34 @@ class StatisticsService {
   }
   
   Future<Map<String, dynamic>> getStatistics() async {
+    final database = _db;
+    if (database == null) {
+      return {
+        'total_events': 0,
+        'today_events': 0,
+        'last_updated': DateTime.now(),
+      };
+    }
+
     final totalEvents = Sqflite.firstIntValue(
-      await _db?.rawQuery('SELECT COUNT(*) FROM stats')
-    ) ?? 0;
-    
+          await database.rawQuery('SELECT COUNT(*) FROM stats'),
+        ) ??
+        0;
     final todayEvents = Sqflite.firstIntValue(
-      await _db?.rawQuery('''
-        SELECT COUNT(*) FROM stats 
-        WHERE date(timestamp/1000, 'unixepoch') = date('now')
-      ''')
-    ) ?? 0;
-    
+          await database.rawQuery("""
+            SELECT COUNT(*) FROM stats
+            WHERE date(timestamp/1000, 'unixepoch') = date('now')
+          """),
+        ) ??
+        0;
+
     return {
       'total_events': totalEvents,
       'today_events': todayEvents,
       'last_updated': DateTime.now(),
     };
   }
-  
+
   void dispose() {
     _db?.close();
   }

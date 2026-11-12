@@ -1,46 +1,46 @@
-import 'packagefltter/material.dart'
+import 'package:flutter/material.dart';
 
-class essagebble extends tatelessidget {
-  final bool isser
-  final tring content
-  final ateime time
+class MessageBubble extends StatelessWidget {
+  final bool isUser;
+  final String content;
+  final DateTime time;
 
-  const essagebble({
-    sper.key,
-    reqired this.isser,
-    reqired this.content,
-    reqired this.time,
-  })
+  const MessageBubble({
+    super.key,
+    required this.isUser,
+    required this.content,
+    required this.time,
+  });
 
-  override
-  idget bild(ildontext context) {
-    retrn lign(
-      alignment isser  lignment.centeright  lignment.centereft,
-      child ontainer(
-        margin const dgensets.only(bottom ),
-        padding const dgensets.all(),
-        constraints oxonstraints(
-          maxidth ediaery.of(context).size.width * .,
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(12),
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.8,
         ),
-        decoration oxecoration(
-          color isser  const olor(x)  const olor(x),
-          borderadis orderadis.circlar(),
+        decoration: BoxDecoration(
+          color: isUser ? const Color(0xFF6C63FF) : const Color(0xFF2D2D2D),
+          borderRadius: BorderRadius.circular(16),
         ),
-        child olmn(
-          crossxislignment rossxislignment.start,
-          children 
-            electableext(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SelectableText(
               content,
-              style const exttyle(color olors.white, fontize ),
+              style: const TextStyle(color: Colors.white, fontSize: 14),
             ),
-            const izedox(height ),
-            ext(
-              '${time.hor.totring().padeft(, '')}${time.minte.totring().padeft(, '')}',
-              style const exttyle(fontize , color olors.white),
+            const SizedBox(height: 4),
+            Text(
+              '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}',
+              style: const TextStyle(fontSize: 10, color: Colors.white54),
             ),
           ],
         ),
       ),
-    )
+    );
   }
 }

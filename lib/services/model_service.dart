@@ -1,6 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import '../services/llama_service.dart';
+import '../agent/architecture/agent_event_bus.dart';
+import 'agent_memory_service.dart';
+import 'openai_compatible_provider.dart';
+import '../tools/tool_manager.dart';
 
 class ModelService {
   static final ModelService _instance = ModelService._internal();
@@ -12,6 +17,56 @@ class ModelService {
   String _activeModelId = '';
   bool _isLoading = false;
   bool _cancelRequested = false;
+  Future<void> _requestTail = Future<void>.value();
+  String _activeRequestId = '';
+  int _toolEventSequence = 0;
+
+  Stream<Map<String, dynamic>> get toolEvents => AgentEventBus.instance.events;
+  void beginAgentRequest(String requestId) => _activeRequestId = requestId;
+  void endAgentRequest(String requestId) { if (_activeRequestId == requestId) _activeRequestId = ''; }
+
+  void _emitToolEvent(String type, String title, {
+    String? toolName,
+    String? path,
+    String? content,
+    String? output,
+    String? details,
+    String? status,
+    String? stepId,
+  }) {
+    final sequence = ++_toolEventSequence;
+    AgentEventBus.instance.publish({
+      'id': 'tool_${_activeRequestId}_event_$sequence',
+      'request_id': _activeRequestId,
+      'attempt_id': _activeRequestId,
+      'step_id': stepId ?? 'tool_${_activeRequestId}_$sequence',
+      'sequence': sequence,
+      'type': type,
+      'title': title,
+      'tool_name': toolName,
+      'file_name': path,
+      'content': content,
+      'output': output,
+      'details': details,
+      'status': status ?? 'completed',
+      'timestamp': DateTime.now().toIso8601String(),
+    }..removeWhere((key, value) => value == null || value == ''));
+  }
+
+  /// One FIFO lock protects every operation that touches the mutable JNI model.
+  Future<T> _withRuntimeLock<T>(Future<T> Function() operation) async {
+    final gate = Completer<void>();
+    final previous = _requestTail;
+    _requestTail = gate.future;
+    try {
+      await previous;
+      _isLoading = true;
+      return await operation();
+    } finally {
+      _isLoading = false;
+      if (!gate.isCompleted) gate.complete();
+    }
+  }
 
   Future<void> init() => scanModels();
   Future<void> scanModels() async {
@@ -25,7 +80,7 @@ class ModelService {
   }
   Future<void> refreshModels() => scanModels();
   Future<bool> importModelFromFile() async {
-    final model = await _llama.importModel();
+    final model = await _withRuntimeLock(() => _llama.importModel());
     if (model == null) return false;
     await scanModels();
     return _models.any((m) => m['path'] == model.path);
@@ -33,14 +88,24 @@ class ModelService {
   Future<bool> switchModel(String modelId) async {
     Map<String, dynamic>? model;
     for (final item in _models) { if (item['id'] == modelId) { model = item; break; } }
-    if (model == null || _isLoading) return false;
-    _isLoading = true;
-    try {
-      final ok = await _llama.loadModel(model['path'] as String);
+    if (model == null) return false;
+    return _withRuntimeLock(() async {
+      final ok = await _llama.loadModel(model!['path'] as String);
       if (ok) _activeModelId = modelId;
       return ok;
-    } finally { _isLoading = false; }
+    });
   }
+
+  Future<bool> loadModelByPath(String modelPath) async {
+    await scanModels();
+    for (final model in _models) {
+      if (model['path'] == modelPath) return switchModel(model['id'] as String);
+    }
+    return false;
+  }
+
+  Future<bool> isModelLoaded() => _llama.isLoaded();
+  bool get isBusy => _isLoading;
   bool hasActiveModel() => _activeModelId.isNotEmpty && _models.any((m) => m['id'] == _activeModelId);
   String getActiveModelName() => getActiveModel()['name']?.toString() ?? 'لا يوجد';
   String getActiveModelSize() => getActiveModel()['size']?.toString() ?? '0';
@@ -113,55 +178,195 @@ class ModelService {
   }
 
   Future<Map<String, dynamic>> _executeTool(Map<String, dynamic> payload) async {
-    final name = payload['name'];
+    final name = payload['name']?.toString() ?? '';
+    if (!ToolManager().supports(name)) {
+      throw FormatException('Unsupported tool: $name');
+    }
     final args = payload['arguments'];
-    if (args is! Map<String, dynamic>) throw const FormatException('Tool arguments must be an object.');
-    switch (name) {
-      case 'create_file':
-        return createFile(path: args['path']?.toString() ?? '', content: args['content']?.toString() ?? '');
-      case 'read_file':
-        return readFile(path: args['path']?.toString() ?? '');
-      case 'write_file':
-        return writeFile(path: args['path']?.toString() ?? '', content: args['content']?.toString() ?? '');
-      case 'execute_python':
-        return executePython(code: args['code']?.toString() ?? '');
-      default:
-        throw FormatException('Unsupported tool: $name');
+    if (args is! Map<String, dynamic>) {
+      throw const FormatException('Tool arguments must be an object.');
+    }
+    final path = args['path']?.toString() ?? '';
+    final content = args['content']?.toString() ?? '';
+    final toolStepId = 'tool_step_${_activeRequestId}_${DateTime.now().microsecondsSinceEpoch}';
+    _emitToolEvent('tool_start', _toolStartTitle(name), toolName: name, path: path,
+        content: name == 'execute_python' ? args['code']?.toString() : null, status: 'running', stepId: toolStepId);
+    try {
+      late final Map<String, dynamic> result;
+      switch (name) {
+        case 'create_file':
+          result = await createFile(path: path, content: content);
+          break;
+        case 'read_file':
+          result = await readFile(path: path);
+          break;
+        case 'write_file':
+          result = await writeFile(path: path, content: content);
+          break;
+        case 'execute_python':
+          result = await executePython(code: args['code']?.toString() ?? '');
+          break;
+        default:
+          throw FormatException('Unsupported tool: $name');
+      }
+      final ok = result['ok'] == true;
+      final output = (result['output'] ?? result['path'] ?? result['error'] ?? result).toString();
+      if (ok && name == 'create_file') {
+        _emitToolEvent('file_created', 'تم إنشاء الملف', toolName: name, path: path,
+            output: output, details: 'أنشأ المحرك الملف داخل مساحة العمل فعلياً.', stepId: toolStepId);
+      } else if (ok && name == 'write_file') {
+        _emitToolEvent('file_updated', 'تم تحديث الملف', toolName: name, path: path,
+            output: output, details: 'حُفظت التغييرات في مساحة العمل فعلياً.', stepId: toolStepId);
+      }
+      _emitToolEvent(ok ? 'tool_output' : 'tool_error',
+          ok ? _toolCompleteTitle(name) : 'فشل تنفيذ الأداة',
+          toolName: name, path: path, output: output,
+          details: ok ? null : result['error']?.toString(),
+          status: ok ? 'completed' : 'failed', stepId: toolStepId);
+      return result;
+    } catch (error) {
+      _emitToolEvent('tool_error', 'فشل تنفيذ الأداة', toolName: name,
+          path: path, output: error.toString(), status: 'failed', stepId: toolStepId);
+      rethrow;
     }
   }
 
-  Future<String> processInput(String input) async {
+  String _toolStartTitle(String name) {
+    switch (name) {
+      case 'create_file': return 'ينشئ ملفاً في مساحة العمل';
+      case 'write_file': return 'يحدّث ملفاً موجوداً';
+      case 'read_file': return 'يقرأ ملفاً من مساحة العمل';
+      case 'execute_python': return 'يشغّل كود Python';
+      default: return 'ينفّذ أداة';
+    }
+  }
+
+  String _toolCompleteTitle(String name) {
+    switch (name) {
+      case 'create_file': return 'اكتمل إنشاء الملف';
+      case 'write_file': return 'اكتمل تحديث الملف';
+      case 'read_file': return 'اكتملت قراءة الملف';
+      case 'execute_python': return 'اكتمل تنفيذ Python';
+      default: return 'اكتمل تنفيذ الأداة';
+    }
+  }
+
+  /// Serializes requests because llama.cpp owns one mutable native context.
+  /// Concurrent calls can interleave prompts, cancellation and tool execution.
+  Future<String> processInput(
+    String input, {
+    String conversationId = 'global',
+    bool persistTurn = true,
+  }) {
+    return _withRuntimeLock(() async {
+      final context = await AgentMemoryService.instance.buildContext(
+        input,
+        conversationId: conversationId,
+      );
+      final response = await _processInput(
+        context.isEmpty ? input : '$context\n\nطلب المستخدم: $input',
+      );
+      if (persistTurn) {
+        await AgentMemoryService.instance.saveTurn(
+          input,
+          response,
+          conversationId: conversationId,
+        );
+      }
+      return response;
+    });
+  }
+
+  /// Direct conversational path: no AgentKernel orchestration and no tool loop.
+  /// The local model (or configured OpenAI-compatible provider) answers normally.
+  Future<String> processChat(
+    String input, {
+    String conversationId = 'global',
+  }) {
+    return _withRuntimeLock(() async {
+      final context = await AgentMemoryService.instance.buildContext(
+        input,
+        conversationId: conversationId,
+      );
+      final prompt = context.isEmpty ? input : '$context\n\nرسالة المستخدم: $input';
+      final response = await _generateText(
+        _boundPrompt(prompt),
+        maxTokens: 768,
+        temperature: .35,
+      );
+      await AgentMemoryService.instance.saveTurn(
+        input,
+        response,
+        conversationId: conversationId,
+      );
+      return response.trim();
+    });
+  }
+
+  static const int _maxPromptCharacters = 9000;
+
+  String _boundPrompt(String prompt) {
+    if (prompt.length <= _maxPromptCharacters) return prompt;
+    const headLength = 1800;
+    const tailLength = _maxPromptCharacters - headLength;
+    return '${prompt.substring(0, headLength)}\n\n[تم اختصار السياق الأقدم لتجنب تجاوز نافذة النموذج]\n\n'
+        '${prompt.substring(prompt.length - tailLength)}';
+  }
+
+  Future<String> _generateText(
+    String prompt, {
+    required int maxTokens,
+    required double temperature,
+  }) async {
+    if (await OpenAICompatibleProvider.instance.isEnabled()) {
+      return OpenAICompatibleProvider.instance.generate(
+        prompt,
+        maxTokens: maxTokens,
+        temperature: temperature,
+      );
+    }
+    return _llama.generate(
+      prompt,
+      maxTokens: maxTokens,
+      temperature: temperature,
+    );
+  }
+
+  Future<String> _processInput(String input) async {
     _cancelRequested = false;
-    if (!hasActiveModel()) return '⚠️ استورد نموذج GGUF واختره أولاً.';
-    final history = StringBuffer('''أنت Giant Agent، مساعد محلي يعمل دون اتصال. أجب بلغة المستخدم.
-أدواتك:
-1) create_file: arguments path و content. تنشئ ملفاً جديداً فقط ولا تستبدل الموجود.
-2) read_file: arguments path. تقرأ ملفاً موجوداً داخل مساحة العمل.
-3) write_file: arguments path و content. تحدّث ملفاً موجوداً داخل مساحة العمل مع الحفاظ على حدود المسارات والحجم.
-4) execute_python: arguments code. يشغّل سكربت Python محلياً ضمن مفسر مقيّد؛ يدعم الحسابات والطباعة والحلقات المحدودة. لا يدعم الاستيراد أو الوصول إلى النظام أو السمات أو فتح الملفات. تعامل مع الملفات عبر أداتي create_file و read_file فقط؛ لا يملك Python صلاحية فتح الملفات.
-عندما يطلب المستخدم إنشاء واجهة ويب أو نموذج تفاعلي أو تطبيق بسيط، أنشئ ملفاً واحداً باسم index.html باستخدام create_file، واجعل HTML وCSS وJavaScript مكتملة ومضمّنة داخل الملف نفسه حتى تعمل مباشرة في معاينة WebView المحلية دون اتصال. لا تعتمد على CDN أو ملفات خارجية أو خدمات شبكة. صمّم واجهة متجاوبة مع الهاتف، وأضف تفاعلات JavaScript المطلوبة. إذا طلب المستخدم مشروع Flutter أصلياً، أنشئ ملفات Dart المناسبة ولا تدّع أن WebView تستطيع تشغيلها؛ فهي تعرض الكود فقط.
-عند الحاجة لاستخدام أداة أخرج استدعاءً واحداً فقط:
-<tool_call>{"name":"create_file","arguments":{"path":"src/main.dart","content":"..."}}</tool_call>
-أو:
-<tool_call>{"name":"read_file","arguments":{"path":"index.html"}}</tool_call>
-أو:
-<tool_call>{"name":"write_file","arguments":{"path":"index.html","content":"<!doctype html>..."}}</tool_call>
-أو:
-<tool_call>{"name":"execute_python","arguments":{"code":"for i in range(1, 11):\n    print(i)"}}</tool_call>
-لا تدّع نجاح أي عملية قبل استلام نتيجتها. لا تطلب أدوات إذا لم تكن لازمة.
+    input = _boundPrompt(input);
+    if (!hasActiveModel() && !await OpenAICompatibleProvider.instance.isEnabled()) {
+      return '⚠️ اختر نموذج GGUF محلياً أو فعّل مزوّد API خارجي متوافقاً مع OpenAI من شريط الإدخال.';
+    }
+    final toolCatalog = ToolManager().promptCatalog;
+    final history = StringBuffer('''أنت Giant Agent، مساعد ذكي متعدد المصادر. أجب بلغة المستخدم.
+الأدوات المتاحة فعلياً:
+$toolCatalog
+عندما تتطلب المهمة تسليم شيء قابل للاستخدام خارج المحادثة (مثل صفحة ويب، نموذج تفاعلي، مشروع برمجي، سكربت، تقرير، جدول بيانات، ملف إعدادات أو مستند)، أنشئ المخرج كملف حقيقي داخل مساحة العمل باستخدام create_file، ولا تكتفِ بعرض الكود أو وصف ما ستفعله. اختر امتداداً مناسباً للمخرج (مثل html أو dart أو py أو md أو csv أو json). في صفحات الويب أنشئ index.html مكتملاً بـ HTML وCSS وJavaScript مضمّنة، متجاوباً ويعمل دون CDN أو اعتماد على الشبكة. للمشاريع متعددة الملفات أنشئ الملفات اللازمة واحداً تلو الآخر ضمن حدود الأدوات. إذا كان الملف موجوداً فاقرأه أولاً ثم حدّثه عبر write_file، ولا تستبدله عبر create_file. بعد الإنشاء أو التحديث، استخدم read_file للتحقق من وجود المحتوى النهائي عند الإمكان. أظهر للمستخدم اسم الملف ومساره وما تم التحقق منه، ولا تدّع إنشاء ملف أو تشغيل مشروع ما لم تؤكد نتيجة الأداة ذلك. لا تنشئ ملفات لأسئلة المعرفة أو الشرح العادي أو عندما يكون الرد النصي وحده هو المخرج الأنسب. إذا طلب المستخدم مشروع Flutter أصلياً، أنشئ ملفات Dart المناسبة ولا تدّع أن WebView تستطيع تشغيلها؛ فهي تعرض الكود فقط.
+عند الحاجة لاستخدام أداة أخرج استدعاءً واحداً فقط بالصيغة التالية، مع اسم أداة موجود في القائمة أعلاه ووسائط مطابقة لمثالها:
+<tool_call>{"name":"tool_name","arguments":{}}</tool_call>
+لا تدّع نجاح أي عملية قبل استلام نتيجة الأداة. إذا كانت النتيجة ok=false فاشرح الفشل ولا تعلن النجاح. لا تطلب أدوات إذا لم تكن لازمة.
+إذا كان الطلب سؤالاً مباشراً أو شرحاً أو مراجعة/تصحيحاً بسيطاً لمقطع كود أرسله المستخدم، فأجب مباشرة في المحادثة دون إنشاء خطة أو استدعاء أدوات. لا تنشئ أو تعدّل ملفات ولا تشغّل أدوات إلا إذا طلب المستخدم ذلك صراحة أو كانت الأداة ضرورية لإنجاز المطلوب.
 لا تعرض التفكير الداخلي التفصيلي.
 
 المستخدم: $input
 
 المساعد:''');
     try {
-      for (var step = 0; step < 4; step++) {
-        final generated = await _llama.generate(history.toString(), maxTokens: 768, temperature: .25);
+      final executedCalls = <String>{};
+      const maxToolCalls = 16;
+      for (var step = 0; step < maxToolCalls; step++) {
+        if (_cancelRequested) return 'تم إيقاف تنفيذ الوكيل بناءً على طلب المستخدم.';
+        final generated = await _generateText(history.toString(), maxTokens: 768, temperature: .25);
         if (_cancelRequested) return generated.trim().isEmpty ? 'تم إيقاف التوليد.' : '${generated.trim()}\n\n[تم إيقاف التوليد]';
         final match = RegExp(r'<tool_call>\s*(\{.*?\})\s*</tool_call>', dotAll: true).firstMatch(generated);
         if (match == null) return generated.trim();
         try {
           final payload = jsonDecode(match.group(1)!) as Map<String, dynamic>;
+          final signature = jsonEncode(payload);
+          if (!executedCalls.add(signature)) {
+            return 'أوقف الوكيل تكرار استدعاء الأداة نفسه دون تقدم. راجع النتيجة السابقة وحدد خطوة مختلفة.';
+          }
           final result = await _executeTool(payload);
           if (_cancelRequested) return 'تم إيقاف الوكيل بعد اكتمال الأداة الحالية.';
           final toolName = payload['name'];
@@ -185,7 +390,7 @@ class ModelService {
           return 'تعذر تحليل استدعاء الأداة أو تنفيذه: $e';
         }
       }
-      return 'توقفت دورة الأدوات بعد بلوغ الحد الآمن (4 خطوات). أعد الطلب لتكملة العمل.';
+      return 'وصل الوكيل إلى الحد الآمن ($maxToolCalls استدعاءات أدوات) دون إنهاء المهمة. أعد الطلب لمتابعة العمل من سياق المحادثة.';
     } catch (e) {
       return 'تعذر تشغيل النموذج المحلي: $e';
     }

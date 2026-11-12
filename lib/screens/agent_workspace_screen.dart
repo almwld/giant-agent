@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../services/model_service.dart';
+import '../theme/giant_palette.dart';
 
 /// Local workspace editor with an embedded HTML/JS preview.
 /// It is not a remote desktop and does not compile or run Flutter projects.
@@ -32,7 +32,7 @@ class _AgentWorkspaceScreenState extends State<AgentWorkspaceScreen> {
     super.initState();
     _webView = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(const Color(0xFF0F1720))
+      ..setBackgroundColor(GiantPalette.background)
       ..setNavigationDelegate(NavigationDelegate(
         onWebResourceError: (error) {
           if (!mounted || error.isForMainFrame != true) return;
@@ -159,23 +159,25 @@ class _AgentWorkspaceScreenState extends State<AgentWorkspaceScreen> {
     final isHtml = _selectedPath != null &&
         const {'html', 'htm'}.contains(_selectedPath!.split('.').last.toLowerCase());
     return Scaffold(
-      backgroundColor: const Color(0xFF0F1720),
+      backgroundColor: GiantPalette.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF17212B),
+        backgroundColor: GiantPalette.surface,
         foregroundColor: Colors.white,
         title: const Text('معاينة مساحة العمل'),
         actions: [
           IconButton(
             tooltip: 'تحديث قائمة الملفات',
             onPressed: _loading ? null : _refreshFiles,
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(Icons.refresh, size: 18),
+            style: IconButton.styleFrom(fixedSize: const Size(32, 32), padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
           ),
           IconButton(
             tooltip: 'حفظ وتشغيل',
             onPressed: _saving || _selectedPath == null ? null : _saveAndRun,
+            style: IconButton.styleFrom(fixedSize: const Size(32, 32), padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
             icon: _saving
                 ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.play_arrow_rounded, color: Colors.tealAccent),
+                : const Icon(Icons.play_arrow_rounded, color: GiantPalette.primaryLight, size: 18),
           ),
         ],
       ),
@@ -183,7 +185,7 @@ class _AgentWorkspaceScreenState extends State<AgentWorkspaceScreen> {
         children: [
           Container(
             height: 54,
-            color: const Color(0xFF151F29),
+            color: GiantPalette.surface,
             child: _files.isEmpty
                 ? const Center(child: Text('لا توجد ملفات في مساحة العمل', style: TextStyle(color: Colors.white54)))
                 : ListView.separated(
@@ -195,12 +197,12 @@ class _AgentWorkspaceScreenState extends State<AgentWorkspaceScreen> {
                       final path = _files[index];
                       final selected = path == _selectedPath;
                       return ActionChip(
-                        backgroundColor: selected ? Colors.teal.withOpacity(.25) : const Color(0xFF243342),
-                        side: BorderSide(color: selected ? Colors.tealAccent : Colors.white12),
+                        backgroundColor: selected ? GiantPalette.primary.withOpacity(.18) : GiantPalette.elevated,
+                        side: BorderSide(color: selected ? GiantPalette.primaryLight : Colors.white12),
                         avatar: Icon(Icons.insert_drive_file_outlined, size: 16,
-                            color: selected ? Colors.tealAccent : Colors.white60),
+                            color: selected ? GiantPalette.primaryLight : Colors.white60),
                         label: Text(path, style: TextStyle(fontSize: 11,
-                            color: selected ? Colors.tealAccent : Colors.white70)),
+                            color: selected ? GiantPalette.primaryLight : Colors.white70)),
                         onPressed: () => _openFile(path),
                       );
                     },
@@ -242,7 +244,7 @@ class _AgentWorkspaceScreenState extends State<AgentWorkspaceScreen> {
                   Container(
                     height: 42,
                     padding: const EdgeInsets.symmetric(horizontal: 10),
-                    color: const Color(0xFF17212B),
+                    color: GiantPalette.surface,
                     child: Row(children: [
                       const Expanded(child: Text('يُحفظ التعديل في مساحة العمل المحلية',
                           style: TextStyle(color: Colors.white54, fontSize: 10))),
@@ -260,10 +262,10 @@ class _AgentWorkspaceScreenState extends State<AgentWorkspaceScreen> {
                 Expanded(child: WebViewWidget(controller: _webView)),
                 Container(
                   height: 30,
-                  color: const Color(0xFF17212B),
+                  color: GiantPalette.surface,
                   padding: const EdgeInsets.symmetric(horizontal: 10),
                   child: Row(children: [
-                    Icon(Icons.circle, size: 7, color: isHtml ? Colors.greenAccent : Colors.orangeAccent),
+                    Icon(Icons.circle, size: 7, color: isHtml ? GiantPalette.primaryLight : Colors.orangeAccent),
                     const SizedBox(width: 7),
                     Text(isHtml ? 'WebView • Preview #$_previewVersion' : 'Code only • Flutter requires export/build',
                         style: const TextStyle(color: Colors.white54, fontSize: 10)),
@@ -285,7 +287,7 @@ class _AgentWorkspaceScreenState extends State<AgentWorkspaceScreen> {
             }),
           ),
           if (_loading)
-            const LinearProgressIndicator(minHeight: 2, color: Colors.tealAccent, backgroundColor: Colors.transparent),
+            const LinearProgressIndicator(minHeight: 2, color: GiantPalette.primaryLight, backgroundColor: Colors.transparent),
         ],
       ),
     );
@@ -298,7 +300,7 @@ class _AgentWorkspaceScreenState extends State<AgentWorkspaceScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 12),
       color: const Color(0xFF1B2936),
       child: Row(children: [
-        Icon(icon, color: Colors.tealAccent, size: 16),
+        Icon(icon, color: GiantPalette.primaryLight, size: 16),
         const SizedBox(width: 8),
         Text(title, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
         const Spacer(),

@@ -1,79 +1,37 @@
-import 'packagefltter/material.dart'
+import 'package:flutter/material.dart';
+import 'agent_activity_indicators.dart';
 
-class hinkingndicator extends tateflidget {
-  final tring message
+/// Consistent thinking state used by legacy and secondary chat surfaces.
+class ThinkingIndicator extends StatelessWidget {
+  final String message;
 
-  const hinkingndicator({sper.key, reqired this.message})
+  const ThinkingIndicator({super.key, required this.message});
 
-  override
-  tatehinkingndicator createtate()  _hinkingndicatortate()
-}
-
-class _hinkingndicatortate extends tatehinkingndicator with ingleickerrovidertateixin {
-  late nimationontroller _controller
-
-  override
-  void inittate() {
-    sper.inittate()
-    _controller  nimationontroller(
-      dration const ration(milliseconds ),
-      vsync this,
-    )..repeat()
-  }
-
-  override
-  void dispose() {
-    _controller.dispose()
-    sper.dispose()
-  }
-
-  override
-  idget bild(ildontext context) {
-    retrn ontainer(
-      margin const dgensets.all(),
-      padding const dgensets.symmetric(horizontal , vertical ),
-      decoration oxecoration(
-        color olors.grey.shade,
-        borderadis orderadis.circlar(),
-        border order.all(color olors.deeprple.shade, width ),
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.all(8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF38BDF8).withOpacity(.14)),
       ),
-      child ow(
-        mainxisize ainxisize.min,
-        children 
-          nimatedilder(
-            animation _controller,
-            bilder (context, child) {
-              retrn ow(
-                children 
-                  _bildot(),
-                  const izedox(width ),
-                  _bildot(),
-                  const izedox(width ),
-                  _bildot(),
-                ],
-              )
-            },
-          ),
-          const izedox(width ),
-          ext(
-            widget.message,
-            style const exttyle(color olors.white, fontize ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const AgentPulseDot(size: 8),
+          const SizedBox(width: 10),
+          const AgentThinkingDots(),
+          const SizedBox(width: 12),
+          Flexible(
+            child: Text(
+              message,
+              style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 12),
+            ),
           ),
         ],
       ),
-    )
-  }
-
-  idget _bildot(int index) {
-    final vale  (_controller.vale *  + index) % 
-    final opacity  vale    vale   - vale
-    retrn ontainer(
-      width ,
-      height ,
-      decoration oxecoration(
-        color olors.deeprple.withpacity(opacity.clamp(., .)),
-        shape oxhape.circle,
-      ),
-    )
+    );
   }
 }

@@ -15,7 +15,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _bioController = TextEditingController();
   File? _avatarImage;
-  String? _userEmail;
+  String? _accountName;
   
   @override
   void initState() {
@@ -24,7 +24,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
   
   Future<void> _loadUserData() async {
-    _userEmail = await _auth.getCurrentUser();
+    _accountName = await _auth.getCurrentUser();
     setState(() {});
   }
   
@@ -45,6 +45,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
   
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _bioController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -95,9 +102,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             
             // Email (read-only)
             TextField(
-              controller: TextEditingController(text: _userEmail ?? ''),
+              controller: TextEditingController(text: _accountName ?? ''),
               decoration: const InputDecoration(
-                labelText: 'Email',
+                labelText: 'Account',
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.email),
               ),
