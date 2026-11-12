@@ -12,6 +12,7 @@ import '../services/agent_memory_service.dart';
 import '../services/image_recognition_service.dart';
 import 'agent_workspace_screen.dart';
 import 'agent_workflow_screen.dart';
+import 'agent_observability_screen.dart';
 import 'package:flutter/services.dart';
 import 'package:xterm/xterm.dart';
 import 'package:share_plus/share_plus.dart';
@@ -3049,6 +3050,23 @@ class _ChatScreenState extends State<ChatScreen> {
             onPressed: _exportWorkspace,
             icon: const Icon(Icons.ios_share_rounded, color: GiantPalette.muted, size: 16),
             style: IconButton.styleFrom(fixedSize: const Size(32, 32), padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
+          ),
+          IconButton(
+            tooltip: 'مراقبة Gain Agents وتشخيص التنفيذ',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => AgentObservabilityScreen(
+                  conversationId: _currentSessionId,
+                ),
+              ),
+            ),
+            icon: const Icon(Icons.monitor_heart_outlined,
+                color: Color(0xFF5EEAD4), size: 17),
+            style: IconButton.styleFrom(
+              fixedSize: const Size(32, 32),
+              padding: EdgeInsets.zero,
+              visualDensity: VisualDensity.compact,
+            ),
           ),
           IconButton(
             tooltip: 'مساحة عمل الجلسة — سير الوكيل ومخرجاته',
