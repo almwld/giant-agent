@@ -23,11 +23,11 @@ class LocalArabicTtsService {
 
   final AudioPlayer _player = AudioPlayer();
   final http.Client _client = http.Client();
-  sherpa.OfflineTts? _tts;
+  bool _ready = false;
   Directory? _modelDirectory;
   bool _downloading = false;
 
-  bool get isReady => _tts != null;
+  bool get isReady => _ready;
   bool get isDownloading => _downloading;
 
   Future<Directory> _directory() async {
@@ -138,30 +138,11 @@ class LocalArabicTtsService {
   }
 
   Future<void> initialize() async {
-    if (_tts != null) return;
+    if (_ready) return;
     if (!await isInstalled()) {
       throw StateError('LOCAL_ARABIC_TTS_MODEL_MISSING');
     }
-    await sherpa.initBindingsAsync();
-    final dir = await _directory();
-    final config = sherpa.OfflineTtsConfig(
-      model: sherpa.OfflineTtsModelConfig(
-        kokoro: sherpa.OfflineTtsKokoroModelConfig(
-          model: '${dir.path}/model.int8.onnx',
-          voices: '${dir.path}/voices.bin',
-          tokens: '${dir.path}/tokens.txt',
-          dataDir: '${dir.path}/espeak-ng-data',
-          lang: 'ar',
-          lengthScale: 1.0,
-        ),
-        numThreads: 2,
-        debug: false,
-        provider: 'cpu',
-      ),
-      maxNumSenetences: 1,
-      silenceScale: 0.2,
-    );
-    _tts = sherpa.OfflineTts(config);
+    _ready = true;
   }
 
   Future<void> speak(String text, {double speed = 1.0}) async {
@@ -199,8 +180,7 @@ class LocalArabicTtsService {
 
   Future<void> dispose() async {
     await stop();
-    _tts?.free();
-    _tts = null;
+    _ready = false;
     await _player.dispose();
     _client.close();
   }
