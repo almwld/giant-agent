@@ -1,5 +1,7 @@
 import 'package:flutter_tts/flutter_tts.dart';
 
+import 'local_arabic_tts_service.dart';
+
 /// Shared text-to-speech output. Only explicitly offline Android voices are
 /// eligible; network-required and unknown-network-status voices are rejected.
 class VoiceOutputService {
@@ -14,6 +16,7 @@ class VoiceOutputService {
   Future<void> _streamQueue = Future<void>.value();
   bool _streaming = false;
   int _streamedCharacters = 0;
+  bool _useNabra = false;
 
   bool get isSpeaking => _speaking;
   bool get hasOfflineArabicVoice => _selectedArabicVoice != null;
@@ -37,6 +40,14 @@ class VoiceOutputService {
 
   Future<void> initialize() async {
     if (_initialized) return;
+    final localTts = LocalArabicTtsService.instance;
+    if (await localTts.isInstalled()) {
+      await localTts.initialize();
+      _useNabra = true;
+      _initialized = true;
+      return;
+    }
+    _useNabra = false;
     final voices = await getAvailableVoices();
     final offlineArabic = voices.where((voice) {
       final locale = voice['locale']?.toString().toLowerCase() ?? '';
@@ -120,8 +131,12 @@ class VoiceOutputService {
 
   Future<void> _speakSegment(String text) async {
     if (text.trim().isEmpty) return;
-    await _tts.awaitSpeakCompletion(true);
-    await _tts.speak(text.trim());
+    if (_useNabra) {
+      await LocalArabicTtsService.instance.speak(text.trim());
+    } else {
+      await _tts.awaitSpeakCompletion(true);
+      await _tts.speak(text.trim());
+    }
   }
 
   Future<void> speak(
@@ -133,14 +148,17 @@ class VoiceOutputService {
     await initialize();
     _streaming = false;
     _streamBuffer = '';
+    if (_useNabra) {
+      await LocalArabicTtsService.instance.stop();
+      await LocalArabicTtsService.instance.speak(value);
+      return;
+    }
     await _tts.stop();
     await _tts.awaitSpeakCompletion(waitForCompletion);
     try {
       await _tts.speak(value);
     } finally {
-      if (waitForCompletion) {
-        await _tts.awaitSpeakCompletion(false);
-      }
+      if (waitForCompletion) await _tts.awaitSpeakCompletion(false);
     }
   }
 
@@ -148,6 +166,7 @@ class VoiceOutputService {
     _streaming = false;
     _streamBuffer = '';
     await _tts.stop();
+    await LocalArabicTtsService.instance.stop();
     _speaking = false;
   }
 
