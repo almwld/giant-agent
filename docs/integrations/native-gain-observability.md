@@ -12,6 +12,8 @@ The existing runtime already provides the core of this system:
 - `agent_events` is append-only (database triggers reject update/delete), and event IDs are idempotent on stream retries.
 - `stream_token` deltas are intentionally excluded from the durable journal to prevent unbounded growth.
 - `eventsFor(requestId)` replays a request's timeline in insertion order.
+- `AgentKernelObservability` adds conversation-scoped event pagination with stable SQLite row cursors, type/status filters, and privacy-preserving aggregate metrics.
+- `AgentEventBus` normalizes common correlation aliases, supplies a process sequence, and carries request/session/attempt identifiers where known.
 
 ## Event flow
 
@@ -48,6 +50,17 @@ Every durable event should carry, when applicable:
 
 Never persist hidden model reasoning. Timeline records describe observable execution events and outcomes only.
 
+## Query and metrics contract
+
+The read-only observability extension exposes:
+
+- Newest-first conversation event pages with a bounded page size (1–200) and a stable `beforeRowId` cursor. New events do not shift an already-issued cursor.
+- Optional exact event-type and status filters.
+- Conversation aggregates for request states, event counts, distinct tool calls, tool failures, tool success rate, and average reported tool latency.
+- Aggregate responses never include prompts, model responses, tool arguments, or tool output. Full event details remain available only through the local app database API.
+
+Tool latency is reported only when a producer includes a non-negative `duration_ms` or `latency_ms` field. Missing measurements remain absent; they are never treated as zero.
+
 ## Operational guarantees
 
 1. Event writes are serialized by `AgentService` and remain supplemental to the durable execution kernel.
@@ -60,7 +73,7 @@ Never persist hidden model reasoning. Timeline records describe observable execu
 
 ## Verification
 
-The existing durable-service tests cover request persistence, FIFO execution, and subagent event journaling. Extend those tests whenever the event contract, persistence policy, or recovery behavior changes. CI must run Flutter analysis, unit tests, and release APK builds before merge.
+The durable-service tests cover request persistence, FIFO execution, and subagent event journaling. Dedicated observability tests cover stable cursor pagination, type/status filtering, conversation isolation, request-state aggregates, distinct tool outcomes, and latency aggregation. Event-bus tests cover correlation normalization and process sequence metadata. Extend these tests whenever the event contract, persistence policy, or recovery behavior changes. CI must run Flutter analysis, unit tests, and release APK builds before merge.
 
 ## Removed vendor integration
 
