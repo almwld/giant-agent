@@ -20,7 +20,7 @@ class LocalSpeechRecognitionService {
 
   final WhisperModelManager _models = WhisperModelManager();
   WhisperEngine? _engine;
-  WhisperMicrophoneTask? _activeTask;
+  dynamic _activeTask;
   StreamSubscription<dynamic>? _updates;
   bool _loading = false;
   bool _disposed = false;
