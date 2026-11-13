@@ -69,7 +69,6 @@ class _ChatScreenState extends State<ChatScreen> {
   final Terminal _terminal = Terminal(maxLines: 5000);
   bool _terminalHasActivity = false;
   final LocalSpeechRecognitionService _localSpeech = LocalSpeechRecognitionService.instance;
-  Timer? _voiceSilenceTimer;
   final VoiceOutputService _voiceOutput = VoiceOutputService.instance;
   bool _isListening = false;
   bool _finalizingVoiceInput = false;
@@ -1841,7 +1840,6 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _stopVoiceInteraction() async {
     _finalizingVoiceInput = true;
     _voiceRequestActive = false;
-    _voiceSilenceTimer?.cancel();
     try {
       await _localSpeech.cancelListening();
       await _voiceOutput.stop();
@@ -1857,9 +1855,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<bool> _prepareLocalSpeechModel() async {
     if (_localSpeech.isModelReady) return true;
-    final installed = await _localSpeech.installedModel();
-    if (installed != null) return _localSpeech.initialize();
-
     var progress = 0.0;
     var downloading = false;
     var error = '';
@@ -1875,7 +1870,7 @@ class _ChatScreenState extends State<ChatScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'يلزم تنزيل نموذج Whisper متعدد اللغات (نحو 145 MB) مرة واحدة. بعد اكتمال التنزيل، يعمل التعرف على الكلام دون اتصال أو إرسال الصوت إلى خادم.',
+                'يلزم تنزيل نموذج Whisper متعدد اللغات Base (نحو 143 MB) مرة واحدة. بعد اكتمال التنزيل، يعمل التعرف على الكلام دون اتصال أو إرسال الصوت إلى خادم.',
                 style: TextStyle(color: Colors.white70, height: 1.45),
               ),
               if (downloading) ...[
@@ -1900,14 +1895,14 @@ class _ChatScreenState extends State<ChatScreen> {
               onPressed: downloading ? null : () async {
                 updateDialog(() { downloading = true; error = ''; });
                 try {
-                  await _localSpeech.downloadModel(onProgress: (value) {
+                  await _localSpeech.initialize(onProgress: (value) {
                     updateDialog(() => progress = value);
                   });
                   if (dialogContext.mounted) Navigator.pop(dialogContext, true);
                 } catch (failure) {
                   updateDialog(() {
                     downloading = false;
-                    error = 'تعذر تنزيل النموذج: $failure';
+                    error = 'تعذر تجهيز نموذج Whisper: $failure';
                   });
                 }
               },
@@ -1917,22 +1912,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
       ),
     );
-    if (accepted != true || !mounted) return false;
-    return _localSpeech.initialize();
-  }
-
-  Future<void> _interruptAssistantAndListen() async {
-    _finalizingVoiceInput = true;
-    _voiceSilenceTimer?.cancel();
-    await _voiceOutput.stop();
-    await _localSpeech.cancelListening();
-    if (!mounted || !_voiceOrbVisible) return;
-    _finalizingVoiceInput = false;
-    setState(() {
-      _isListening = false;
-      _voiceOrbState = AgentState.listening;
-    });
-    await _startVoiceRecognition();
+    return accepted == true && _localSpeech.isModelReady;
   }
 
   Widget _buildVoiceOrbOverlay() {
@@ -1975,6 +1955,12 @@ class _ChatScreenState extends State<ChatScreen> {
                         icon: const Icon(Icons.hearing_rounded),
                         label: const Text('قاطعني — استمع الآن'),
                       ),
+                    if (_voiceOrbState == AgentState.listening && _localSpeech.isListening)
+                      FilledButton.icon(
+                        onPressed: _finishLocalVoiceTurn,
+                        icon: const Icon(Icons.send_rounded),
+                        label: const Text('انتهيت — أرسل كلامي'),
+                      )
                     const SizedBox(height: 8),
                     const Text('التعرف على الكلام يعمل على الجهاز',
                       style: TextStyle(color: GiantPalette.muted, fontSize: 11)),
@@ -2134,33 +2120,7 @@ class _ChatScreenState extends State<ChatScreen> {
         });
         return;
       }
-      await _localSpeech.startListening(
-        onText: (text) {
-          if (!mounted || !_voiceOrbVisible || _finalizingVoiceInput) return;
-          setState(() {
-            _controller.text = text;
-            _controller.selection = TextSelection.collapsed(offset: text.length);
-            _isListening = true;
-            _voiceOrbState = AgentState.listening;
-          });
-          // Whisper streams provisional text in overlapping windows. A short
-          // quiet window closes the turn; the final stop() flushes its tail.
-          _voiceSilenceTimer?.cancel();
-          _voiceSilenceTimer = Timer(const Duration(milliseconds: 3000), () {
-            _finishLocalVoiceTurn();
-          });
-        },
-        onError: (error) {
-          if (!mounted) return;
-          setState(() {
-            _isListening = false;
-            _voiceOrbState = AgentState.error;
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('خطأ في محرك Whisper المحلي: $error')),
-          );
-        },
-      );
+      await _localSpeech.startListening();
       if (mounted && _voiceOrbVisible) {
         setState(() {
           _isListening = true;
@@ -2175,7 +2135,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _voiceOrbVisible = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذر بدء التعرف المحلي: $error')),
+        SnackBar(content: Text('تعذر بدء التسجيل الصوتي المحلي: $error')),
       );
     }
   }
