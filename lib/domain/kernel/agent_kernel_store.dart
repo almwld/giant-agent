@@ -527,7 +527,8 @@ class AgentKernelStore {
     // request-scoped dynamic record.
     final snapshots = (await getTasks())
         .where((task) => task['kind'] == 'subagent' &&
-            {'pending', 'running'}.contains(task['status']))
+            (task['status'] == 'running' ||
+                (task['status'] == 'pending' && task['is_async'] != true)))
         .toList(growable: false);
     for (final task in snapshots) {
       final now = DateTime.now().toUtc().toIso8601String();
