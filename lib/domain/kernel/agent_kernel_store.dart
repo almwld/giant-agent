@@ -945,6 +945,33 @@ class AgentKernelStore {
 
   /// Appends a factual runtime/timeline event to its parent request journal.
   /// Events are immutable and duplicate IDs are ignored during stream retries.
+  /// Appends privacy-filtered analytics facts to the canonical event journal.
+  /// System analytics have no request owner and therefore use a null request_id.
+  Future<void> appendAnalyticsEvent({
+    required String eventType,
+    Map<String, Object?> data = const <String, Object?>{},
+  }) async {
+    final normalizedType = eventType.trim();
+    if (normalizedType.isEmpty || normalizedType.length > 80) {
+      throw ArgumentError.value(eventType, 'eventType', 'Invalid analytics event type.');
+    }
+    final id = 'analytics_${DateTime.now().microsecondsSinceEpoch}_${normalizedType.hashCode}';
+    final now = DateTime.now().toUtc().toIso8601String();
+    await (await database).insert('agent_events', <String, Object?>{
+      'id': id,
+      'request_id': null,
+      'task_id': null,
+      'type': 'analytics_$normalizedType',
+      'status': 'recorded',
+      'payload_json': jsonEncode(<String, Object?>{
+        'type': 'analytics_$normalizedType',
+        'status': 'recorded',
+        'data': data,
+      }),
+      'created_at': now,
+    }, conflictAlgorithm: ConflictAlgorithm.ignore);
+  }
+
   Future<void> appendRequestEvent(Map<String, dynamic> event) async {
     final requestId = event['request_id']?.toString() ?? '';
     if (requestId.isEmpty || requestId == 'runtime') return;
