@@ -28,7 +28,7 @@ dependencies:
   translator: ^1.0.3
   # Local-only speech pipeline: Whisper.cpp ASR + device-installed offline TTS voices.
   flutter_whisper: ^0.2.0
-  sherpa_onnx: 1.13.8
+  sherpa_onnx: 1.13.3
   audioplayers: ^5.2.1
   archive: ^3.6.1
   crypto: ^3.0.3
@@ -48,9 +48,3 @@ flutter:
   assets:
     - assets/animations/voice_orb.json
     - assets/branding/giant_mark.svg
-
-# This app targets Android only. The upstream web package currently requires
-# Dart 3.4; a native-only stub keeps the Android sherpa runtime on Flutter 3.16.
-dependency_overrides:
-  sherpa_onnx_web:
-    path: packages/sherpa_onnx_web_stub
