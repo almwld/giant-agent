@@ -11,6 +11,7 @@ on:
       - fix/openrouter-only-provider-policy
       - feat/voice-orb-in-chat-session
       - feat/chat-bubble-resize-teal-toasts
+      - feat/local-offline-voice-pipeline
   pull_request:
     types: [opened, reopened, synchronize, edited]
     branches:
@@ -20,6 +21,7 @@ on:
       - feat/integrated-agent-completion
       - feat/consolidate-sqlite-runtime-v2
       - integration/giant-agent-stabilization
+      - chore/boosthis-mcp-mainline
   workflow_dispatch:
 
 permissions:
@@ -65,6 +67,9 @@ jobs:
 
       - name: Install dependencies
         run: flutter pub get
+
+      - name: Patch flutter_whisper native WAV decoder
+        run: python3 tool/patch_flutter_whisper.py
 
       - name: Analyze all Flutter and Dart sources
         run: flutter analyze --no-pub

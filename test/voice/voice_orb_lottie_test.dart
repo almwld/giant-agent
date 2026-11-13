@@ -3,10 +3,20 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:giant_agent_x/screens/ai_voice_assistant_screen.dart';
+import 'package:giant_agent_x/widgets/voice_orb.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('voice orb exposes the complete interaction state machine', () {
+    expect(AgentState.values, <AgentState>[
+      AgentState.idle,
+      AgentState.listening,
+      AgentState.thinking,
+      AgentState.speaking,
+      AgentState.error,
+    ]);
+  });
 
   test('approved glass orb asset keeps its embedded transparent animation', () async {
     final source = await rootBundle.loadString('assets/animations/voice_orb.json');

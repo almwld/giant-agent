@@ -1,8 +1,6 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
-import '../domain/kernel/agent_kernel_store.dart';
+import '../services/agent_service.dart';
 import '../domain/kernel/agent_observability.dart';
 
 /// Local-only Gain Agents timeline and diagnostics for one conversation.
@@ -20,10 +18,10 @@ class AgentObservabilityScreen extends StatefulWidget {
 }
 
 class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
-  final AgentKernelStore _store = AgentKernelStore();
   AgentObservabilitySummary? _summary;
   final List<AgentObservabilityEvent> _events = <AgentObservabilityEvent>[];
   String? _statusFilter;
+  String? _typeFilter;
   int? _cursor;
   bool _hasMore = false;
   bool _loading = true;
@@ -38,7 +36,6 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
 
   @override
   void dispose() {
-    unawaited(_store.close());
     super.dispose();
   }
 
@@ -51,13 +48,14 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
       _events.clear();
     });
     try {
-      final summary = await _store.observabilitySummaryForConversation(
+      final summary = await AgentService.instance.observabilitySummaryForConversation(
         widget.conversationId,
       );
-      final page = await _store.observabilityEventsForConversation(
+      final page = await AgentService.instance.observabilityEventsForConversation(
         widget.conversationId,
         limit: 40,
         status: _statusFilter,
+        type: _typeFilter,
       );
       if (!mounted) return;
       setState(() {
@@ -80,11 +78,12 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
     if (_loadingMore || !_hasMore || _cursor == null) return;
     setState(() => _loadingMore = true);
     try {
-      final page = await _store.observabilityEventsForConversation(
+      final page = await AgentService.instance.observabilityEventsForConversation(
         widget.conversationId,
         limit: 40,
         beforeRowId: _cursor,
         status: _statusFilter,
+        type: _typeFilter,
       );
       if (!mounted) return;
       setState(() {
@@ -171,6 +170,8 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
   @override
   Widget build(BuildContext context) {
     final summary = _summary;
+    final eventTypes = summary?.eventTypes.keys.toList() ?? <String>[];
+    eventTypes.sort();
     return Scaffold(
       backgroundColor: const Color(0xFF10131B),
       appBar: AppBar(
@@ -246,6 +247,27 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
                                     fontWeight: FontWeight.w700)),
                           ),
                           DropdownButton<String?>(
+                            value: _typeFilter,
+                            dropdownColor: const Color(0xFF181D29),
+                            underline: const SizedBox.shrink(),
+                            style: const TextStyle(
+                                color: Color(0xFFCBD5E1), fontSize: 11),
+                            hint: const Text('نوع الحدث'),
+                            items: <DropdownMenuItem<String?>>[
+                              const DropdownMenuItem<String?>(
+                                  value: null, child: Text('كل الأنواع')),
+                              ...eventTypes.map((type) => DropdownMenuItem<String?>(
+                                    value: type,
+                                    child: Text(type.replaceAll('_', ' ')),
+                                  )),
+                            ],
+                            onChanged: (value) {
+                              setState(() => _typeFilter = value);
+                              _refresh();
+                            },
+                          ),
+                          const SizedBox(width: 6),
+                          DropdownButton<String?>(
                             value: _statusFilter,
                             dropdownColor: const Color(0xFF181D29),
                             underline: const SizedBox.shrink(),
@@ -320,9 +342,50 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
                                       style: TextStyle(
                                           color: color, fontSize: 10),
                                     ),
+                                    if ((event.payload['details']?.toString() ?? '').isNotEmpty) ...[
+                                      const SizedBox(height: 5),
+                                      Text(
+                                        event.payload['details'].toString(),
+                                        style: const TextStyle(
+                                          color: Color(0xFFCBD5E1),
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                    ],
+                                    if (event.payload['progress'] is num) ...[
+                                      const SizedBox(height: 7),
+                                      LinearProgressIndicator(
+                                        value: ((event.payload['progress'] as num)
+                                            .toDouble().clamp(0.0, 1.0).toDouble()),
+                                        minHeight: 4,
+                                        backgroundColor: Colors.white12,
+                                        color: color,
+                                      ),
+                                    ],
                                   ],
                                 ),
                               ),
+                              if (event.status == 'running' &&
+                                  (event.payload['tool_call_id']?.toString().isNotEmpty ?? false))
+                                IconButton(
+                                  tooltip: 'إيقاف استدعاء الأداة',
+                                  visualDensity: VisualDensity.compact,
+                                  onPressed: () async {
+                                    final callId = event.payload['tool_call_id'].toString();
+                                    final stopped = AgentService.instance.cancelToolCall(callId);
+                                    if (stopped) await _refresh();
+                                    if (!mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(stopped
+                                            ? 'أُرسل طلب إيقاف الأداة.'
+                                            : 'لم يعد استدعاء الأداة نشطاً.'),
+                                      ),
+                                    );
+                                  },
+                                  icon: const Icon(Icons.stop_circle_outlined,
+                                      color: Color(0xFFF87171), size: 20),
+                                ),
                             ],
                           ),
                         );
