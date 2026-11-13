@@ -76,7 +76,7 @@ class _ProDashboardState extends State<ProDashboard> {
           ),
         ),
       ),
-    );
+    ));
   }
 
   Widget _metricGrid(BuildContext context, List<(String, String, IconData)> items) => GridView.count(
