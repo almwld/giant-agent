@@ -77,6 +77,13 @@ Future<AgentKernelStore> _store(String path) async {
             BEFORE DELETE ON agent_events
             BEGIN SELECT RAISE(ABORT, 'agent_events is append-only'); END
           """);
+          await db.execute('''
+            CREATE TABLE agent_subagent_runtime_state (
+              request_id TEXT PRIMARY KEY,
+              payload_json TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            )
+          ''');
         },
       ),
     ),
