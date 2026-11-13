@@ -1,7 +1,7 @@
 # Unified Runtime Integration — Preservation Ledger
 
-**Working branch:** `integration/unified-agent-runtime`  
-**Starting point:** `bb5ad65cc3c1417201a11410f8731a7b078001ff` (the current head of PR #55)  
+**Working branch:** `integration/unified-agent-runtime-v2`  
+**Starting point:** `7355b5c45547132860c6b9212b15fe4266d2c3e9` (PR #55 head at the start of this integration increment)  
 **Policy:** integration and ownership consolidation only. No existing feature, source file, schema, model, provider, workflow, or user-data store is deleted as part of this work.
 
 ## 1. Canonical application execution path
