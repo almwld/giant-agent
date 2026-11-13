@@ -362,6 +362,16 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
                         ),
                       ..._events.map((event) {
                         final color = _statusColor(event.status);
+                        final rawProgress = event.payload['progress_percent'] ??
+                            event.payload['progress'];
+                        final progressPercent = rawProgress is num
+                            ? rawProgress.toDouble().clamp(0.0, 100.0)
+                            : null;
+                        final rawDuration = event.payload['duration_ms'] ??
+                            event.payload['latency_ms'];
+                        final durationMs = rawDuration is num && rawDuration >= 0
+                            ? rawDuration.round()
+                            : null;
                         return Container(
                           margin: const EdgeInsets.only(bottom: 8),
                           padding: const EdgeInsets.all(13),
@@ -411,14 +421,39 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
                                         ),
                                       ),
                                     ],
-                                    if (event.payload['progress'] is num) ...[
+                                    if (progressPercent != null) ...[
                                       const SizedBox(height: 7),
-                                      LinearProgressIndicator(
-                                        value: ((event.payload['progress'] as num)
-                                            .toDouble().clamp(0.0, 1.0).toDouble()),
-                                        minHeight: 4,
-                                        backgroundColor: Colors.white12,
-                                        color: color,
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: LinearProgressIndicator(
+                                              value: progressPercent / 100.0,
+                                              minHeight: 4,
+                                              backgroundColor: Colors.white12,
+                                              color: color,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            '${progressPercent.round()}%',
+                                            style: const TextStyle(
+                                              color: Color(0xFFCBD5E1),
+                                              fontSize: 10,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                    if (durationMs != null) ...[
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        durationMs >= 1000
+                                            ? 'المدة: ${(durationMs / 1000).toStringAsFixed(2)} ث'
+                                            : 'المدة: $durationMs مللي ثانية',
+                                        style: const TextStyle(
+                                          color: Color(0xFF94A3B8),
+                                          fontSize: 10,
+                                        ),
                                       ),
                                     ],
                                   ],
