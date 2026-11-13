@@ -19,7 +19,6 @@ class LocalSpeechRecognitionService {
   final Whisper _whisper = Whisper();
   static const MethodChannel _capture = MethodChannel('giant_agent/voice_capture');
   static const EventChannel _activity = EventChannel('giant_agent/voice_activity');
-  String? _recordingPath;
   bool _nativeCapture = false;
   bool _initialized = false;
   bool _recording = false;
@@ -71,7 +70,7 @@ class LocalSpeechRecognitionService {
       throw StateError('تم رفض إذن الميكروفون للتعرف الصوتي المحلي.');
     }
     try {
-      _recordingPath = await _capture.invokeMethod<String>('start');
+      await _capture.invokeMethod<String>('start');
       _nativeCapture = true;
     } on MissingPluginException {
       // Preserve the plugin recorder on platforms without the Android bridge.
@@ -99,7 +98,6 @@ class LocalSpeechRecognitionService {
       }
       rethrow;
     } finally {
-      _recordingPath = null;
       _nativeCapture = false;
     }
     if (path == null || path.isEmpty) return '';
@@ -120,7 +118,6 @@ class LocalSpeechRecognitionService {
       try {
         await _capture.invokeMethod<bool>('cancel');
       } finally {
-        _recordingPath = null;
         _nativeCapture = false;
       }
       return;
