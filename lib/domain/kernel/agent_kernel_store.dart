@@ -427,10 +427,11 @@ class AgentKernelStore {
   Future<int> reconcileInterruptedSubagents() async {
     var recoveredCount = 0;
     final db = await database;
+    final canonicalDynamicTaskIds = <String>{};
 
-    // The request-scoped runtime snapshot is written before lifecycle events
-    // are published. Reconcile it first so a crash between the state write and
-    // event projection cannot leave a started child looking safely pending.
+    // Request-scoped snapshots are the source of truth for dynamic children.
+    // Reconcile them before considering legacy task projections: a crash may
+    // occur after a state write but before the corresponding event projection.
     final runtimeRows = await db.query('agent_subagent_runtime_state');
     for (final row in runtimeRows) {
       final requestId = row['request_id']?.toString() ?? '';
@@ -448,25 +449,30 @@ class AgentKernelStore {
       if (rawRecords is! Map) continue;
       final records = Map<String, Object?>.from(rawRecords);
       var stateChanged = false;
+
       for (final entry in records.entries.toList()) {
         if (entry.value is! Map) continue;
         final record = Map<String, dynamic>.from(entry.value as Map);
-        final status = record['status']?.toString() ?? '';
+        var status = record['status']?.toString() ?? 'idle';
         final needsRecovery = status == 'running' ||
             (status == 'pending' && record['is_async'] != true);
-        if (!needsRecovery) continue;
-
-        final now = DateTime.now().toUtc().toIso8601String();
-        record
-          ..['status'] = 'interrupted'
-          ..['wire_status'] = 'STATUS_TERMINATED'
-          ..['error'] = 'Process restarted before this child reached a terminal state.'
-          ..['updated_at'] = now;
-        records[entry.key] = record;
-        stateChanged = true;
+        if (needsRecovery) {
+          final now = DateTime.now().toUtc().toIso8601String();
+          record
+            ..['status'] = 'interrupted'
+            ..['wire_status'] = 'STATUS_TERMINATED'
+            ..['error'] = 'Process restarted before this child reached a terminal state.'
+            ..['updated_at'] = now;
+          status = 'interrupted';
+          records[entry.key] = record;
+          stateChanged = true;
+          recoveredCount++;
+        }
 
         final taskId = record['task_id']?.toString() ?? '';
         if (taskId.isEmpty) continue;
+        canonicalDynamicTaskIds.add(taskId);
+        final now = DateTime.now().toUtc().toIso8601String();
         final dependencies = (record['depends_on'] as List? ?? const <dynamic>[])
             .map((value) => '${requestId}_dynamic_${value.toString()}')
             .toList(growable: false);
@@ -484,30 +490,48 @@ class AgentKernelStore {
           'is_async': record['is_async'] == true,
           'prompt': record['prompt']?.toString() ?? '',
           'depends_on': dependencies,
-          'status': 'interrupted',
-          'last_event_type': 'subagent_interrupted_on_restart',
-          'last_details': 'Process restarted while child execution was active or not yet safely admitted.',
+          'status': status,
+          'last_event_type': needsRecovery
+              ? 'subagent_interrupted_on_restart'
+              : status == 'completed'
+                  ? 'subagent_completed'
+                  : status == 'failed'
+                      ? 'subagent_failed'
+                      : status == 'cancelled'
+                          ? 'subagent_cancelled'
+                          : status == 'running'
+                              ? 'subagent_started'
+                              : 'subagent_snapshot_restored',
+          'last_details': record['error']?.toString(),
           'last_result': record['result'],
           'is_dismissed': record['dismissed'] == true,
           'created_at': record['created_at']?.toString() ?? now,
-          'updated_at': now,
-          'recovery_requires_explicit_resume': true,
+          'updated_at': record['updated_at']?.toString() ?? now,
+          if (status == 'interrupted' || status == 'failed')
+            'recovery_requires_explicit_resume': true,
         };
-        await saveTaskWithEvents(snapshot, events: <Map<String, Object?>>[
-          <String, Object?>{
-            'type': 'subagent_interrupted_on_restart',
-            'status': 'interrupted',
-            'payload': <String, Object?>{
-              'request_id': requestId,
-              'subagent_id': snapshot['subagent_id'],
-              'is_async': snapshot['is_async'],
-              'replay': false,
-              'requires_explicit_resume': true,
+
+        if (needsRecovery) {
+          await saveTaskWithEvents(snapshot, events: <Map<String, Object?>>[
+            <String, Object?>{
+              'type': 'subagent_interrupted_on_restart',
+              'status': 'interrupted',
+              'payload': <String, Object?>{
+                'request_id': requestId,
+                'subagent_id': snapshot['subagent_id'],
+                'is_async': snapshot['is_async'],
+                'replay': false,
+                'requires_explicit_resume': true,
+              },
             },
-          },
-        ]);
-        recoveredCount++;
+          ]);
+        } else {
+          // Repair a stale/missing task projection without inventing a new
+          // lifecycle transition or duplicating the append-only event journal.
+          await saveTask(snapshot);
+        }
       }
+
       if (stateChanged) {
         state['records'] = records;
         state['updated_at'] = DateTime.now().toUtc().toIso8601String();
@@ -523,10 +547,11 @@ class AgentKernelStore {
       }
     }
 
-    // Reconcile legacy/static child projections that do not have a matching
-    // request-scoped dynamic record.
+    // Reconcile legacy/static child projections that have no request-scoped
+    // dynamic record to repair them.
     final snapshots = (await getTasks())
         .where((task) => task['kind'] == 'subagent' &&
+            !canonicalDynamicTaskIds.contains(task['id']?.toString()) &&
             (task['status'] == 'running' ||
                 (task['status'] == 'pending' && task['is_async'] != true)))
         .toList(growable: false);
