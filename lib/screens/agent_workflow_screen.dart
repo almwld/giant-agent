@@ -218,11 +218,11 @@ class AgentWorkflowScreen extends StatelessWidget {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                             decoration: BoxDecoration(
-                              color: GiantPalette.primary.withOpacity(.12),
+                              color: GiantPalette.primaryLight.withOpacity(.12),
                               borderRadius: BorderRadius.circular(7),
                             ),
                             child: const Text('تنفيذ مؤجل',
-                                style: TextStyle(color: GiantPalette.primary, fontSize: 10)),
+                                style: TextStyle(color: GiantPalette.primaryLight, fontSize: 10)),
                           ),
                           const SizedBox(width: 8),
                         ],
