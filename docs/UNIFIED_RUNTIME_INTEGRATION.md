@@ -192,7 +192,7 @@ This search is against the repository default branch and is not a substitute for
 ## 10. Immediate follow-up implementation queue
 
 - [x] Port text search from the useful PR #36 Timeline interaction set onto the existing durable event query contract, with parameterized local SQL, debounced UI input and regression coverage. Keep one SQLite journal.
-- [ ] Port normalized progress, duration details and explicit per-tool cancellation affordances from PR #36 onto the existing event journal/UI; do not import its parallel timeline database.
+- [x] Port normalized progress, duration details and explicit per-tool cancellation affordances onto the existing event journal/UI; progress_percent is rendered as a bounded percentage, duration_ms/latency_ms are displayed when present, and cancellation remains scoped to tool_call_id. No parallel Timeline database is imported.
 - Trace every `ToolManager` definition to its switch/handler in `ModelService`; classify unsupported media providers and other missing external capabilities visibly instead of presenting adapters as connected services.
 - Audit all entry points for direct `ModelService.processChat` use. Keep it only for explicitly simple conversational paths; all autonomous/tool-capable tasks must go through `AgentService.runTask`.
 - Review the overlapping statistics/performance services and connect their useful metrics to one source of truth without losing current widget contracts.
