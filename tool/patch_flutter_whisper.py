@@ -166,6 +166,20 @@ def main() -> int:
         print(f"Patched {native}: strict 16 kHz mono PCM16 WAV decoder installed.")
     else:
         print(f"Already patched: {native}")
+
+    # surfaceContainerHighest was added after the app's pinned Flutter 3.16.
+    # Keep the optional upstream demo widget source-compatible with this SDK.
+    widget = root / "lib" / "src" / "widgets" / "transcription_view.dart"
+    if not widget.is_file():
+        raise RuntimeError(f"Whisper widget source not found: {widget}")
+    widget_source = widget.read_text(encoding="utf-8")
+    incompatible_count = widget_source.count("surfaceContainerHighest")
+    if incompatible_count:
+        widget_source = widget_source.replace("surfaceContainerHighest", "surfaceVariant")
+        widget.write_text(widget_source, encoding="utf-8", newline="\n")
+        print(f"Patched {widget}: Flutter 3.16-compatible ColorScheme property.")
+    elif "surfaceVariant" not in widget_source:
+        raise RuntimeError("Unexpected flutter_whisper widget source: ColorScheme compatibility target not found.")
     return 0
 
 if __name__ == "__main__":
