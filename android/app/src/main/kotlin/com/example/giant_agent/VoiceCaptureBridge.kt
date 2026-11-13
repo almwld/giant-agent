@@ -3,6 +3,7 @@ package com.example.giant_agent
 import android.Manifest
 import android.media.AudioManager
 import android.app.Activity
+import android.content.Context
 import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
@@ -47,7 +48,7 @@ class VoiceCaptureBridge(
 
     private val lock = Any()
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val audioManager = activity.getSystemService(Activity.AUDIO_SERVICE) as AudioManager
+    private val audioManager = activity.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private var previousAudioMode: Int? = null
     @Volatile private var running = false
     private var recorder: AudioRecord? = null
