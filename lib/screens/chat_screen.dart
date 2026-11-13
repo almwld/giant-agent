@@ -75,6 +75,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _voiceOrbVisible = false;
   bool _voiceRequestActive = false;
   bool _bargeInActive = false;
+  bool _voiceAecAvailable = false;
   bool _bargeInReady = false;
   StreamSubscription<Map<String, dynamic>>? _voiceActivitySubscription;
   ModelProviderMode? _previousVoiceProviderMode;
@@ -2157,6 +2158,8 @@ class _ChatScreenState extends State<ChatScreen> {
         _localSpeech.activityEvents.listen(_handleVoiceActivity);
     await _prepareLocalTtsModel();
     if (!mounted || !_voiceOrbVisible) return;
+    final capabilities = await _localSpeech.captureCapabilities();
+    _voiceAecAvailable = capabilities['aec_available'] == true;
     await _startVoiceRecognition();
   }
 
@@ -2166,7 +2169,8 @@ class _ChatScreenState extends State<ChatScreen> {
     if (type == 'speech_started' &&
         _voiceRequestActive &&
         _voiceOrbState == AgentState.speaking &&
-        _localSpeech.isListening) {
+        _localSpeech.isListening &&
+        _voiceAecAvailable) {
       _bargeInActive = true;
       _bargeInReady = false;
       // Keep the microphone capture running: the VAD/AEC pipeline is already
