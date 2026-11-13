@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../services/agent_service.dart';
+import '../services/pro_control_center.dart';
 import '../theme/pro_theme.dart';
 import '../widgets/pro_app_bar.dart';
 
@@ -10,17 +10,17 @@ class ProAgentFleet extends StatefulWidget {
 }
 
 class _ProAgentFleetState extends State<ProAgentFleet> {
-  final _agent = AgentService.instance;
-  late Future<List<Map<String, dynamic>>> _future;
+  final _control = ProControlCenter.instance;
+  late Future<void> _future;
 
   @override
   void initState() {
     super.initState();
-    _future = _agent.subagentsForConversation('global');
+    _future = _control.initialize();
   }
 
   Future<void> _refresh() async {
-    setState(() => _future = _agent.subagentsForConversation('global'));
+    setState(() => _future = _control.refresh());
     await _future;
   }
 
@@ -31,18 +31,16 @@ class _ProAgentFleetState extends State<ProAgentFleet> {
       appBar: const ProAppBar(title: 'Agent Fleet Overview'),
       body: Container(
         decoration: const BoxDecoration(gradient: ProTheme.bgGradient),
-        child: FutureBuilder<List<Map<String, dynamic>>>(
+        child: FutureBuilder<void>(
           future: _future,
           builder: (context, snapshot) {
             if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
             if (snapshot.hasError) return Center(child: Text(snapshot.error.toString()));
-            final agents = snapshot.data ?? [];
-            if (agents.isEmpty) {
-              return const Center(child: Padding(
-                padding: EdgeInsets.all(28),
-                child: Text('No persisted subagent activity yet. Delegated agents appear here when work is recorded.', textAlign: TextAlign.center, style: TextStyle(color: ProTheme.textSecondary)),
-              ));
-            }
+            final agents = _control.agents;
+            if (agents.isEmpty) return const Center(child: Padding(
+              padding: EdgeInsets.all(28),
+              child: Text('No persisted subagent activity yet. Delegated agents appear here when work is recorded.', textAlign: TextAlign.center, style: TextStyle(color: ProTheme.textSecondary)),
+            ));
             return RefreshIndicator(
               onRefresh: _refresh,
               child: ListView.builder(
@@ -61,9 +59,9 @@ class _ProAgentFleetState extends State<ProAgentFleet> {
                       trailing: PopupMenuButton<String>(
                         onSelected: (value) async {
                           try {
-                            if (value == 'cancel') await _agent.cancelSubagent(id);
-                            if (value == 'dismiss') await _agent.dismissSubagent(id);
-                            if (mounted) await _refresh();
+                            if (value == 'cancel') await _control.cancelAgent(id);
+                            if (value == 'dismiss') await _control.dismissAgent(id);
+                            if (mounted) setState(() {});
                           } catch (error) {
                             if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
                           }
