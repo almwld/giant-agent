@@ -365,7 +365,7 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
                                       const SizedBox(height: 7),
                                       LinearProgressIndicator(
                                         value: ((event.payload['progress'] as num)
-                                            .toDouble().clamp(0.0, 1.0)),
+                                            .toDouble().clamp(0.0, 1.0).toDouble()),
                                         minHeight: 4,
                                         backgroundColor: Colors.white12,
                                         color: color,
