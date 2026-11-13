@@ -27,6 +27,7 @@ class AgentService {
         _models = ModelService(),
         _store = AgentKernelStore.shared,
         _initializeExecutionRuntime = true {
+    _models.bindKernelStore(_store);
     _durableKernel = durable.AgentKernel(
       store: _store,
       executor: _executeWithSharedRuntime,
