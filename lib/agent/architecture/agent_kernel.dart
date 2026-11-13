@@ -68,6 +68,7 @@ class AgentKernel {
   bool _cancellationRequested = false;
   SubagentOrchestrator? _activeSubagentOrchestrator;
   final Set<String> _activeSubagentIds = <String>{};
+  final Set<String> _scheduledSubagentIds = <String>{};
   final Set<String> _cancelledSubagentIds = <String>{};
   String? _activeSubagentParentRequestId;
   final FifoTaskQueue _requestQueue = FifoTaskQueue();
@@ -133,6 +134,7 @@ class AgentKernel {
   }
 
   Future<void> _initialize() async {
+    _models.scheduleDynamicSubagent = scheduleDynamicSubagent;
     _state = AgentKernelState.initializing;
     _emit(
       requestId: 'runtime',
@@ -1026,12 +1028,57 @@ $evidence
     return tasks;
   }
 
+  /// Enqueues detached dynamic children on the same FIFO as parent requests.
+  /// The child cannot contend with the single local JNI inference context.
+  Future<void> scheduleDynamicSubagent({
+    required String requestId,
+    required String conversationId,
+    required String agentId,
+  }) {
+    final taskId = '${requestId}_dynamic_${agentId}';
+    if (!_scheduledSubagentIds.add(taskId)) return Future<void>.value();
+    return _requestQueue.enqueue(() async {
+      _activeRequestId = requestId;
+      _activeSubagentParentRequestId = requestId;
+      _activeSubagentIds.add(taskId);
+      _state = AgentKernelState.executing;
+      _emit(
+        requestId: requestId,
+        taskId: taskId,
+        type: 'subagent_dequeued',
+        title: 'بدأ تنفيذ الوكيل الفرعي من الطابور الدائم',
+        status: 'running',
+      );
+      try {
+        await _models.executeScheduledDynamicSubagent(
+          requestId: requestId,
+          conversationId: conversationId,
+          agentId: agentId,
+          shouldCancel: () => _cancelledSubagentIds.contains(taskId),
+        );
+      } finally {
+        _activeSubagentIds.remove(taskId);
+        _scheduledSubagentIds.remove(taskId);
+        _cancelledSubagentIds.remove(taskId);
+        if (_activeSubagentParentRequestId == requestId) {
+          _activeSubagentParentRequestId = null;
+        }
+        _activeRequestId = null;
+        if (_state != AgentKernelState.failed) _state = AgentKernelState.idle;
+      }
+    });
+  }
+
   Future<bool> cancelSubagent(String taskId) async {
+    final dynamicChild = await _models.cancelDynamicSubagent(taskId);
     final orchestrator = _activeSubagentOrchestrator;
     final scheduledChild = orchestrator != null && orchestrator.cancelTask(taskId);
     final recoveredChild = _activeSubagentIds.contains(taskId);
-    if (!scheduledChild && !recoveredChild) return false;
-    if (recoveredChild) _cancelledSubagentIds.add(taskId);
+    final queuedDynamicChild = _scheduledSubagentIds.contains(taskId);
+    if (!dynamicChild && !scheduledChild && !recoveredChild && !queuedDynamicChild) {
+      return false;
+    }
+    if (recoveredChild || queuedDynamicChild) _cancelledSubagentIds.add(taskId);
     _emit(
       requestId: _activeSubagentParentRequestId ?? _activeRequestId ?? 'runtime',
       taskId: taskId,
@@ -1043,7 +1090,7 @@ $evidence
       try {
         await _models.cancelGeneration();
       } catch (_) {
-        // The worker will observe its cancellation token at the next boundary.
+        // The worker observes the targeted cancellation token at its next boundary.
       }
     }
     return true;
