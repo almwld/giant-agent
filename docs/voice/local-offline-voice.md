@@ -18,7 +18,7 @@ No voice request is sent to a cloud speech API. The old `speech_to_text` depende
 
 ## First-run model setup
 
-- ASR: Whisper multilingual `ggml-base.bin`, downloaded once by `WhisperModelManager` into app-private storage (roughly 145 MB).
+- ASR: Whisper multilingual Base, downloaded once by `flutter_whisper` into app-private storage (roughly 143 MB).
 - Neural Arabic TTS: Nabra-82M INT8 ONNX, `voices.bin`, `tokens.txt`, and shared `espeak-ng-data`. The ONNX file is about 83 MB; the complete install is larger because of phonemizer data.
 - Models are downloaded over HTTPS only during installation. Once installed, recognition, synthesis, and playback are local.
 - If Nabra is skipped, TTS may use an Android Arabic voice only when Android reports `network_required == false`. Unknown or network-required voices are rejected.
