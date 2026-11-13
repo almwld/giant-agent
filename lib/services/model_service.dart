@@ -41,12 +41,31 @@ class ModelService {
   Future<bool> Function(String serverId, McpRemoteTool tool, Map<String, dynamic> arguments)? requestMcpApproval;
   AgentUserInputHandler? requestUserInput;
   Future<void> Function()? requestBrowserSession;
-  late final AgentKernelStore _subagentStore = AgentKernelStore();
-  late final SubagentLifecycleManager _subagents = SubagentLifecycleManager(
-    onEvent: AgentEventBus.instance.publish,
-    loadState: _subagentStore.loadSubagentRuntimeState,
-    saveState: _subagentStore.saveSubagentRuntimeState,
-  );
+  AgentKernelStore? _boundKernelStore;
+  SubagentLifecycleManager? _subagentLifecycle;
+
+  /// Binds child lifecycle persistence to the exact durable request store.
+  /// Must be called before the first dynamic child operation.
+  void bindKernelStore(AgentKernelStore store) {
+    final existing = _boundKernelStore;
+    if (existing != null && !identical(existing, store)) {
+      throw StateError('ModelService is already bound to another AgentKernelStore.');
+    }
+    if (_subagentLifecycle != null && !identical(existing, store)) {
+      throw StateError('Cannot replace the kernel store after child lifecycle initialization.');
+    }
+    _boundKernelStore = store;
+  }
+
+  AgentKernelStore get _subagentStore =>
+      _boundKernelStore ??= AgentKernelStore();
+
+  SubagentLifecycleManager get _subagents =>
+      _subagentLifecycle ??= SubagentLifecycleManager(
+        onEvent: AgentEventBus.instance.publish,
+        loadState: _subagentStore.loadSubagentRuntimeState,
+        saveState: _subagentStore.saveSubagentRuntimeState,
+      );
   final GainTerminalTool _gainTerminal = GainTerminalTool();
   Future<void> _requestTail = Future<void>.value();
   Future<void> _toolTail = Future<void>.value();
