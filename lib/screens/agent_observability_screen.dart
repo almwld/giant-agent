@@ -56,7 +56,6 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
         limit: 40,
         status: _statusFilter,
         type: _typeFilter,
-        type: _typeFilter,
       );
       if (!mounted) return;
       setState(() {
@@ -79,11 +78,12 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
     if (_loadingMore || !_hasMore || _cursor == null) return;
     setState(() => _loadingMore = true);
     try {
-      final page = await _store.observabilityEventsForConversation(
+      final page = await AgentService.instance.observabilityEventsForConversation(
         widget.conversationId,
         limit: 40,
         beforeRowId: _cursor,
         status: _statusFilter,
+        type: _typeFilter,
       );
       if (!mounted) return;
       setState(() {
