@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
@@ -29,6 +30,14 @@ class LocalArabicTtsService {
   Directory? _modelDirectory;
   bool _downloading = false;
   int _generationId = 0;
+  int _nextSynthesisId = 0;
+  Isolate? _worker;
+  ReceivePort? _workerEvents;
+  ReceivePort? _workerExit;
+  StreamSubscription<dynamic>? _workerSubscription;
+  SendPort? _workerCommands;
+  Completer<void>? _workerReady;
+  final Map<int, Completer<Map<String, Object>>> _pendingSynthesis = {};
 
   bool get isReady => _ready;
   bool get isDownloading => _downloading;
@@ -157,14 +166,7 @@ class LocalArabicTtsService {
     // Keep each inference comfortably below Nabra's 510-phoneme sequence cap.
     // This also bounds peak memory and makes interruption responsive.
     for (final chunk in LocalVoiceTextChunker.split(value, maxCharacters: 180)) {
-      final generated = await Isolate.run(() => _synthesizeNabra({
-        'model': '${dir.path}/model.int8.onnx',
-        'voices': '${dir.path}/voices.bin',
-        'tokens': '${dir.path}/tokens.txt',
-        'dataDir': '${dir.path}/espeak-ng-data',
-        'text': chunk,
-        'speed': speed,
-      }));
+      final generated = await _synthesize(chunk, speed);
       if (generationId != _generationId) return;
       final samples = generated['samples'] as Float32List;
       final sampleRate = generated['sampleRate'] as int;
@@ -185,6 +187,61 @@ class LocalArabicTtsService {
     }
   }
 
+  Future<void> _ensureWorker() async {
+    if (_worker != null && _workerReady?.isCompleted == true) return;
+    final dir = await _directory();
+    final events = ReceivePort();
+    final exit = ReceivePort();
+    _workerEvents = events;
+    _workerExit = exit;
+    _workerReady = Completer<void>();
+    _workerSubscription = events.listen((message) {
+      if (message is SendPort) {
+        _workerCommands = message;
+        return;
+      }
+      if (message is! Map) return;
+      if (message['ready'] == true) {
+        if (!(_workerReady?.isCompleted ?? true)) _workerReady!.complete();
+        return;
+      }
+      final id = message['id'];
+      if (id is! int) return;
+      final completer = _pendingSynthesis.remove(id);
+      if (completer == null || completer.isCompleted) return;
+      if (message['error'] != null) {
+        completer.completeError(StateError(message['error'].toString()));
+      } else {
+        completer.complete(Map<String, Object>.from(message));
+      }
+    });
+    _worker = await Isolate.spawn<Map<String, Object>>(
+      _sherpaTtsWorker,
+      <String, Object>{
+        'mainPort': events.sendPort,
+        'model': '${dir.path}/model.int8.onnx',
+        'voices': '${dir.path}/voices.bin',
+        'tokens': '${dir.path}/tokens.txt',
+        'dataDir': '${dir.path}/espeak-ng-data',
+      },
+      onExit: exit.sendPort,
+    );
+    await _workerReady!.future.timeout(const Duration(seconds: 90));
+  }
+
+  Future<Map<String, Object>> _synthesize(String text, double speed) async {
+    await _ensureWorker();
+    final id = ++_nextSynthesisId;
+    final completer = Completer<Map<String, Object>>();
+    _pendingSynthesis[id] = completer;
+    _workerCommands!.send(<String, Object>{
+      'id': id,
+      'text': text,
+      'speed': speed,
+    });
+    return completer.future;
+  }
+
   Future<void> stop() {
     _generationId++;
     return _player.stop();
@@ -192,6 +249,27 @@ class LocalArabicTtsService {
 
   Future<void> dispose() async {
     await stop();
+    final worker = _worker;
+    if (worker != null) {
+      _workerCommands?.send(const {'dispose': true});
+      try {
+        await _workerExit?.first.timeout(const Duration(seconds: 5));
+      } catch (_) {
+        worker.kill(priority: Isolate.immediate);
+      }
+    }
+    for (final pending in _pendingSynthesis.values) {
+      if (!pending.isCompleted) {
+        pending.completeError(StateError('Arabic TTS service disposed.'));
+      }
+    }
+    _pendingSynthesis.clear();
+    await _workerSubscription?.cancel();
+    _workerEvents?.close();
+    _workerExit?.close();
+    _worker = null;
+    _workerCommands = null;
+    _workerReady = null;
     _ready = false;
     await _player.dispose();
     _client.close();
@@ -228,41 +306,55 @@ class LocalArabicTtsService {
   }
 }
 
-Future<Map<String, Object>> _synthesizeNabra(Map<String, Object> args) async {
+Future<void> _sherpaTtsWorker(Map<String, Object> args) async {
+  final mainPort = args['mainPort']! as SendPort;
+  final commands = ReceivePort();
+  mainPort.send(commands.sendPort);
   sherpa.initBindings();
-  final config = sherpa.OfflineTtsConfig(
-    model: sherpa.OfflineTtsModelConfig(
-      kokoro: sherpa.OfflineTtsKokoroModelConfig(
-        model: args['model']! as String,
-        voices: args['voices']! as String,
-        tokens: args['tokens']! as String,
-        dataDir: args['dataDir']! as String,
-        lang: 'ar',
-        lengthScale: 1.0,
+  final engine = sherpa.OfflineTts(
+    sherpa.OfflineTtsConfig(
+      model: sherpa.OfflineTtsModelConfig(
+        kokoro: sherpa.OfflineTtsKokoroModelConfig(
+          model: args['model']! as String,
+          voices: args['voices']! as String,
+          tokens: args['tokens']! as String,
+          dataDir: args['dataDir']! as String,
+          lang: 'ar',
+          lengthScale: 1.0,
+        ),
+        numThreads: 2,
+        debug: false,
+        provider: 'cpu',
       ),
-      numThreads: 2,
-      debug: false,
-      provider: 'cpu',
+      maxNumSenetences: 1,
+      silenceScale: 0.2,
     ),
-    maxNumSenetences: 1,
-    silenceScale: 0.2,
   );
-  final engine = sherpa.OfflineTts(config);
-  try {
-    final audio = engine.generateWithConfig(
-      text: args['text']! as String,
-      config: sherpa.OfflineTtsGenerationConfig(
-        sid: 0,
-        speed: args['speed']! as double,
-        silenceScale: 0.2,
-        extra: const {'lang': 'ar'},
-      ),
-    );
-    return <String, Object>{
-      'samples': audio.samples,
-      'sampleRate': audio.sampleRate,
-    };
-  } finally {
-    engine.free();
+  mainPort.send(const {'ready': true});
+  await for (final command in commands) {
+    if (command is! Map) continue;
+    if (command['dispose'] == true) break;
+    final id = command['id'];
+    if (id is! int) continue;
+    try {
+      final audio = engine.generateWithConfig(
+        text: command['text']! as String,
+        config: sherpa.OfflineTtsGenerationConfig(
+          sid: 0,
+          speed: command['speed']! as double,
+          silenceScale: 0.2,
+          extra: const {'lang': 'ar'},
+        ),
+      );
+      mainPort.send(<String, Object>{
+        'id': id,
+        'samples': audio.samples,
+        'sampleRate': audio.sampleRate,
+      });
+    } catch (error) {
+      mainPort.send(<String, Object>{'id': id, 'error': error.toString()});
+    }
   }
+  engine.free();
+  commands.close();
 }
