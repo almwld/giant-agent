@@ -210,6 +210,19 @@ class AgentService {
     // Reconcile child snapshots before the durable kernel starts draining the
     // queue, so newly launched children cannot be mistaken for old work.
     await _store.reconcileInterruptedSubagents();
+    final interruptedAsyncParents = (await _store.getTasks())
+        .where((task) => task['kind'] == 'subagent' &&
+            task['is_async'] == true && task['status'] == 'interrupted')
+        .map((task) => task['parent_request_id']?.toString() ?? '')
+        .where((requestId) => requestId.isNotEmpty)
+        .toSet();
+    for (final requestId in interruptedAsyncParents) {
+      try {
+        await _refreshDetachedOutputs(requestId);
+      } catch (_) {
+        // Recovery metadata remains durable even if artifact refresh is unavailable.
+      }
+    }
     if (await _store.hasActiveRequests()) {
       await AgentBackgroundExecutionService.instance.beginTask(
         'متابعة قائمة المهام المحفوظة بعد إعادة تشغيل التطبيق',
