@@ -41,7 +41,6 @@ class AgentService {
         _models = ModelService(),
         _store = store,
         _initializeExecutionRuntime = false {
-    _models.bindKernelStore(_store);
     _durableKernel = durable.AgentKernel(store: store, executor: executor);
   }
 
