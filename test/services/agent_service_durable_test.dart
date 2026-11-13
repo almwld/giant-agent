@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:giant_agent_x/domain/kernel/agent_kernel.dart'
     as durable;
 import 'package:giant_agent_x/domain/kernel/agent_kernel_store.dart';
@@ -77,6 +78,13 @@ Future<AgentKernelStore> _store(String path) async {
             BEFORE DELETE ON agent_events
             BEGIN SELECT RAISE(ABORT, 'agent_events is append-only'); END
           """);
+          await db.execute('''
+            CREATE TABLE agent_subagent_runtime_state (
+              request_id TEXT PRIMARY KEY,
+              payload_json TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            )
+          ''');
         },
       ),
     ),
@@ -90,6 +98,7 @@ void main() {
 
   late Directory directory;
   setUp(() async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
     directory = await Directory.systemTemp.createTemp('agent-service-durable-');
   });
 
@@ -194,6 +203,49 @@ void main() {
     expect(after.single['recovery_requires_explicit_resume'], isTrue);
     expect((await store.taskEvents('parent-1_agent_worker')).last.type,
         'subagent_interrupted_on_restart');
+  });
+
+  test('pending detached workers are recovered from the canonical lifecycle snapshot', () async {
+    final store = await _store('${directory.path}/async-recovery.db');
+    await store.saveSubagentRuntimeState('parent-async', {
+      'records': {
+        'worker-pending': {
+          'id': 'worker-pending',
+          'task_id': 'parent-async_dynamic_worker-pending',
+          'parent_request_id': 'parent-async',
+          'conversation_id': 'chat-async',
+          'status': 'pending',
+          'is_async': true,
+          'dismissed': false,
+        },
+        'worker-running': {
+          'id': 'worker-running',
+          'task_id': 'parent-async_dynamic_worker-running',
+          'status': 'running',
+          'is_async': true,
+        },
+        'worker-sync': {
+          'id': 'worker-sync',
+          'task_id': 'parent-async_dynamic_worker-sync',
+          'status': 'pending',
+          'is_async': false,
+        },
+        'worker-dismissed': {
+          'id': 'worker-dismissed',
+          'task_id': 'parent-async_dynamic_worker-dismissed',
+          'status': 'pending',
+          'is_async': true,
+          'dismissed': true,
+        },
+      },
+    });
+
+    final recovered = await store.pendingAsyncSubagents();
+    expect(recovered.map((item) => item['subagent_id']).toList(),
+        ['worker-pending']);
+    expect(recovered.single['parent_request_id'], 'parent-async');
+    expect(recovered.single['conversation_id'], 'chat-async');
+    await store.close();
   });
 
   test('subagent dismissal preserves audit history and blocks later resume', () async {

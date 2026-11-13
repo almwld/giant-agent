@@ -74,6 +74,10 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _finalizingVoiceInput = false;
   bool _voiceOrbVisible = false;
   bool _voiceRequestActive = false;
+  bool _bargeInActive = false;
+  bool _voiceAecAvailable = false;
+  bool _bargeInReady = false;
+  StreamSubscription<Map<String, dynamic>>? _voiceActivitySubscription;
   ModelProviderMode? _previousVoiceProviderMode;
   AgentState _voiceOrbState = AgentState.idle;
   bool _webSearchEnabled = false;
@@ -193,7 +197,7 @@ class _ChatScreenState extends State<ChatScreen> {
       final token = step['text']?.toString() ?? '';
       final visible = _visibleAnswerDelta(token);
       if (visible.isNotEmpty) {
-        if (_voiceRequestActive) {
+        if (_voiceRequestActive && !_bargeInActive) {
           _voiceOutput.addStreamingText(visible);
           if (_voiceOrbState == AgentState.thinking && mounted) {
             setState(() => _voiceOrbState = AgentState.speaking);
@@ -1841,6 +1845,10 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _stopVoiceInteraction() async {
     _finalizingVoiceInput = true;
     _voiceRequestActive = false;
+    _bargeInActive = false;
+    _bargeInReady = false;
+    await _voiceActivitySubscription?.cancel();
+    _voiceActivitySubscription = null;
     try {
       await _localSpeech.cancelListening();
       await _voiceOutput.stop();
@@ -1980,15 +1988,19 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _interruptAssistantAndListen() async {
+    if (!mounted || !_voiceOrbVisible) return;
+    _bargeInActive = true;
+    _bargeInReady = false;
     await _voiceOutput.stop();
-    await _localSpeech.cancelListening();
+    if (!_localSpeech.isListening) {
+      await _localSpeech.startListening();
+    }
     if (!mounted || !_voiceOrbVisible) return;
     setState(() {
-      _isListening = false;
+      _isListening = _localSpeech.isListening;
       _voiceOrbState = AgentState.listening;
     });
-    // The active turn's finally block restarts recording after its pending
-    // response/TTS future has unwound; do not start a second recorder here.
+    // The native VAD speech_ended event submits this captured interruption.
   }
 
   Widget _buildVoiceOrbOverlay() {
@@ -2142,9 +2154,39 @@ class _ChatScreenState extends State<ChatScreen> {
       _voiceOrbVisible = true;
       _voiceOrbState = AgentState.listening;
     });
+    _voiceActivitySubscription ??=
+        _localSpeech.activityEvents.listen(_handleVoiceActivity);
     await _prepareLocalTtsModel();
     if (!mounted || !_voiceOrbVisible) return;
     await _startVoiceRecognition();
+    if (!mounted || !_localSpeech.isListening) return;
+    final capabilities = await _localSpeech.captureCapabilities();
+    _voiceAecAvailable = capabilities['aec_active'] == true;
+  }
+
+  void _handleVoiceActivity(Map<String, dynamic> event) {
+    if (!mounted || !_voiceOrbVisible) return;
+    final type = event['type']?.toString() ?? '';
+    if (type == 'speech_started' &&
+        _voiceRequestActive &&
+        _voiceOrbState == AgentState.speaking &&
+        _localSpeech.isListening &&
+        _voiceAecAvailable) {
+      _bargeInActive = true;
+      _bargeInReady = false;
+      // Keep the microphone capture running: the VAD/AEC pipeline is already
+      // recording the interruption while the assistant audio is stopped.
+      unawaited(_voiceOutput.stop());
+      setState(() {
+        _voiceOrbState = AgentState.listening;
+        _isListening = true;
+      });
+    } else if (type == 'speech_ended' && _bargeInActive) {
+      _bargeInReady = true;
+      if (!_voiceRequestActive && !_finalizingVoiceInput) {
+        unawaited(_finishLocalVoiceTurn());
+      }
+    }
   }
 
   Future<void> _finishLocalVoiceTurn() async {
@@ -2160,9 +2202,14 @@ class _ChatScreenState extends State<ChatScreen> {
         _finalizingVoiceInput = false;
         return;
       }
+      _bargeInActive = false;
+      _bargeInReady = false;
       _voiceRequestActive = true;
+      // Re-arm native capture while the assistant responds. Android AEC and
+      // VAD can now detect a real user interruption during local TTS playback.
+      await _localSpeech.startListening();
       if (mounted) setState(() {
-        _isListening = false;
+        _isListening = true;
         _voiceOrbState = AgentState.thinking;
       });
       await _sendMessage();
@@ -2177,10 +2224,15 @@ class _ChatScreenState extends State<ChatScreen> {
       _finalizingVoiceInput = false;
       if (mounted && _voiceOrbVisible) {
         setState(() {
-          _isListening = false;
+          _isListening = _localSpeech.isListening;
           _voiceOrbState = AgentState.listening;
         });
-        await _startVoiceRecognition();
+        if (_bargeInReady && _localSpeech.isListening) {
+          _bargeInReady = false;
+          unawaited(_finishLocalVoiceTurn());
+        } else {
+          await _startVoiceRecognition();
+        }
       }
     }
   }
@@ -2722,6 +2774,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _agentEventSubscription?.cancel();
     _nativeAgentEventSubscription?.cancel();
+    _voiceActivitySubscription?.cancel();
     _modelService.requestTerminalApproval = null;
     _modelService.requestMcpApproval = null;
     _modelService.requestUserInput = null;

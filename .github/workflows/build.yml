@@ -12,6 +12,7 @@ on:
       - feat/voice-orb-in-chat-session
       - feat/chat-bubble-resize-teal-toasts
       - feat/local-offline-voice-pipeline
+      - integration/unified-agent-runtime-v2
   pull_request:
     types: [opened, reopened, synchronize, edited]
     branches:
@@ -21,6 +22,7 @@ on:
       - feat/consolidate-sqlite-runtime-v2
       - integration/giant-agent-stabilization
       - chore/boosthis-mcp-mainline
+      - feat/local-offline-voice-pipeline
   workflow_dispatch:
 
 permissions:

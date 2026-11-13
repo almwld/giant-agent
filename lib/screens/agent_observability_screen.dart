@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../services/agent_service.dart';
@@ -22,6 +24,8 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
   final List<AgentObservabilityEvent> _events = <AgentObservabilityEvent>[];
   String? _statusFilter;
   String? _typeFilter;
+  final TextEditingController _searchController = TextEditingController();
+  Timer? _searchDebounce;
   int? _cursor;
   bool _hasMore = false;
   bool _loading = true;
@@ -36,7 +40,15 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
+    _searchController.dispose();
     super.dispose();
+  }
+
+  void _onSearchChanged(String value) {
+    _searchDebounce?.cancel();
+    if (mounted) setState(() {});
+    _searchDebounce = Timer(const Duration(milliseconds: 300), _refresh);
   }
 
   Future<void> _refresh() async {
@@ -56,6 +68,7 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
         limit: 40,
         status: _statusFilter,
         type: _typeFilter,
+        search: _searchController.text,
       );
       if (!mounted) return;
       setState(() {
@@ -84,6 +97,7 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
         beforeRowId: _cursor,
         status: _statusFilter,
         type: _typeFilter,
+        search: _searchController.text,
       );
       if (!mounted) return;
       setState(() {
@@ -237,6 +251,51 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
                         ),
                       ],
                       const SizedBox(height: 22),
+                      TextField(
+                        controller: _searchController,
+                        onChanged: _onSearchChanged,
+                        style: const TextStyle(color: Colors.white),
+                        textInputAction: TextInputAction.search,
+                        decoration: InputDecoration(
+                          hintText: 'ابحث في الأحداث والأدوات والمهام...',
+                          hintStyle: const TextStyle(
+                              color: Color(0xFF64748B), fontSize: 13),
+                          prefixIcon: const Icon(Icons.search_rounded,
+                              color: Color(0xFF94A3B8)),
+                          suffixIcon: _searchController.text.isEmpty
+                              ? null
+                              : IconButton(
+                                  tooltip: 'مسح البحث',
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    _onSearchChanged('');
+                                    setState(() {});
+                                  },
+                                  icon: const Icon(Icons.close_rounded,
+                                      color: Color(0xFF94A3B8)),
+                                ),
+                          filled: true,
+                          fillColor: const Color(0xFF181D29),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                                color: Color(0xFF293244)),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                                color: Color(0xFF293244)),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                                color: Color(0xFF5EEAD4)),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 10),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
                       Row(
                         children: [
                           const Expanded(
@@ -303,6 +362,16 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
                         ),
                       ..._events.map((event) {
                         final color = _statusColor(event.status);
+                        final rawProgress = event.payload['progress_percent'] ??
+                            event.payload['progress'];
+                        final progressPercent = rawProgress is num
+                            ? rawProgress.toDouble().clamp(0.0, 100.0)
+                            : null;
+                        final rawDuration = event.payload['duration_ms'] ??
+                            event.payload['latency_ms'];
+                        final durationMs = rawDuration is num && rawDuration >= 0
+                            ? rawDuration.round()
+                            : null;
                         return Container(
                           margin: const EdgeInsets.only(bottom: 8),
                           padding: const EdgeInsets.all(13),
@@ -352,14 +421,39 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
                                         ),
                                       ),
                                     ],
-                                    if (event.payload['progress'] is num) ...[
+                                    if (progressPercent != null) ...[
                                       const SizedBox(height: 7),
-                                      LinearProgressIndicator(
-                                        value: ((event.payload['progress'] as num)
-                                            .toDouble().clamp(0.0, 1.0).toDouble()),
-                                        minHeight: 4,
-                                        backgroundColor: Colors.white12,
-                                        color: color,
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: LinearProgressIndicator(
+                                              value: progressPercent / 100.0,
+                                              minHeight: 4,
+                                              backgroundColor: Colors.white12,
+                                              color: color,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            '${progressPercent.round()}%',
+                                            style: const TextStyle(
+                                              color: Color(0xFFCBD5E1),
+                                              fontSize: 10,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                    if (durationMs != null) ...[
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        durationMs >= 1000
+                                            ? 'المدة: ${(durationMs / 1000).toStringAsFixed(2)} ث'
+                                            : 'المدة: $durationMs مللي ثانية',
+                                        style: const TextStyle(
+                                          color: Color(0xFF94A3B8),
+                                          fontSize: 10,
+                                        ),
                                       ),
                                     ],
                                   ],

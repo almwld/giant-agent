@@ -1,7 +1,7 @@
 # Unified Runtime Integration — Preservation Ledger
 
-**Working branch:** `integration/unified-agent-runtime`  
-**Starting point:** `bb5ad65cc3c1417201a11410f8731a7b078001ff` (the current head of PR #55)  
+**Working branch:** `integration/unified-agent-runtime-v2`  
+**Starting point:** `7355b5c45547132860c6b9212b15fe4266d2c3e9` (PR #55 head at the start of this integration increment)  
 **Policy:** integration and ownership consolidation only. No existing feature, source file, schema, model, provider, workflow, or user-data store is deleted as part of this work.
 
 ## 1. Canonical application execution path
@@ -71,6 +71,11 @@ The two kernel classes are deliberately distinguished by responsibility: the dur
 
 - Added conversation-scoped observability query methods to `AgentService`, backed by its existing `AgentKernelStore`.
 - Changed `AgentObservabilityScreen` to read through `AgentService.instance` instead of constructing and closing a second store connection itself.
+- Bound `ModelService` dynamic subagent persistence to the exact `AgentKernelStore` instance owned by production `AgentService`; the injected-executor seam remains isolated for tests.
+- Added durable detached child admission via `spawn_subagent(run_in_background: true)`. It appends to the existing execution-kernel FIFO, runs only after the parent releases the shared model runtime, and does not introduce a second queue or inference instance.
+- Pending async children that have not started are re-enqueued after restart; children interrupted after execution began remain subject to explicit side-effect-aware recovery.
+- Restart recovery retains the Android foreground execution lease until every recovered child future completes; it does not infer queue completion from a momentary `isExecuting` poll.
+- Parent output collection explicitly reports pending/running detached children and emits a deferred lifecycle state instead of claiming the whole output graph is complete. When each detached child reaches a terminal state, artifact projections are refreshed; the collection closes only after all detached children finish.
 - Kept the underlying SQLite schema, append-only event journal, pagination, filters, counters and event payloads unchanged. This is an ownership/facade consolidation, not a data migration.
 - The chat workflow continues to use `AgentService`; Home and Nuclear continue through `TaskManager`, whose execution step calls the same `AgentService.runTask`. Their legacy chat transcript database is separate from agent memory and is not deleted or silently migrated.
 
@@ -79,7 +84,7 @@ The two kernel classes are deliberately distinguished by responsibility: the dur
 | Capability | Existing implementation / owner | Integration rule |
 |---|---|---|
 | Application request boundary | `AgentService` | All UI task execution must enter here. |
-| Durable FIFO, request state, restart reconciliation | `lib/domain/kernel/agent_kernel.dart`, `AgentKernelStore` | One durable queue/store; never add another scheduler or database. |
+| Durable FIFO, request state, restart reconciliation | `lib/domain/kernel/agent_kernel.dart`, `AgentKernelStore` | One durable request queue/store; never add another database. Detached child admission is serialized by the existing execution-kernel FIFO, not a second competing queue. |
 | Execution planning and model loop | `lib/agent/architecture/agent_kernel.dart` | Retain planner, bounded tool loop, cancellation and lifecycle behavior. |
 | Local inference | `ModelService` + `LlamaService.instance` + JNI | One shared local model/runtime. |
 | Cloud inference and SSE | Existing OpenRouter/provider adapter and SSE parser | Keep provider routing in the same ModelService path; do not add a second chat controller/runtime. |
@@ -94,11 +99,11 @@ The two kernel classes are deliberately distinguished by responsibility: the dur
 | Legacy memory stores | `MemoryService`, `LongTermMemory`, `ConversationMemory` | Retain files and databases. Do not delete or merge without an explicit data migration, backup and compatibility tests. |
 | Skills | `AgentSkillRegistry` | Prompt/routing hints only; skills must not grant permissions or bypass ToolManager. |
 | Durable task UI/history | `TaskManager` + `AgentKernelStore` | Task snapshots and request journal stay correlated by conversation/request IDs. |
-| Output verification | `OutputEngine` | Preserve artifact collection/finalization; a model response alone is not verified completion. |
+| Output verification | `OutputEngine` + `AgentService` | Parent completion does not wait for queued/running detached children. When each detached child reaches a terminal state, the parent artifact projection is refreshed from the durable child snapshot and workspace journal; pending/running detached children do not falsely fail parent verification. |
 | Event bus and timeline | `AgentEventBus`, typed `AgentTimelineEvent`, `AgentKernelStore` | One factual event stream and one durable journal. No private chain-of-thought is stored. |
 | Local diagnostics | `AgentObservabilityScreen` via `AgentService` | Read-only projection of the same store used by execution. |
 | Android long-running lifecycle | `AgentBackgroundExecutionService`, native `AgentRuntime` | Reuse shared runtime; verify process-death/background behavior on device. |
-| Offline Arabic voice | Whisper ASR, Nabra TTS, shared chat/runtime | Preserve local-only policy and current half-duplex limitation until VAD/AEC is implemented and tested. |
+| Offline Arabic voice | `VoiceCaptureBridge`, `LocalSpeechRecognitionService`, Whisper ASR, Nabra TTS, shared chat/runtime | Android 16 kHz capture, energy VAD, platform AEC/NS/AGC when available, capture during TTS and AEC-gated automatic barge-in; device qualification and neural VAD/software AEC remain open. |
 
 ## 4. Multiple databases are not automatically duplicates
 
@@ -119,6 +124,7 @@ The repository has several independent histories. A branch being present is not 
 
 | PR | Scope | Decision |
 |---:|---|---|
+| #56 | Searchable Gain Agents timeline; stacked directly on #55 | Adds parameterized local event search through the existing durable journal and AgentService facade; preserves stable cursor pagination and type/status filters. Current CI is required. |
 | #55 | Local Arabic Whisper/Nabra voice path; currently the base of this integration branch | Preserve in full. Keep open; do not merge automatically. |
 | #53 | Native Gain Agents observability journal | Already included in PR #55 ancestry. Preserve as dependency until its own review/merge decision. |
 | #54 | CI verification of native Gain observability | Verification-only branch; retain its useful workflow evidence, avoid duplicating implementation. |
@@ -185,9 +191,22 @@ This search is against the repository default branch and is not a substitute for
 
 ## 10. Immediate follow-up implementation queue
 
-- Port the useful PR #36 Timeline interactions onto the existing durable event query contract: text search, event-type filtering, normalized progress, duration details and explicit per-tool cancellation affordances. Keep one SQLite journal.
+- [x] Port text search from the useful PR #36 Timeline interaction set onto the existing durable event query contract, with parameterized local SQL, debounced UI input and regression coverage. Keep one SQLite journal.
+- [x] Port normalized progress, duration details and explicit per-tool cancellation affordances onto the existing event journal/UI; progress_percent is rendered as a bounded percentage, duration_ms/latency_ms are displayed when present, and cancellation remains scoped to tool_call_id. No parallel Timeline database is imported.
 - Trace every `ToolManager` definition to its switch/handler in `ModelService`; classify unsupported media providers and other missing external capabilities visibly instead of presenting adapters as connected services.
 - Audit all entry points for direct `ModelService.processChat` use. Keep it only for explicitly simple conversational paths; all autonomous/tool-capable tasks must go through `AgentService.runTask`.
 - Review the overlapping statistics/performance services and connect their useful metrics to one source of truth without losing current widget contracts.
 - Review the dormant memory stores and the legacy transcript database with data-preserving migrations; do not delete, rename or overwrite any of them.
 - Port validated Android launch and emulator smoke fixes from PRs #27 and #24, and validate the Codemagic workflow from PR #32 as an additional CI path rather than a replacement.
+
+
+## 11. Current integration increment — PR #56
+
+- Working branch: `integration/unified-agent-runtime-v2`, based on the current PR #55 head.
+- PR #56 adds case-insensitive search across the existing persisted event metadata, exposed through `AgentService.observabilityEventsForConversation`.
+- The screen debounces search input and retains the existing event-type/status filters and row-id cursor pagination.
+- Search is local to the current conversation query; the query is parameterized and does not add a new persistence store or event payload.
+- Added regression assertions for case-insensitive matching and conversation isolation.
+- CI workflows now include the stacked integration branch and PR base so this branch receives tests and Android build validation.
+- No existing runtime, model, database, source file, provider or workflow was removed.
+- Remaining PR #36 interactions are progress normalization, duration details and explicit per-tool cancellation UI; these must use the existing event and cancellation owners.

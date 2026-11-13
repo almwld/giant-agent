@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/local-offline-voice-pipeline
+      - integration/unified-agent-runtime-v2
   pull_request:
     types: [opened, reopened, synchronize, edited]
     branches:
@@ -11,6 +12,7 @@ on:
       - integration/giant-agent-stabilization
       - feat/mylib-technology-transfer
       - chore/boosthis-mcp-mainline
+      - feat/local-offline-voice-pipeline
   workflow_dispatch:
 
 permissions:

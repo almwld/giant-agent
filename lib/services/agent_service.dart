@@ -7,6 +7,9 @@ import '../domain/kernel/agent_kernel_store.dart';
 import '../domain/kernel/agent_observability.dart';
 import '../domain/kernel/subagent_recovery_coordinator.dart';
 import 'model_service.dart';
+import 'stats_service.dart';
+import 'analytics_service.dart';
+import 'performance_service.dart';
 import 'agent_background_execution_service.dart';
 import '../domain/output/output_engine.dart';
 import '../domain/mcp/mcp_client.dart';
@@ -21,8 +24,9 @@ class AgentService {
   AgentService._()
       : _executionKernel = execution.AgentKernel.instance,
         _models = ModelService(),
-        _store = AgentKernelStore(),
+        _store = AgentKernelStore.shared,
         _initializeExecutionRuntime = true {
+    _models.bindKernelStore(_store);
     _durableKernel = durable.AgentKernel(
       store: _store,
       executor: _executeWithSharedRuntime,
@@ -142,6 +146,15 @@ class AgentService {
         if ((event['task_id']?.toString() ?? '').isNotEmpty &&
             eventType.startsWith('subagent_')) {
           await _store.recordSubagentEvent(event);
+          if (event['is_async'] == true &&
+              const {'subagent_completed', 'subagent_failed', 'subagent_interrupted', 'subagent_cancelled'}
+                  .contains(eventType)) {
+            unawaited(_refreshDetachedOutputs(
+              event['request_id']?.toString() ?? '',
+            ).catchError((Object _) {
+              // A secondary artifact refresh must not block lifecycle journaling.
+            }));
+          }
         }
         await _store.appendRequestEvent(event);
       }).catchError((Object _) {
@@ -158,7 +171,35 @@ class AgentService {
     await _journalTail;
   }
 
+  /// Refreshes parent artifacts after a detached child reaches a terminal state.
+  /// The parent request may still be finalizing when the child event arrives.
+  Future<void> _refreshDetachedOutputs(String requestId) async {
+    if (requestId.trim().isEmpty) return;
+    KernelRequestRecord? request;
+    for (var attempt = 0; attempt < 100; attempt++) {
+      request = await _store.getRequest(requestId);
+      if (request != null &&
+          {'completed', 'interrupted', 'failed'}.contains(request.status)) {
+        break;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    if (request == null ||
+        !{'completed', 'interrupted', 'failed'}.contains(request.status)) {
+      return;
+    }
+    await _outputEngine.finalize(
+      requestId: request.id,
+      conversationId: request.conversationId,
+      finalText: request.result ?? '',
+      requestStatus: request.status,
+      failure: request.error,
+    );
+  }
+
   Future<void> _initialize() async {
+    // Bind analytics to the exact same store instance as request execution.
+    await AnalyticsService().init(store: _store);
     // The execution runtime must be ready before queued durable work is drained.
     if (_initializeExecutionRuntime) await _executionKernel.initialize();
     _attachExecutionJournal();
@@ -168,6 +209,20 @@ class AgentService {
     // Reconcile child snapshots before the durable kernel starts draining the
     // queue, so newly launched children cannot be mistaken for old work.
     await _store.reconcileInterruptedSubagents();
+    final terminalAsyncParents = (await _store.getTasks())
+        .where((task) => task['kind'] == 'subagent' &&
+            task['is_async'] == true &&
+            {'completed', 'failed', 'interrupted', 'cancelled'}.contains(task['status']))
+        .map((task) => task['parent_request_id']?.toString() ?? '')
+        .where((requestId) => requestId.isNotEmpty)
+        .toSet();
+    for (final requestId in terminalAsyncParents) {
+      try {
+        await _refreshDetachedOutputs(requestId);
+      } catch (_) {
+        // Recovery metadata remains durable even if artifact refresh is unavailable.
+      }
+    }
     if (await _store.hasActiveRequests()) {
       await AgentBackgroundExecutionService.instance.beginTask(
         'متابعة قائمة المهام المحفوظة بعد إعادة تشغيل التطبيق',
@@ -175,6 +230,32 @@ class AgentService {
       unawaited(_releaseRecoveredQueueForegroundWhenIdle());
     }
     await _durableKernel.initialize();
+    final pendingChildren = await _store.pendingAsyncSubagents();
+    if (pendingChildren.isNotEmpty) {
+      await AgentBackgroundExecutionService.instance.beginTask(
+        'استعادة الوكلاء الفرعيين المؤجلين من الطابور الدائم',
+      );
+      final recoveredChildren = <Future<void>>[];
+      for (final child in pendingChildren) {
+        final requestId = child['parent_request_id']?.toString() ?? '';
+        final conversationId = child['conversation_id']?.toString() ?? 'global';
+        final agentId = child['subagent_id']?.toString() ?? '';
+        if (requestId.isEmpty || agentId.isEmpty) continue;
+        // scheduleDynamicSubagent completes only after its FIFO work item has
+        // reached a terminal state. Await these futures rather than polling
+        // isExecuting, which can be false in the interval before FIFO drain.
+        recoveredChildren.add(_executionKernel.scheduleDynamicSubagent(
+          requestId: requestId,
+          conversationId: conversationId,
+          agentId: agentId,
+        ).catchError((Object _) {
+          // The lifecycle snapshot remains durable and can be diagnosed.
+        }));
+      }
+      unawaited(Future.wait(recoveredChildren).whenComplete(
+        AgentBackgroundExecutionService.instance.endTask,
+      ));
+    }
     _initialized = true;
   }
 
@@ -190,34 +271,62 @@ class AgentService {
     }
   }
 
+  Future<void> _releaseAsyncChildrenForegroundWhenIdle() async {
+    try {
+      while (_executionKernel.isExecuting) {
+        await Future<void>.delayed(const Duration(seconds: 1));
+      }
+    } finally {
+      await AgentBackgroundExecutionService.instance.endTask();
+    }
+  }
+
   Future<String> runTask(
     String prompt, {
     String conversationId = 'global',
     String? requestId,
   }) async {
+    final stopwatch = Stopwatch()..start();
     await initialize();
     await AgentBackgroundExecutionService.instance.beginTask(prompt);
+    var outcome = 'failed';
     try {
+      unawaited(AnalyticsService().trackEvent('request_started').catchError((Object _) {}));
+
       final suppliedRequestId = requestId?.trim();
       final resolvedRequestId =
           suppliedRequestId == null || suppliedRequestId.isEmpty
               ? '${DateTime.now().microsecondsSinceEpoch}_${++_requestSequence}'
               : suppliedRequestId;
+      // These are projections of the canonical durable request path: they do
+      // not enqueue work, persist prompts, or create a second execution journal.
       final record = await _durableKernel.submit(
         id: resolvedRequestId,
         prompt: prompt,
         conversationId: conversationId,
       );
+      await StatsService().incrementMessageCount();
       if (record.status == 'failed') {
         throw StateError(record.error ?? 'Agent request failed.');
       }
       if (record.status != 'completed' && record.status != 'interrupted') {
         throw StateError('Unexpected durable request state: ${record.status}');
       }
+      outcome = record.status;
       return record.result ?? '';
     } finally {
+      stopwatch.stop();
+      PerformanceService().recordResponseTime(stopwatch.elapsedMilliseconds);
+      unawaited(AnalyticsService().trackEvent('request_finished', data: <String, dynamic>{
+        'status': outcome,
+        'duration_ms': stopwatch.elapsedMilliseconds,
+      }).catchError((Object _) {}));
       await _backgroundProgressTail;
-      await AgentBackgroundExecutionService.instance.endTask();
+      if (_executionKernel.isExecuting) {
+        unawaited(_releaseAsyncChildrenForegroundWhenIdle());
+      } else {
+        await AgentBackgroundExecutionService.instance.endTask();
+      }
     }
   }
 
@@ -243,6 +352,7 @@ class AgentService {
     int limit = 50,
     String? type,
     String? status,
+    String? search,
   }) async {
     await initialize();
     return _store.observabilityEventsForConversation(
@@ -251,6 +361,7 @@ class AgentService {
       limit: limit,
       type: type,
       status: status,
+      search: search,
     );
   }
 
