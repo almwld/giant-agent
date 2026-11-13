@@ -182,6 +182,24 @@ class AgentService {
       unawaited(_releaseRecoveredQueueForegroundWhenIdle());
     }
     await _durableKernel.initialize();
+    final pendingChildren = await _store.pendingAsyncSubagents();
+    if (pendingChildren.isNotEmpty) {
+      await AgentBackgroundExecutionService.instance.beginTask(
+        'استعادة الوكلاء الفرعيين المؤجلين من الطابور الدائم',
+      );
+      for (final child in pendingChildren) {
+        final requestId = child['parent_request_id']?.toString() ?? '';
+        final conversationId = child['conversation_id']?.toString() ?? 'global';
+        final agentId = child['subagent_id']?.toString() ?? '';
+        if (requestId.isEmpty || agentId.isEmpty) continue;
+        unawaited(_executionKernel.scheduleDynamicSubagent(
+          requestId: requestId,
+          conversationId: conversationId,
+          agentId: agentId,
+        ).catchError((Object _) {}));
+      }
+      unawaited(_releaseAsyncChildrenForegroundWhenIdle());
+    }
     _initialized = true;
   }
 
@@ -192,6 +210,16 @@ class AgentService {
       }
     } catch (_) {
       // Stop monitoring if durable queue state can no longer be read.
+    } finally {
+      await AgentBackgroundExecutionService.instance.endTask();
+    }
+  }
+
+  Future<void> _releaseAsyncChildrenForegroundWhenIdle() async {
+    try {
+      while (_executionKernel.isExecuting) {
+        await Future<void>.delayed(const Duration(seconds: 1));
+      }
     } finally {
       await AgentBackgroundExecutionService.instance.endTask();
     }
