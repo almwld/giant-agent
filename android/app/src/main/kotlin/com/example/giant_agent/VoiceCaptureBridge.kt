@@ -135,15 +135,30 @@ class VoiceCaptureBridge(
                 .getOrNull()?.also { it.enabled = true }
         }
 
-        previousAudioMode = audioManager.mode
-        audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
-        audio.startRecording()
-        running = true
-        captureThread = Thread({ captureLoop(audio, stream) }, "GiantAgentVoiceCapture").apply {
-            isDaemon = true
-            start()
+        try {
+            previousAudioMode = audioManager.mode
+            audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+            audio.startRecording()
+            running = true
+            captureThread = Thread({ captureLoop(audio, stream) }, "GiantAgentVoiceCapture").apply {
+                isDaemon = true
+                start()
+            }
+            file.absolutePath
+        } catch (error: Throwable) {
+            running = false
+            releaseEffects()
+            runCatching { audio.stop() }
+            runCatching { audio.release() }
+            runCatching { stream.close() }
+            runCatching { file.delete() }
+            runCatching { previousAudioMode?.let { audioManager.mode = it } }
+            previousAudioMode = null
+            recorder = null
+            outputStream = null
+            output = null
+            throw error
         }
-        file.absolutePath
     }
 
     private fun captureLoop(audio: AudioRecord, stream: FileOutputStream) {
