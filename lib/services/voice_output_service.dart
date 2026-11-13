@@ -81,6 +81,11 @@ class VoiceOutputService {
     _initialized = true;
   }
 
+  Future<void> refresh() async {
+    _initialized = false;
+    await initialize();
+  }
+
   Future<void> beginStreaming() async {
     await initialize();
     _streamBuffer = '';
