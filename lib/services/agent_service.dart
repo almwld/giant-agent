@@ -215,12 +215,12 @@ class AgentService {
               : suppliedRequestId;
       // These are projections of the canonical durable request path: they do
       // not enqueue work, persist prompts, or create a second execution journal.
-      await StatsService().incrementMessageCount();
       final record = await _durableKernel.submit(
         id: resolvedRequestId,
         prompt: prompt,
         conversationId: conversationId,
       );
+      await StatsService().incrementMessageCount();
       if (record.status == 'failed') {
         throw StateError(record.error ?? 'Agent request failed.');
       }
