@@ -168,11 +168,22 @@ class LocalArabicTtsService {
         '${dir.path}/speech-${DateTime.now().microsecondsSinceEpoch}.wav',
       );
       await output.writeAsBytes(_encodeWave(samples, sampleRate));
+      StreamSubscription<void>? completionSubscription;
+      StreamSubscription<PlayerState>? stateSubscription;
+      final completed = Completer<void>();
+      void completePlayback() {
+        if (!completed.isCompleted) completed.complete();
+      }
       try {
-        final completed = _player.onPlayerComplete.first;
+        completionSubscription = _player.onPlayerComplete.listen((_) => completePlayback());
+        stateSubscription = _player.onPlayerStateChanged.listen((state) {
+          if (state == PlayerState.stopped) completePlayback();
+        });
         await _player.play(DeviceFileSource(output.path));
-        await completed;
+        await completed.future;
       } finally {
+        await completionSubscription?.cancel();
+        await stateSubscription?.cancel();
         if (await output.exists()) await output.delete();
       }
     }
