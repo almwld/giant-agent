@@ -1,15 +1,18 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../agent/task_manager.dart';
+import '../agent/architecture/agent_event_bus.dart';
 import '../domain/kernel/agent_observability.dart';
 import '../domain/mcp/mcp_client.dart';
-import '../services/agent_service.dart';
+import 'agent_service.dart';
 
 /// Process-wide read model for the AgentsOS control center.
 ///
-/// All screens observe projections of the existing AgentService and
-/// TaskManager. This class deliberately owns no database, queue, model,
-/// executor, or MCP client of its own.
+/// Every screen observes projections of the existing AgentService,
+/// TaskManager and MCP client. This controller owns no database, queue,
+/// model, executor or integration client of its own.
 class ProControlCenter extends ChangeNotifier {
   ProControlCenter._();
   static final ProControlCenter instance = ProControlCenter._();
@@ -26,8 +29,25 @@ class ProControlCenter extends ChangeNotifier {
   DateTime? lastUpdated;
 
   Future<void>? _inFlight;
+  StreamSubscription<Map<String, dynamic>>? _eventSubscription;
+  Timer? _refreshDebounce;
+  bool _initialized = false;
 
   Future<void> initialize() => refresh();
+
+  void _listenForRuntimeChanges() {
+    if (_eventSubscription != null) return;
+    _eventSubscription = AgentEventBus.instance.events.listen((event) {
+      // Streaming tokens are presentation deltas, not control-plane state.
+      if (event['type'] == 'stream_token') return;
+      _refreshDebounce?.cancel();
+      _refreshDebounce = Timer(const Duration(milliseconds: 350), () {
+        unawaited(refresh().catchError((Object _) {
+          // Keep the last good snapshot visible; lastError exposes the issue.
+        }));
+      });
+    });
+  }
 
   Future<void> refresh() {
     final active = _inFlight;
@@ -47,6 +67,7 @@ class ProControlCenter extends ChangeNotifier {
     try {
       await _agent.initialize();
       await _tasks.initialize();
+      _listenForRuntimeChanges();
       final results = await Future.wait<Object>([
         _agent.observabilitySummaryForConversation('global'),
         _agent.subagentsForConversation('global'),
@@ -57,6 +78,7 @@ class ProControlCenter extends ChangeNotifier {
       integrations = results[2] as List<McpServerConfig>;
       tasks = _tasks.getTasks();
       lastUpdated = DateTime.now();
+      _initialized = true;
     } catch (error) {
       lastError = error;
       rethrow;
@@ -90,5 +112,12 @@ class ProControlCenter extends ChangeNotifier {
     final result = await _tasks.resumeTask(taskId);
     await refresh();
     return result;
+  }
+
+  @override
+  void dispose() {
+    _refreshDebounce?.cancel();
+    _eventSubscription?.cancel();
+    super.dispose();
   }
 }
