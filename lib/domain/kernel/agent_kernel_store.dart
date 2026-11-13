@@ -462,12 +462,38 @@ class AgentKernelStore {
 
   /// Returns detached children admitted but not yet started. These are safe to
   /// re-enqueue after process restart because no execution side effect began.
-  Future<List<Map<String, dynamic>>> pendingAsyncSubagents() async =>
-      (await getTasks())
-          .where((task) => task['kind'] == 'subagent' &&
-              task['is_async'] == true && task['status'] == 'pending' &&
-              task['is_dismissed'] != true)
-          .toList(growable: false);
+  Future<List<Map<String, dynamic>>> pendingAsyncSubagents() async {
+    // The request-scoped lifecycle snapshot is written before the enqueue
+    // event is published. Read it as the admission source so a process death
+    // in the small event-projection window cannot lose a queued child.
+    final rows = await (await database).query('agent_subagent_runtime_state');
+    final pending = <Map<String, dynamic>>[];
+    for (final row in rows) {
+      final requestId = row['request_id']?.toString() ?? '';
+      if (requestId.isEmpty) continue;
+      try {
+        final decoded = jsonDecode(row['payload_json']! as String);
+        if (decoded is! Map || decoded['records'] is! Map) continue;
+        final records = decoded['records'] as Map;
+        for (final value in records.values) {
+          if (value is! Map) continue;
+          final record = Map<String, dynamic>.from(value);
+          if (record['status'] != 'pending' || record['is_async'] != true ||
+              record['dismissed'] == true) continue;
+          pending.add(<String, dynamic>{
+            ...record,
+            'subagent_id': record['id']?.toString() ?? '',
+            'task_id': record['task_id']?.toString() ?? '',
+            'parent_request_id': requestId,
+            'kind': 'subagent',
+          });
+        }
+      } on FormatException {
+        // Keep corrupt durable state intact for diagnosis; never invent a task.
+      }
+    }
+    return pending;
+  }
 
   /// Returns durable child snapshots grouped by the chat/conversation that owns them.
   Future<List<Map<String, dynamic>>> subagentsForConversation(String conversationId) async =>
