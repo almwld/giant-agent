@@ -792,6 +792,7 @@ $evidence
         'spawn_subagent',
         'delete_subagent',
         'check_subagent_status',
+        'report_subagent_progress',
         'send_message',
         'wait_for_message',
         'ask_user',
