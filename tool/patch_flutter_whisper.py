@@ -148,7 +148,9 @@ def patch_source(source: str) -> str:
     source = source.replace(MINIAUDIO_BLOCK, "// miniaudio is not required for canonical PCM16 WAV input.")
     source = source[:start] + DECODER.strip() + "\n\n" + source[end:]
     source = source.replace("#include <cstring>", "#include <cstring>\n#include <cstdint>\n#include <fstream>")
-    if '#include "miniaudio.h"' in source or "ma_decoder_" in source:
+    if ('#include "miniaudio.h"' in source or "MINIAUDIO_IMPLEMENTATION" in source or
+            "ma_decoder_init_file(" in source or "ma_decoder_read_pcm_frames(" in source or
+            "ma_decoder_uninit(" in source):
         raise RuntimeError("miniaudio references remain after applying the WAV decoder patch.")
     return source
 
