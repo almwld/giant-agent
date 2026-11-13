@@ -16,7 +16,7 @@ void main() {
     });
 
     test('splits unusually long tokens without dropping characters', () {
-      final token = 'ع' * 401;
+      final token = List<String>.filled(401, 'ع').join();
       final chunks = LocalVoiceTextChunker.split(token, maxCharacters: 100);
       expect(chunks.map((chunk) => chunk.length), [100, 100, 100, 100, 1]);
       expect(chunks.join(), token);
