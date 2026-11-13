@@ -140,11 +140,14 @@ def patch_source(source: str) -> str:
         return source
     if MINIAUDIO_BLOCK not in source:
         raise RuntimeError("Unexpected flutter_whisper JNI source: miniaudio include block not found.")
-    start = source.find("static bool load_audio_16k(")
-    end = source.find("// ---- JSON helpers ----", start)
-    if start < 0 or end < 0:
-        raise RuntimeError("Unexpected flutter_whisper JNI source: audio decoder boundaries not found.")
+    start = source.find("// ---- audio decode:")
+    end = source.find("// ---- JSON helpers ----")
+    if start < 0 or end < 0 or end <= start:
+        raise RuntimeError("Unexpected flutter_whisper JNI source: audio decoder section boundaries not found.")
 
+    # Replace the entire section, not only the function body. This is
+    # intentionally anchored on stable section markers to avoid leaving
+    # orphaned miniaudio declarations in the compiled translation unit.
     source = source[:start] + DECODER.strip() + "\n\n" + source[end:]
     source = source.replace(MINIAUDIO_BLOCK, "// miniaudio is not required for canonical PCM16 WAV input.")
     source = source.replace("#include <cstring>", "#include <cstring>\n#include <cstdint>\n#include <fstream>")
