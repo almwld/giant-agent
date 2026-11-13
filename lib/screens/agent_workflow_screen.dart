@@ -212,6 +212,17 @@ class AgentWorkflowScreen extends StatelessWidget {
                         ],
                         Text(_statusLabel(status),
                             style: TextStyle(color: color, fontSize: 11)),
+                        if (event['progress_percent'] is num) ...[
+                          const SizedBox(width: 8),
+                          Text(
+                            '${(event['progress_percent'] as num).clamp(0, 100).toInt()}%',
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 11,
+                              fontFeatures: [FontFeature.tabularFigures()],
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
