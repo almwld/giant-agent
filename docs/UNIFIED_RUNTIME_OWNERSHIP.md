@@ -29,11 +29,12 @@ These are aggregate projections of the canonical durable request path: neither
 service is allowed to enqueue execution, store prompts, or create a second
 request/event journal.
 
-`AnalyticsService` currently owns a legacy `analytics.db` schema and is not
-the canonical execution history. Do not write a second copy of every
-`AgentEventBus` event into it. Future analytics screens should project from
-`AgentKernelStore` or perform an explicit, lossless migration before changing
-ownership. Existing legacy analytics files must not be deleted.
+`AnalyticsService` now writes bounded, content-free analytics facts to
+`agent_events` through `AgentKernelStore.appendAnalyticsEvent` and reads its
+aggregate counts from that same journal. It does not open a second analytics
+database or duplicate every `AgentEventBus` lifecycle event. The historical
+`analytics.db` file is left untouched on disk; it is not a competing source
+for new runtime metrics.
 
 ## Voice boundary
 
