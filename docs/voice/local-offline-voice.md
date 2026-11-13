@@ -28,7 +28,8 @@ Nabra is an MSA voice with one speaker ID. It is not a general dialect voice-clo
 ## Conversation behavior
 
 - The recording stays on-device until the user taps **انتهيت — أرسل كلامي**. Whisper then transcribes the WAV locally and sends the final transcript through the existing chat composer. This Flutter 3.16-compatible recorder integration is push-to-finish rather than partial-token ASR streaming.
-- The final transcript is sent through the existing chat send path, so conversation history, request IDs, tool orchestration, and the current model runtime remain shared.
+- The final transcript is sent through the existing chat send path and current local GGUF runtime. Voice mode refuses to start without a loaded local model; if OpenRouter is selected, it asks before temporarily switching to local and restores the prior provider when the overlay closes.
+- Voice requests bypass web search, GitHub context, and agent/tool execution so this path does not invoke remote APIs.
 - Visible answer tokens are filtered through the existing tool-call sanitizer before they enter the local speech queue. Tool-call JSON is never spoken.
 - Sentence-sized answer chunks are synthesized while the model is still generating.
 - The voice overlay provides an explicit interruption action. It stops playback and invalidates pending speech segments before restarting local listening.
