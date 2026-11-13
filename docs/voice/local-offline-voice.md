@@ -27,7 +27,7 @@ Nabra is an MSA voice with one speaker ID. It is not a general dialect voice-clo
 
 ## Conversation behavior
 
-- Whisper's live updates populate the existing composer; a quiet interval finalizes the utterance and flushes the remaining audio window.
+- The recording stays on-device until the user taps **انتهيت — أرسل كلامي**. Whisper then transcribes the WAV locally and sends the final transcript through the existing chat composer. This Flutter 3.16-compatible recorder integration is push-to-finish rather than partial-token ASR streaming.
 - The final transcript is sent through the existing chat send path, so conversation history, request IDs, tool orchestration, and the current model runtime remain shared.
 - Visible answer tokens are filtered through the existing tool-call sanitizer before they enter the local speech queue. Tool-call JSON is never spoken.
 - Sentence-sized answer chunks are synthesized while the model is still generating.
