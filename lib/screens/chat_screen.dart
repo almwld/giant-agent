@@ -2184,6 +2184,7 @@ class _ChatScreenState extends State<ChatScreen> {
           _voiceOrbVisible = false;
           _voiceOrbState = AgentState.idle;
         });
+        await _restoreVoiceProviderMode();
         return;
       }
       await _localSpeech.startListening();
@@ -2203,6 +2204,7 @@ class _ChatScreenState extends State<ChatScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('تعذر بدء التسجيل الصوتي المحلي: $error')),
       );
+      await _restoreVoiceProviderMode();
     }
   }
 
@@ -2713,9 +2715,9 @@ class _ChatScreenState extends State<ChatScreen> {
     _modelService.requestMcpApproval = null;
     _modelService.requestUserInput = null;
     _modelService.requestBrowserSession = null;
-    _voiceSilenceTimer?.cancel();
     _localSpeech.cancelListening();
     _voiceOutput.stop();
+    unawaited(_restoreVoiceProviderMode());
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
