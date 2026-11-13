@@ -21,6 +21,9 @@ class DynamicSubagentRecord {
     this.result,
     this.error,
     this.dismissed = false,
+    this.icon = 'smart_toy',
+    this.motto = '',
+    this.index = 0,
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now().toUtc();
 
@@ -38,6 +41,9 @@ class DynamicSubagentRecord {
   String? result;
   String? error;
   bool dismissed;
+  final String icon;
+  final String motto;
+  final int index;
 
   String get wireStatus => switch (status) {
         'idle' => 'STATUS_IDLE',
@@ -64,6 +70,9 @@ class DynamicSubagentRecord {
         result: map['result']?.toString(),
         error: map['error']?.toString(),
         dismissed: map['dismissed'] == true,
+        icon: map['icon']?.toString() ?? 'smart_toy',
+        motto: map['motto']?.toString() ?? '',
+        index: map['index'] is int ? map['index'] as int : 0,
         createdAt: DateTime.tryParse(map['created_at']?.toString() ?? ''),
       );
 
@@ -82,6 +91,9 @@ class DynamicSubagentRecord {
         'result': result,
         'error': error,
         'dismissed': dismissed,
+        'icon': icon,
+        'motto': motto,
+        'index': index,
         'created_at': createdAt.toIso8601String(),
       };
 }
@@ -183,6 +195,9 @@ class SubagentLifecycleManager {
     required String agentType,
     List<String> dependsOn = const <String>[],
     String? creatorTaskId,
+    String icon = 'smart_toy',
+    String motto = '',
+    int? index,
   }) async {
     await restoreRequest(requestId);
     if (requestId.trim().isEmpty ||
@@ -194,7 +209,9 @@ class SubagentLifecycleManager {
       throw StateError('A child agent cannot create another child agent.');
     }
     if (title.trim().isEmpty || title.length > 100 ||
-        prompt.trim().isEmpty || prompt.length > 1200) {
+        prompt.trim().isEmpty || prompt.length > 1200 ||
+        icon.trim().isEmpty || icon.length > 48 || motto.length > 160 ||
+        (index != null && (index < 0 || index > maxChildrenPerRequest - 1))) {
       throw ArgumentError('Subagent title or prompt is empty or exceeds its limit.');
     }
     if (!const {'explore', 'plan', 'coder', 'reviewer'}.contains(agentType)) {
@@ -222,6 +239,9 @@ class SubagentLifecycleManager {
       prompt: prompt.trim(),
       agentType: agentType,
       dependsOn: List<String>.unmodifiable(dependsOn),
+      icon: icon.trim(),
+      motto: motto.trim(),
+      index: index ?? children.length,
     );
     children[id] = record;
     await _persistRequest(requestId);
@@ -470,6 +490,9 @@ class SubagentLifecycleManager {
             'task_id': record.taskId,
             'agent_type': record.agentType,
             'title': record.title,
+            'icon': record.icon,
+            'motto': record.motto,
+            'index': record.index,
             'task_prompt': record.prompt,
             'depends_on': record.dependsOn.map((id) => '${record.parentRequestId}_dynamic_$id').toList(growable: false),
             'type': type,
