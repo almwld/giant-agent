@@ -31,7 +31,6 @@ class ProControlCenter extends ChangeNotifier {
   Future<void>? _inFlight;
   StreamSubscription<Map<String, dynamic>>? _eventSubscription;
   Timer? _refreshDebounce;
-  bool _initialized = false;
 
   Future<void> initialize() => refresh();
 
@@ -78,7 +77,6 @@ class ProControlCenter extends ChangeNotifier {
       integrations = results[2] as List<McpServerConfig>;
       tasks = _tasks.getTasks();
       lastUpdated = DateTime.now();
-      _initialized = true;
     } catch (error) {
       lastError = error;
       rethrow;
