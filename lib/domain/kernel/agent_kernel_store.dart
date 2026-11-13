@@ -68,6 +68,10 @@ class KernelEventRecord {
 /// Durable request queue and append-only execution journal.
 /// Event rows are inserted only; lifecycle changes update request projections.
 class AgentKernelStore {
+  /// Process-wide production store shared by AgentService and ModelService.
+  /// Tests may still inject isolated stores through the regular constructor.
+  static final AgentKernelStore shared = AgentKernelStore();
+
   AgentKernelStore({KernelDatabaseProvider? databaseProvider})
       : _databaseProvider = databaseProvider ?? _openDefaultDatabase;
 
