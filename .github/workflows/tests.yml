@@ -3,11 +3,13 @@ name: Giant Agent Tests
 on:
   push:
     branches:
+      - feat/agentsos-control-center
       - feat/local-offline-voice-pipeline
       - integration/unified-agent-runtime-v2
   pull_request:
     types: [opened, reopened, synchronize, edited]
     branches:
+      - integration/unified-agent-runtime-v2
       - main
       - integration/giant-agent-stabilization
       - feat/mylib-technology-transfer

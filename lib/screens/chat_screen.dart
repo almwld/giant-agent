@@ -18,6 +18,7 @@ import 'package:xterm/xterm.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'settings_screen.dart';
+import 'pro_agentsos_hub.dart';
 import '../widgets/voice_orb.dart';
 import '../models/chat_session.dart';
 import 'dart:convert';
@@ -3344,6 +3345,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 case 'provider':
                   _openExternalProviderDialog();
                   break;
+                case 'agentsos':
+                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ProAgentsOsHub()));
+                  break;
                 case 'settings':
                   Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const SettingsScreen()),
@@ -3363,6 +3367,7 @@ class _ChatScreenState extends State<ChatScreen> {
               PopupMenuItem(value: 'github', child: Text('ربط مستودع GitHub')),
               PopupMenuItem(value: 'cloud', child: Text('اتصال السحابة')),
               PopupMenuItem(value: 'provider', child: Text('إعداد مزوّد خارجي')),
+              PopupMenuItem(value: 'agentsos', child: Text('AgentsOS Control Center')),
               PopupMenuItem(value: 'settings', child: Text('الإعدادات')),
             ],
           ),

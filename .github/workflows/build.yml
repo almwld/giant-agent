@@ -3,6 +3,7 @@ name: Build Giant Agent APK
 on:
   push:
     branches:
+      - feat/agentsos-control-center
       - main
       - feat/integrated-agent-completion
       - feat/consolidate-sqlite-runtime-v2
@@ -16,6 +17,7 @@ on:
   pull_request:
     types: [opened, reopened, synchronize, edited]
     branches:
+      - integration/unified-agent-runtime-v2
       - main
       - feat/kimi-subagent-orchestration
       - feat/integrated-agent-completion
