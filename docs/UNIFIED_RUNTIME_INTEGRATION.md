@@ -71,6 +71,9 @@ The two kernel classes are deliberately distinguished by responsibility: the dur
 
 - Added conversation-scoped observability query methods to `AgentService`, backed by its existing `AgentKernelStore`.
 - Changed `AgentObservabilityScreen` to read through `AgentService.instance` instead of constructing and closing a second store connection itself.
+- Bound `ModelService` dynamic subagent persistence to the exact `AgentKernelStore` instance owned by production `AgentService`; the injected-executor seam remains isolated for tests.
+- Added durable detached child admission via `spawn_subagent(run_in_background: true)`. It appends to the existing execution-kernel FIFO, runs only after the parent releases the shared model runtime, and does not introduce a second queue or inference instance.
+- Pending async children that have not started are re-enqueued after restart; children interrupted after execution began remain subject to explicit side-effect-aware recovery.
 - Kept the underlying SQLite schema, append-only event journal, pagination, filters, counters and event payloads unchanged. This is an ownership/facade consolidation, not a data migration.
 - The chat workflow continues to use `AgentService`; Home and Nuclear continue through `TaskManager`, whose execution step calls the same `AgentService.runTask`. Their legacy chat transcript database is separate from agent memory and is not deleted or silently migrated.
 
@@ -79,7 +82,7 @@ The two kernel classes are deliberately distinguished by responsibility: the dur
 | Capability | Existing implementation / owner | Integration rule |
 |---|---|---|
 | Application request boundary | `AgentService` | All UI task execution must enter here. |
-| Durable FIFO, request state, restart reconciliation | `lib/domain/kernel/agent_kernel.dart`, `AgentKernelStore` | One durable queue/store; never add another scheduler or database. |
+| Durable FIFO, request state, restart reconciliation | `lib/domain/kernel/agent_kernel.dart`, `AgentKernelStore` | One durable request queue/store; never add another database. Detached child admission is serialized by the existing execution-kernel FIFO, not a second competing queue. |
 | Execution planning and model loop | `lib/agent/architecture/agent_kernel.dart` | Retain planner, bounded tool loop, cancellation and lifecycle behavior. |
 | Local inference | `ModelService` + `LlamaService.instance` + JNI | One shared local model/runtime. |
 | Cloud inference and SSE | Existing OpenRouter/provider adapter and SSE parser | Keep provider routing in the same ModelService path; do not add a second chat controller/runtime. |
@@ -94,7 +97,7 @@ The two kernel classes are deliberately distinguished by responsibility: the dur
 | Legacy memory stores | `MemoryService`, `LongTermMemory`, `ConversationMemory` | Retain files and databases. Do not delete or merge without an explicit data migration, backup and compatibility tests. |
 | Skills | `AgentSkillRegistry` | Prompt/routing hints only; skills must not grant permissions or bypass ToolManager. |
 | Durable task UI/history | `TaskManager` + `AgentKernelStore` | Task snapshots and request journal stay correlated by conversation/request IDs. |
-| Output verification | `OutputEngine` | Preserve artifact collection/finalization; a model response alone is not verified completion. |
+| Output verification | `OutputEngine` | Preserve artifact collection/finalization; a model response alone is not verified completion. Detached child artifact finalization remains a follow-up integration detail before declaring parent output coverage complete. |
 | Event bus and timeline | `AgentEventBus`, typed `AgentTimelineEvent`, `AgentKernelStore` | One factual event stream and one durable journal. No private chain-of-thought is stored. |
 | Local diagnostics | `AgentObservabilityScreen` via `AgentService` | Read-only projection of the same store used by execution. |
 | Android long-running lifecycle | `AgentBackgroundExecutionService`, native `AgentRuntime` | Reuse shared runtime; verify process-death/background behavior on device. |
