@@ -41,6 +41,8 @@ class ModelService {
   Future<bool> Function(String serverId, McpRemoteTool tool, Map<String, dynamic> arguments)? requestMcpApproval;
   AgentUserInputHandler? requestUserInput;
   Future<void> Function()? requestBrowserSession;
+  Future<void> Function({required String requestId, required String conversationId, required String agentId})? scheduleDynamicSubagent;
+  final Set<String> _cancelledDynamicSubagentIds = <String>{};
   AgentKernelStore? _boundKernelStore;
   SubagentLifecycleManager? _subagentLifecycle;
 
@@ -593,10 +595,35 @@ class ModelService {
           result = <String, dynamic>{'ok': true, 'subagent': created.toMap()};
           break;
         case 'spawn_subagent':
-          result = await _spawnDynamicSubagent(
-            args['id']?.toString() ?? '',
-            isCancelled: isCancelled,
-          );
+          final agentId = args['id']?.toString() ?? '';
+          if (args['run_in_background'] == true) {
+            if (_activeTaskId.isNotEmpty) {
+              throw StateError('Only the coordinating agent may schedule detached subagents.');
+            }
+            final queued = await _subagents.enqueueBackground(_activeRequestId, agentId);
+            final scheduler = scheduleDynamicSubagent;
+            if (scheduler == null) {
+              throw StateError('The shared AgentKernel scheduler is not initialized.');
+            }
+            unawaited(scheduler(
+              requestId: _activeRequestId,
+              conversationId: _activeConversationId,
+              agentId: agentId,
+            ).catchError((Object error) async {
+              await _subagents.fail(_activeRequestId, agentId, error);
+            }));
+            result = <String, dynamic>{
+              'ok': true,
+              'status': 'pending',
+              'is_async': true,
+              'subagent': queued.toMap(),
+            };
+          } else {
+            result = await _spawnDynamicSubagent(
+              agentId,
+              isCancelled: isCancelled,
+            );
+          }
           break;
         case 'delete_subagent':
           final agentId = args['id']?.toString() ?? '';
@@ -1397,6 +1424,49 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
     await BrowserSessionService.instance.waitUntilReady(isCancelled: isCancelled);
   }
 
+  /// Executes a queued child only when the shared AgentKernel FIFO admits it.
+  /// This is the only detached execution entry point; it reuses this ModelService.
+  Future<void> executeScheduledDynamicSubagent({
+    required String requestId,
+    required String conversationId,
+    required String agentId,
+    bool Function()? shouldCancel,
+  }) async {
+    await _subagents.restoreRequest(requestId);
+    beginAgentRequest(requestId);
+    try {
+      await runZoned(
+        () => _spawnDynamicSubagent(
+          agentId,
+          isCancelled: () => shouldCancel?.call() == true ||
+              _cancelledDynamicSubagentIds.contains(
+                _subagents.get(requestId, agentId)?.taskId ?? '',
+              ),
+        ),
+        zoneValues: <Object, Object?>{
+          _requestIdZoneKey: requestId,
+          _conversationIdZoneKey: conversationId,
+        },
+      );
+    } finally {
+      endAgentRequest(requestId);
+      final record = _subagents.get(requestId, agentId);
+      if (record != null) _cancelledDynamicSubagentIds.remove(record.taskId);
+    }
+  }
+
+  /// Requests cancellation of one queued or running dynamic child.
+  Future<bool> cancelDynamicSubagent(String taskId) async {
+    final record = _subagents.findByTaskId(taskId);
+    if (record == null) return false;
+    if (record.status == 'pending' && record.isAsync) {
+      return _subagents.cancelQueuedByTaskId(taskId);
+    }
+    if (record.status != 'running') return false;
+    _cancelledDynamicSubagentIds.add(taskId);
+    return true;
+  }
+
   Future<Map<String, dynamic>> _spawnDynamicSubagent(
     String agentId, {
     bool Function()? isCancelled,
@@ -1459,7 +1529,7 @@ ${queuedMessages.isEmpty ? 'لا توجد رسائل.' : queuedMessages}
         () => _processInput(
           context.isEmpty ? childPrompt : '$context\n\nمهمة الوكيل: $childPrompt',
           allowedTools: allowedTools,
-          shouldCancel: () => _cancelRequested || isCancelled?.call() == true,
+          shouldCancel: () => _cancelRequested || isCancelled?.call() == true || _cancelledDynamicSubagentIds.contains(child.taskId),
         ),
         zoneValues: <Object, Object?>{
           _requestIdZoneKey: requestId,
