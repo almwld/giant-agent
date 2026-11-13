@@ -1038,6 +1038,7 @@ $evidence
     final taskId = '${requestId}_dynamic_${agentId}';
     if (!_scheduledSubagentIds.add(taskId)) return Future<void>.value();
     return _requestQueue.enqueue(() async {
+      AgentEventBus.instance.bindRequest(requestId, conversationId);
       _activeRequestId = requestId;
       _activeSubagentParentRequestId = requestId;
       _activeSubagentIds.add(taskId);
@@ -1064,6 +1065,7 @@ $evidence
           _activeSubagentParentRequestId = null;
         }
         _activeRequestId = null;
+        AgentEventBus.instance.unbindRequest(requestId);
         if (_state != AgentKernelState.failed) _state = AgentKernelState.idle;
       }
     });
