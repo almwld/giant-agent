@@ -75,8 +75,8 @@ class ToolManager {
 
     AgentToolDefinition(
       name: 'create_subagent',
-      description: 'تسجيل وكيل فرعي جديد دون تشغيله. استخدم id وtitle وprompt وagent_type وdepends_on؛ لا ينشئ الوكيل الفرعي وكلاء آخرين.',
-      example: '{"name":"create_subagent","arguments":{"id":"research","title":"بحث","prompt":"افحص مصادر المشروع ذات الصلة","agent_type":"explore","depends_on":[]}}',
+      description: 'تسجيل وكيل فرعي جديد دون تشغيله. استخدم id وtitle وprompt وagent_type وdepends_on، ويمكن تحديد icon وmotto وindex لبيانات بطاقة العامل؛ لا ينشئ الوكيل الفرعي وكلاء آخرين.',
+      example: '{"name":"create_subagent","arguments":{"id":"research","title":"بحث","prompt":"افحص مصادر المشروع ذات الصلة","agent_type":"explore","depends_on":[],"icon":"search","motto":"جمع الأدلة","index":0}}',
     ),
     AgentToolDefinition(
       name: 'spawn_subagent',
