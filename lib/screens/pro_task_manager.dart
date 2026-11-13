@@ -109,7 +109,7 @@ class _ProTaskManagerState extends State<ProTaskManager> {
                   child: RefreshIndicator(
                     onRefresh: () async => _control.refresh(),
                     child: tasks.isEmpty
-                      ? const ListView(children: [SizedBox(height: 180), Center(child: Text('No persisted tasks yet', style: TextStyle(color: ProTheme.textSecondary)))])
+                      ? ListView(children: const [SizedBox(height: 180), Center(child: Text('No persisted tasks yet', style: TextStyle(color: ProTheme.textSecondary)))])
                       : ListView.builder(
                           padding: const EdgeInsets.all(12),
                           itemCount: tasks.length,
