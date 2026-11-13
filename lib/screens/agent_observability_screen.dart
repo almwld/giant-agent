@@ -47,6 +47,7 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
 
   void _onSearchChanged(String value) {
     _searchDebounce?.cancel();
+    if (mounted) setState(() {});
     _searchDebounce = Timer(const Duration(milliseconds: 300), _refresh);
   }
 
