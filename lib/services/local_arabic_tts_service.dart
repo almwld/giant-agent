@@ -8,7 +8,8 @@ import 'package:crypto/crypto.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
-import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
+import 'package:sherpa_onnx/src/init_native.dart' as sherpaInit;
+import 'package:sherpa_onnx/src/tts.dart' as sherpa;
 
 import 'local_voice_text_chunker.dart';
 
@@ -312,7 +313,7 @@ Future<void> _sherpaTtsWorker(Map<String, Object> args) async {
   final mainPort = args['mainPort']! as SendPort;
   final commands = ReceivePort();
   mainPort.send(commands.sendPort);
-  sherpa.initBindings();
+  sherpaInit.initNativeBindings(null);
   final engine = sherpa.OfflineTts(
     sherpa.OfflineTtsConfig(
       model: sherpa.OfflineTtsModelConfig(
