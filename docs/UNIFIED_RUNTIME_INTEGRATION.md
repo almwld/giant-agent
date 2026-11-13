@@ -102,7 +102,7 @@ The two kernel classes are deliberately distinguished by responsibility: the dur
 | Event bus and timeline | `AgentEventBus`, typed `AgentTimelineEvent`, `AgentKernelStore` | One factual event stream and one durable journal. No private chain-of-thought is stored. |
 | Local diagnostics | `AgentObservabilityScreen` via `AgentService` | Read-only projection of the same store used by execution. |
 | Android long-running lifecycle | `AgentBackgroundExecutionService`, native `AgentRuntime` | Reuse shared runtime; verify process-death/background behavior on device. |
-| Offline Arabic voice | Whisper ASR, Nabra TTS, shared chat/runtime | Preserve local-only policy and current half-duplex limitation until VAD/AEC is implemented and tested. |
+| Offline Arabic voice | `VoiceCaptureBridge`, `LocalSpeechRecognitionService`, Whisper ASR, Nabra TTS, shared chat/runtime | Android 16 kHz capture, energy VAD, platform AEC/NS/AGC when available, capture during TTS and AEC-gated automatic barge-in; device qualification and neural VAD/software AEC remain open. |
 
 ## 4. Multiple databases are not automatically duplicates
 
