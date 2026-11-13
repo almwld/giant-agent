@@ -582,6 +582,24 @@ class ModelService {
           final deleted = _subagents.get(_activeRequestId, agentId);
           result = <String, dynamic>{'ok': deleted != null && deleted.dismissed, 'subagent': deleted?.toMap()};
           break;
+        case 'report_subagent_progress':
+          final agentId = args['id']?.toString() ?? '';
+          final rawProgress = args['progress_percent'];
+          if (rawProgress is! int) {
+            throw const FormatException('progress_percent must be an integer from 0 to 99.');
+          }
+          await _subagents.updateProgress(
+            _activeRequestId,
+            agentId,
+            rawProgress,
+            details: args['details']?.toString(),
+          );
+          final updated = _subagents.get(_activeRequestId, agentId);
+          result = <String, dynamic>{
+            'ok': true,
+            'subagent': updated?.toMap(),
+          };
+          break;
         case 'check_subagent_status':
           final agentId = args['id']?.toString() ?? '';
           final snapshot = _subagents.get(_activeRequestId, agentId);
