@@ -139,9 +139,11 @@ of wholly missing features.
 
 ### Remaining engineering and evidence gaps
 
-- Enforce and test explicit maximum child depth/count, admission quotas, and
-  workspace leases. The current shared FIFO serializes local inference; it is
-  not a parallel-worker scheduler.
+- The lifecycle manager enforces a six-child request limit, and child-role
+  allow-lists prevent nested child creation. Add race-focused tests for those
+  guards and implement workspace leases before allowing concurrent workers.
+  The current shared FIFO serializes local inference; it is not a
+  parallel-worker scheduler.
 - Add concurrency/race tests for duplicate background spawn, cancellation
   before dequeue, cancellation during a running tool, process restart during
   queue admission, and parent/child terminal-state ordering.
