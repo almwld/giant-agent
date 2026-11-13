@@ -10,15 +10,17 @@ class AnalyticsService {
   factory AnalyticsService() => _instance;
   AnalyticsService._internal();
 
-  final AgentKernelStore _store = AgentKernelStore();
+  AgentKernelStore? _store;
+  AgentKernelStore get _canonicalStore => _store ??= AgentKernelStore();
   Future<void>? _initialization;
   int _sessionSequence = 0;
 
-  Future<void> init() {
+  Future<void> init({AgentKernelStore? store}) {
+    if (store != null) _store = store;
     final active = _initialization;
     if (active != null) return active;
     late final Future<void> shared;
-    shared = _store.database.then((_) {}).whenComplete(() {
+    shared = _canonicalStore.database.then((_) {}).whenComplete(() {
       if (identical(_initialization, shared)) _initialization = null;
     });
     _initialization = shared;
@@ -43,7 +45,7 @@ class AnalyticsService {
         safe[entry.key] = value;
       }
     }
-    await _store.appendAnalyticsEvent(eventType: eventType, data: safe);
+    await _canonicalStore.appendAnalyticsEvent(eventType: eventType, data: safe);
   }
 
   Future<void> startSession() async {
@@ -61,7 +63,7 @@ class AnalyticsService {
   /// Reads counts from the same SQLite journal used by AgentService/Timeline.
   Future<Map<String, dynamic>> getStats() async {
     await init();
-    final db = await _store.database;
+    final db = await _canonicalStore.database;
     final eventCount = await db.rawQuery(
       'SELECT COUNT(*) AS count FROM agent_events',
     );
