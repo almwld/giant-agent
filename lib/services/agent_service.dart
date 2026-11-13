@@ -266,7 +266,11 @@ class AgentService {
         'duration_ms': stopwatch.elapsedMilliseconds,
       }).catchError((Object _) {}));
       await _backgroundProgressTail;
-      await AgentBackgroundExecutionService.instance.endTask();
+      if (_executionKernel.isExecuting) {
+        unawaited(_releaseAsyncChildrenForegroundWhenIdle());
+      } else {
+        await AgentBackgroundExecutionService.instance.endTask();
+      }
     }
   }
 
