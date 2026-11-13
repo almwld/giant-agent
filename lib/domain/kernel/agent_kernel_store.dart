@@ -425,10 +425,109 @@ class AgentKernelStore {
 
   /// Marks children interrupted after process death. Side effects are never replayed.
   Future<int> reconcileInterruptedSubagents() async {
+    var recoveredCount = 0;
+    final db = await database;
+
+    // The request-scoped runtime snapshot is written before lifecycle events
+    // are published. Reconcile it first so a crash between the state write and
+    // event projection cannot leave a started child looking safely pending.
+    final runtimeRows = await db.query('agent_subagent_runtime_state');
+    for (final row in runtimeRows) {
+      final requestId = row['request_id']?.toString() ?? '';
+      if (requestId.isEmpty) continue;
+      Map<String, Object?>? state;
+      try {
+        final decoded = jsonDecode(row['payload_json']! as String);
+        if (decoded is! Map || decoded['records'] is! Map) continue;
+        state = Map<String, Object?>.from(decoded);
+      } on FormatException {
+        // Preserve malformed durable state for diagnosis.
+        continue;
+      }
+      final rawRecords = state['records'];
+      if (rawRecords is! Map) continue;
+      final records = Map<String, Object?>.from(rawRecords);
+      var stateChanged = false;
+      for (final entry in records.entries.toList()) {
+        if (entry.value is! Map) continue;
+        final record = Map<String, dynamic>.from(entry.value as Map);
+        final status = record['status']?.toString() ?? '';
+        final needsRecovery = status == 'running' ||
+            (status == 'pending' && record['is_async'] != true);
+        if (!needsRecovery) continue;
+
+        final now = DateTime.now().toUtc().toIso8601String();
+        record
+          ..['status'] = 'interrupted'
+          ..['wire_status'] = 'STATUS_TERMINATED'
+          ..['error'] = 'Process restarted before this child reached a terminal state.'
+          ..['updated_at'] = now;
+        records[entry.key] = record;
+        stateChanged = true;
+
+        final taskId = record['task_id']?.toString() ?? '';
+        if (taskId.isEmpty) continue;
+        final dependencies = (record['depends_on'] as List? ?? const <dynamic>[])
+            .map((value) => '${requestId}_dynamic_${value.toString()}')
+            .toList(growable: false);
+        final snapshot = <String, dynamic>{
+          'id': taskId,
+          'kind': 'subagent',
+          'parent_request_id': requestId,
+          'subagent_id': record['id']?.toString() ?? entry.key.toString(),
+          'conversation_id': record['conversation_id']?.toString() ?? 'global',
+          'agent_type': record['agent_type']?.toString() ?? 'unknown',
+          'title': record['title']?.toString() ?? taskId,
+          'icon': record['icon']?.toString() ?? 'smart_toy',
+          'motto': record['motto']?.toString() ?? '',
+          'index': record['index'] ?? 0,
+          'is_async': record['is_async'] == true,
+          'prompt': record['prompt']?.toString() ?? '',
+          'depends_on': dependencies,
+          'status': 'interrupted',
+          'last_event_type': 'subagent_interrupted_on_restart',
+          'last_details': 'Process restarted while child execution was active or not yet safely admitted.',
+          'last_result': record['result'],
+          'is_dismissed': record['dismissed'] == true,
+          'created_at': record['created_at']?.toString() ?? now,
+          'updated_at': now,
+          'recovery_requires_explicit_resume': true,
+        };
+        await saveTaskWithEvents(snapshot, events: <Map<String, Object?>>[
+          <String, Object?>{
+            'type': 'subagent_interrupted_on_restart',
+            'status': 'interrupted',
+            'payload': <String, Object?>{
+              'request_id': requestId,
+              'subagent_id': snapshot['subagent_id'],
+              'is_async': snapshot['is_async'],
+              'replay': false,
+              'requires_explicit_resume': true,
+            },
+          },
+        ]);
+        recoveredCount++;
+      }
+      if (stateChanged) {
+        state['records'] = records;
+        state['updated_at'] = DateTime.now().toUtc().toIso8601String();
+        await db.update(
+          'agent_subagent_runtime_state',
+          <String, Object?>{
+            'payload_json': jsonEncode(state),
+            'updated_at': state['updated_at'],
+          },
+          where: 'request_id = ?',
+          whereArgs: [requestId],
+        );
+      }
+    }
+
+    // Reconcile legacy/static child projections that do not have a matching
+    // request-scoped dynamic record.
     final snapshots = (await getTasks())
         .where((task) => task['kind'] == 'subagent' &&
-            (task['status'] == 'running' ||
-                (task['status'] == 'pending' && task['is_async'] != true)))
+            {'pending', 'running'}.contains(task['status']))
         .toList(growable: false);
     for (final task in snapshots) {
       final now = DateTime.now().toUtc().toIso8601String();
@@ -450,8 +549,9 @@ class AgentKernelStore {
           },
         },
       ]);
+      recoveredCount++;
     }
-    return snapshots.length;
+    return recoveredCount;
   }
 
   Future<List<Map<String, dynamic>>> subagentsForRequest(String requestId) async =>
