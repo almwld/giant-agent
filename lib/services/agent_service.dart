@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import '../agent/architecture/agent_kernel.dart' as execution;
 import '../agent/architecture/agent_timeline_event.dart';
 import '../agent/architecture/agent_event_bus.dart';
@@ -7,6 +8,8 @@ import '../domain/kernel/agent_kernel_store.dart';
 import '../domain/kernel/agent_observability.dart';
 import '../domain/kernel/subagent_recovery_coordinator.dart';
 import 'model_service.dart';
+import 'stats_service.dart';
+import 'performance_service.dart';
 import 'agent_background_execution_service.dart';
 import '../domain/output/output_engine.dart';
 import '../domain/mcp/mcp_client.dart';
@@ -195,6 +198,7 @@ class AgentService {
     String conversationId = 'global',
     String? requestId,
   }) async {
+    final stopwatch = Stopwatch()..start();
     await initialize();
     await AgentBackgroundExecutionService.instance.beginTask(prompt);
     try {
@@ -203,6 +207,9 @@ class AgentService {
           suppliedRequestId == null || suppliedRequestId.isEmpty
               ? '${DateTime.now().microsecondsSinceEpoch}_${++_requestSequence}'
               : suppliedRequestId;
+      // These are projections of the canonical durable request path: they do
+      // not enqueue work, persist prompts, or create a second execution journal.
+      await StatsService().incrementMessageCount();
       final record = await _durableKernel.submit(
         id: resolvedRequestId,
         prompt: prompt,
@@ -216,6 +223,8 @@ class AgentService {
       }
       return record.result ?? '';
     } finally {
+      stopwatch.stop();
+      PerformanceService().recordResponseTime(stopwatch.elapsedMilliseconds);
       await _backgroundProgressTail;
       await AgentBackgroundExecutionService.instance.endTask();
     }
