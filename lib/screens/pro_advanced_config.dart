@@ -19,6 +19,7 @@ class _ProAdvancedConfigState extends State<ProAdvancedConfig> {
   final _control = ProControlCenter.instance;
   ModelProviderMode? _mode;
   bool _busy = true;
+  bool _hasStoredApiKey = false;
   final _key = TextEditingController();
   final _model = TextEditingController();
 
@@ -32,10 +33,12 @@ class _ProAdvancedConfigState extends State<ProAdvancedConfig> {
     try {
       final mode = await ModelProviderSettings.instance.getMode();
       final model = await OpenAICompatibleProvider.instance.getModel();
+      final savedApiKey = await OpenAICompatibleProvider.instance.getApiKey();
       if (!mounted) return;
       setState(() {
         _mode = mode;
         _model.text = model;
+        _hasStoredApiKey = savedApiKey?.trim().isNotEmpty == true;
         _busy = false;
       });
     } catch (error) {
@@ -62,7 +65,19 @@ class _ProAdvancedConfigState extends State<ProAdvancedConfig> {
   Future<void> _saveProvider() async {
     try {
       if (_mode == ModelProviderMode.openRouter) {
-        await OpenAICompatibleProvider.instance.configure(apiKey: _key.text, model: _model.text);
+        // An empty field means "keep the securely stored key", not replace it.
+        // Only a newly entered key is passed to configure when one is supplied.
+        final enteredKey = _key.text.trim();
+        final savedKey = await OpenAICompatibleProvider.instance.getApiKey();
+        final apiKey = enteredKey.isNotEmpty ? enteredKey : (savedKey ?? '');
+        await OpenAICompatibleProvider.instance.configure(
+          apiKey: apiKey,
+          model: _model.text,
+        );
+        if (enteredKey.isNotEmpty && mounted) {
+          setState(() => _hasStoredApiKey = true);
+          _key.clear();
+        }
       } else {
         await ModelProviderSettings.instance.setMode(ModelProviderMode.local);
       }
@@ -137,7 +152,16 @@ class _ProAdvancedConfigState extends State<ProAdvancedConfig> {
                         onChanged: (value) => setState(() => _mode = value),
                       ),
                       if (_mode == ModelProviderMode.openRouter) ...[
-                        TextField(controller: _key, obscureText: true, decoration: const InputDecoration(labelText: 'OpenRouter API key', helperText: 'Stored securely; not displayed after saving.')),
+                        TextField(
+                          controller: _key,
+                          obscureText: true,
+                          decoration: InputDecoration(
+                            labelText: 'OpenRouter API key',
+                            helperText: _hasStoredApiKey
+                                ? 'A key is already stored securely. Leave blank to keep it, or enter a replacement.'
+                                : 'Stored securely after saving.',
+                          ),
+                        ),
                         TextField(controller: _model, decoration: const InputDecoration(labelText: 'Model ID')),
                       ],
                       Align(
