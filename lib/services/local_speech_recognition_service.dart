@@ -8,8 +8,8 @@ import 'package:permission_handler/permission_handler.dart';
 
 /// On-device speech recognition for Arabic conversational turns.
 ///
-/// The Flutter 3.16-compatible whisper.cpp plugin records to an app-private
-/// WAV file and transcribes it locally after the user finishes the utterance.
+/// Android captures 16 kHz PCM through the native AEC/VAD bridge when present;
+/// Whisper.cpp transcribes the resulting app-private WAV entirely on-device.
 class LocalSpeechRecognitionService {
   LocalSpeechRecognitionService._();
 
@@ -86,7 +86,7 @@ class LocalSpeechRecognitionService {
     if (!_recording) return '';
     _recording = false;
     final path = _nativeCapture
-        ? await _capture.invokeMethod<String>('stop') ?? _recordingPath
+        ? await _capture.invokeMethod<String>('stop')
         : await _whisper.stopRecording();
     _recordingPath = null;
     _nativeCapture = false;
