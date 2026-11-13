@@ -23,6 +23,7 @@ import '../models/chat_session.dart';
 import 'dart:convert';
 import '../services/local_speech_recognition_service.dart';
 import '../services/local_arabic_tts_service.dart';
+import '../services/model_provider_settings.dart';
 import '../services/voice_output_service.dart';
 import '../services/openai_compatible_provider.dart';
 import '../services/model_provider_settings.dart';
@@ -74,6 +75,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _finalizingVoiceInput = false;
   bool _voiceOrbVisible = false;
   bool _voiceRequestActive = false;
+  ModelProviderMode? _previousVoiceProviderMode;
   AgentState _voiceOrbState = AgentState.idle;
   bool _webSearchEnabled = false;
   bool _agentBrowserDialogOpen = false;
@@ -1448,7 +1450,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<String> _executeChatPrompt(String prompt, {String? requestId}) async {
     var enrichedPrompt = _contextualPrompt(prompt);
-    if (_webSearchEnabled) {
+    if (_webSearchEnabled && !_voiceRequestActive) {
       try {
         final results = await WebSearchService.instance.search(prompt, limit: 5);
         enrichedPrompt += '\n\nنتائج البحث المباشر على الويب (استخدم المصادر التي تدعم الإجابة وأدرج روابطها):\n'
@@ -1458,14 +1460,14 @@ class _ChatScreenState extends State<ChatScreen> {
             + '. وضّح أن البحث لم ينجح ولا تخترع نتائج.';
       }
     }
-    if (_includeGithubContext) {
+    if (_includeGithubContext && !_voiceRequestActive) {
       try {
         enrichedPrompt += '\n\n' + await GitHubRepositoryService.instance.buildContext();
       } catch (error) {
         enrichedPrompt += '\n\nتعذر جلب سياق مستودع GitHub: ' + error.toString();
       }
     }
-    if (_agentModeEnabled) {
+    if (_agentModeEnabled && !_voiceRequestActive) {
       final tracked = await TaskManager().createTask(prompt, conversationId: _currentSessionId);
       return _runTrackedTask(enrichedPrompt, taskId: tracked['id'].toString(), requestId: requestId);
     }
@@ -1845,12 +1847,75 @@ class _ChatScreenState extends State<ChatScreen> {
       await _voiceOutput.stop();
       if (_isLoading && _agentModeEnabled) await _cancelAgent();
     } catch (_) {}
+    await _restoreVoiceProviderMode();
     if (!mounted) return;
     setState(() {
       _isListening = false;
       _voiceOrbVisible = false;
       _voiceOrbState = AgentState.idle;
     });
+  }
+
+  Future<bool> _ensureLocalVoiceModel() async {
+    final settings = ModelProviderSettings.instance;
+    final currentMode = await settings.getMode();
+    final loaded = await _modelService.isModelLoaded();
+    if (!loaded) {
+      if (mounted) {
+        await showDialog<void>(
+          context: context,
+          builder: (context) => AlertDialog(
+            backgroundColor: GiantPalette.surface,
+            title: const Text('النموذج المحلي غير جاهز'),
+            content: const Text(
+              'المحادثة الصوتية لا تستخدم OpenRouter أو أي API. حمّل نموذج GGUF محلياً وافتحه أولاً، ثم أعد تشغيل المساعد الصوتي.',
+              style: TextStyle(color: Colors.white70, height: 1.45),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('حسناً'),
+              ),
+            ],
+          ),
+        );
+      }
+      return false;
+    }
+    if (currentMode == ModelProviderMode.local) return true;
+
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: GiantPalette.surface,
+        title: const Text('تفعيل المحادثة المحلية'),
+        content: const Text(
+          'المزود الحالي سحابي. سيحوّل وضع الصوت جلسة المحادثة مؤقتاً إلى نموذج GGUF المحلي، ويعطّل البحث على الويب وسياق GitHub والأدوات الخارجية. لن يُرسل الصوت أو النص إلى OpenRouter.',
+          style: TextStyle(color: Colors.white70, height: 1.45),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('استخدام النموذج المحلي'),
+          ),
+        ],
+      ),
+    );
+    if (accepted != true) return false;
+    _previousVoiceProviderMode ??= currentMode;
+    await settings.setMode(ModelProviderMode.local);
+    return true;
+  }
+
+  Future<void> _restoreVoiceProviderMode() async {
+    final previous = _previousVoiceProviderMode;
+    if (previous == null) return;
+    _previousVoiceProviderMode = null;
+    await ModelProviderSettings.instance.setMode(previous);
   }
 
   Future<bool> _prepareLocalSpeechModel() async {
@@ -2058,6 +2123,8 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
     if (!mounted) return;
+    final localReady = await _ensureLocalVoiceModel();
+    if (!localReady || !mounted) return;
     _finalizingVoiceInput = false;
     _voiceRequestActive = false;
     setState(() {
