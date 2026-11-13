@@ -371,8 +371,10 @@ class SubagentLifecycleManager {
     Object error, {
     bool interrupted = false,
   }) async {
+    await restoreRequest(requestId);
     final record = _require(requestId, agentId);
-    if (record.status != 'running') return;
+    if (record.status != 'running' &&
+        !(record.status == 'pending' && record.isAsync)) return;
     record
       ..status = interrupted ? 'interrupted' : 'failed'
       ..error = error.toString();
