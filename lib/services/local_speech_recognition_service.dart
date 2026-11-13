@@ -123,7 +123,6 @@ class LocalSpeechRecognitionService {
       return;
     }
     final path = await _whisper.stopRecording();
-    _recordingPath = null;
     final recording = File(path);
     if (await recording.exists()) await recording.delete();
   }
