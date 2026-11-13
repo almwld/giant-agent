@@ -150,11 +150,11 @@ class AgentService {
           if (event['is_async'] == true &&
               const {'subagent_completed', 'subagent_failed', 'subagent_interrupted', 'subagent_cancelled'}
                   .contains(eventType)) {
-            try {
-              await _refreshDetachedOutputs(event['request_id']?.toString() ?? '');
-            } catch (_) {
+            unawaited(_refreshDetachedOutputs(
+              event['request_id']?.toString() ?? '',
+            ).catchError((Object _) {
               // A secondary artifact refresh must not block lifecycle journaling.
-            }
+            }));
           }
         }
         await _store.appendRequestEvent(event);
