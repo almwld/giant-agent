@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:giant_agent_x/domain/kernel/agent_kernel.dart'
     as durable;
 import 'package:giant_agent_x/domain/kernel/agent_kernel_store.dart';
@@ -97,6 +98,7 @@ void main() {
 
   late Directory directory;
   setUp(() async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
     directory = await Directory.systemTemp.createTemp('agent-service-durable-');
   });
 
