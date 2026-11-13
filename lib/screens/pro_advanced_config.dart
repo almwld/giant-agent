@@ -30,7 +30,6 @@ class _ProAdvancedConfigState extends State<ProAdvancedConfig> {
 
   Future<void> _load() async {
     try {
-      await _control.initialize();
       final mode = await ModelProviderSettings.instance.getMode();
       final model = await OpenAICompatibleProvider.instance.getModel();
       if (!mounted) return;
@@ -43,6 +42,13 @@ class _ProAdvancedConfigState extends State<ProAdvancedConfig> {
       if (!mounted) return;
       setState(() => _busy = false);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
+    }
+    try {
+      await _control.initialize();
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Runtime status unavailable: $error')),
+      );
     }
   }
 
