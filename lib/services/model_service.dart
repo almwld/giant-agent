@@ -1435,6 +1435,14 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
     bool Function()? shouldCancel,
   }) async {
     await _subagents.restoreRequest(requestId);
+    final queuedRecord = _subagents.get(requestId, agentId);
+    if (queuedRecord == null ||
+        queuedRecord.status != 'pending' ||
+        !queuedRecord.isAsync) return;
+    if (shouldCancel?.call() == true) {
+      await _subagents.cancelQueuedByTaskId(queuedRecord.taskId);
+      return;
+    }
     beginAgentRequest(requestId);
     try {
       await runZoned(
