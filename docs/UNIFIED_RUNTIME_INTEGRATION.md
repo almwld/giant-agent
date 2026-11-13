@@ -119,6 +119,7 @@ The repository has several independent histories. A branch being present is not 
 
 | PR | Scope | Decision |
 |---:|---|---|
+| #56 | Searchable Gain Agents timeline; stacked directly on #55 | Adds parameterized local event search through the existing durable journal and AgentService facade; preserves stable cursor pagination and type/status filters. Current CI is required. |
 | #55 | Local Arabic Whisper/Nabra voice path; currently the base of this integration branch | Preserve in full. Keep open; do not merge automatically. |
 | #53 | Native Gain Agents observability journal | Already included in PR #55 ancestry. Preserve as dependency until its own review/merge decision. |
 | #54 | CI verification of native Gain observability | Verification-only branch; retain its useful workflow evidence, avoid duplicating implementation. |
@@ -185,9 +186,22 @@ This search is against the repository default branch and is not a substitute for
 
 ## 10. Immediate follow-up implementation queue
 
-- Port the useful PR #36 Timeline interactions onto the existing durable event query contract: text search, event-type filtering, normalized progress, duration details and explicit per-tool cancellation affordances. Keep one SQLite journal.
+- [x] Port text search from the useful PR #36 Timeline interaction set onto the existing durable event query contract, with parameterized local SQL, debounced UI input and regression coverage. Keep one SQLite journal.
+- [ ] Port normalized progress, duration details and explicit per-tool cancellation affordances from PR #36 onto the existing event journal/UI; do not import its parallel timeline database.
 - Trace every `ToolManager` definition to its switch/handler in `ModelService`; classify unsupported media providers and other missing external capabilities visibly instead of presenting adapters as connected services.
 - Audit all entry points for direct `ModelService.processChat` use. Keep it only for explicitly simple conversational paths; all autonomous/tool-capable tasks must go through `AgentService.runTask`.
 - Review the overlapping statistics/performance services and connect their useful metrics to one source of truth without losing current widget contracts.
 - Review the dormant memory stores and the legacy transcript database with data-preserving migrations; do not delete, rename or overwrite any of them.
 - Port validated Android launch and emulator smoke fixes from PRs #27 and #24, and validate the Codemagic workflow from PR #32 as an additional CI path rather than a replacement.
+
+
+## 11. Current integration increment — PR #56
+
+- Working branch: `integration/unified-agent-runtime-v2`, based on the current PR #55 head.
+- PR #56 adds case-insensitive search across the existing persisted event metadata, exposed through `AgentService.observabilityEventsForConversation`.
+- The screen debounces search input and retains the existing event-type/status filters and row-id cursor pagination.
+- Search is local to the current conversation query; the query is parameterized and does not add a new persistence store or event payload.
+- Added regression assertions for case-insensitive matching and conversation isolation.
+- CI workflows now include the stacked integration branch and PR base so this branch receives tests and Android build validation.
+- No existing runtime, model, database, source file, provider or workflow was removed.
+- Remaining PR #36 interactions are progress normalization, duration details and explicit per-tool cancellation UI; these must use the existing event and cancellation owners.
