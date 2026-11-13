@@ -147,6 +147,15 @@ class AgentService {
         if ((event['task_id']?.toString() ?? '').isNotEmpty &&
             eventType.startsWith('subagent_')) {
           await _store.recordSubagentEvent(event);
+          if (event['is_async'] == true &&
+              const {'subagent_completed', 'subagent_failed', 'subagent_interrupted', 'subagent_cancelled'}
+                  .contains(eventType)) {
+            try {
+              await _refreshDetachedOutputs(event['request_id']?.toString() ?? '');
+            } catch (_) {
+              // A secondary artifact refresh must not block lifecycle journaling.
+            }
+          }
         }
         await _store.appendRequestEvent(event);
       }).catchError((Object _) {
@@ -161,6 +170,32 @@ class AgentService {
     // callbacks append their rows before waiting for the serialized write tail.
     await Future<void>.delayed(Duration.zero);
     await _journalTail;
+  }
+
+  /// Refreshes parent artifacts after a detached child reaches a terminal state.
+  /// The parent request may still be finalizing when the child event arrives.
+  Future<void> _refreshDetachedOutputs(String requestId) async {
+    if (requestId.trim().isEmpty) return;
+    KernelRequestRecord? request;
+    for (var attempt = 0; attempt < 100; attempt++) {
+      request = await _store.getRequest(requestId);
+      if (request != null &&
+          {'completed', 'interrupted', 'failed'}.contains(request.status)) {
+        break;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    if (request == null ||
+        !{'completed', 'interrupted', 'failed'}.contains(request.status)) {
+      return;
+    }
+    await _outputEngine.finalize(
+      requestId: request.id,
+      conversationId: request.conversationId,
+      finalText: request.result ?? '',
+      requestStatus: request.status,
+      failure: request.error,
+    );
   }
 
   Future<void> _initialize() async {
