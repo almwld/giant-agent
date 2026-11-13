@@ -435,7 +435,7 @@ class AgentKernelStore {
     for (final row in runtimeRows) {
       final requestId = row['request_id']?.toString() ?? '';
       if (requestId.isEmpty) continue;
-      Map<String, Object?>? state;
+      late Map<String, Object?> state;
       try {
         final decoded = jsonDecode(row['payload_json']! as String);
         if (decoded is! Map || decoded['records'] is! Map) continue;
