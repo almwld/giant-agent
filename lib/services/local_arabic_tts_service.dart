@@ -19,10 +19,8 @@ class LocalArabicTtsService {
 
   static final LocalArabicTtsService instance = LocalArabicTtsService._();
 
-  static const String modelRepo =
-      'https://huggingface.co/marwanelamami/nabra-82m-sherpa-onnx/resolve/main';
-  static const String espeakArchiveUrl =
-      'https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/espeak-ng-data.tar.bz2';
+  static const String modelArchiveUrl =
+      'https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/nabra-82m-arabic-int8.tar.bz2';
 
   final AudioPlayer _player = AudioPlayer();
   final http.Client _client = http.Client();
@@ -101,42 +99,26 @@ class LocalArabicTtsService {
     _downloading = true;
     try {
       final dir = await _directory();
+      final archiveFile = File('${dir.path}/nabra-82m-arabic-int8.tar.bz2');
       await _download(
-        Uri.parse('$modelRepo/model.int8.onnx'),
-        File('${dir.path}/model.int8.onnx'),
-        onProgress: (p) => onProgress?.call('model.int8.onnx', p),
-      );
-      await _download(
-        Uri.parse('$modelRepo/voices.bin'),
-        File('${dir.path}/voices.bin'),
-        onProgress: (p) => onProgress?.call('voices.bin', p),
-      );
-      await _download(
-        Uri.parse('$modelRepo/tokens.txt'),
-        File('${dir.path}/tokens.txt'),
-        onProgress: (p) => onProgress?.call('tokens.txt', p),
-      );
-      final archiveFile = File('${dir.path}/espeak-ng-data.tar.bz2');
-      await _download(
-        Uri.parse(espeakArchiveUrl),
+        Uri.parse(modelArchiveUrl),
         archiveFile,
-        onProgress: (p) => onProgress?.call('espeak-ng-data.tar.bz2', p),
+        onProgress: (p) => onProgress?.call('Nabra Arabic model', p),
       );
       final decoded = BZip2Decoder().decodeBytes(await archiveFile.readAsBytes());
       final archive = TarDecoder().decodeBytes(decoded);
-      final espeak = Directory('${dir.path}/espeak-ng-data');
-      await espeak.create(recursive: true);
       for (final entry in archive) {
         if (!entry.isFile) continue;
         final parts = entry.name.replaceAll('\\\\', '/').split('/');
         if (parts.any((part) => part == '..')) {
-          throw const FormatException('Unsafe path in phonemizer archive.');
+          throw const FormatException('Unsafe path in Nabra model archive.');
         }
-        final relative = parts.first == 'espeak-ng-data'
-            ? parts.skip(1).join('/')
-            : parts.join('/');
+        final relativeParts = parts.first == 'nabra-82m-arabic-int8'
+            ? parts.skip(1)
+            : parts;
+        final relative = relativeParts.join('/');
         if (relative.isEmpty) continue;
-        final output = File('${espeak.path}/$relative');
+        final output = File('${dir.path}/$relative');
         await output.parent.create(recursive: true);
         await output.writeAsBytes(entry.content as List<int>, flush: false);
       }
