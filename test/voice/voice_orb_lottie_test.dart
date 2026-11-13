@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:giant_agent_x/screens/ai_voice_assistant_screen.dart';
+import 'package:giant_agent_x/widgets/voice_orb.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
