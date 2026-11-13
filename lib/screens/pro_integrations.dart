@@ -33,7 +33,9 @@ class _ProIntegrationsState extends State<ProIntegrations> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AnimatedBuilder(
+      animation: _control,
+      builder: (context, _) => Scaffold(
       backgroundColor: ProTheme.bgDark,
       appBar: ProAppBar(title: 'Integrations', showAddButton: true, onAddPressed: _openMcpSettings),
       body: Container(
@@ -79,6 +81,6 @@ class _ProIntegrationsState extends State<ProIntegrations> {
           },
         ),
       ),
-    );
+    ));
   }
 }
