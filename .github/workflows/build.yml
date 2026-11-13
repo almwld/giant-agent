@@ -4,7 +4,8 @@ on:
   push:
     branches:
       - main
-      - feat/integrated-agent-completion
+      - feat/      - integration/unified-agent-runtime-v2
+integrated-agent-completion
       - feat/consolidate-sqlite-runtime-v2
       - integration/giant-agent-stabilization
       - fix/voice-terminal-approval-stabilization
