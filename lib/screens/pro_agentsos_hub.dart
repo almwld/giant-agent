@@ -21,6 +21,7 @@ class ProAgentsOsHub extends StatefulWidget {
 
 class _ProAgentsOsHubState extends State<ProAgentsOsHub> {
   int _selectedIndex = 0;
+  final Set<int> _visited = {0};
   late final Future<void> _initialization;
 
   static const List<Widget> _pages = [
@@ -54,7 +55,12 @@ class _ProAgentsOsHubState extends State<ProAgentsOsHub> {
       builder: (context, snapshot) {
         return Scaffold(
           backgroundColor: ProTheme.bgDark,
-          body: IndexedStack(index: _selectedIndex, children: _pages),
+          body: IndexedStack(
+            index: _selectedIndex,
+            children: List<Widget>.generate(_pages.length, (index) =>
+              _visited.contains(index) ? _pages[index] : const SizedBox.shrink(),
+            ),
+          ),
           bottomNavigationBar: BottomNavigationBar(
             currentIndex: _selectedIndex,
             items: _items,
@@ -62,7 +68,10 @@ class _ProAgentsOsHubState extends State<ProAgentsOsHub> {
             backgroundColor: ProTheme.bgCard,
             selectedItemColor: ProTheme.neonGreen,
             unselectedItemColor: ProTheme.textSecondary,
-            onTap: (index) => setState(() => _selectedIndex = index),
+            onTap: (index) => setState(() {
+              _visited.add(index);
+              _selectedIndex = index;
+            }),
           ),
           floatingActionButton: snapshot.hasError
               ? FloatingActionButton.small(
