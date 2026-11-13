@@ -83,10 +83,10 @@ transfer below is a clean implementation based on observed contracts.
 | Explicit recovery of interrupted children | `SubagentRecoveryCoordinator`, `AgentKernel.executeRecoveredSubagent` | Present; requires explicit side-effect disposition |
 | Status query API | `AgentService.subagentStatus` | Present as application API, not a model-facing tool |
 | Safe dismissal | `AgentService.dismissSubagent` | Present as a soft-dismissal; audit history is retained |
-| Dynamic model-facing create/spawn/delete/status operations | No corresponding tool definitions or runtime dispatch in the current branch | Missing |
-| Worker metadata (icon/motto/index) | Current task model stores role/title/prompt/dependencies only | Partial |
-| Progress percentage and async snapshot | Timeline has lifecycle statuses but no dedicated progress percentage or async projection | Partial |
-| Message/wait/ask-user/update-goal operations | No equivalent model-facing tool family | Missing |
+| Dynamic model-facing create/spawn/delete/status operations | `ToolManager`, `ModelService`, `SubagentLifecycleManager` | Present; create and spawn are separate, delete is soft-dismissal |
+| Worker metadata (icon/motto/index) | `DynamicSubagentRecord` stores id/task/parent/conversation/title/prompt/role/dependencies; icon/motto/index are not persisted | Partial |
+| Progress percentage and async snapshot | `DynamicSubagentRecord.progressPercent`, `report_subagent_progress`, `wire_status`, durable state snapshots; no detached async scheduler/snapshot contract | Progress present; async partial |
+| Message/wait/ask-user/update-goal operations | `SubagentLifecycleManager` mailbox, bounded wait, user-input handler and request goal state; dispatched by `ModelService` | Present |
 | MCP Streamable HTTP and typed results | `McpClient`, `McpToolResult` | Present in this branch |
 | Independent tool-call ID and per-call cancellation | `ToolCallRegistry`, timeline `tool_call_id` | Present in this branch |
 | OpenRouter incremental SSE | Existing provider singleton with cancellation and UTF-8-safe SSE parser | Present in this branch |
