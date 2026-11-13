@@ -1846,6 +1846,8 @@ class _ChatScreenState extends State<ChatScreen> {
     _voiceRequestActive = false;
     _bargeInActive = false;
     _bargeInReady = false;
+    await _voiceActivitySubscription?.cancel();
+    _voiceActivitySubscription = null;
     try {
       await _localSpeech.cancelListening();
       await _voiceOutput.stop();
