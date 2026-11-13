@@ -145,8 +145,8 @@ def patch_source(source: str) -> str:
     if start < 0 or end < 0:
         raise RuntimeError("Unexpected flutter_whisper JNI source: audio decoder boundaries not found.")
 
-    source = source.replace(MINIAUDIO_BLOCK, "// miniaudio is not required for canonical PCM16 WAV input.")
     source = source[:start] + DECODER.strip() + "\n\n" + source[end:]
+    source = source.replace(MINIAUDIO_BLOCK, "// miniaudio is not required for canonical PCM16 WAV input.")
     source = source.replace("#include <cstring>", "#include <cstring>\n#include <cstdint>\n#include <fstream>")
     if ('#include "miniaudio.h"' in source or "MINIAUDIO_IMPLEMENTATION" in source or
             "ma_decoder_init_file(" in source or "ma_decoder_read_pcm_frames(" in source or
