@@ -186,11 +186,16 @@ class VoiceCaptureBridge(
                 bytes[index * 2] = (sample and 0xff).toByte()
                 bytes[index * 2 + 1] = ((sample shr 8) and 0xff).toByte()
             }
-            synchronized(lock) {
-                if (!running) break
-                stream.write(bytes)
-                pcmBytes += bytes.size
+            val shouldContinue = synchronized(lock) {
+                if (!running) {
+                    false
+                } else {
+                    stream.write(bytes)
+                    pcmBytes += bytes.size
+                    true
+                }
             }
+            if (!shouldContinue) break
 
             val rms = sqrt(energy / count)
             val threshold = maxOf(650.0, noiseFloor * 2.4)
