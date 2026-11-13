@@ -42,8 +42,12 @@ class LocalArabicTtsService {
   ReceivePort? _workerEvents;
   ReceivePort? _workerExit;
   StreamSubscription<dynamic>? _workerSubscription;
+  StreamSubscription<dynamic>? _workerExitSubscription;
   SendPort? _workerCommands;
   Completer<void>? _workerReady;
+  Completer<void>? _workerExited;
+  Future<void>? _workerStartup;
+  int _workerGeneration = 0;
   final Map<int, Completer<Map<String, Object>>> _pendingSynthesis = {};
 
   bool get isReady => _ready;
@@ -195,14 +199,31 @@ class LocalArabicTtsService {
     }
   }
 
-  Future<void> _ensureWorker() async {
-    if (_worker != null && _workerReady?.isCompleted == true) return;
+  Future<void> _ensureWorker() {
+    if (_worker != null && _workerReady?.isCompleted == true) {
+      return Future<void>.value();
+    }
+    final starting = _workerStartup;
+    if (starting != null) return starting;
+    final future = _startWorker();
+    _workerStartup = future;
+    return future.whenComplete(() {
+      if (identical(_workerStartup, future)) _workerStartup = null;
+    });
+  }
+
+  Future<void> _startWorker() async {
     final dir = await _directory();
     final events = ReceivePort();
     final exit = ReceivePort();
+    final generation = ++_workerGeneration;
+    final ready = Completer<void>();
+    final exited = Completer<void>();
     _workerEvents = events;
     _workerExit = exit;
-    _workerReady = Completer<void>();
+    _workerReady = ready;
+    _workerExited = exited;
+
     _workerSubscription = events.listen((message) {
       if (message is SendPort) {
         _workerCommands = message;
@@ -210,7 +231,7 @@ class LocalArabicTtsService {
       }
       if (message is! Map) return;
       if (message['ready'] == true) {
-        if (!(_workerReady?.isCompleted ?? true)) _workerReady!.complete();
+        if (!ready.isCompleted) ready.complete();
         return;
       }
       final id = message['id'];
@@ -223,18 +244,64 @@ class LocalArabicTtsService {
         completer.complete(Map<String, Object>.from(message));
       }
     });
-    _worker = await Isolate.spawn<Map<String, Object>>(
-      _sherpaTtsWorker,
-      <String, Object>{
-        'mainPort': events.sendPort,
-        'model': '${dir.path}/model.int8.onnx',
-        'voices': '${dir.path}/voices.bin',
-        'tokens': '${dir.path}/tokens.txt',
-        'dataDir': '${dir.path}/espeak-ng-data',
-      },
-      onExit: exit.sendPort,
-    );
-    await _workerReady!.future.timeout(const Duration(seconds: 90));
+
+    _workerExitSubscription = exit.listen((_) {
+      if (!exited.isCompleted) exited.complete();
+      if (!ready.isCompleted) {
+        ready.completeError(StateError('Arabic TTS worker exited before initialization.'));
+      }
+      if (generation != _workerGeneration) return;
+
+      final failure = StateError('Arabic TTS worker stopped unexpectedly.');
+      for (final pending in _pendingSynthesis.values) {
+        if (!pending.isCompleted) pending.completeError(failure);
+      }
+      _pendingSynthesis.clear();
+      _worker = null;
+      _workerCommands = null;
+      _workerReady = null;
+      _workerExited = null;
+      _workerEvents = null;
+      _workerExit = null;
+      unawaited(_workerSubscription?.cancel());
+      _workerSubscription = null;
+      unawaited(_workerExitSubscription?.cancel());
+      _workerExitSubscription = null;
+      events.close();
+      exit.close();
+    });
+
+    try {
+      _worker = await Isolate.spawn<Map<String, Object>>(
+        _sherpaTtsWorker,
+        <String, Object>{
+          'mainPort': events.sendPort,
+          'model': '${dir.path}/model.int8.onnx',
+          'voices': '${dir.path}/voices.bin',
+          'tokens': '${dir.path}/tokens.txt',
+          'dataDir': '${dir.path}/espeak-ng-data',
+        },
+        onExit: exit.sendPort,
+      );
+      await ready.future.timeout(const Duration(seconds: 90));
+    } catch (_) {
+      if (generation == _workerGeneration) {
+        _worker?.kill(priority: Isolate.immediate);
+        _worker = null;
+        _workerCommands = null;
+        _workerReady = null;
+        _workerExited = null;
+        _workerEvents = null;
+        _workerExit = null;
+        await _workerSubscription?.cancel();
+        await _workerExitSubscription?.cancel();
+        _workerSubscription = null;
+        _workerExitSubscription = null;
+        events.close();
+        exit.close();
+      }
+      rethrow;
+    }
   }
 
   Future<Map<String, Object>> _synthesize(String text, double speed) async {
@@ -261,7 +328,7 @@ class LocalArabicTtsService {
     if (worker != null) {
       _workerCommands?.send(const {'dispose': true});
       try {
-        await _workerExit?.first.timeout(const Duration(seconds: 5));
+        await _workerExited?.future.timeout(const Duration(seconds: 5));
       } catch (_) {
         worker.kill(priority: Isolate.immediate);
       }
@@ -273,11 +340,14 @@ class LocalArabicTtsService {
     }
     _pendingSynthesis.clear();
     await _workerSubscription?.cancel();
+    await _workerExitSubscription?.cancel();
     _workerEvents?.close();
     _workerExit?.close();
     _worker = null;
     _workerCommands = null;
     _workerReady = null;
+    _workerExited = null;
+    _workerStartup = null;
     _ready = false;
     await _player.dispose();
     _client.close();
