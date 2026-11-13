@@ -388,6 +388,8 @@ class AgentKernelStore {
       'parent_request_id': requestId,
       'conversation_id': event['session_id']?.toString() ?? 'global',
       'agent_type': event['agent_type']?.toString() ?? 'unknown',
+      'subagent_id': event['subagent_id']?.toString() ?? previous['subagent_id'],
+      'is_async': event['is_async'] == true || previous['is_async'] == true,
       'title': event['title']?.toString() ?? taskId,
       'icon': event['icon']?.toString() ?? previous['icon'] ?? 'smart_toy',
       'motto': event['motto']?.toString() ?? previous['motto'] ?? '',
@@ -421,7 +423,8 @@ class AgentKernelStore {
   Future<int> reconcileInterruptedSubagents() async {
     final snapshots = (await getTasks())
         .where((task) => task['kind'] == 'subagent' &&
-            {'pending', 'running'}.contains(task['status']))
+            (task['status'] == 'running' ||
+                (task['status'] == 'pending' && task['is_async'] != true)))
         .toList(growable: false);
     for (final task in snapshots) {
       final now = DateTime.now().toUtc().toIso8601String();
@@ -451,6 +454,15 @@ class AgentKernelStore {
       (await getTasks())
           .where((task) => task['kind'] == 'subagent' &&
               task['parent_request_id'] == requestId)
+          .toList(growable: false);
+
+  /// Returns detached children admitted but not yet started. These are safe to
+  /// re-enqueue after process restart because no execution side effect began.
+  Future<List<Map<String, dynamic>>> pendingAsyncSubagents() async =>
+      (await getTasks())
+          .where((task) => task['kind'] == 'subagent' &&
+              task['is_async'] == true && task['status'] == 'pending' &&
+              task['is_dismissed'] != true)
           .toList(growable: false);
 
   /// Returns durable child snapshots grouped by the chat/conversation that owns them.
