@@ -84,7 +84,10 @@ class VoiceCaptureBridge(
                 "vad" to true,
                 "aec_available" to AcousticEchoCanceler.isAvailable(),
                 "noise_suppression_available" to NoiseSuppressor.isAvailable(),
-                "automatic_gain_control_available" to AutomaticGainControl.isAvailable()
+                "automatic_gain_control_available" to AutomaticGainControl.isAvailable(),
+                "aec_active" to (echoCanceler?.enabled == true),
+                "noise_suppression_active" to (noiseSuppressor?.enabled == true),
+                "automatic_gain_control_active" to (gainControl?.enabled == true)
             ))
             else -> result.notImplemented()
         }
