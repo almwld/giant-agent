@@ -40,12 +40,14 @@ for new runtime metrics.
 
 ## Voice boundary
 
-The current on-device speech service captures a completed utterance and runs
-local Whisper transcription; the Arabic Nabra TTS service synthesizes speech
-locally. This is not continuous full-duplex voice. VAD, acoustic echo
-cancellation, barge-in arbitration and device-specific latency/thermal
-qualification remain native/audio-pipeline work and must not be represented as
-complete merely because recording and transcription work.
+The current Android voice boundary is `VoiceCaptureBridge` +
+`LocalSpeechRecognitionService` + local Whisper, with local Arabic Nabra TTS.
+The bridge captures 16 kHz PCM, uses platform AEC/NS/AGC when available and
+emits energy-VAD boundaries. Capture stays active during assistant TTS; auto
+barge-in is gated on reported AEC availability, with manual interruption as a
+fallback. Platform effect quality remains device/route dependent; neural VAD,
+custom software AEC and device-specific latency/thermal qualification are not
+claimed complete.
 
 ## Safe extension rules
 
