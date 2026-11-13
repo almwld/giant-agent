@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import '../agent/architecture/agent_kernel.dart' as execution;
 import '../agent/architecture/agent_timeline_event.dart';
 import '../agent/architecture/agent_event_bus.dart';
