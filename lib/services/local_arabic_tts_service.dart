@@ -229,7 +229,7 @@ class LocalArabicTtsService {
 }
 
 Future<Map<String, Object>> _synthesizeNabra(Map<String, Object> args) async {
-  await sherpa.initBindingsAsync();
+  sherpa.initBindings();
   final config = sherpa.OfflineTtsConfig(
     model: sherpa.OfflineTtsModelConfig(
       kokoro: sherpa.OfflineTtsKokoroModelConfig(
