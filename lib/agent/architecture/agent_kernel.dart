@@ -1088,13 +1088,11 @@ $evidence
       title: 'طلب إيقاف الوكيل الفرعي',
       status: 'running',
     );
-    if (recoveredChild) {
-      try {
-        await _models.cancelGeneration();
-      } catch (_) {
-        // The worker observes the targeted cancellation token at its next boundary.
-      }
-    }
+    // Dynamic workers share the single model/runtime queue. Do not call the
+    // global cancelGeneration() here: it would cancel the shared inference
+    // context rather than this child alone. The child's cancellation token is
+    // observed at the next model/tool boundary; active tool calls retain their
+    // own independent tool_call_id cancellation path.
     return true;
   }
 
