@@ -24,6 +24,7 @@ class DynamicSubagentRecord {
     this.icon = 'smart_toy',
     this.motto = '',
     this.index = 0,
+    this.isAsync = false,
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now().toUtc();
 
@@ -44,6 +45,7 @@ class DynamicSubagentRecord {
   final String icon;
   final String motto;
   final int index;
+  bool isAsync;
 
   String get wireStatus => switch (status) {
         'idle' => 'STATUS_IDLE',
@@ -72,7 +74,8 @@ class DynamicSubagentRecord {
         dismissed: map['dismissed'] == true,
         icon: map['icon']?.toString() ?? 'smart_toy',
         motto: map['motto']?.toString() ?? '',
-        index: map['index'] is int ? map['index'] as int : 0,
+        index: map['index'] is num ? (map['index'] as num).toInt() : 0,
+        isAsync: map['is_async'] == true,
         createdAt: DateTime.tryParse(map['created_at']?.toString() ?? ''),
       );
 
@@ -94,6 +97,7 @@ class DynamicSubagentRecord {
         'icon': icon,
         'motto': motto,
         'index': index,
+        'is_async': isAsync,
         'created_at': createdAt.toIso8601String(),
       };
 }
@@ -251,6 +255,60 @@ class SubagentLifecycleManager {
 
   DynamicSubagentRecord? get(String requestId, String agentId) =>
       _requests[requestId]?[agentId];
+
+  DynamicSubagentRecord? findByTaskId(String taskId) {
+    for (final records in _requests.values) {
+      for (final record in records.values) {
+        if (record.taskId == taskId) return record;
+      }
+    }
+    return null;
+  }
+
+  /// Durably queues a child for execution by the shared AgentKernel FIFO.
+  /// The caller must not start a second model runtime or launch a detached Future.
+  Future<DynamicSubagentRecord> enqueueBackground(
+    String requestId,
+    String agentId,
+  ) async {
+    await restoreRequest(requestId);
+    final record = _require(requestId, agentId);
+    if (record.dismissed) throw StateError('Subagent was dismissed.');
+    if (record.status != 'idle' && record.status != 'pending') {
+      throw StateError('Only an idle or pending subagent can be queued.');
+    }
+    for (final dependencyId in record.dependsOn) {
+      final dependency = _require(requestId, dependencyId);
+      if (dependency.status != 'completed') {
+        throw StateError('Dependency $dependencyId has not completed.');
+      }
+    }
+    if (record.isAsync && record.status == 'pending') return record;
+    record
+      ..status = 'pending'
+      ..isAsync = true
+      ..progressPercent = null
+      ..error = null;
+    await _persistRequest(requestId);
+    await _emit(record, 'subagent_queued',
+        details: 'أضيف الوكيل إلى طابور التنفيذ الدائم المشترك.');
+    return record;
+  }
+
+  /// Cancels a queued child without removing its durable audit history.
+  Future<bool> cancelQueuedByTaskId(String taskId) async {
+    final record = findByTaskId(taskId);
+    if (record == null || record.status != 'pending' || !record.isAsync) {
+      return false;
+    }
+    record
+      ..status = 'cancelled'
+      ..error = 'Cancelled before execution.';
+    await _persistRequest(record.parentRequestId);
+    await _emit(record, 'subagent_cancelled',
+        details: 'أُلغي الوكيل قبل سحبه من طابور التنفيذ.');
+    return true;
+  }
 
   List<DynamicSubagentRecord> forRequest(String requestId) =>
       List<DynamicSubagentRecord>.unmodifiable(
@@ -487,6 +545,8 @@ class SubagentLifecycleManager {
             'session_id': record.conversationId,
             'chat_id': record.conversationId,
             'agent_id': record.taskId,
+            'subagent_id': record.id,
+            'is_async': record.isAsync,
             'task_id': record.taskId,
             'agent_type': record.agentType,
             'title': record.title,
