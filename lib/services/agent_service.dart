@@ -236,18 +236,26 @@ class AgentService {
       await AgentBackgroundExecutionService.instance.beginTask(
         'استعادة الوكلاء الفرعيين المؤجلين من الطابور الدائم',
       );
+      final recoveredChildren = <Future<void>>[];
       for (final child in pendingChildren) {
         final requestId = child['parent_request_id']?.toString() ?? '';
         final conversationId = child['conversation_id']?.toString() ?? 'global';
         final agentId = child['subagent_id']?.toString() ?? '';
         if (requestId.isEmpty || agentId.isEmpty) continue;
-        unawaited(_executionKernel.scheduleDynamicSubagent(
+        // scheduleDynamicSubagent completes only after its FIFO work item has
+        // reached a terminal state. Await these futures rather than polling
+        // isExecuting, which can be false in the interval before FIFO drain.
+        recoveredChildren.add(_executionKernel.scheduleDynamicSubagent(
           requestId: requestId,
           conversationId: conversationId,
           agentId: agentId,
-        ).catchError((Object _) {}));
+        ).catchError((Object _) {
+          // The lifecycle snapshot remains durable and can be diagnosed.
+        }));
       }
-      unawaited(_releaseAsyncChildrenForegroundWhenIdle());
+      unawaited(Future.wait(recoveredChildren).whenComplete(
+        AgentBackgroundExecutionService.instance.endTask,
+      ));
     }
     _initialized = true;
   }
