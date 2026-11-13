@@ -588,6 +588,11 @@ class ModelService {
           if (rawProgress is! int) {
             throw const FormatException('progress_percent must be an integer from 0 to 99.');
           }
+          final target = _subagents.get(_activeRequestId, agentId);
+          if (target == null) throw StateError('Subagent not found: $agentId');
+          if (_activeTaskId.isNotEmpty && target.taskId != _activeTaskId) {
+            throw StateError('A child agent may report progress only for itself.');
+          }
           await _subagents.updateProgress(
             _activeRequestId,
             agentId,
