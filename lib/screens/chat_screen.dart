@@ -1987,7 +1987,8 @@ class _ChatScreenState extends State<ChatScreen> {
       _isListening = false;
       _voiceOrbState = AgentState.listening;
     });
-    await _startVoiceRecognition();
+    // The active turn's finally block restarts recording after its pending
+    // response/TTS future has unwound; do not start a second recorder here.
   }
 
   Widget _buildVoiceOrbOverlay() {
