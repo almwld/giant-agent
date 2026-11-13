@@ -122,6 +122,7 @@ class ModelService {
     String? status,
     String? stepId,
     String? toolCallId,
+    int? durationMs,
   }) {
     final sequence = ++_toolEventSequence;
     AgentEventBus.instance.publish({
@@ -132,6 +133,7 @@ class ModelService {
       'agent_type': _activeAgentType,
       'step_id': stepId ?? 'tool_${_activeRequestId}_$sequence',
       'tool_call_id': toolCallId,
+      'duration_ms': durationMs,
       'sequence': sequence,
       'type': type,
       'title': title,
@@ -454,9 +456,10 @@ class ModelService {
     final path = args['path']?.toString() ?? '';
     final content = args['content']?.toString() ?? '';
     final toolStepId = stepId ?? 'tool_step_${_activeRequestId}_${DateTime.now().microsecondsSinceEpoch}';
+    final toolStopwatch = Stopwatch()..start();
     if (name != 'gain_terminal') {
       _emitToolEvent('tool_start', _toolStartTitle(name), toolName: name, path: path,
-          content: name == 'execute_python' ? args['code']?.toString() : null, status: 'running', stepId: toolStepId);
+          content: name == 'execute_python' ? args['code']?.toString() : null, status: 'running', stepId: toolStepId, toolCallId: toolCallId);
     }
     try {
       late final Map<String, dynamic> result;
@@ -1334,23 +1337,25 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
       if (ok && (name == 'create_file' || name == 'slides_generator')) {
         final createdPath = name == 'slides_generator' ? args['path']?.toString() ?? path : path;
         _emitToolEvent('file_created', 'تم إنشاء الملف', toolName: name, path: createdPath,
-            output: output, details: 'أنشأ المحرك الملف داخل مساحة العمل فعلياً.', stepId: toolStepId);
+            output: output, details: 'أنشأ المحرك الملف داخل مساحة العمل فعلياً.', stepId: toolStepId, toolCallId: toolCallId);
       } else if (ok && (name == 'write_file' || name == 'edit_file')) {
         _emitToolEvent('file_updated', 'تم تحديث الملف', toolName: name, path: path,
-            output: output, details: 'حُفظت التغييرات في مساحة العمل فعلياً.', stepId: toolStepId);
+            output: output, details: 'حُفظت التغييرات في مساحة العمل فعلياً.', stepId: toolStepId, toolCallId: toolCallId);
       }
       if (name != 'gain_terminal') {
         _emitToolEvent(ok ? 'tool_output' : 'tool_error',
             ok ? _toolCompleteTitle(name) : 'فشل تنفيذ الأداة',
             toolName: name, path: path, output: output,
             details: ok ? null : result['error']?.toString(),
-            status: ok ? 'completed' : 'failed', stepId: toolStepId);
+            status: ok ? 'completed' : 'failed', stepId: toolStepId,
+            toolCallId: toolCallId, durationMs: toolStopwatch.elapsedMilliseconds);
       }
       return result;
     } catch (error) {
       if (name != 'gain_terminal') {
         _emitToolEvent('tool_error', 'فشل تنفيذ الأداة', toolName: name,
-            path: path, output: error.toString(), status: 'failed', stepId: toolStepId);
+            path: path, output: error.toString(), status: 'failed', stepId: toolStepId,
+            toolCallId: toolCallId, durationMs: toolStopwatch.elapsedMilliseconds);
       }
       rethrow;
     }
@@ -2044,6 +2049,7 @@ $toolCatalog
           requestId: _activeRequestId,
           toolName: toolName,
         );
+        final toolCallStopwatch = Stopwatch()..start();
         late Map<String, dynamic> result;
         late bool verificationPassed;
         late String verificationMessage;
@@ -2115,6 +2121,7 @@ $toolCatalog
               status: 'interrupted',
               stepId: toolStepId,
               toolCallId: toolCallId,
+              durationMs: toolCallStopwatch.elapsedMilliseconds,
             );
             return 'تم إيقاف استدعاء الأداة المحدد.';
           }
@@ -2126,6 +2133,7 @@ $toolCatalog
             status: 'completed',
             stepId: toolStepId,
             toolCallId: toolCallId,
+            durationMs: toolCallStopwatch.elapsedMilliseconds,
           );
         } finally {
           _toolCalls.finish(toolCallId);
