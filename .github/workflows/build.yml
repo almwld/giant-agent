@@ -5,8 +5,7 @@ on:
     branches:
       - feat/agentsos-control-center
       - main
-      - feat/      - integration/unified-agent-runtime-v2
-integrated-agent-completion
+      - feat/integrated-agent-completion
       - feat/consolidate-sqlite-runtime-v2
       - integration/giant-agent-stabilization
       - fix/voice-terminal-approval-stabilization
@@ -18,6 +17,7 @@ integrated-agent-completion
   pull_request:
     types: [opened, reopened, synchronize, edited]
     branches:
+      - integration/unified-agent-runtime-v2
       - main
       - feat/kimi-subagent-orchestration
       - feat/integrated-agent-completion
