@@ -63,6 +63,10 @@ class OutputEngine {
     final childById = <String, Map<String, dynamic>>{
       for (final child in children) child['id'].toString(): child,
     };
+    final pendingAsyncChildren = children.where((child) =>
+        child['is_async'] == true && child['status'] == 'pending').length;
+    final runningAsyncChildren = children.where((child) =>
+        child['is_async'] == true && child['status'] == 'running').length;
     final childFailures = children.where((child) =>
         child['status'] != 'completed' &&
         !(child['is_async'] == true &&
@@ -195,7 +199,7 @@ class OutputEngine {
     final hasFinalText = finalText.trim().isNotEmpty;
     final verified = hasFinalText && missingCount == 0 && childFailures == 0 && emptyChildResults == 0 &&
         dependencyFailures == 0 && requestStatus == 'completed';
-    final summary = 'حُفظ ${artifacts.length} مخرجاً؛ تحقق $verifiedCount، وغير المتحقق $missingCount؛ الوكلاء غير المكتملين: $childFailures؛ نتائجهم الفارغة: $emptyChildResults؛ تبعيات غير مكتملة: $dependencyFailures.';
+    final summary = 'حُفظ ${artifacts.length} مخرجاً؛ تحقق $verifiedCount، وغير المتحقق $missingCount؛ الوكلاء غير المكتملين: $childFailures؛ المهام المؤجلة المنتظرة: $pendingAsyncChildren؛ المهام المؤجلة الجارية: $runningAsyncChildren؛ نتائجهم الفارغة: $emptyChildResults؛ تبعيات غير مكتملة: $dependencyFailures.';
     _emit(requestId, verified ? 'output_collection_completed' : 'output_collection_partial',
         verified ? 'اكتملت منظومة المخرجات والتحقق منها' : 'المخرجات جزئية وتحتاج مراجعة',
         verified ? 'completed' : 'interrupted',
@@ -205,6 +209,8 @@ class OutputEngine {
           'verified_count': verifiedCount,
           'unverified_count': missingCount,
           'incomplete_child_count': childFailures,
+          'pending_async_child_count': pendingAsyncChildren,
+          'running_async_child_count': runningAsyncChildren,
           'empty_child_result_count': emptyChildResults,
           'dependency_failure_count': dependencyFailures,
           'artifact_ids': artifacts.map((item) => item['id']).toList(),
