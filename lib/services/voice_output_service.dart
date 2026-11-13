@@ -18,6 +18,7 @@ class VoiceOutputService {
   int _streamedCharacters = 0;
   bool _useNabra = false;
   int _speechEpoch = 0;
+  bool _interrupted = false;
 
   bool get isSpeaking => _speaking;
   bool get hasOfflineArabicVoice => _selectedArabicVoice != null;
@@ -90,6 +91,7 @@ class VoiceOutputService {
   Future<void> beginStreaming() async {
     await initialize();
     _speechEpoch++;
+    _interrupted = false;
     _streamBuffer = '';
     _streamedCharacters = 0;
     _streamQueue = Future<void>.value();
@@ -120,6 +122,7 @@ class VoiceOutputService {
 
   Future<void> finishStreaming(String fallbackText) async {
     if (!_streaming) {
+      if (_interrupted) return;
       await speak(fallbackText, waitForCompletion: true);
       return;
     }
@@ -166,6 +169,7 @@ class VoiceOutputService {
     if (value.isEmpty) return;
     await initialize();
     _speechEpoch++;
+    _interrupted = false;
     final epoch = _speechEpoch;
     _streaming = false;
     _streamBuffer = '';
@@ -186,6 +190,7 @@ class VoiceOutputService {
 
   Future<void> stop() async {
     _speechEpoch++;
+    _interrupted = true;
     _streaming = false;
     _streamBuffer = '';
     await _tts.stop();
