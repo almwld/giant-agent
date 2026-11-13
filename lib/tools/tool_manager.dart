@@ -80,8 +80,8 @@ class ToolManager {
     ),
     AgentToolDefinition(
       name: 'spawn_subagent',
-      description: 'تشغيل وكيل مسجل مسبقاً عبر محرك النموذج الحالي المشترك، مع احترام التبعيات وصلاحيات الدور.',
-      example: '{"name":"spawn_subagent","arguments":{"id":"research"}}',
+      description: 'تشغيل وكيل مسجل مسبقاً عبر طابور AgentKernel المشترك. run_in_background=true يعيد حالة pending فوراً ويُنفّذ العامل بعد الطلب الحالي دون تشغيل نموذج متوازٍ.',
+      example: '{"name":"spawn_subagent","arguments":{"id":"research","run_in_background":true}}',
     ),
     AgentToolDefinition(
       name: 'delete_subagent',
