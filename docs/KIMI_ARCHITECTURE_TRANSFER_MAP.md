@@ -85,7 +85,7 @@ transfer below is a clean implementation based on observed contracts.
 | Safe dismissal | `AgentService.dismissSubagent` | Present as a soft-dismissal; audit history is retained |
 | Dynamic model-facing create/spawn/delete/status operations | `ToolManager`, `ModelService`, `SubagentLifecycleManager` | Present; create and spawn are separate, delete is soft-dismissal |
 | Worker metadata (icon/motto/index) | `DynamicSubagentRecord` persists icon, motto and stable index; lifecycle events, durable task projections, tool schema and Timeline preserve/render these fields | Present |
-| Progress percentage and async snapshot | `DynamicSubagentRecord.progressPercent`, `report_subagent_progress`, `wire_status`, durable state snapshots; no detached async scheduler/snapshot contract | Progress present; async partial |
+| Progress percentage and async snapshot | `DynamicSubagentRecord.progressPercent`, `report_subagent_progress`, `wire_status`, `is_async`, durable pending snapshots, `spawn_subagent(run_in_background: true)` and the shared execution-kernel FIFO | Present; queued children resume after restart only if execution never began; running children become interrupted and require explicit side-effect review |
 | Message/wait/ask-user/update-goal operations | `SubagentLifecycleManager` mailbox, bounded wait, user-input handler and request goal state; dispatched by `ModelService` | Present |
 | MCP Streamable HTTP and typed results | `McpClient`, `McpToolResult` | Present in this branch |
 | Independent tool-call ID and per-call cancellation | `ToolCallRegistry`, timeline `tool_call_id` | Present in this branch |
@@ -106,6 +106,12 @@ transfer below is a clean implementation based on observed contracts.
 5. MCP tool/resource access from the existing subagent roles.
 6. A durable task graph, lifecycle journal, restart reconciliation, and
    explicit child recovery through the shared local/cloud execution path.
+7. Detached child admission through the existing execution-kernel FIFO. A
+   background spawn returns a durable pending snapshot to the parent; the
+   child runs after the current request releases the shared model runtime.
+8. Pending async children that have not started are re-enqueued after process
+   restart. A child already running at process death is marked interrupted
+   and still requires explicit side-effect disposition before resume.
 
 ## Remaining work before claiming Kimi-style dynamic orchestration
 
