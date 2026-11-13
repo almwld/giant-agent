@@ -206,7 +206,7 @@ class AgentService {
     await AgentBackgroundExecutionService.instance.beginTask(prompt);
     var outcome = 'failed';
     try {
-      unawaited(AnalyticsService().trackEvent('request_started'));
+      unawaited(AnalyticsService().trackEvent('request_started').catchError((Object _) {}));
 
       final suppliedRequestId = requestId?.trim();
       final resolvedRequestId =
