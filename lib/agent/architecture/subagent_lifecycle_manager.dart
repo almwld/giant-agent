@@ -427,7 +427,7 @@ class SubagentLifecycleManager {
     await _emit(record, 'subagent_progress',
         details: details == null || details.trim().isEmpty
             ? 'التقدم: $progressPercent%'
-            : details.trim().substring(0, details.trim().length.clamp(0, 500)));
+            : details.trim().substring(0, details.trim().length.clamp(0, 500).toInt()));
   }
 
   Future<void> updateGoal(String requestId, String goal) async {
