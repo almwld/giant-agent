@@ -1,6 +1,7 @@
 package com.example.giant_agent
 
 import android.Manifest
+import android.media.AudioManager
 import android.app.Activity
 import android.content.pm.PackageManager
 import android.media.AudioFormat
@@ -46,6 +47,8 @@ class VoiceCaptureBridge(
 
     private val lock = Any()
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val audioManager = activity.getSystemService(Activity.AUDIO_SERVICE) as AudioManager
+    private var previousAudioMode: Int? = null
     @Volatile private var running = false
     private var recorder: AudioRecord? = null
     private var captureThread: Thread? = null
@@ -131,6 +134,8 @@ class VoiceCaptureBridge(
                 .getOrNull()?.also { it.enabled = true }
         }
 
+        previousAudioMode = audioManager.mode
+        audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
         audio.startRecording()
         running = true
         captureThread = Thread({ captureLoop(audio, stream) }, "GiantAgentVoiceCapture").apply {
@@ -224,6 +229,8 @@ class VoiceCaptureBridge(
             outputStream = null
             releaseEffects()
             runCatching { recorder?.release() }
+            previousAudioMode?.let { mode -> runCatching { audioManager.mode = mode } }
+            previousAudioMode = null
             recorder = null
             captureThread = null
             output = null
