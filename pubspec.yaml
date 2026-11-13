@@ -31,6 +31,7 @@ dependencies:
   sherpa_onnx: 1.13.3
   audioplayers: ^6.1.0
   archive: ^3.6.1
+  crypto: ^3.0.3
   flutter_tts: ^3.8.5
   lottie: ^3.0.0
   flutter_svg: ^2.0.10+1
