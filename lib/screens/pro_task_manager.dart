@@ -22,7 +22,9 @@ class _ProTaskManagerState extends State<ProTaskManager> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AnimatedBuilder(
+      animation: _control,
+      builder: (context, _) => Scaffold(
       backgroundColor: ProTheme.bgDark,
       appBar: const ProAppBar(title: 'Task Manager'),
       body: Container(
@@ -79,6 +81,6 @@ class _ProTaskManagerState extends State<ProTaskManager> {
           },
         ),
       ),
-    );
+    ));
   }
 }
