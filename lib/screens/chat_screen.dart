@@ -1960,7 +1960,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         onPressed: _finishLocalVoiceTurn,
                         icon: const Icon(Icons.send_rounded),
                         label: const Text('انتهيت — أرسل كلامي'),
-                      )
+                      ),
                     const SizedBox(height: 8),
                     const Text('التعرف على الكلام يعمل على الجهاز',
                       style: TextStyle(color: GiantPalette.muted, fontSize: 11)),
@@ -2048,6 +2048,7 @@ class _ChatScreenState extends State<ChatScreen> {
     );
     if (accepted == true) {
       await tts.initialize();
+      await _voiceOutput.refresh();
     }
   }
 
