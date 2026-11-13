@@ -2071,7 +2071,6 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _finishLocalVoiceTurn() async {
     if (!mounted || !_voiceOrbVisible || _finalizingVoiceInput) return;
     _finalizingVoiceInput = true;
-    _voiceSilenceTimer?.cancel();
     try {
       final transcript = await _localSpeech.stopListening();
       if (transcript.isNotEmpty) {
@@ -2080,7 +2079,6 @@ class _ChatScreenState extends State<ChatScreen> {
       }
       if (_controller.text.trim().isEmpty) {
         _finalizingVoiceInput = false;
-        if (mounted && _voiceOrbVisible) await _startVoiceRecognition();
         return;
       }
       _voiceRequestActive = true;
