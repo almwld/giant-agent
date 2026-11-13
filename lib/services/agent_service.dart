@@ -210,13 +210,14 @@ class AgentService {
     // Reconcile child snapshots before the durable kernel starts draining the
     // queue, so newly launched children cannot be mistaken for old work.
     await _store.reconcileInterruptedSubagents();
-    final interruptedAsyncParents = (await _store.getTasks())
+    final terminalAsyncParents = (await _store.getTasks())
         .where((task) => task['kind'] == 'subagent' &&
-            task['is_async'] == true && task['status'] == 'interrupted')
+            task['is_async'] == true &&
+            {'completed', 'failed', 'interrupted', 'cancelled'}.contains(task['status']))
         .map((task) => task['parent_request_id']?.toString() ?? '')
         .where((requestId) => requestId.isNotEmpty)
         .toSet();
-    for (final requestId in interruptedAsyncParents) {
+    for (final requestId in terminalAsyncParents) {
       try {
         await _refreshDetachedOutputs(requestId);
       } catch (_) {
