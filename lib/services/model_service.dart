@@ -600,17 +600,19 @@ class ModelService {
             if (_activeTaskId.isNotEmpty) {
               throw StateError('Only the coordinating agent may schedule detached subagents.');
             }
-            final queued = await _subagents.enqueueBackground(_activeRequestId, agentId);
+            final parentRequestId = _activeRequestId;
+            final parentConversationId = _activeConversationId;
+            final queued = await _subagents.enqueueBackground(parentRequestId, agentId);
             final scheduler = scheduleDynamicSubagent;
             if (scheduler == null) {
               throw StateError('The shared AgentKernel scheduler is not initialized.');
             }
             unawaited(scheduler(
-              requestId: _activeRequestId,
-              conversationId: _activeConversationId,
+              requestId: parentRequestId,
+              conversationId: parentConversationId,
               agentId: agentId,
             ).catchError((Object error) async {
-              await _subagents.fail(_activeRequestId, agentId, error);
+              await _subagents.fail(parentRequestId, agentId, error);
             }));
             result = <String, dynamic>{
               'ok': true,
