@@ -78,9 +78,17 @@ class ProControlCenter extends ChangeNotifier {
     return accepted;
   }
 
+  bool get isTaskExecuting => _tasks.isExecuting;
+
   Future<bool> cancelCurrentTask() async {
     final accepted = await _tasks.cancelTask();
     await refresh();
     return accepted;
+  }
+
+  Future<Map<String, dynamic>> resumeTask(String taskId) async {
+    final result = await _tasks.resumeTask(taskId);
+    await refresh();
+    return result;
   }
 }
