@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ffi';
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
@@ -8,7 +9,7 @@ import 'package:crypto/crypto.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
-import 'package:sherpa_onnx/src/init_native.dart' as sherpaInit;
+import 'package:sherpa_onnx/src/sherpa_onnx_bindings.dart' as sherpaBindings;
 import 'package:sherpa_onnx/src/tts.dart' as sherpa;
 
 import 'local_voice_text_chunker.dart';
@@ -313,7 +314,9 @@ Future<void> _sherpaTtsWorker(Map<String, Object> args) async {
   final mainPort = args['mainPort']! as SendPort;
   final commands = ReceivePort();
   mainPort.send(commands.sendPort);
-  sherpaInit.initNativeBindings(null);
+  sherpaBindings.SherpaOnnxBindings.init(
+    DynamicLibrary.open('libsherpa-onnx-c-api.so'),
+  );
   final engine = sherpa.OfflineTts(
     sherpa.OfflineTtsConfig(
       model: sherpa.OfflineTtsModelConfig(
