@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+
+import '../services/pro_control_center.dart';
 import '../theme/pro_theme.dart';
-import '../widgets/pro_app_bar.dart';
 import 'pro_dashboard.dart';
 import 'pro_task_manager.dart';
 import 'pro_agent_fleet.dart';
@@ -8,32 +9,70 @@ import 'pro_battle_card.dart';
 import 'pro_integrations.dart';
 import 'pro_advanced_config.dart';
 
-class ProAgentsOsHub extends StatelessWidget {
- const ProAgentsOsHub({super.key});
- @override Widget build(BuildContext context)=>Scaffold(
-  backgroundColor:ProTheme.bgDark,
-  appBar:const ProAppBar(title:'Control Center',breadcrumb:'GIANT AGENT / AGENTSOS'),
-  body:Container(decoration:const BoxDecoration(gradient:ProTheme.bgGradient),child:GridView.count(
-   padding:const EdgeInsets.all(16),crossAxisCount:MediaQuery.sizeOf(context).width>700?2:1,
-   childAspectRatio:MediaQuery.sizeOf(context).width>700?3.6:3.0,crossAxisSpacing:12,mainAxisSpacing:12,
-   children:[
-    _tile(context,'Dashboard','Runtime health and execution metrics',Icons.dashboard_outlined,const ProDashboard()),
-    _tile(context,'Task Manager','Durable task lifecycle and recovery',Icons.task_alt,const ProTaskManager()),
-    _tile(context,'Agent Fleet','Subagent lifecycle and status',Icons.smart_toy_outlined,const ProAgentFleet()),
-    _tile(context,'Battle Cards','Competitor intelligence workspace',Icons.insights_outlined,const ProBattleCard()),
-    _tile(context,'Integrations','MCP servers and connected tools',Icons.hub_outlined,const ProIntegrations()),
-    _tile(context,'Advanced Configuration','Runtime and provider preferences',Icons.tune,const ProAdvancedConfig()),
-   ],
-  )),
- );
- Widget _tile(BuildContext context,String title,String subtitle,IconData icon,Widget page)=>Card(
-  color:ProTheme.bgCard,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(18),side:BorderSide(color:ProTheme.neonGreen.withOpacity(.2))),
-  child:ListTile(contentPadding:const EdgeInsets.symmetric(horizontal:18,vertical:10),
-   leading:Container(width:48,height:48,decoration:BoxDecoration(color:ProTheme.neonGreen.withOpacity(.08),borderRadius:BorderRadius.circular(14)),child:Icon(icon,color:ProTheme.neonGreen)),
-   title:Text(title,style:const TextStyle(color:ProTheme.textPrimary,fontWeight:FontWeight.bold)),
-   subtitle:Text(subtitle,style:const TextStyle(color:ProTheme.textSecondary,fontSize:12)),
-   trailing:const Icon(Icons.chevron_right,color:ProTheme.neonGreen),
-   onTap:()=>Navigator.of(context).push(MaterialPageRoute(builder:(_)=>page)),
-  ),
- );
+/// A single navigation shell for the six AgentsOS control surfaces.
+/// IndexedStack preserves each screen's filters and scroll position while
+/// switching tabs; the chat route remains the app's default entry point.
+class ProAgentsOsHub extends StatefulWidget {
+  const ProAgentsOsHub({super.key});
+
+  @override
+  State<ProAgentsOsHub> createState() => _ProAgentsOsHubState();
+}
+
+class _ProAgentsOsHubState extends State<ProAgentsOsHub> {
+  int _selectedIndex = 0;
+  late final Future<void> _initialization;
+
+  static const List<Widget> _pages = [
+    ProDashboard(),
+    ProTaskManager(),
+    ProAgentFleet(),
+    ProBattleCard(),
+    ProIntegrations(),
+    ProAdvancedConfig(),
+  ];
+
+  static const List<BottomNavigationBarItem> _items = [
+    BottomNavigationBarItem(icon: Icon(Icons.dashboard_outlined), label: 'Dashboard'),
+    BottomNavigationBarItem(icon: Icon(Icons.task_alt), label: 'Tasks'),
+    BottomNavigationBarItem(icon: Icon(Icons.smart_toy_outlined), label: 'Agents'),
+    BottomNavigationBarItem(icon: Icon(Icons.insights_outlined), label: 'Battle'),
+    BottomNavigationBarItem(icon: Icon(Icons.hub_outlined), label: 'Integrations'),
+    BottomNavigationBarItem(icon: Icon(Icons.tune), label: 'Config'),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _initialization = ProControlCenter.instance.initialize();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<void>(
+      future: _initialization,
+      builder: (context, snapshot) {
+        return Scaffold(
+          backgroundColor: ProTheme.bgDark,
+          body: IndexedStack(index: _selectedIndex, children: _pages),
+          bottomNavigationBar: BottomNavigationBar(
+            currentIndex: _selectedIndex,
+            items: _items,
+            type: BottomNavigationBarType.fixed,
+            backgroundColor: ProTheme.bgCard,
+            selectedItemColor: ProTheme.neonGreen,
+            unselectedItemColor: ProTheme.textSecondary,
+            onTap: (index) => setState(() => _selectedIndex = index),
+          ),
+          floatingActionButton: snapshot.hasError
+              ? FloatingActionButton.small(
+                  onPressed: () => ProControlCenter.instance.refresh(),
+                  backgroundColor: ProTheme.dangerRed,
+                  child: const Icon(Icons.refresh),
+                )
+              : null,
+        );
+      },
+    );
+  }
 }
