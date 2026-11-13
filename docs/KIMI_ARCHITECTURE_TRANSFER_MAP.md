@@ -84,7 +84,7 @@ transfer below is a clean implementation based on observed contracts.
 | Status query API | `AgentService.subagentStatus` | Present as application API, not a model-facing tool |
 | Safe dismissal | `AgentService.dismissSubagent` | Present as a soft-dismissal; audit history is retained |
 | Dynamic model-facing create/spawn/delete/status operations | `ToolManager`, `ModelService`, `SubagentLifecycleManager` | Present; create and spawn are separate, delete is soft-dismissal |
-| Worker metadata (icon/motto/index) | `DynamicSubagentRecord` stores id/task/parent/conversation/title/prompt/role/dependencies; icon/motto/index are not persisted | Partial |
+| Worker metadata (icon/motto/index) | `DynamicSubagentRecord` persists icon, motto and stable index; lifecycle events, durable task projections, tool schema and Timeline preserve/render these fields | Present |
 | Progress percentage and async snapshot | `DynamicSubagentRecord.progressPercent`, `report_subagent_progress`, `wire_status`, durable state snapshots; no detached async scheduler/snapshot contract | Progress present; async partial |
 | Message/wait/ask-user/update-goal operations | `SubagentLifecycleManager` mailbox, bounded wait, user-input handler and request goal state; dispatched by `ModelService` | Present |
 | MCP Streamable HTTP and typed results | `McpClient`, `McpToolResult` | Present in this branch |
