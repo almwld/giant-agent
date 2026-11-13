@@ -203,6 +203,49 @@ void main() {
         'subagent_interrupted_on_restart');
   });
 
+  test('pending detached workers are recovered from the canonical lifecycle snapshot', () async {
+    final store = await _store('${directory.path}/async-recovery.db');
+    await store.saveSubagentRuntimeState('parent-async', {
+      'records': {
+        'worker-pending': {
+          'id': 'worker-pending',
+          'task_id': 'parent-async_dynamic_worker-pending',
+          'parent_request_id': 'parent-async',
+          'conversation_id': 'chat-async',
+          'status': 'pending',
+          'is_async': true,
+          'dismissed': false,
+        },
+        'worker-running': {
+          'id': 'worker-running',
+          'task_id': 'parent-async_dynamic_worker-running',
+          'status': 'running',
+          'is_async': true,
+        },
+        'worker-sync': {
+          'id': 'worker-sync',
+          'task_id': 'parent-async_dynamic_worker-sync',
+          'status': 'pending',
+          'is_async': false,
+        },
+        'worker-dismissed': {
+          'id': 'worker-dismissed',
+          'task_id': 'parent-async_dynamic_worker-dismissed',
+          'status': 'pending',
+          'is_async': true,
+          'dismissed': true,
+        },
+      },
+    });
+
+    final recovered = await store.pendingAsyncSubagents();
+    expect(recovered.map((item) => item['subagent_id']).toList(),
+        ['worker-pending']);
+    expect(recovered.single['parent_request_id'], 'parent-async');
+    expect(recovered.single['conversation_id'], 'chat-async');
+    await store.close();
+  });
+
   test('subagent dismissal preserves audit history and blocks later resume', () async {
     final store = await _store('${directory.path}/subagent-dismissal.db');
     await store.enqueue(
