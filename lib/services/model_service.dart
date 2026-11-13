@@ -609,13 +609,18 @@ class ModelService {
               await _subagents.fail(parentRequestId, agentId, error);
               throw error;
             }
-            unawaited(scheduler(
-              requestId: parentRequestId,
-              conversationId: parentConversationId,
-              agentId: agentId,
-            ).catchError((Object error) async {
+            try {
+              unawaited(scheduler(
+                requestId: parentRequestId,
+                conversationId: parentConversationId,
+                agentId: agentId,
+              ).catchError((Object error) async {
+                await _subagents.fail(parentRequestId, agentId, error);
+              }));
+            } catch (error) {
               await _subagents.fail(parentRequestId, agentId, error);
-            }));
+              rethrow;
+            }
             result = <String, dynamic>{
               'ok': true,
               'status': 'pending',
