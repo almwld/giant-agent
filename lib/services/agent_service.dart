@@ -9,6 +9,7 @@ import '../domain/kernel/agent_observability.dart';
 import '../domain/kernel/subagent_recovery_coordinator.dart';
 import 'model_service.dart';
 import 'stats_service.dart';
+import 'analytics_service.dart';
 import 'performance_service.dart';
 import 'agent_background_execution_service.dart';
 import '../domain/output/output_engine.dart';
@@ -162,6 +163,8 @@ class AgentService {
   }
 
   Future<void> _initialize() async {
+    // Bind analytics to the exact same store instance as request execution.
+    await AnalyticsService().init(store: _store);
     // The execution runtime must be ready before queued durable work is drained.
     if (_initializeExecutionRuntime) await _executionKernel.initialize();
     _attachExecutionJournal();
@@ -201,7 +204,10 @@ class AgentService {
     final stopwatch = Stopwatch()..start();
     await initialize();
     await AgentBackgroundExecutionService.instance.beginTask(prompt);
+    var outcome = 'failed';
     try {
+      unawaited(AnalyticsService().trackEvent('request_started'));
+
       final suppliedRequestId = requestId?.trim();
       final resolvedRequestId =
           suppliedRequestId == null || suppliedRequestId.isEmpty
@@ -221,10 +227,15 @@ class AgentService {
       if (record.status != 'completed' && record.status != 'interrupted') {
         throw StateError('Unexpected durable request state: ${record.status}');
       }
+      outcome = record.status;
       return record.result ?? '';
     } finally {
       stopwatch.stop();
       PerformanceService().recordResponseTime(stopwatch.elapsedMilliseconds);
+      unawaited(AnalyticsService().trackEvent('request_finished', data: <String, dynamic>{
+        'status': outcome,
+        'duration_ms': stopwatch.elapsedMilliseconds,
+      }).catchError((Object _) {}));
       await _backgroundProgressTail;
       await AgentBackgroundExecutionService.instance.endTask();
     }
