@@ -48,3 +48,26 @@ Nabra is an MSA voice with one speaker ID. It is not a general dialect voice-clo
 - `LocalVoiceTextChunker` unit tests cover whitespace, chunk bounds, oversized tokens, and invalid limits.
 - CI must verify Flutter dependency resolution, analysis, tests, and release APK builds for the supported Android ABIs.
 - Physical-device acceptance still needs to measure Arabic dialect accuracy, first-token latency, real-time factor, peak RAM, thermal behavior, battery drain, and interruption latency.
+
+
+## Native capture, VAD and interruption
+
+The Android path now captures 16 kHz mono PCM through `VoiceCaptureBridge`
+using `AudioRecord` with the `VOICE_COMMUNICATION` source. It writes an app-cache
+WAV consumed by the existing local Whisper transcriber. The bridge attaches
+Android `AcousticEchoCanceler`, `NoiseSuppressor` and `AutomaticGainControl`
+only when the device reports those effects as available, and temporarily uses
+`MODE_IN_COMMUNICATION` while capture is active.
+
+A 20 ms energy VAD emits speech-start, speech-end and level events. The chat
+keeps capture active while local TTS is speaking. Automatic barge-in is enabled
+only when Android reports AEC availability: speech start stops TTS, capture
+continues through the user's utterance, and the speech-end event submits the
+captured turn after the current response unwinds. Devices without AEC retain
+the explicit “interrupt and listen” control; they do not auto-interrupt based
+on an echo-prone VAD signal.
+
+This is platform-effect-assisted echo suppression, not a software AEC
+implementation. Effect availability and quality are device/route dependent.
+The native VAD is an energy-based endpoint detector, not a neural semantic VAD.
+No cloud audio path is introduced.
