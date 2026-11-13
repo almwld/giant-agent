@@ -3,7 +3,8 @@ name: Giant Agent Tests
 on:
   push:
     branches:
-      - feat/local-offline-voice-pipeline
+      - feat/local-offline-voi      - integration/unified-agent-runtime-v2
+ce-pipeline
       - integration/unified-agent-runtime-v2
   pull_request:
     types: [opened, reopened, synchronize, edited]
