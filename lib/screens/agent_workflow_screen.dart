@@ -214,6 +214,18 @@ class AgentWorkflowScreen extends StatelessWidget {
                           ),
                           const SizedBox(width: 8),
                         ],
+                        if (event['is_async'] == true) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: GiantPalette.primary.withOpacity(.12),
+                              borderRadius: BorderRadius.circular(7),
+                            ),
+                            child: const Text('تنفيذ مؤجل',
+                                style: TextStyle(color: GiantPalette.primary, fontSize: 10)),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
                         if (tool.isNotEmpty) ...[
                           Flexible(
                             child: Text(tool,
