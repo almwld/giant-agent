@@ -200,9 +200,23 @@ class OutputEngine {
     final verified = hasFinalText && missingCount == 0 && childFailures == 0 && emptyChildResults == 0 &&
         dependencyFailures == 0 && requestStatus == 'completed';
     final summary = 'حُفظ ${artifacts.length} مخرجاً؛ تحقق $verifiedCount، وغير المتحقق $missingCount؛ الوكلاء غير المكتملين: $childFailures؛ المهام المؤجلة المنتظرة: $pendingAsyncChildren؛ المهام المؤجلة الجارية: $runningAsyncChildren؛ نتائجهم الفارغة: $emptyChildResults؛ تبعيات غير مكتملة: $dependencyFailures.';
-    _emit(requestId, verified ? 'output_collection_completed' : 'output_collection_partial',
-        verified ? 'اكتملت منظومة المخرجات والتحقق منها' : 'المخرجات جزئية وتحتاج مراجعة',
-        verified ? 'completed' : 'interrupted',
+    final deferred = pendingAsyncChildren > 0 || runningAsyncChildren > 0;
+    final collectionEvent = !verified
+        ? 'output_collection_partial'
+        : deferred
+            ? 'output_collection_deferred'
+            : 'output_collection_completed';
+    final collectionTitle = !verified
+        ? 'المخرجات جزئية وتحتاج مراجعة'
+        : deferred
+            ? 'اكتملت مخرجات الطلب وبقيت أعمال فرعية مؤجلة'
+            : 'اكتملت منظومة المخرجات والتحقق منها';
+    final collectionStatus = !verified
+        ? 'interrupted'
+        : deferred
+            ? 'running'
+            : 'completed';
+    _emit(requestId, collectionEvent, collectionTitle, collectionStatus,
         details: '$summary${failure == null ? '' : ' سبب الفشل: $failure'}',
         extra: <String, Object?>{
           'artifact_count': artifacts.length,
