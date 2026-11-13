@@ -100,6 +100,7 @@ class MainActivity: FlutterActivity() {
                 }
             }
         GainPtyBridge.register(this, flutterEngine.dartExecutor.binaryMessenger)
+        VoiceCaptureBridge.register(this, flutterEngine.dartExecutor.binaryMessenger)
 
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, AGENT_EVENTS_CHANNEL)
             .setStreamHandler(object : EventChannel.StreamHandler {
