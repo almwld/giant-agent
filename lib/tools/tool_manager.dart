@@ -89,6 +89,11 @@ class ToolManager {
       example: '{"name":"delete_subagent","arguments":{"id":"research"}}',
     ),
     AgentToolDefinition(
+      name: 'report_subagent_progress',
+      description: 'تحديث نسبة تقدم وكيل فرعي قيد التشغيل فقط. النسبة من 0 إلى 99؛ الإكمال النهائي يسجل 100 تلقائياً.',
+      example: '{"name":"report_subagent_progress","arguments":{"id":"research","progress_percent":45,"details":"اكتمل جمع المصادر"}}',
+    ),
+    AgentToolDefinition(
       name: 'check_subagent_status',
       description: 'قراءة حالة وكيل فرعي ونتيجته المحفوظة ضمن الطلب الحالي.',
       example: '{"name":"check_subagent_status","arguments":{"id":"research"}}',
