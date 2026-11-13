@@ -63,7 +63,10 @@ class OutputEngine {
     final childById = <String, Map<String, dynamic>>{
       for (final child in children) child['id'].toString(): child,
     };
-    final childFailures = children.where((child) => child['status'] != 'completed').length;
+    final childFailures = children.where((child) =>
+        child['status'] != 'completed' &&
+        !(child['is_async'] == true &&
+            {'pending', 'running'}.contains(child['status']))).length;
     final emptyChildResults = children.where((child) =>
         child['status'] == 'completed' &&
         (child['last_result']?.toString() ?? '').trim().isEmpty).length;
