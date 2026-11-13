@@ -60,7 +60,7 @@ class ModelService {
   }
 
   AgentKernelStore get _subagentStore =>
-      _boundKernelStore ??= AgentKernelStore();
+      _boundKernelStore ??= AgentKernelStore.shared;
 
   SubagentLifecycleManager get _subagents =>
       _subagentLifecycle ??= SubagentLifecycleManager(
