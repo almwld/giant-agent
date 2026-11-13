@@ -5,7 +5,7 @@
 class LocalVoiceTextChunker {
   const LocalVoiceTextChunker._();
 
-  static List<String> split(String text, {int maxCharacters = 180}) {
+  static List<String> split(String text, {int maxCharacters = 100}) {
     if (maxCharacters < 1) {
       throw ArgumentError.value(maxCharacters, 'maxCharacters');
     }
