@@ -567,6 +567,9 @@ class ModelService {
             agentType: args['agent_type']?.toString() ?? 'explore',
             dependsOn: rawDependencies.map((item) => item.toString()).toList(),
             creatorTaskId: _activeTaskId,
+            icon: args['icon']?.toString() ?? 'smart_toy',
+            motto: args['motto']?.toString() ?? '',
+            index: args['index'] is int ? args['index'] as int : null,
           );
           result = <String, dynamic>{'ok': true, 'subagent': created.toMap()};
           break;
