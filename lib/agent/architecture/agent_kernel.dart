@@ -1035,7 +1035,7 @@ $evidence
     required String conversationId,
     required String agentId,
   }) {
-    final taskId = '${requestId}_dynamic_${agentId}';
+    final taskId = '${requestId}_dynamic_$agentId';
     if (!_scheduledSubagentIds.add(taskId)) return Future<void>.value();
     return _requestQueue.enqueue(() async {
       AgentEventBus.instance.bindRequest(requestId, conversationId);
