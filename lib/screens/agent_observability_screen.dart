@@ -170,6 +170,8 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
   @override
   Widget build(BuildContext context) {
     final summary = _summary;
+    final eventTypes = summary?.eventTypes.keys.toList() ?? <String>[];
+    eventTypes.sort();
     return Scaffold(
       backgroundColor: const Color(0xFF10131B),
       appBar: AppBar(
@@ -254,18 +256,7 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
                             items: <DropdownMenuItem<String?>>[
                               const DropdownMenuItem<String?>(
                                   value: null, child: Text('كل الأنواع')),
-                              ...(<String>[
-                                'request_queued',
-                                'request_started',
-                                'request_completed',
-                                'request_failed',
-                                'tool_started',
-                                'tool_completed',
-                                'tool_failed',
-                                'subagent_started',
-                                'subagent_completed',
-                                'subagent_failed',
-                              ]).map((type) => DropdownMenuItem<String?>(
+                              ...eventTypes.map((type) => DropdownMenuItem<String?>(
                                     value: type,
                                     child: Text(type.replaceAll('_', ' ')),
                                   )),
