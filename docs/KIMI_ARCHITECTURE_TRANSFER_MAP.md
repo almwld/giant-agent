@@ -113,28 +113,51 @@ transfer below is a clean implementation based on observed contracts.
    restart. A child already running at process death is marked interrupted
    and still requires explicit side-effect disposition before resume.
 
-## Remaining work before claiming Kimi-style dynamic orchestration
+## Current implementation status and remaining work
 
-- Add a model-facing, typed lifecycle tool contract for create, spawn, delete,
-  and status. Keep create (configuration/registration) separate from spawn
-  (execution).
-- Extend the scheduler to accept validated child tasks while a parent is
-  running, with strict depth, count, concurrency, and workspace-lease limits.
-- Persist worker metadata, parent/child ownership, progress, async mode, and
-  terminal state transitions atomically.
-- Make deletion a safe lifecycle operation: reject active children unless a
-  separately authorized cancellation path has completed; preserve immutable
-  audit history rather than physically deleting records.
-- Add status-event correlation and progress updates, and make status queries
-  return durable snapshots rather than model-generated claims.
-- Treat send/wait/message, ask-user, and goal-update as a separate later
-  protocol tranche. Their names are observed, but their exact contracts are
-  not yet available.
-- Inspect the empty `Qk/O.java` export and extract the missing runtime classes
-  and status enum before asserting exact Kimi execution semantics.
-- Run formatter, analyzer, tests, APK build, and real MCP-server integration.
-  At the time of this update, PR #28 has no visible workflow run or combined
-  commit status for its current head. Do not merge based on contract tests alone.
+The integration branch now implements the core local lifecycle surface; the
+older checklist below is retained here as a status correction, not as a list
+of wholly missing features.
+
+### Implemented in the current integration branch
+
+- Model-facing `create_subagent`, `spawn_subagent`, `delete_subagent`,
+  `check_subagent_status`, and `report_subagent_progress` are registered
+  and dispatched through the existing ToolManager/ModelService path.
+- Create and spawn are separate operations. Background spawn persists a
+  pending async child before admission to the shared AgentKernel FIFO.
+- Child status and progress are read from persisted lifecycle snapshots;
+  progress is bounded to 0..99 while running and completion owns 100.
+- Parent/child identifiers, conversation ownership, async marker, worker
+  presentation metadata, dependencies, and lifecycle transitions are
+  represented in the durable snapshot/event path.
+- Delete is a soft dismissal that retains lifecycle history; it is not a
+  physical deletion of the child audit record.
+- Timeline receives correlated lifecycle events and now renders the persisted
+  `progress_percent` field as a percentage. Tool cancellation remains scoped
+  to independent `tool_call_id` values; child cancellation uses its task id.
+
+### Remaining engineering and evidence gaps
+
+- Enforce and test explicit maximum child depth/count, admission quotas, and
+  workspace leases. The current shared FIFO serializes local inference; it is
+  not a parallel-worker scheduler.
+- Add concurrency/race tests for duplicate background spawn, cancellation
+  before dequeue, cancellation during a running tool, process restart during
+  queue admission, and parent/child terminal-state ordering.
+- Verify whether lifecycle snapshot writes and event journal writes need a
+  single transactional boundary; do not claim cross-store atomicity without
+  an implementation and crash-recovery test.
+- Validate `send_message`, `wait_for_message`, `ask_user`, and
+  `update_goal` against the actual Kimi backend contracts. Their Giant
+  implementations exist, but exact remote dispatcher semantics remain
+  unverified because the decompiled export omits the handler bodies.
+- Add an external typed subagent-status event ingress only if the product
+  requires interoperability with Kimi's gateway; the current local Timeline
+  is backed by Giant's own durable event journal.
+- Complete real MCP-server integration tests, then run formatter, analyzer,
+  Flutter/Python tests, Android release APK build, and device/emulator smoke
+  tests on the latest integration head. Do not infer success from older runs.
 
 ## Additional JADX evidence needed
 
