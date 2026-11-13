@@ -97,7 +97,7 @@ The two kernel classes are deliberately distinguished by responsibility: the dur
 | Legacy memory stores | `MemoryService`, `LongTermMemory`, `ConversationMemory` | Retain files and databases. Do not delete or merge without an explicit data migration, backup and compatibility tests. |
 | Skills | `AgentSkillRegistry` | Prompt/routing hints only; skills must not grant permissions or bypass ToolManager. |
 | Durable task UI/history | `TaskManager` + `AgentKernelStore` | Task snapshots and request journal stay correlated by conversation/request IDs. |
-| Output verification | `OutputEngine` | Preserve artifact collection/finalization; a model response alone is not verified completion. Detached child artifact finalization remains a follow-up integration detail before declaring parent output coverage complete. |
+| Output verification | `OutputEngine` + `AgentService` | Parent completion does not wait for queued/running detached children. When each detached child reaches a terminal state, the parent artifact projection is refreshed from the durable child snapshot and workspace journal; pending/running detached children do not falsely fail parent verification. |
 | Event bus and timeline | `AgentEventBus`, typed `AgentTimelineEvent`, `AgentKernelStore` | One factual event stream and one durable journal. No private chain-of-thought is stored. |
 | Local diagnostics | `AgentObservabilityScreen` via `AgentService` | Read-only projection of the same store used by execution. |
 | Android long-running lifecycle | `AgentBackgroundExecutionService`, native `AgentRuntime` | Reuse shared runtime; verify process-death/background behavior on device. |
