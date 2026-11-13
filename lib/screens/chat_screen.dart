@@ -2158,9 +2158,10 @@ class _ChatScreenState extends State<ChatScreen> {
         _localSpeech.activityEvents.listen(_handleVoiceActivity);
     await _prepareLocalTtsModel();
     if (!mounted || !_voiceOrbVisible) return;
-    final capabilities = await _localSpeech.captureCapabilities();
-    _voiceAecAvailable = capabilities['aec_available'] == true;
     await _startVoiceRecognition();
+    if (!mounted || !_localSpeech.isListening) return;
+    final capabilities = await _localSpeech.captureCapabilities();
+    _voiceAecAvailable = capabilities['aec_active'] == true;
   }
 
   void _handleVoiceActivity(Map<String, dynamic> event) {
