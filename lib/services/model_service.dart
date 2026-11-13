@@ -605,7 +605,9 @@ class ModelService {
             final queued = await _subagents.enqueueBackground(parentRequestId, agentId);
             final scheduler = scheduleDynamicSubagent;
             if (scheduler == null) {
-              throw StateError('The shared AgentKernel scheduler is not initialized.');
+              const error = StateError('The shared AgentKernel scheduler is not initialized.');
+              await _subagents.fail(parentRequestId, agentId, error);
+              throw error;
             }
             unawaited(scheduler(
               requestId: parentRequestId,
