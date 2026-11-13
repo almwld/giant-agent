@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_whisper/flutter_whisper.dart';
 
 /// On-device speech recognition for Arabic conversational turns.
@@ -45,15 +47,22 @@ class LocalSpeechRecognitionService {
     if (!_recording) return '';
     _recording = false;
     final path = await _whisper.stopRecording();
-    final result = await _whisper.transcribeFile(path);
-    return result.text.trim();
+    try {
+      final result = await _whisper.transcribeFile(path);
+      return result.text.trim();
+    } finally {
+      final recording = File(path);
+      if (await recording.exists()) await recording.delete();
+    }
   }
 
   /// Stops and discards the current recording without submitting it.
   Future<void> cancelListening() async {
     if (!_recording) return;
     _recording = false;
-    await _whisper.stopRecording();
+    final path = await _whisper.stopRecording();
+    final recording = File(path);
+    if (await recording.exists()) await recording.delete();
   }
 
   Future<void> dispose() async {
