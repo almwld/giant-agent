@@ -1564,6 +1564,8 @@ ${queuedMessages.isEmpty ? 'لا توجد رسائل.' : queuedMessages}
     } catch (error) {
       await _subagents.fail(requestId, agentId, error, interrupted: error is ToolCallInterrupted);
       return <String, dynamic>{'ok': false, 'status': child.status, 'error': error.toString(), 'subagent': child.toMap()};
+    } finally {
+      _cancelledDynamicSubagentIds.remove(child.taskId);
     }
   }
 
