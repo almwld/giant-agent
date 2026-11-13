@@ -16,6 +16,8 @@ claim that device validation or every optional capability is complete.
 | Timeline and Gain diagnostics | `AgentService` + `AgentKernelObservability` | Read the canonical kernel database; cursor pagination is based on immutable event row IDs. |
 | MCP sessions and remote tools | `McpClient` | Owns MCP server configuration/session lifecycle only; it never owns inference. Tool results retain content blocks, structured content and metadata. |
 | Tool cancellation | `AgentService.cancelToolCall` -> `ModelService` | Cancellation is scoped by independent `tool_call_id`; do not substitute request IDs. |
+| Child-agent lifecycle and persistence | `ModelService` + `SubagentLifecycleManager` bound to the exact `AgentService` `AgentKernelStore` instance | Dynamic child state is request-scoped; lifecycle events and durable task projections share the canonical SQLite store. No second child database connection is created. |
+| Detached child scheduling | Execution `AgentKernel` + its existing `FifoTaskQueue` | `spawn_subagent(run_in_background: true)` persists a pending async snapshot and queues execution behind the current request. Children reuse the one `ModelService`/`LlamaService`; they are serialized, not parallel local inference jobs. Pending not-yet-started jobs are requeued after restart; running jobs are interrupted and require explicit side-effect review. |
 | Child-agent recovery | `SubagentRecoveryCoordinator` + `AgentKernelStore` | Resume requires an explicit side-effect disposition and an atomic claim; dependency results are passed as a snapshot. |
 | Memory | `AgentMemoryService` | Owns episodic turns, facts, edits and workspace versions. Memory remains contextual data, not executable instructions. |
 | Background execution | `AgentBackgroundExecutionService` | Android foreground notification only; it does not own scheduling, inference or durable state. |
@@ -48,7 +50,8 @@ complete merely because recording and transcription work.
 ## Safe extension rules
 
 1. Extend the existing owner instead of creating another queue, database,
-   model runtime, event bus or session manager.
+   model runtime, event bus or session manager. Detached children use the
+   execution kernel's existing FIFO, not a competing scheduler.
 2. Keep request, task, step, attempt and tool-call identifiers distinct.
 3. Persist factual lifecycle transitions; never infer execution progress from
    assistant prose.
