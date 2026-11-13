@@ -163,3 +163,31 @@ The implementation target is the existing `AgentEventBus` + `AgentKernelStore` j
 ## 8. Evidence policy
 
 A source file or UI control is not proof of a working feature. Each row must be marked separately as code-inspected, unit-tested, integration-tested, CI-built, or device-verified. Unknown provider credentials, missing external services, unsupported hardware and untested device behavior must remain explicit blockers—not be replaced with stubs or success claims.
+
+
+## 9. Dormant and overlapping service inventory (reference audit)
+
+A repository code-search pass on the current mainline found these components without active call sites beyond their own definitions, or with a separate active sibling. They are retained intentionally; this is a wiring backlog, not authorization to delete them.
+
+| Component | Search evidence | Current disposition |
+|---|---|---|
+| `MemoryService` | Constructor search returned only its class definition. | Dormant legacy memory store; preserve its database and source until migration/backup plan exists. |
+| `LongTermMemory` | Constructor search returned only its class definition. | Dormant legacy store; inspect schema/data before any consolidation. |
+| `ConversationMemory` | Constructor search returned only its class definition; active chat memory calls `AgentMemoryService`. | Dormant legacy store; preserve. |
+| `StatsService` | Constructor search returned only its class definition. | Unwired statistics implementation; compare its contract with active `StatisticsService` before connecting. |
+| `StatisticsService` | Used by `StatisticsCard`. | Current widget-facing statistics path; verify data source and accuracy. |
+| `PerformanceService` | Constructor search returned only its class definition. | Dormant performance/cache service; do not assume it feeds the active dashboard. |
+| `PerformanceMonitor` | Used by `PerformanceDashboard`. | Current dashboard-facing in-memory measurement path; inspect persistence and instrumentation coverage. |
+| `AnalyticsService` | Constructor search returned only its class definition. | Unwired analytics implementation; keep local/privacy policy explicit before activation. |
+| `ModelRunner` and `RealModelRunner` | Both wrappers resolve `ModelService()`; their call sites require a separate usage audit. | Do not treat them as separate inference runtimes; verify whether either wrapper is still needed and keep both source files until proven safe to retire. |
+
+This search is against the repository default branch and is not a substitute for a full symbol/reference scan of every PR head. The current integration branch must repeat the reference audit before any component is reclassified as unused.
+
+## 10. Immediate follow-up implementation queue
+
+- Port the useful PR #36 Timeline interactions onto the existing durable event query contract: text search, event-type filtering, normalized progress, duration details and explicit per-tool cancellation affordances. Keep one SQLite journal.
+- Trace every `ToolManager` definition to its switch/handler in `ModelService`; classify unsupported media providers and other missing external capabilities visibly instead of presenting adapters as connected services.
+- Audit all entry points for direct `ModelService.processChat` use. Keep it only for explicitly simple conversational paths; all autonomous/tool-capable tasks must go through `AgentService.runTask`.
+- Review the overlapping statistics/performance services and connect their useful metrics to one source of truth without losing current widget contracts.
+- Review the dormant memory stores and the legacy transcript database with data-preserving migrations; do not delete, rename or overwrite any of them.
+- Port validated Android launch and emulator smoke fixes from PRs #27 and #24, and validate the Codemagic workflow from PR #32 as an additional CI path rather than a replacement.
