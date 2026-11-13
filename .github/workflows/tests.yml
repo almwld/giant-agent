@@ -3,6 +3,7 @@ name: Giant Agent Tests
 on:
   push:
     branches:
+      - feat/agentsos-control-center
       - feat/local-offline-voi      - integration/unified-agent-runtime-v2
 ce-pipeline
       - integration/unified-agent-runtime-v2
