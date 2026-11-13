@@ -18,7 +18,7 @@ import 'package:xterm/xterm.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'settings_screen.dart';
-import 'ai_voice_assistant_screen.dart';
+import '../widgets/voice_orb.dart';
 import '../models/chat_session.dart';
 import 'dart:convert';
 import '../services/local_speech_recognition_service.dart';
@@ -26,7 +26,6 @@ import '../services/local_arabic_tts_service.dart';
 import '../services/model_provider_settings.dart';
 import '../services/voice_output_service.dart';
 import '../services/openai_compatible_provider.dart';
-import '../services/model_provider_settings.dart';
 import '../services/github_repository_service.dart';
 import '../services/cloud_storage_service.dart';
 import '../services/web_search_service.dart';
@@ -1978,6 +1977,17 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
     return accepted == true && _localSpeech.isModelReady;
+  }
+
+  Future<void> _interruptAssistantAndListen() async {
+    await _voiceOutput.stop();
+    await _localSpeech.cancelListening();
+    if (!mounted || !_voiceOrbVisible) return;
+    setState(() {
+      _isListening = false;
+      _voiceOrbState = AgentState.listening;
+    });
+    await _startVoiceRecognition();
   }
 
   Widget _buildVoiceOrbOverlay() {
