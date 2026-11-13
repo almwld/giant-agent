@@ -17,6 +17,7 @@ class VoiceOutputService {
   bool _streaming = false;
   int _streamedCharacters = 0;
   bool _useNabra = false;
+  int _speechEpoch = 0;
 
   bool get isSpeaking => _speaking;
   bool get hasOfflineArabicVoice => _selectedArabicVoice != null;
@@ -88,6 +89,7 @@ class VoiceOutputService {
 
   Future<void> beginStreaming() async {
     await initialize();
+    _speechEpoch++;
     _streamBuffer = '';
     _streamedCharacters = 0;
     _streamQueue = Future<void>.value();
@@ -112,7 +114,8 @@ class VoiceOutputService {
     _streamBuffer = _streamBuffer.substring(cut).trimLeft();
     if (chunk.isEmpty) return;
     _streamedCharacters += chunk.length;
-    _streamQueue = _streamQueue.then((_) => _speakSegment(chunk));
+    final epoch = _speechEpoch;
+    _streamQueue = _streamQueue.then((_) => _speakSegment(chunk, epoch: epoch));
   }
 
   Future<void> finishStreaming(String fallbackText) async {
@@ -125,22 +128,33 @@ class VoiceOutputService {
     _streamBuffer = '';
     if (tail.isNotEmpty) {
       _streamedCharacters += tail.length;
-      _streamQueue = _streamQueue.then((_) => _speakSegment(tail));
+      final epoch = _speechEpoch;
+      _streamQueue = _streamQueue.then((_) => _speakSegment(tail, epoch: epoch));
     }
     if (_streamedCharacters == 0 && fallbackText.trim().isNotEmpty) {
-      _streamQueue = _streamQueue.then((_) => _speakSegment(fallbackText.trim()));
+      final epoch = _speechEpoch;
+      _streamQueue = _streamQueue.then((_) => _speakSegment(fallbackText.trim(), epoch: epoch));
     }
     await _streamQueue;
     await _tts.awaitSpeakCompletion(false);
   }
 
-  Future<void> _speakSegment(String text) async {
-    if (text.trim().isEmpty) return;
-    if (_useNabra) {
-      await LocalArabicTtsService.instance.speak(text.trim());
-    } else {
-      await _tts.awaitSpeakCompletion(true);
-      await _tts.speak(text.trim());
+  Future<void> _speakSegment(
+    String text, {
+    required int epoch,
+  }) async {
+    if (text.trim().isEmpty || epoch != _speechEpoch) return;
+    _speaking = true;
+    try {
+      if (_useNabra) {
+        await LocalArabicTtsService.instance.speak(text.trim());
+      } else {
+        await _tts.awaitSpeakCompletion(true);
+        if (epoch != _speechEpoch) return;
+        await _tts.speak(text.trim());
+      }
+    } finally {
+      _speaking = false;
     }
   }
 
@@ -151,10 +165,13 @@ class VoiceOutputService {
     final value = text.trim();
     if (value.isEmpty) return;
     await initialize();
+    _speechEpoch++;
+    final epoch = _speechEpoch;
     _streaming = false;
     _streamBuffer = '';
     if (_useNabra) {
       await LocalArabicTtsService.instance.stop();
+      if (epoch != _speechEpoch) return;
       await LocalArabicTtsService.instance.speak(value);
       return;
     }
@@ -168,6 +185,7 @@ class VoiceOutputService {
   }
 
   Future<void> stop() async {
+    _speechEpoch++;
     _streaming = false;
     _streamBuffer = '';
     await _tts.stop();
