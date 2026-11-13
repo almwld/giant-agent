@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../domain/kernel/agent_kernel_store.dart';
+import '../services/agent_service.dart';
 import '../domain/kernel/agent_observability.dart';
 
 /// Local-only Gain Agents timeline and diagnostics for one conversation.
@@ -20,7 +20,6 @@ class AgentObservabilityScreen extends StatefulWidget {
 }
 
 class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
-  final AgentKernelStore _store = AgentKernelStore();
   AgentObservabilitySummary? _summary;
   final List<AgentObservabilityEvent> _events = <AgentObservabilityEvent>[];
   String? _statusFilter;
@@ -38,7 +37,6 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
 
   @override
   void dispose() {
-    unawaited(_store.close());
     super.dispose();
   }
 
@@ -51,10 +49,10 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
       _events.clear();
     });
     try {
-      final summary = await _store.observabilitySummaryForConversation(
+      final summary = await AgentService.instance.observabilitySummaryForConversation(
         widget.conversationId,
       );
-      final page = await _store.observabilityEventsForConversation(
+      final page = await AgentService.instance.observabilityEventsForConversation(
         widget.conversationId,
         limit: 40,
         status: _statusFilter,
