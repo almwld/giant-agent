@@ -1401,12 +1401,12 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
         'explore' || 'plan' || 'reviewer' => const <String>{
             'read_file', 'list_files', 'web_search', 'fetch_urls', 'visit', 'click', 'input', 'find', 'scrollup', 'scrolldown',
             'browser_visit', 'browser_click', 'browser_find', 'browser_input', 'browser_state', 'browser_scroll_up', 'browser_scroll_down',
-            'mcp_call', 'mcp_read_resource', 'send_message', 'wait_for_message',
+            'mcp_call', 'mcp_read_resource', 'send_message', 'wait_for_message', 'report_subagent_progress',
           },
         'coder' => const <String>{
             'create_file', 'read_file', 'write_file', 'list_files', 'web_search',
             'execute_python', 'gain_terminal', 'mcp_call', 'mcp_read_resource',
-            'send_message', 'wait_for_message',
+            'send_message', 'wait_for_message', 'report_subagent_progress',
           },
         _ => throw ArgumentError('Unknown subagent role: ${child.agentType}'),
       };
