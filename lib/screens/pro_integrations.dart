@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../services/agent_service.dart';
+import '../services/pro_control_center.dart';
 import '../domain/mcp/mcp_client.dart';
 import '../theme/pro_theme.dart';
 import '../widgets/pro_app_bar.dart';
@@ -12,16 +12,17 @@ class ProIntegrations extends StatefulWidget {
 }
 
 class _ProIntegrationsState extends State<ProIntegrations> {
-  late Future<List<McpServerConfig>> _future;
+  final _control = ProControlCenter.instance;
+  late Future<void> _future;
 
   @override
   void initState() {
     super.initState();
-    _future = AgentService.instance.mcpServers();
+    _future = _control.initialize();
   }
 
   Future<void> _refresh() async {
-    setState(() => _future = AgentService.instance.mcpServers());
+    setState(() => _future = _control.refresh());
     await _future;
   }
 
@@ -37,12 +38,12 @@ class _ProIntegrationsState extends State<ProIntegrations> {
       appBar: ProAppBar(title: 'Integrations', showAddButton: true, onAddPressed: _openMcpSettings),
       body: Container(
         decoration: const BoxDecoration(gradient: ProTheme.bgGradient),
-        child: FutureBuilder<List<McpServerConfig>>(
+        child: FutureBuilder<void>(
           future: _future,
           builder: (context, snapshot) {
             if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
             if (snapshot.hasError) return Center(child: Text(snapshot.error.toString()));
-            final servers = snapshot.data ?? [];
+            final List<McpServerConfig> servers = _control.integrations;
             return RefreshIndicator(
               onRefresh: _refresh,
               child: ListView(
@@ -58,11 +59,10 @@ class _ProIntegrationsState extends State<ProIntegrations> {
                     ]),
                   ),
                   const SizedBox(height: 12),
-                  if (servers.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.all(30),
-                      child: Text('No MCP integrations configured yet.', textAlign: TextAlign.center, style: TextStyle(color: ProTheme.textSecondary)),
-                    ),
+                  if (servers.isEmpty) const Padding(
+                    padding: EdgeInsets.all(30),
+                    child: Text('No MCP integrations configured yet.', textAlign: TextAlign.center, style: TextStyle(color: ProTheme.textSecondary)),
+                  ),
                   ...servers.map((server) => Card(
                     color: ProTheme.bgCard,
                     child: ListTile(
