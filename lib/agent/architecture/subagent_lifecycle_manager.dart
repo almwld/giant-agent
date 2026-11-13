@@ -405,6 +405,31 @@ class SubagentLifecycleManager {
     return message;
   }
 
+  /// Persists a truthful progress snapshot for a running child.
+  /// 100 is reserved for complete(); callers may report 0..99 while running.
+  Future<void> updateProgress(
+    String requestId,
+    String agentId,
+    int progressPercent, {
+    String? details,
+  }) async {
+    await restoreRequest(requestId);
+    if (progressPercent < 0 || progressPercent > 99) {
+      throw ArgumentError.value(progressPercent, 'progressPercent',
+          'Progress updates must be between 0 and 99; completion owns 100.');
+    }
+    final record = _require(requestId, agentId);
+    if (record.status != 'running') {
+      throw StateError('Progress can only be updated for a running subagent.');
+    }
+    record.progressPercent = progressPercent;
+    await _persistRequest(requestId);
+    await _emit(record, 'subagent_progress',
+        details: details == null || details.trim().isEmpty
+            ? 'التقدم: $progressPercent%'
+            : details.trim().substring(0, details.trim().length.clamp(0, 500)));
+  }
+
   Future<void> updateGoal(String requestId, String goal) async {
     await restoreRequest(requestId);
     final normalized = goal.trim();
