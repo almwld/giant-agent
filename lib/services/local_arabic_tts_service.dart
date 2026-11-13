@@ -4,6 +4,7 @@ import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
+import 'package:crypto/crypto.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
@@ -21,6 +22,8 @@ class LocalArabicTtsService {
 
   static const String modelArchiveUrl =
       'https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/nabra-82m-arabic-int8.tar.bz2';
+  static const String modelArchiveSha256 =
+      'e7c644fabb1529190de9a2f7d6044f88c26bf6d9b717ad41ef5d2b748e01459b';
 
   final AudioPlayer _player = AudioPlayer();
   final http.Client _client = http.Client();
@@ -105,7 +108,13 @@ class LocalArabicTtsService {
         archiveFile,
         onProgress: (p) => onProgress?.call('Nabra Arabic model', p),
       );
-      final decoded = BZip2Decoder().decodeBytes(await archiveFile.readAsBytes());
+      final archiveBytes = await archiveFile.readAsBytes();
+      final actualDigest = sha256.convert(archiveBytes).toString();
+      if (actualDigest != modelArchiveSha256) {
+        await archiveFile.delete();
+        throw const FormatException('Nabra model archive SHA-256 mismatch.');
+      }
+      final decoded = BZip2Decoder().decodeBytes(archiveBytes);
       final archive = TarDecoder().decodeBytes(decoded);
       for (final entry in archive) {
         if (!entry.isFile) continue;
@@ -147,7 +156,7 @@ class LocalArabicTtsService {
     final dir = await _directory();
     // Keep each inference comfortably below Nabra's 510-phoneme sequence cap.
     // This also bounds peak memory and makes interruption responsive.
-    for (final chunk in LocalVoiceTextChunker.split(value, maxCharacters: 180)) {
+    for (final chunk in LocalVoiceTextChunker.split(value, maxCharacters: 100)) {
       final generated = await _synthesize(chunk, speed);
       if (generationId != _generationId) return;
       final samples = generated['samples'] as Float32List;
