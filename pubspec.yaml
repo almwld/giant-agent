@@ -27,7 +27,7 @@ dependencies:
   timezone: ^0.9.2
   translator: ^1.0.3
   # Local-only speech pipeline: Whisper.cpp ASR + device-installed offline TTS voices.
-  whisper_cpp_flutter_plus: ^0.5.1
+  flutter_whisper: ^0.2.0
   sherpa_onnx: ^1.13.8
   audioplayers: ^6.1.0
   archive: ^3.6.1
