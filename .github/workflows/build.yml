@@ -15,6 +15,7 @@ on:
     types: [opened, reopened, synchronize, edited]
     branches:
       - main
+      - chore/boosthis-mcp-mainline
       - feat/kimi-subagent-orchestration
       - feat/integrated-agent-completion
       - feat/consolidate-sqlite-runtime-v2
