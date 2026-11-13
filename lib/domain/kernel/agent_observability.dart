@@ -80,6 +80,7 @@ extension AgentKernelObservability on AgentKernelStore {
     int limit = 50,
     String? type,
     String? status,
+    String? search,
   }) async {
     final boundedLimit = limit.clamp(1, 200).toInt();
     final where = <String>['r.conversation_id = ?'];
@@ -95,6 +96,13 @@ extension AgentKernelObservability on AgentKernelStore {
     if (status != null && status.isNotEmpty) {
       where.add('e.status = ?');
       args.add(status);
+    }
+    final normalizedSearch = search?.trim().toLowerCase();
+    if (normalizedSearch != null && normalizedSearch.isNotEmpty) {
+      // Search only the already-persisted local event record. The bound value
+      // is parameterized; user input is never interpolated into SQL.
+      where.add("lower(e.type || ' ' || e.status || ' ' || e.id || ' ' || COALESCE(e.task_id, '') || ' ' || e.payload_json) LIKE ?");
+      args.add('%$normalizedSearch%');
     }
     args.add(boundedLimit + 1);
 
