@@ -243,6 +243,7 @@ class AgentService {
     int limit = 50,
     String? type,
     String? status,
+    String? search,
   }) async {
     await initialize();
     return _store.observabilityEventsForConversation(
@@ -251,6 +252,7 @@ class AgentService {
       limit: limit,
       type: type,
       status: status,
+      search: search,
     );
   }
 
