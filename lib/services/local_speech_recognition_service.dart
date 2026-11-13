@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_whisper/flutter_whisper.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 /// On-device speech recognition for Arabic conversational turns.
 ///
@@ -38,6 +39,10 @@ class LocalSpeechRecognitionService {
     if (_disposed) throw StateError('Speech service has been disposed.');
     if (_recording) return;
     await initialize();
+    final permission = await Permission.microphone.request();
+    if (!permission.isGranted) {
+      throw StateError('تم رفض إذن الميكروفون للتعرف الصوتي المحلي.');
+    }
     await _whisper.startRecording();
     _recording = true;
   }
