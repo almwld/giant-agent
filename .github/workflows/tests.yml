@@ -1,6 +1,9 @@
 name: Giant Agent Tests
 
 on:
+  push:
+    branches:
+      - feat/local-offline-voice-pipeline
   pull_request:
     types: [opened, reopened, synchronize, edited]
     branches:
@@ -30,6 +33,8 @@ jobs:
           python-version: '3.11'
       - name: Validate voice native patch script syntax
         run: python -m py_compile tool/patch_flutter_whisper.py
+      - name: Test Whisper native patch safety and idempotence
+        run: python -m unittest discover -s tool/tests -v
       - name: Install parser test dependencies
         run: python -m pip install pypdf==4.2.0 reportlab==4.2.0
       - name: Run parser and sandbox tests
