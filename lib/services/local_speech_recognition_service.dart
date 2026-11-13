@@ -85,11 +85,23 @@ class LocalSpeechRecognitionService {
   Future<String> stopListening() async {
     if (!_recording) return '';
     _recording = false;
-    final path = _nativeCapture
-        ? await _capture.invokeMethod<String>('stop')
-        : await _whisper.stopRecording();
-    _recordingPath = null;
-    _nativeCapture = false;
+    String? path;
+    final usedNativeCapture = _nativeCapture;
+    try {
+      path = usedNativeCapture
+          ? await _capture.invokeMethod<String>('stop')
+          : await _whisper.stopRecording();
+    } catch (_) {
+      if (usedNativeCapture) {
+        try {
+          await _capture.invokeMethod<bool>('cancel');
+        } catch (_) {}
+      }
+      rethrow;
+    } finally {
+      _recordingPath = null;
+      _nativeCapture = false;
+    }
     if (path == null || path.isEmpty) return '';
     try {
       final result = await _whisper.transcribeFile(path);
@@ -105,9 +117,12 @@ class LocalSpeechRecognitionService {
     if (!_recording) return;
     _recording = false;
     if (_nativeCapture) {
-      await _capture.invokeMethod<bool>('cancel');
-      _recordingPath = null;
-      _nativeCapture = false;
+      try {
+        await _capture.invokeMethod<bool>('cancel');
+      } finally {
+        _recordingPath = null;
+        _nativeCapture = false;
+      }
       return;
     }
     final path = await _whisper.stopRecording();
