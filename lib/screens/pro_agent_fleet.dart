@@ -26,7 +26,9 @@ class _ProAgentFleetState extends State<ProAgentFleet> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AnimatedBuilder(
+      animation: _control,
+      builder: (context, _) => Scaffold(
       backgroundColor: ProTheme.bgDark,
       appBar: const ProAppBar(title: 'Agent Fleet Overview'),
       body: Container(
@@ -79,6 +81,6 @@ class _ProAgentFleetState extends State<ProAgentFleet> {
           },
         ),
       ),
-    );
+    ));
   }
 }
