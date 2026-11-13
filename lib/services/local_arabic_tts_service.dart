@@ -1,3 +1,7 @@
+// The public barrel also exports unrelated FFI bindings that are not Dart 3.2 compatible.
+// This Android-only service intentionally imports only the pinned TTS implementation.
+// ignore_for_file: implementation_imports
+
 import 'dart:async';
 import 'dart:ffi';
 import 'dart:io';
