@@ -206,7 +206,7 @@ def patch_flutter_316_widget(root: Path) -> bool:
     incompatible_count = widget_source.count("surfaceContainerHighest")
     if incompatible_count:
         widget_source = widget_source.replace("surfaceContainerHighest", "surfaceVariant")
-        widget.write_text(widget_source, encoding="utf-8", newline="\\n")
+        widget.write_text(widget_source, encoding="utf-8", newline="\n")
         print(f"Patched {widget}: Flutter 3.16-compatible ColorScheme property.")
         return True
     if "surfaceVariant" not in widget_source:
@@ -227,7 +227,7 @@ def main() -> int:
     original = native.read_text(encoding="utf-8")
     patched = patch_source(original)
     if patched != original:
-        native.write_text(patched, encoding="utf-8", newline="\\n")
+        native.write_text(patched, encoding="utf-8", newline="\n")
         print(f"Patched {native}: strict 16 kHz mono PCM16 WAV decoder installed.")
     else:
         print(f"Already patched: {native}")
