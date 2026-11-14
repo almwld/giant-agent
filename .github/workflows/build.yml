@@ -15,6 +15,7 @@ on:
       - feat/chat-bubble-resize-teal-toasts
       - feat/local-offline-voice-pipeline
       - integration/unified-agent-runtime-v2
+      - integration/complete-runtime-consolidation-v2-20261114
   pull_request:
     types: [opened, reopened, synchronize, edited]
     branches:
