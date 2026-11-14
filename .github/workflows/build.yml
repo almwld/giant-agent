@@ -233,6 +233,9 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Patch flutter_whisper for Flutter 3.16 compatibility
+        run: python3 tool/patch_flutter_whisper.py
+
       - name: Enable KVM for Android emulator
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
