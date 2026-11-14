@@ -80,6 +80,8 @@ void main() {
     await tester.pump();
     expect(find.text('أستمع إليك محلياً…'), findsOneWidget);
 
+    await tester.tap(find.byTooltip('تصغير المساعد الصوتي'));
+    await tester.pump();
     await tester.tap(find.text('Leave chat'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 350));
