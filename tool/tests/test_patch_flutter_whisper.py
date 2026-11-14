@@ -1,6 +1,7 @@
 import importlib.util
 import unittest
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "patch_flutter_whisper.py"
 SPEC = importlib.util.spec_from_file_location("patch_flutter_whisper", MODULE_PATH)
@@ -37,6 +38,27 @@ static void parse_json() {}
     def test_rejects_unrecognized_abi_filter_declaration(self):
         with self.assertRaisesRegex(RuntimeError, "ABI filter declaration not found"):
             PATCHER.patch_android_abis('abiFilters "arm64-v8a"')
+
+
+    def test_flutter_316_widget_patch_is_safe_and_idempotent(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            widget = root / "lib" / "src" / "widgets" / "transcription_view.dart"
+            widget.parent.mkdir(parents=True)
+            widget.write_text(
+                "colorScheme.surfaceContainerHighest.withAlpha(80)",
+                encoding="utf-8",
+            )
+            self.assertTrue(PATCHER.patch_flutter_316_widget(root))
+            patched = widget.read_text(encoding="utf-8")
+            self.assertIn("surfaceVariant", patched)
+            self.assertNotIn("surfaceContainerHighest", patched)
+            self.assertFalse(PATCHER.patch_flutter_316_widget(root))
+
+    def test_flutter_316_widget_patch_rejects_missing_widget(self):
+        with TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(RuntimeError, "Whisper widget source not found"):
+                PATCHER.patch_flutter_316_widget(Path(directory))
 
     def test_replaces_entire_decoder_and_removes_miniaudio(self):
         patched = PATCHER.patch_source(self.source)
