@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 /// Holds the active chat-owned orb widget above the root Navigator. Keeping
