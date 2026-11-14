@@ -99,7 +99,7 @@ extension AgentKernelObservability on AgentKernelStore {
     }
     final normalizedSearch = search?.trim().toLowerCase();
     if (normalizedSearch != null && normalizedSearch.isNotEmpty) {
-      where.add(\"lower(e.type || ' ' || e.status || ' ' || e.id || ' ' || COALESCE(e.task_id, '') || ' ' || e.payload_json) LIKE ?\");
+      where.add("lower(e.type || ' ' || e.status || ' ' || e.id || ' ' || COALESCE(e.task_id, '') || ' ' || e.payload_json) LIKE ?");
       args.add('%$normalizedSearch%');
     }
     args.add(boundedLimit + 1);
