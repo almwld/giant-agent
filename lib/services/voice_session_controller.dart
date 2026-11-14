@@ -77,6 +77,7 @@ class VoiceSessionController {
   Future<void> Function()? _onSpeechEnded;
   String? _pendingTranscript;
   bool _disposed = false;
+  bool _dispatchingSpeechEnded = false;
   ModelProviderMode? _previousProviderMode;
 
   VoiceSessionSnapshot get snapshot => state.value;
@@ -134,6 +135,7 @@ class VoiceSessionController {
     if (snapshot.bargeInReady &&
         !snapshot.voiceRequestActive &&
         !snapshot.finalizing &&
+        !_dispatchingSpeechEnded &&
         _onSpeechEnded != null) {
       unawaited(_dispatchSpeechEnded());
     }
@@ -220,31 +222,40 @@ class VoiceSessionController {
   }
 
   Future<void> _dispatchSpeechEnded() async {
-    final callback = _onSpeechEnded;
-    if (callback != null) {
-      await callback();
-      return;
-    }
-    // The chat route may be temporarily absent. Preserve the user's completed
-    // utterance instead of dropping it or binding work to a disposed State.
-    if (speech.isListening && !snapshot.finalizing) {
-      try {
-        setFinalizing(true);
-        final transcript = await speech.stopListening();
-        _pendingTranscript = transcript;
-        _emit(snapshot.copyWith(
-          isListening: false,
-          active: true,
-          finalizing: false,
-          bargeInActive: false,
-          bargeInReady: false,
-          phase: VoiceSessionPhase.listening,
-          transcript: transcript,
-        ));
-      } catch (error) {
-        _emit(snapshot.copyWith(finalizing: false,
-          error: error.toString(), phase: VoiceSessionPhase.error));
+    if (_dispatchingSpeechEnded) return;
+    _dispatchingSpeechEnded = true;
+    try {
+      final callback = _onSpeechEnded;
+      if (callback != null) {
+        await callback();
+        // If the route disappeared between dispatch and callback execution,
+        // fall back to preserving the utterance instead of dropping it.
+        if (!speech.isListening || snapshot.finalizing ||
+            !snapshot.bargeInReady) return;
       }
+      // The chat route may be temporarily absent. Preserve the user's completed
+      // utterance instead of dropping it or binding work to a disposed State.
+      if (speech.isListening && !snapshot.finalizing) {
+        try {
+          setFinalizing(true);
+          final transcript = await speech.stopListening();
+          _pendingTranscript = transcript;
+          _emit(snapshot.copyWith(
+            isListening: false,
+            active: true,
+            finalizing: false,
+            bargeInActive: false,
+            bargeInReady: false,
+            phase: VoiceSessionPhase.listening,
+            transcript: transcript,
+          ));
+        } catch (error) {
+          _emit(snapshot.copyWith(finalizing: false,
+            error: error.toString(), phase: VoiceSessionPhase.error));
+        }
+      }
+    } finally {
+      _dispatchingSpeechEnded = false;
     }
   }
 
