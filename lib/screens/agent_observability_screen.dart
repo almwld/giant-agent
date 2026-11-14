@@ -200,8 +200,10 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
   String _eventSubtitle(AgentObservabilityEvent event) {
     final taskId = event.taskId;
     final toolId = event.payload['tool_call_id']?.toString();
+    final agentType = event.payload['agent_type']?.toString();
     final parts = <String>[
       event.type,
+      if (agentType != null && agentType.isNotEmpty) 'agent: $agentType',
       if (taskId != null && taskId.isNotEmpty) 'task: $taskId',
       if (toolId != null && toolId.isNotEmpty) 'tool: $toolId',
     ];
@@ -395,16 +397,30 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
                         ),
                       ..._events.map((event) {
                         final color = _statusColor(event.status);
-                        final rawProgress = event.payload['progress_percent'] ??
-                            event.payload['progress'];
-                        final progressPercent = rawProgress is num
-                            ? rawProgress.toDouble().clamp(0.0, 100.0)
-                            : null;
+                        final explicitPercent = event.payload['progress_percent'];
+                        final rawProgress = event.payload['progress'];
+                        final progressPercent = explicitPercent is num
+                            ? explicitPercent.toDouble().clamp(0.0, 100.0)
+                            : rawProgress is num
+                                ? (rawProgress <= 1.0
+                                    ? rawProgress.toDouble() * 100.0
+                                    : rawProgress.toDouble()).clamp(0.0, 100.0)
+                                : null;
                         final rawDuration = event.payload['duration_ms'] ??
                             event.payload['latency_ms'];
                         final durationMs = rawDuration is num && rawDuration >= 0
                             ? rawDuration.round()
                             : null;
+                        final metadata = <MapEntry<String, String>>[
+                          MapEntry('نوع الوكيل', event.payload['agent_type']?.toString() ?? ''),
+                          MapEntry('رمز العامل', event.payload['icon']?.toString() ?? ''),
+                          MapEntry('وصف العامل', event.payload['motto']?.toString() ?? ''),
+                          MapEntry('رقم العامل', (event.payload['worker_index'] ?? event.payload['index'])?.toString() ?? ''),
+                          MapEntry('الأداة', event.payload['tool_name']?.toString() ?? ''),
+                          MapEntry('معرّف استدعاء الأداة', event.payload['tool_call_id']?.toString() ?? ''),
+                          MapEntry('المخرجات', (event.payload['output'] ?? event.payload['result'])?.toString() ?? ''),
+                          MapEntry('الخطأ', event.payload['error']?.toString() ?? ''),
+                        ].where((item) => item.value.trim().isNotEmpty).toList();
                         return Container(
                           margin: const EdgeInsets.only(bottom: 8),
                           padding: const EdgeInsets.all(13),
@@ -486,6 +502,37 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
                                         style: const TextStyle(
                                           color: Color(0xFF94A3B8),
                                           fontSize: 10,
+                                        ),
+                                      ),
+                                    ],
+                                    if (metadata.isNotEmpty) ...[
+                                      const SizedBox(height: 4),
+                                      Theme(
+                                        data: Theme.of(context).copyWith(
+                                          dividerColor: Colors.transparent,
+                                          splashColor: Colors.transparent,
+                                          highlightColor: Colors.transparent,
+                                        ),
+                                        child: ExpansionTile(
+                                          tilePadding: EdgeInsets.zero,
+                                          childrenPadding: const EdgeInsets.only(bottom: 6),
+                                          dense: true,
+                                          collapsedIconColor: const Color(0xFF64748B),
+                                          iconColor: const Color(0xFF5EEAD4),
+                                          title: const Text('تفاصيل العامل والأداة',
+                                            style: TextStyle(color: Color(0xFF5EEAD4), fontSize: 11)),
+                                          children: metadata.map((item) => Padding(
+                                            padding: const EdgeInsets.symmetric(vertical: 3),
+                                            child: Row(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                SizedBox(width: 112, child: Text(item.key,
+                                                  style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 10))),
+                                                Expanded(child: SelectableText(item.value,
+                                                  style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 10))),
+                                              ],
+                                            ),
+                                          )).toList(),
                                         ),
                                       ),
                                     ],
