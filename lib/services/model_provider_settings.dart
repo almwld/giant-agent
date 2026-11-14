@@ -1,8 +1,8 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'openai_compatible_provider.dart';
 
-/// Only local GGUF and the official OpenRouter endpoint are supported.
-enum ModelProviderMode { local, openRouter }
+/// Available inference backends. Pollinations is the legacy keyless endpoint.
+enum ModelProviderMode { local, openRouter, zeroConfig }
 
 class ModelProviderSettings {
   ModelProviderSettings._();
@@ -18,8 +18,8 @@ class ModelProviderSettings {
       await _storage.delete(key: 'giant_gemini_api_key');
       await _storage.delete(key: 'giant_gemini_model');
       await _storage.delete(key: 'giant_gemini_enabled');
-      // Old non-OpenRouter cloud modes must never silently remain active.
-      if (stored == 'gemini' || stored == 'zero_config') {
+      // Retired Gemini is disabled; preserve the explicitly selected keyless Pollinations mode.
+      if (stored == 'gemini') {
         await _storage.write(key: _modeKey, value: 'local');
       }
     }();
@@ -33,6 +33,8 @@ class ModelProviderSettings {
         return ModelProviderMode.local;
       case 'openrouter':
         return ModelProviderMode.openRouter;
+      case 'zero_config':
+        return ModelProviderMode.zeroConfig;
     }
 
     // Compatibility with installations that enabled the former OpenRouter
@@ -51,6 +53,7 @@ class ModelProviderSettings {
       value: switch (mode) {
         ModelProviderMode.local => 'local',
         ModelProviderMode.openRouter => 'openrouter',
+        ModelProviderMode.zeroConfig => 'zero_config',
       },
     );
   }
