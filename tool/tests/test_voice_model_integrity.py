@@ -14,13 +14,13 @@ class VoiceModelIntegrityTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         archive_block = re.search(
-            r'downloadPinned\\(\\s*"https://github\\.com/k2-fsa/sherpa-onnx/releases/download/tts-models/nabra-82m-arabic-int8\\.tar\\.bz2",\\s*'
-            r'new File\\(bundledVoiceModelDir, "nabra-82m-arabic-int8\\.tar\\.bz2"\\),\\s*'
+            r'downloadPinned\(\s*"https://github\.com/k2-fsa/sherpa-onnx/releases/download/tts-models/nabra-82m-arabic-int8\.tar\.bz2",\s*'
+            r'new File\(bundledVoiceModelDir, "nabra-82m-arabic-int8\.tar\.bz2"\),\s*'
             r'"([0-9a-f]{64})"',
             gradle,
         )
         runtime_digest = re.search(
-            r'modelArchiveSha256\\s*=\\s*\\n\\s*\'([0-9a-f]{64})\'',
+            r'modelArchiveSha256\s*=\s*\n\s*\'([0-9a-f]{64})\'',
             service,
         )
 
