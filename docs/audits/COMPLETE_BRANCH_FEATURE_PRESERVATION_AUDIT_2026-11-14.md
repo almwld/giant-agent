@@ -261,3 +261,79 @@ The audit is **not** considered complete until:
 6. The final candidate has a reviewed PR; main is not changed without explicit merge authorization.
 
 **Audit conclusion:** The mainline contains substantial integrated technology, but several important capabilities remain in open PRs or historical branches. The correct next action is controlled preservation and integration—not deleting branches, cherry-picking large histories, or merging all PRs indiscriminately.
+
+
+## Per-branch comparison ledger (captured before creating this audit branch)
+
+The original snapshot contained 67 branches including `main`. All 66 other refs were compared to `main`. “Ahead” is commit ancestry, not unique feature count. “Behind” refs are historical snapshots and are not candidates for wholesale merge.
+
+| Branch | Compare status | Ahead | Behind | Changed files | Initial disposition |
+|---|---:|---:|---:|---:|---|
+| `chore/boosthis-mcp-connection` | diverged | 1 | 1025 | 1 | historical config-only; superseded by native Gain observability direction |
+| `chore/boosthis-mcp-mainline` | ahead | 38 | 0 | 15 | open PR #53; validate observability/TL implementation |
+| `ci/appetize-cloud-device-testing` | behind | 0 | 207 | 0 | merged PR #31 descendant/history; verify current workflow coverage |
+| `ci/codemagic-android-release` | diverged | 2 | 546 | 1 | open PR #32; CI-only, reconcile workflow |
+| `ci/upload-split-apk-artifacts` | diverged | 3 | 1025 | 3 | closed PR #18; salvage ABI/checksum logic only |
+| `ci/verify-native-gain-20261113` | ahead | 25 | 0 | 10 | verification branch for #53, not separate product feature |
+| `docs/durable-task-engine-review` | diverged | 53 | 757 | 21 | open PR #8; architecture review + historical runtime artifacts |
+| `docs/enterprise-agent-architecture` | diverged | 1 | 1025 | 1 | open PR #5; documentation contract |
+| `feat/agentsos-control-center` | ahead | 275 | 0 | 55 | open PR #57; preserve, integrate after runtime base |
+| `feat/chat-bubble-resize-teal-toasts` | diverged | 5 | 537 | 2 | PR #17 open; overlap with merged voice-orb PR #25 |
+| `feat/chat-embedded-resizable-voice-orb` | diverged | 4 | 537 | 2 | PR #25 merged; verify resulting feature in main |
+| `feat/chatgpt-experience-foundation` | diverged | 68 | 1047 | 31 | open PR #1; unique gateway/ReAct/conversation foundation review |
+| `feat/consolidate-sqlite-runtime` | diverged | 72 | 757 | 25 | old stacked SQLite/PTy path; compare unique contracts only |
+| `feat/consolidate-sqlite-runtime-v2` | behind | 0 | 546 | 0 | merged PR #14 lineage; historical source |
+| `feat/full-reference-architecture-transfer` | behind | 0 | 19 | 0 | merged PR #46 lineage; verify main tests |
+| `feat/gain-pty-reliability` | diverged | 74 | 757 | 25 | old stacked PTY/runtime; retain unique reliability tests only |
+| `feat/hermes-hybrid-memory-retrieval` | behind | 0 | 13 | 0 | merged PR #47; verify current implementation |
+| `feat/hermes-skills-context-compaction` | behind | 0 | 37 | 0 | merged PR #40; verify current implementation |
+| `feat/integrated-agent-completion` | behind | 0 | 646 | 0 | merged PR #3 lineage; historical source |
+| `feat/kimi-dynamic-subagent-lifecycle` | diverged | 70 | 211 | 19 | merged PR #29 lineage; compare only unique descendants |
+| `feat/kimi-runtime-dynamic-orchestration` | diverged | 68 | 211 | 18 | merged PR #30 lineage; compare only unique descendants |
+| `feat/kimi-subagent-orchestration` | diverged | 52 | 211 | 17 | merged PR #26 lineage; verify lifecycle tests |
+| `feat/local-gguf-llama-cpp` | diverged | 111 | 1045 | 23 | merged PR #2; do not re-port old snapshot |
+| `feat/local-offline-voice-pipeline` | ahead | 112 | 0 | 26 | open PR #55; important local Arabic voice feature |
+| `feat/mcp-toolcall-sse-integration` | diverged | 3 | 213 | 1 | merged PR #28 lineage; verify MCP result/SSE contracts |
+| `feat/mylib-durable-subagent-recovery` | diverged | 9 | 48 | 5 | overlap with merged #33/#42; inspect lifecycle-only deltas |
+| `feat/mylib-technology-transfer` | behind | 0 | 48 | 0 | merged PR #33; historical source |
+| `feat/mylib-transfer-validation` | diverged | 53 | 211 | 18 | closed PR #35; validation/docs and Kimi lineage |
+| `feat/native-gain-observability` | ahead | 11 | 0 | 4 | native observability ancestor; superseded/continued by #53 |
+| `feat/phase-0-durable-agent-service` | diverged | 60 | 757 | 22 | closed stacked PR #9; compare integration seams/tests only |
+| `feat/phase-1-durable-task-manager` | diverged | 67 | 757 | 24 | closed stacked PR #10; compare recovery tests only |
+| `feat/pollinations-agent-provider` | ahead | 10 | 0 | 6 | open PR #58; experimental provider |
+| `feat/production-timeline-engine` | diverged | 17 | 1025 | 8 | open PR #36; alternative Timeline implementation |
+| `feat/runtime-foundation-gain-pty` | diverged | 51 | 1025 | 19 | closed PR #6; historical PTY/durable kernel source |
+| `feat/sehatak-brand-identity` | diverged | 86 | 1025 | 66 | open PR #12; large visual/build changes, selective review |
+| `feat/unified-kernel-v2` | behind | 0 | 646 | 0 | historical integration base |
+| `feat/verified-agent-orchestration-events` | behind | 0 | 925 | 0 | historical verification lineage |
+| `feat/voice-orb-in-chat-session` | behind | 0 | 496 | 0 | merged PR #23 lineage |
+| `feature/voice-assistant-integration` | diverged | 58 | 757 | 22 | closed PR #7/#20 lineage; inspect unique voice wiring only |
+| `fix/android-launch-black-screen` | diverged | 3 | 1025 | 3 | open PR #27; cold-launch fix requires current-main validation |
+| `fix/browser-tool-call-scoped-cancellation` | behind | 0 | 10 | 0 | merged PR #48 |
+| `fix/context-compactor-index-types` | behind | 0 | 6 | 0 | merged PR #50 |
+| `fix/context-compactor-never-truncate-contract` | behind | 0 | 1 | 0 | merged PR #52 |
+| `fix/durable-subagent-mailboxes-and-goals` | behind | 0 | 32 | 0 | merged PR #41/#42 |
+| `fix/mcp-tool-call-cancellation-through-approval` | behind | 0 | 27 | 0 | merged PR #44 |
+| `fix/media-tool-call-cancellation-contract` | behind | 0 | 3 | 0 | merged PR #51 |
+| `fix/openrouter-format-exception` | behind | 0 | 756 | 0 | merged PR #4 descendant; historical |
+| `fix/openrouter-only-provider-policy` | behind | 0 | 508 | 0 | merged PR #22; historical |
+| `fix/openrouter-only-provider-policy-v2` | diverged | 7 | 519 | 7 | provider-policy variant; selective comparison required |
+| `fix/python-tool-call-cooperative-cancellation` | behind | 0 | 24 | 0 | merged PR #45 |
+| `fix/runtime-provider-routing-gemini` | behind | 0 | 629 | 0 | historical provider-routing branch; verify main equivalent |
+| `fix/sqlite-wal-pragma-monitoring` | ahead | 3 | 0 | 3 | open PR #59; targeted correctness fix |
+| `fix/tool-call-cancellation-isolation` | behind | 0 | 29 | 0 | merged PR #43 |
+| `fix/tool-call-scoped-gain-cancellation` | behind | 0 | 41 | 0 | merged PR #39 |
+| `fix/voice-terminal-approval-stabilization` | diverged | 2 | 520 | 2 | merged PR #21 lineage; historical |
+| `fix/web-search-tool-call-cancellation` | behind | 0 | 8 | 0 | merged PR #49 |
+| `integration/giant-agent-stabilization` | behind | 0 | 47 | 0 | merged PR #38; historical integration base |
+| `integration/unified-agent-runtime` | ahead | 112 | 0 | 26 | local voice + observability integration line; PR #56 stacks on newer v2 |
+| `integration/unified-agent-runtime-v2` | ahead | 222 | 0 | 40 | base of open PR #57; major integration candidate, requires full validation |
+| `rebuild/build-756-to-1011` | diverged | 58 | 757 | 22 | historical rebuild/replay; inspect test-only unique value |
+| `rebuild/verified-replay-425197-to-425351` | behind | 0 | 757 | 0 | historical verification snapshot |
+| `replay/verified-onto-425197-clean` | diverged | 51 | 757 | 19 | historical PTY/durable integration snapshot |
+| `replay/verified-onto-425197` | diverged | 52 | 757 | 20 | historical PTY/durable integration snapshot |
+| `test/gain-pty-emulator-smoke` | diverged | 18 | 495 | 3 | open PR #24; preserve emulator test and APK inspection |
+| `verify/gain-replay-ci` | diverged | 52 | 757 | 19 | historical verification snapshot |
+| `verify/gain-replay-ci-2` | diverged | 53 | 757 | 20 | closed PR #19 lineage; preserve unique smoke/reliability tests |
+
+**Snapshot note:** This table intentionally excludes the audit branch created after the initial 67-branch inventory. At the time of this update the repository also contains `audit/complete-branch-feature-inventory-20261114`, which adds this report only.
