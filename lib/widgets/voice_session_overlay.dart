@@ -156,11 +156,14 @@ class _VoiceSessionOverlayState extends State<VoiceSessionOverlay> {
                           onPressed: _session.interruptAndListen,
                           icon: const Icon(Icons.hearing_rounded),
                           label: const Text('قاطعني — استمع الآن')),
-                      if (state.phase == VoiceSessionPhase.listening && state.isListening)
+                      if (state.phase == VoiceSessionPhase.listening &&
+                          (state.isListening || state.transcript.isNotEmpty))
                         FilledButton.icon(
                           onPressed: _session.requestFinish,
                           icon: const Icon(Icons.send_rounded),
-                          label: const Text('انتهيت — أرسل كلامي')),
+                          label: Text(state.isListening
+                              ? 'انتهيت — أرسل كلامي'
+                              : 'أرسل النص إلى المحادثة')),
                       const SizedBox(height: 8),
                       const Text('التعرف على الكلام يعمل على الجهاز',
                         style: TextStyle(color: GiantPalette.muted, fontSize: 11)),
