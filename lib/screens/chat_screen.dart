@@ -75,6 +75,10 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _finalizingVoiceInput = false;
   bool _voiceOrbVisible = false;
   bool _voiceRequestActive = false;
+  bool _dictationActive = false;
+  bool _orbCompact = false;
+  double _orbOffsetY = 0;
+  final Map<String, String> _inlineTimelinePanels = <String, String>{};
   bool _bargeInActive = false;
   bool _voiceAecAvailable = false;
   bool _bargeInReady = false;
@@ -1441,7 +1445,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       setState(() {
         _streamingResponse = '';
-        _messages.add({'isUser': false, 'content': response, 'time': DateTime.now()});
+        _messages.add({'isUser': false, 'content': response, 'time': DateTime.now(), 'requestId': requestId});
         _isLoading = false;
       });
       await _saveMessage(response, false);
@@ -1523,7 +1527,7 @@ class _ChatScreenState extends State<ChatScreen> {
       final response = await _executeChatPrompt(prompt, requestId: requestId);
       if (!mounted) return;
       setState(() {
-        _messages.add({'isUser': false, 'content': response, 'time': DateTime.now()});
+        _messages.add({'isUser': false, 'content': response, 'time': DateTime.now(), 'requestId': requestId});
         _isLoading = false;
       });
       await _saveMessage(response, false);
@@ -1532,7 +1536,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       final response = 'تعذر إكمال الطلب: $error';
       setState(() {
-        _messages.add({'isUser': false, 'content': response, 'time': DateTime.now()});
+        _messages.add({'isUser': false, 'content': response, 'time': DateTime.now(), 'requestId': requestId});
         _isLoading = false;
       });
       await _saveMessage(response, false);
@@ -1568,12 +1572,60 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _regenerateAssistantMessage(int index) async {
     if (_isLoading || index < 0 || index >= _messages.length || _messages[index]['isUser'] == true) return;
-    var userIndex = index - 1;
-    while (userIndex >= 0 && _messages[userIndex]['isUser'] != true) {
-      userIndex--;
+    final assistantRequestId = _messages[index]['requestId']?.toString() ?? '';
+    var userIndex = assistantRequestId.isEmpty ? -1 : _messages.lastIndexWhere(
+      (message) => message['isUser'] == true &&
+          message['requestId']?.toString() == assistantRequestId);
+    if (userIndex < 0) {
+      userIndex = index - 1;
+      while (userIndex >= 0 && _messages[userIndex]['isUser'] != true) {
+        userIndex--;
+      }
     }
     if (userIndex < 0) return;
     await _runExistingUserMessage(userIndex);
+  }
+
+  Future<void> _speakMessage(String content) async {
+    try {
+      if (_voiceOutput.isSpeaking) {
+        await _voiceOutput.stop();
+      } else {
+        await _voiceOutput.speak(content, waitForCompletion: true);
+      }
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذر تشغيل قراءة الرسالة: $error')));
+    }
+  }
+
+  Future<void> _toggleDictation() async {
+    if (_dictationActive) {
+      try {
+        final transcript = await _localSpeech.stopListening();
+        if (!mounted) return;
+        setState(() {
+          if (transcript.isNotEmpty) {
+            _controller.text = _controller.text.trim().isEmpty
+                ? transcript : '${_controller.text.trim()} $transcript';
+            _controller.selection = TextSelection.collapsed(offset: _controller.text.length);
+          }
+          _dictationActive = false;
+        });
+      } catch (error) {
+        if (mounted) setState(() => _dictationActive = false);
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تعذر تحويل التسجيل إلى نص: $error')));
+      }
+      return;
+    }
+    try {
+      await _localSpeech.startListening();
+      if (mounted) setState(() => _dictationActive = true);
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذر بدء الإملاء الصوتي: $error')));
+    }
   }
 
   Future<void> _copyMessage(String content) async {
@@ -1592,6 +1644,7 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {
       _pendingChatRequests++;
       _isLoading = true;
+      _activeAgentRequestId = requestId;
       _messages.add({
         'isUser': true,
         'content': text,
@@ -1650,6 +1703,7 @@ class _ChatScreenState extends State<ChatScreen> {
       });
       if (_pendingChatRequests > 0) _pendingChatRequests--;
       _isLoading = _pendingChatRequests > 0;
+      if (_activeAgentRequestId == requestId) _activeAgentRequestId = '';
     });
     await _saveMessage(response, false, requestId: requestId);
     // The text reply is already rendered; audio playback starts without
@@ -2013,62 +2067,71 @@ class _ChatScreenState extends State<ChatScreen> {
       AgentState.error => 'تعذر إكمال الاتصال الصوتي',
     };
     final transcript = _controller.text.trim();
-    return Material(
+    if (_orbCompact) {
+      return Positioned(left: 12, right: 12,
+        bottom: (106 + _orbOffsetY).clamp(78.0, MediaQuery.of(context).size.height - 180),
+        child: SafeArea(child: Material(
+          color: const Color(0xF0181D29), borderRadius: BorderRadius.circular(24),
+          child: Padding(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            child: Row(children: [
+              GestureDetector(
+                onPanUpdate: (d) => setState(() => _orbOffsetY = (_orbOffsetY + d.delta.dy).clamp(-180.0, 180.0)),
+                onTap: () => setState(() => _orbCompact = false),
+                child: GlowingOrb(state: _voiceOrbState, size: 112)),
+              const SizedBox(width: 8),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min, children: [
+                  Text(status, style: const TextStyle(color: Colors.white, fontSize: 12)),
+                  if (transcript.isNotEmpty) Text(transcript, maxLines: 2,
+                    overflow: TextOverflow.ellipsis, style: const TextStyle(color: GiantPalette.muted, fontSize: 10)),
+                ])),
+              IconButton(onPressed: () => setState(() => _orbCompact = false),
+                icon: const Icon(Icons.open_in_full_rounded, color: Colors.white70, size: 18)),
+              IconButton(onPressed: _stopVoiceInteraction,
+                icon: const Icon(Icons.close_rounded, color: Colors.white70, size: 18)),
+            ])))));
+    }
+    return Positioned.fill(child: Material(
       color: const Color(0xE610131B),
-      child: SafeArea(
-        child: Stack(
-          children: [
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 28),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    GlowingOrb(state: _voiceOrbState, size: 238),
-                    const SizedBox(height: 22),
-                    Text(status, textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.white, fontSize: 16,
-                        fontWeight: FontWeight.w600)),
-                    if (transcript.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      Text(transcript, maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(color: Color(0xFFCBD5E1),
-                          fontSize: 13, height: 1.5)),
-                    ],
-                    const SizedBox(height: 14),
-                    if (_voiceOrbState == AgentState.speaking)
-                      FilledButton.tonalIcon(
-                        onPressed: _interruptAssistantAndListen,
-                        icon: const Icon(Icons.hearing_rounded),
-                        label: const Text('قاطعني — استمع الآن'),
-                      ),
-                    if (_voiceOrbState == AgentState.listening && _localSpeech.isListening)
-                      FilledButton.icon(
-                        onPressed: _finishLocalVoiceTurn,
-                        icon: const Icon(Icons.send_rounded),
-                        label: const Text('انتهيت — أرسل كلامي'),
-                      ),
-                    const SizedBox(height: 8),
-                    const Text('التعرف على الكلام يعمل على الجهاز',
-                      style: TextStyle(color: GiantPalette.muted, fontSize: 11)),
-                  ],
-                ),
-              ),
-            ),
-            PositionedDirectional(
-              top: 12, end: 12,
-              child: IconButton.filledTonal(
-                tooltip: 'إيقاف المساعد الصوتي',
-                onPressed: _stopVoiceInteraction,
-                icon: const Icon(Icons.close_rounded),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+      child: SafeArea(child: Stack(children: [
+        Center(child: GestureDetector(
+          onPanUpdate: (d) {
+            if (d.delta.dy.abs() > 2) setState(() {
+              _orbCompact = true;
+              _orbOffsetY = (_orbOffsetY + d.delta.dy).clamp(-180.0, 180.0);
+            });
+          },
+          child: Padding(padding: const EdgeInsets.symmetric(horizontal: 28),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              GlowingOrb(state: _voiceOrbState, size: 270),
+              const SizedBox(height: 18),
+              Text(status, textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+              if (transcript.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(transcript, maxLines: 3, overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 13, height: 1.5)),
+              ],
+              const SizedBox(height: 14),
+              if (_voiceOrbState == AgentState.speaking)
+                FilledButton.tonalIcon(onPressed: _interruptAssistantAndListen,
+                  icon: const Icon(Icons.hearing_rounded), label: const Text('قاطعني — استمع الآن')),
+              if (_voiceOrbState == AgentState.listening && _localSpeech.isListening)
+                FilledButton.icon(onPressed: _finishLocalVoiceTurn,
+                  icon: const Icon(Icons.send_rounded), label: const Text('انتهيت — أرسل كلامي')),
+              const SizedBox(height: 8),
+              const Text('التعرف على الكلام يعمل على الجهاز',
+                style: TextStyle(color: GiantPalette.muted, fontSize: 11)),
+            ])))),
+        PositionedDirectional(top: 12, end: 12, child: Row(children: [
+          IconButton.filledTonal(tooltip: 'تصغير المساعد الصوتي',
+            onPressed: () => setState(() => _orbCompact = true),
+            icon: const Icon(Icons.picture_in_picture_alt_rounded)),
+          IconButton.filledTonal(tooltip: 'إيقاف المساعد الصوتي',
+            onPressed: _stopVoiceInteraction, icon: const Icon(Icons.close_rounded)),
+        ])),
+      ]))));
   }
 
   Future<void> _prepareLocalTtsModel() async {
@@ -2936,20 +2999,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       ],
                     ),
                   ),
-                  IconButton(
-                    tooltip: 'فتح الطرفية',
-                    visualDensity: VisualDensity.compact,
-                    icon: const Icon(Icons.terminal, color: GiantPalette.primary, size: 20),
-                    onPressed: _showTerminal,
-                  ),
-                  IconButton(
-                    tooltip: 'فتح مساحة عمل الوكيل',
-                    visualDensity: VisualDensity.compact,
-                    icon: const Icon(Icons.computer_outlined, color: GiantPalette.primary, size: 19),
-                    onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => AgentWorkspaceScreen(steps: List<Map<String, dynamic>>.from(steps)),
-                    )),
-                  ),
+
                   Icon(expanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
                     color: mutedColor, size: 20),
                 ],
@@ -3106,8 +3156,68 @@ class _ChatScreenState extends State<ChatScreen> {
                   )
                 : const SizedBox(width: double.infinity),
           ),
-          if (expanded)
+          if (expanded) ...[
+            Builder(builder: (context) {
+              final terminalAvailable = _terminalHasActivity ||
+                  steps.any((step) => _opensTerminalFromStep(step));
+              final workspaceAvailable = steps.any((step) {
+                final type = step['type']?.toString() ?? '';
+                return type == 'file_created' || type == 'file_updated' ||
+                    type == 'file_read' || step['content'] != null ||
+                    step['file_name'] != null;
+              });
+              final active = _inlineTimelinePanels[requestId];
+              final previews = steps.where((step) =>
+                  (step['content']?.toString().isNotEmpty ?? false) ||
+                  (step['command']?.toString().isNotEmpty ?? false) ||
+                  (step['output']?.toString().isNotEmpty ?? false) ||
+                  (step['details']?.toString().isNotEmpty ?? false)).toList();
+              return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                if (terminalAvailable || workspaceAvailable)
+                  Row(children: [
+                    if (terminalAvailable)
+                      TextButton.icon(
+                        onPressed: () => setState(() => _inlineTimelinePanels[requestId] =
+                            active == 'terminal' ? '' : 'terminal'),
+                        icon: const Icon(Icons.terminal_rounded, size: 16),
+                        label: const Text('الطرفية'),
+                      ),
+                    if (workspaceAvailable)
+                      TextButton.icon(
+                        onPressed: () => setState(() => _inlineTimelinePanels[requestId] =
+                            active == 'workspace' ? '' : 'workspace'),
+                        icon: const Icon(Icons.computer_outlined, size: 16),
+                        label: const Text('مساحة العمل'),
+                      ),
+                  ]),
+                if (active == 'terminal' && terminalAvailable)
+                  Container(height: 210, margin: const EdgeInsets.only(top: 4),
+                    decoration: BoxDecoration(color: const Color(0xFF090D12),
+                      borderRadius: BorderRadius.circular(12)),
+                    child: ClipRRect(borderRadius: BorderRadius.circular(12),
+                      child: TerminalView(_terminal, readOnly: true))),
+                if (active == 'workspace' && workspaceAvailable)
+                  Container(constraints: const BoxConstraints(maxHeight: 260),
+                    margin: const EdgeInsets.only(top: 4), padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(color: const Color(0xFF090D12),
+                      borderRadius: BorderRadius.circular(12)),
+                    child: ListView(shrinkWrap: true, children: previews.map((step) {
+                      final title = step['title']?.toString() ?? 'مخرجات الوكيل';
+                      final code = step['content']?.toString() ?? step['command']?.toString() ?? '';
+                      final output = step['output']?.toString() ?? step['details']?.toString() ?? '';
+                      return Padding(padding: const EdgeInsets.only(bottom: 12),
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(title, style: const TextStyle(color: GiantPalette.primaryLight, fontSize: 11)),
+                          if (code.isNotEmpty) SelectableText(code, style: const TextStyle(
+                            color: Color(0xFFE2E8F0), fontSize: 11, fontFamily: 'monospace')),
+                          if (output.isNotEmpty) SelectableText(output, style: const TextStyle(
+                            color: Color(0xFF86EFAC), fontSize: 11, fontFamily: 'monospace')),
+                        ]));
+                    }).toList())),
+              ]);
+            }),
             const SizedBox(height: 7),
+          ],
         ],
       ),
     );
@@ -3273,11 +3383,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ),
         actions: [
-          IconButton(
-            tooltip: 'بدء المحادثة الصوتية داخل الجلسة الحالية',
-            onPressed: _toggleVoiceInput,
-            icon: const Icon(Icons.mic_none_rounded, color: Color(0xFF22D3EE), size: 19),
-          ),
+
           IconButton(
             tooltip: 'محادثة جديدة',
             onPressed: _newConversation,
@@ -3563,8 +3669,34 @@ class _ChatScreenState extends State<ChatScreen> {
             child: ListView.builder(
               controller: _scrollController,
               padding: const EdgeInsets.all(16),
-              itemCount: _messages.length,
+              itemCount: _messages.length + (_isLoading ? 1 : 0),
               itemBuilder: (context, index) {
+                if (index >= _messages.length) {
+                  return Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: Container(
+                      margin: const EdgeInsetsDirectional.fromSTEB(2, 8, 8, 14),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(color: GiantPalette.surface,
+                        borderRadius: BorderRadius.circular(14)),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Row(mainAxisSize: MainAxisSize.min, children: [
+                          const AgentThinkingDots(dotSize: 4.2),
+                          const SizedBox(width: 7),
+                          Text(_streamingResponse.isEmpty ? 'الوكيل يعمل…' : 'الوكيل يكتب…',
+                            style: const TextStyle(color: GiantPalette.muted, fontSize: 10)),
+                        ]),
+                        if (_streamingResponse.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Directionality(textDirection: _contentDirection(_streamingResponse),
+                            child: AgentStreamingText(_streamingResponse,
+                              shimmerFrom: _streamingShimmerStart, selectable: true,
+                              style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.5))),
+                        ],
+                      ]),
+                    ),
+                  );
+                }
                 final msg = _messages[index];
                 final isUser = msg['isUser'] as bool;
                 final requestId = msg['requestId']?.toString() ?? '';
@@ -3693,55 +3825,6 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                   ),
                     ),
-                    if (isUser && _isLoading && requestId == _activeAgentRequestId &&
-                        _streamingResponse.isEmpty)
-                      Padding(
-                        padding: const EdgeInsetsDirectional.only(end: 8, bottom: 5),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const AgentThinkingDots(dotSize: 3.8),
-                            const SizedBox(width: 5),
-                            const Text('جاري التفكير',
-                              style: TextStyle(color: GiantPalette.muted, fontSize: 10)),
-                          ],
-                        ),
-                      ),
-                    if (isUser && _isLoading && requestId == _activeAgentRequestId &&
-                        _streamingResponse.isNotEmpty)
-                      Align(
-                        alignment: AlignmentDirectional.centerStart,
-                        child: Container(
-                          constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * .82),
-                          margin: const EdgeInsetsDirectional.only(start: 2, bottom: 8),
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: GiantPalette.surface,
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(mainAxisSize: MainAxisSize.min, children: [
-                                const AgentThinkingDots(dotSize: 3.5),
-                                const SizedBox(width: 6),
-                                const Text('جاري الكتابة',
-                                  style: TextStyle(color: GiantPalette.muted, fontSize: 9)),
-                              ]),
-                              const SizedBox(height: 5),
-                              Directionality(
-                                textDirection: _contentDirection(_streamingResponse),
-                                child: AgentStreamingText(
-                                  _streamingResponse,
-                                  shimmerFrom: _streamingShimmerStart,
-                                  selectable: true,
-                                  style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.5),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
                     Padding(
                       padding: const EdgeInsetsDirectional.only(start: 8, end: 8, bottom: 10),
                       child: Row(
@@ -3763,6 +3846,12 @@ class _ChatScreenState extends State<ChatScreen> {
                             tooltip: 'نسخ الرسالة',
                             onPressed: () => _copyMessage(msg['content']?.toString() ?? ''),
                           ),
+                          if (!isUser)
+                            _messageActionButton(
+                              icon: Icons.volume_up_rounded,
+                              tooltip: _voiceOutput.isSpeaking ? 'إيقاف القراءة' : 'استمع إلى نص الإجابة',
+                              onPressed: () => _speakMessage(msg['content']?.toString() ?? ''),
+                            ),
                           if (isUser)
                             _messageActionButton(
                               icon: Icons.edit_outlined,
@@ -3839,32 +3928,27 @@ class _ChatScreenState extends State<ChatScreen> {
                     textDirection: TextDirection.ltr,
                     children: [
                       _composerIconButton(
-                        icon: _voiceOrbVisible
-                            ? Icons.graphic_eq_rounded
-                            : (_isLoading && _controller.text.trim().isEmpty
-                                ? Icons.stop_rounded
-                                : (_controller.text.trim().isNotEmpty
-                                    ? Icons.arrow_upward_rounded
-                                    : (_isListening ? Icons.graphic_eq_rounded : Icons.mic_none_rounded))),
-                        tooltip: _voiceOrbVisible
-                            ? 'إيقاف المساعد الصوتي'
-                            : (_isLoading && _controller.text.trim().isEmpty
-                                ? 'إيقاف الوكيل'
-                                : (_controller.text.trim().isNotEmpty
-                                    ? 'إرسال الرسالة'
-                                    : 'بدء التحدث')),
-                        background: !_voiceOrbVisible && _isLoading && _controller.text.trim().isEmpty
-                            ? Colors.white
-                            : GiantPalette.primary,
-                        foreground: !_voiceOrbVisible && _isLoading && _controller.text.trim().isEmpty
-                            ? const Color(0xFF18181B) : Colors.white,
-                        onPressed: _voiceOrbVisible
-                            ? _stopVoiceInteraction
-                            : (_isLoading && _controller.text.trim().isEmpty
-                                ? _cancelAgent
-                                : (_controller.text.trim().isNotEmpty
-                                    ? _sendMessage : _toggleVoiceInput)),
+                        icon: _isLoading && _controller.text.trim().isEmpty
+                            ? Icons.stop_rounded
+                            : (_controller.text.trim().isNotEmpty
+                                ? Icons.arrow_upward_rounded : Icons.graphic_eq_rounded),
+                        tooltip: _isLoading && _controller.text.trim().isEmpty
+                            ? 'إيقاف الوكيل'
+                            : (_controller.text.trim().isNotEmpty ? 'إرسال الرسالة' : 'فتح المساعد الصوتي المباشر'),
+                        background: _isLoading && _controller.text.trim().isEmpty ? Colors.white : GiantPalette.primary,
+                        foreground: _isLoading && _controller.text.trim().isEmpty ? const Color(0xFF18181B) : Colors.white,
+                        onPressed: _isLoading && _controller.text.trim().isEmpty
+                            ? _cancelAgent
+                            : (_controller.text.trim().isNotEmpty ? _sendMessage : _toggleVoiceInput),
                         prominent: true,
+                      ),
+                      const SizedBox(width: 6),
+                      _composerIconButton(
+                        icon: _dictationActive ? Icons.stop_circle_rounded : Icons.mic_none_rounded,
+                        tooltip: _dictationActive ? 'إيقاف الإملاء وإدراج النص' : 'إملاء صوتي في حقل الكتابة',
+                        foreground: _dictationActive ? Colors.white : GiantPalette.muted,
+                        background: _dictationActive ? const Color(0xFFB45309) : GiantPalette.border,
+                        onPressed: _toggleDictation,
                       ),
                       const SizedBox(width: 8),
                       Expanded(
@@ -3986,7 +4070,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
       ),
       if (_voiceOrbVisible)
-        Positioned.fill(child: _buildVoiceOrbOverlay()),
+        _buildVoiceOrbOverlay(),
     ]),
     );
   }
