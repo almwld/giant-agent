@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import 'local_speech_recognition_service.dart';
 import 'voice_output_service.dart';
+import 'model_provider_settings.dart';
 
 enum VoiceSessionPhase { idle, listening, thinking, speaking, error }
 
@@ -76,6 +77,7 @@ class VoiceSessionController {
   Future<void> Function()? _onSpeechEnded;
   String? _pendingTranscript;
   bool _disposed = false;
+  ModelProviderMode? _previousProviderMode;
 
   VoiceSessionSnapshot get snapshot => state.value;
   bool get isActive => snapshot.active;
@@ -123,6 +125,17 @@ class VoiceSessionController {
 
   void setFinalizing(bool value) {
     _emit(snapshot.copyWith(finalizing: value));
+  }
+
+  void rememberProviderMode(ModelProviderMode mode) {
+    _previousProviderMode ??= mode;
+  }
+
+  Future<void> restoreProviderMode() async {
+    final previous = _previousProviderMode;
+    if (previous == null) return;
+    _previousProviderMode = null;
+    await ModelProviderSettings.instance.setMode(previous);
   }
 
   void setAecAvailable(bool value) {
@@ -265,6 +278,7 @@ class VoiceSessionController {
       await _activitySubscription?.cancel();
       _activitySubscription = null;
       _pendingTranscript = null;
+      _previousProviderMode = null;
       _emit(const VoiceSessionSnapshot());
     }
   }
