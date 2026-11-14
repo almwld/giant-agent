@@ -122,10 +122,21 @@ class VoiceSessionController {
       voiceRequestActive: value,
       phase: value ? VoiceSessionPhase.thinking : snapshot.phase,
     ));
+    _dispatchIfReady();
   }
 
   void setFinalizing(bool value) {
     _emit(snapshot.copyWith(finalizing: value));
+    _dispatchIfReady();
+  }
+
+  void _dispatchIfReady() {
+    if (snapshot.bargeInReady &&
+        !snapshot.voiceRequestActive &&
+        !snapshot.finalizing &&
+        _onSpeechEnded != null) {
+      unawaited(_dispatchSpeechEnded());
+    }
   }
 
   void rememberProviderMode(ModelProviderMode mode) {
