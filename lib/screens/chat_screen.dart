@@ -2097,6 +2097,10 @@ class _ChatScreenState extends State<ChatScreen> {
                       value: ModelProviderMode.openRouter,
                       child: Text('سحابي — OpenRouter فقط'),
                     ),
+                    DropdownMenuItem(
+                      value: ModelProviderMode.zeroConfig,
+                      child: Text('مجاني دون مفتاح — Pollinations (تجريبي)'),
+                    ),
                   ],
                   onChanged: busy ? null : (value) async {
                     if (value == null) return;
@@ -2192,10 +2196,13 @@ class _ChatScreenState extends State<ChatScreen> {
                       );
                       await settings.setMode(ModelProviderMode.openRouter);
                       break;
+                    case ModelProviderMode.zeroConfig:
+                      await settings.setMode(ModelProviderMode.zeroConfig);
+                      break;
                   }
                   if (mounted) {
                     setState(() {
-                      _externalProviderEnabled = mode == ModelProviderMode.openRouter;
+                      _externalProviderEnabled = mode != ModelProviderMode.local;
                     });
                   }
                   if (dialogContext.mounted) Navigator.pop(dialogContext);
@@ -2204,7 +2211,9 @@ class _ChatScreenState extends State<ChatScreen> {
                       SnackBar(
                         content: Text(mode == ModelProviderMode.local
                             ? 'تم اختيار النموذج المحلي.'
-                            : 'تم اختيار OpenRouter: ${modelController.text.trim()}'),
+                            : mode == ModelProviderMode.zeroConfig
+                                ? 'تم اختيار Pollinations المجاني دون مفتاح (قد يخضع لتوفر الخدمة).'
+                                : 'تم اختيار OpenRouter: ${modelController.text.trim()}'),
                       ),
                     );
                   }
