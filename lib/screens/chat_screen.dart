@@ -1711,25 +1711,27 @@ class _ChatScreenState extends State<ChatScreen> {
       response = 'تعذر إكمال الطلب: $error';
     }
 
-    if (!mounted) return;
-    setState(() {
-      _messages.add({
-        'isUser': false,
-        'content': response,
-        'time': DateTime.now(),
-        'requestId': requestId,
-      });
-      if (_pendingChatRequests > 0) _pendingChatRequests--;
-      _isLoading = _pendingChatRequests > 0;
-      if (_activeAgentRequestId == requestId) _activeAgentRequestId = '';
-    });
+    // Persist and complete voice playback independently of this route's
+    // lifetime. If ChatScreen was replaced while the model was generating,
+    // the response is still saved and spoken by the app-scoped session owner.
     await _saveMessage(response, false, requestId: requestId);
-    // The text reply is already rendered; audio playback starts without
-    // blocking the chat or changing the active conversation.
-    if (_voiceRequestActive && mounted) {
-      setState(() => _voiceOrbState = AgentState.speaking);
+    if (mounted) {
+      setState(() {
+        _messages.add({
+          'isUser': false,
+          'content': response,
+          'time': DateTime.now(),
+          'requestId': requestId,
+        });
+        if (_pendingChatRequests > 0) _pendingChatRequests--;
+        _isLoading = _pendingChatRequests > 0;
+        if (_activeAgentRequestId == requestId) _activeAgentRequestId = '';
+      });
     }
-    if (_voiceRequestActive) {
+
+    if (_voiceSession.voiceRequestActive) {
+      _voiceSession.setPhase(VoiceSessionPhase.speaking);
+      if (mounted) setState(() => _voiceOrbState = AgentState.speaking);
       try {
         await _voiceOutput.finishStreaming(response);
       } catch (_) {
@@ -1739,13 +1741,13 @@ class _ChatScreenState extends State<ChatScreen> {
           );
         }
       } finally {
-        if (_voiceRequestActive && mounted) {
-          setState(() => _voiceOrbState = AgentState.listening);
+        if (_voiceSession.isActive) {
           _voiceSession.setPhase(VoiceSessionPhase.listening);
+          if (mounted) setState(() => _voiceOrbState = AgentState.listening);
         }
       }
     }
-    _scrollToBottom();
+    if (mounted) _scrollToBottom();
   }
 
   Future<void> _pickFile() async {
