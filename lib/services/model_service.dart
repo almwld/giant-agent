@@ -23,6 +23,7 @@ import '../tools/gain_terminal_tool.dart';
 import '../tools/terminal_tool_coordinator.dart';
 import '../domain/harness/evaluator_service.dart';
 import '../domain/harness/reflexion_service.dart';
+import '../domain/harness/tool_call_protocol.dart';
 import '../domain/mcp/mcp_client.dart';
 
 typedef AgentUserInputHandler = Future<String?> Function({required String question, required List<String> choices, bool Function()? isCancelled});
@@ -2007,13 +2008,8 @@ $toolCatalog
                 ? 'تم إيقاف التوليد.'
                 : '${generated.trim()}\n\n[تم إيقاف التوليد]';
           }
-          final match = RegExp(r'<tool_call>\s*(\{.*?\})\s*</tool_call>', dotAll: true)
-              .firstMatch(generated);
-          if (match == null) return generated.trim();
-          final decoded = jsonDecode(match.group(1)!);
-          if (decoded is! Map<String, dynamic>) {
-            return 'تعذر تحليل استدعاء الأداة: يجب أن تكون البيانات كائن JSON.';
-          }
+          final decoded = ToolCallProtocol.extract(generated);
+          if (decoded == null) return generated.trim();
           payload = decoded;
         }
 
