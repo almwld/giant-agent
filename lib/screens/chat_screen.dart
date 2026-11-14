@@ -3158,7 +3158,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           if (expanded) ...[
             Builder(builder: (context) {
-              final terminalAvailable = _terminalHasActivity ||
+              final terminalAvailable =
                   steps.any((step) => _opensTerminalFromStep(step));
               final workspaceAvailable = steps.any((step) {
                 final type = step['type']?.toString() ?? '';
