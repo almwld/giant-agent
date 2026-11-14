@@ -27,6 +27,17 @@ static bool old_decoder() { return true; }
 static void parse_json() {}
 """
 
+
+    def test_adds_x86_64_to_native_plugin_abis(self):
+        gradle = 'abiFilters "arm64-v8a", "armeabi-v7a"'
+        patched = PATCHER.patch_android_abis(gradle)
+        self.assertIn('"x86_64"', patched)
+        self.assertEqual(PATCHER.patch_android_abis(patched), patched)
+
+    def test_rejects_unrecognized_abi_filter_declaration(self):
+        with self.assertRaisesRegex(RuntimeError, "ABI filter declaration not found"):
+            PATCHER.patch_android_abis('abiFilters "arm64-v8a"')
+
     def test_replaces_entire_decoder_and_removes_miniaudio(self):
         patched = PATCHER.patch_source(self.source)
         self.assertIn(PATCHER.MARKER, patched)
