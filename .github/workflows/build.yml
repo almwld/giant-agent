@@ -115,6 +115,21 @@ jobs:
           verify_native dist/app-arm64-v8a-release.apk arm64-v8a
           verify_native dist/app-armeabi-v7a-release.apk armeabi-v7a
           verify_native dist/app-x86_64-release.apk x86_64
+          verify_whisper() {
+            apk="$1"
+            abi="$2"
+            unzip -l "$apk" | grep -q "lib/$abi/libwhisper.so" || {
+              echo "Missing Whisper JNI engine libwhisper.so for $abi in $apk"
+              exit 1
+            }
+            unzip -l "$apk" | grep -q "lib/$abi/libggml-cpu.so" || {
+              echo "Missing Whisper GGML CPU engine libggml-cpu.so for $abi in $apk"
+              exit 1
+            }
+          }
+          verify_whisper dist/app-arm64-v8a-release.apk arm64-v8a
+          verify_whisper dist/app-armeabi-v7a-release.apk armeabi-v7a
+          verify_whisper dist/app-x86_64-release.apk x86_64
           for apk in dist/*.apk; do
             unzip -l "$apk" | grep -q "assets/flutter_assets/assets/animations/voice_orb.json" || {
               echo "Voice orb Lottie asset missing from $apk"
