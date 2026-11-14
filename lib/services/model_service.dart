@@ -17,6 +17,7 @@ import '../domain/kernel/agent_kernel_store.dart';
 import 'agent_memory_service.dart';
 import '../agent/skills/agent_skill_registry.dart';
 import 'openai_compatible_provider.dart';
+import 'providers/zero_config_provider.dart';
 import 'model_provider_settings.dart';
 import '../tools/tool_manager.dart';
 import '../tools/gain_terminal_tool.dart';
@@ -279,7 +280,7 @@ class ModelService {
   Future<bool> cancelGeneration() async {
     _cancelRequested = true;
     final mode = await ModelProviderSettings.instance.getMode();
-    if (mode == ModelProviderMode.openRouter) return true;
+    if (mode == ModelProviderMode.openRouter || mode == ModelProviderMode.zeroConfig) return true;
     return _llama.cancel();
   }
 
@@ -1652,7 +1653,8 @@ ${queuedMessages.isEmpty ? 'لا توجد رسائل.' : queuedMessages}
       case ModelProviderMode.openRouter:
         return OpenAICompatibleProvider.instance.generateWithImage(image, prompt: prompt);
       case ModelProviderMode.local:
-        throw StateError('النموذج المحلي الحالي نصّي فقط. استخدم OCR المحلي أو اختر نموذج رؤية عبر OpenRouter.');
+      case ModelProviderMode.zeroConfig:
+        throw StateError('المحرك المحدد نصّي فقط. استخدم OCR المحلي أو اختر OpenRouter لنموذج يدعم الرؤية.');
     }
   }
 
@@ -1804,6 +1806,31 @@ $prompt
             });
           },
         );
+      case ModelProviderMode.zeroConfig:
+        if (shouldCancel?.call() == true || _cancelRequested) {
+          return 'تم إيقاف التوليد قبل إرسال الطلب إلى Pollinations.';
+        }
+        final generated = await ZeroConfigProvider.instance.generate(
+          prompt,
+          maxTokens: maxTokens,
+          temperature: temperature,
+          isCancelled: () => _cancelRequested || shouldCancel?.call() == true,
+        );
+        if (_cancelRequested || shouldCancel?.call() == true) {
+          return 'تم إيقاف التوليد.';
+        }
+        AgentEventBus.instance.publish(<String, dynamic>{
+          'id': 'stream_${_activeRequestId}_${DateTime.now().microsecondsSinceEpoch}',
+          'request_id': _activeRequestId,
+          'attempt_id': _activeRequestId,
+          'task_id': _activeTaskId,
+          'agent_type': _activeAgentType,
+          'type': 'stream_token',
+          'content': generated,
+          'status': 'completed',
+          'timestamp': DateTime.now().toUtc().toIso8601String(),
+        });
+        return generated;
     }
   }
 
