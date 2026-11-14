@@ -29,7 +29,14 @@ class GlobalVoiceOrbOverlayHost extends StatelessWidget {
         fit: StackFit.expand,
         children: [
           child,
-          if (overlay != null) overlay,
+          if (overlay != null)
+            Positioned.fill(
+              child: Overlay(
+                initialEntries: [
+                  OverlayEntry(builder: (_) => overlay),
+                ],
+              ),
+            ),
         ],
       ),
     );
