@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:flutter/services.dart';
 
 import 'package:flutter_whisper/flutter_whisper.dart';
@@ -23,6 +25,7 @@ class LocalSpeechRecognitionService {
   bool _initialized = false;
   bool _recording = false;
   bool _disposed = false;
+  Future<void>? _bundledModelInstall;
 
   bool get isListening => _recording;
   bool get isModelReady => _initialized;
@@ -47,11 +50,44 @@ class LocalSpeechRecognitionService {
     }
   }
 
+  Future<void> _ensureBundledModel() {
+    final pending = _bundledModelInstall;
+    if (pending != null) return pending;
+    final install = _copyBundledWhisperModel();
+    _bundledModelInstall = install;
+    return install.whenComplete(() {
+      if (identical(_bundledModelInstall, install)) _bundledModelInstall = null;
+    });
+  }
+
+  Future<void> _copyBundledWhisperModel() async {
+    final support = await getApplicationSupportDirectory();
+    final models = Directory('${support.path}/models');
+    await models.create(recursive: true);
+    final destination = File('${models.path}/base.bin');
+    const expectedBytes = 147951465;
+    const expectedSha256 = '60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe';
+    if (await destination.exists() && await destination.length() == expectedBytes) {
+      final digest = await sha256.bind(destination.openRead()).first;
+      if (digest.toString() == expectedSha256) return;
+    }
+    final asset = await rootBundle.load('assets/voice_models/ggml-base.bin');
+    final bytes = asset.buffer.asUint8List(asset.offsetInBytes, asset.lengthInBytes);
+    if (bytes.length != expectedBytes || sha256.convert(bytes).toString() != expectedSha256) {
+      throw const FormatException('Bundled Whisper Base model failed SHA-256/size validation.');
+    }
+    final temporary = File('${destination.path}.bundled.tmp');
+    await temporary.writeAsBytes(bytes, flush: true);
+    if (await destination.exists()) await destination.delete();
+    await temporary.rename(destination.path);
+  }
+
   Future<void> initialize({
     void Function(double fraction)? onProgress,
   }) async {
     if (_disposed) throw StateError('Speech service has been disposed.');
     if (_initialized) return;
+    await _ensureBundledModel();
     await _whisper.initialize(
       model: WhisperModel.base,
       onProgress: onProgress == null
