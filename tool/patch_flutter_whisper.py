@@ -201,6 +201,30 @@ def patch_whisper_context_libraries(root: Path) -> bool:
     return True
 
 
+def patch_plugin_native_diagnostics(root: Path) -> bool:
+    """Preserve the original Android linker error across the Flutter channel."""
+    plugin = root / "android" / "src" / "main" / "kotlin" / "io" / "github" / "govindtank" / "flutter_whisper" / "FlutterWhisperPlugin.kt"
+    if not plugin.is_file():
+        raise RuntimeError(f"Whisper plugin Kotlin source not found: {plugin}")
+    source = plugin.read_text(encoding="utf-8")
+    old = '''        } catch (e: UnsatisfiedLinkError) {
+            Log.e("FlutterWhisper", "Native whisper library missing", e)
+            result.error("NATIVE_NOT_BUILT", "whisper.cpp native library not bundled yet", null)
+'''
+    new = '''        } catch (e: UnsatisfiedLinkError) {
+            val diagnostic = e.toString() + "\\n" + Log.getStackTraceString(e)
+            Log.e("FlutterWhisper", "Native whisper library load failed: $diagnostic", e)
+            result.error("NATIVE_LINK_ERROR", diagnostic, diagnostic)
+'''
+    if new in source:
+        return False
+    if old not in source:
+        raise RuntimeError("Unexpected FlutterWhisperPlugin.kt: UnsatisfiedLinkError handler not found.")
+    plugin.write_text(source.replace(old, new, 1), encoding="utf-8", newline="\\n")
+    print(f"Patched {plugin}: preserve the exact native linker error.")
+    return True
+
+
 def prepare_native_engine(root: Path) -> None:
     """Provision upstream whisper.cpp sources and enable the emulator ABI.
 
@@ -253,6 +277,7 @@ def main() -> int:
 
     prepare_native_engine(root)
     patch_whisper_context_libraries(root)
+    patch_plugin_native_diagnostics(root)
     native = root / "android" / "src" / "main" / "cpp" / "whisper_jni.cpp"
     if not native.is_file():
         raise RuntimeError(f"Whisper JNI source not found: {native}")
