@@ -32,7 +32,7 @@ class ToolCallProtocol {
       if (inString) {
         if (escaped) {
           escaped = false;
-        } else if (char == r'\\') {
+        } else if (char == '\\\\') {
           escaped = true;
         } else if (char == '"') {
           inString = false;
