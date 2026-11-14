@@ -1,6 +1,5 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'openai_compatible_provider.dart';
-import 'providers/zero_config_provider.dart';
 
 /// Available inference backends. Pollinations is the legacy keyless endpoint.
 enum ModelProviderMode { local, openRouter, zeroConfig }
@@ -49,9 +48,6 @@ class ModelProviderSettings {
   }
 
   Future<void> setMode(ModelProviderMode mode) async {
-    if (mode == ModelProviderMode.zeroConfig) {
-      await ZeroConfigProvider.instance.testConnection();
-    }
     await _storage.write(
       key: _modeKey,
       value: switch (mode) {
