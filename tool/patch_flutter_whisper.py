@@ -220,7 +220,7 @@ def patch_plugin_native_diagnostics(root: Path) -> bool:
         return False
     if old not in source:
         raise RuntimeError("Unexpected FlutterWhisperPlugin.kt: UnsatisfiedLinkError handler not found.")
-    plugin.write_text(source.replace(old, new, 1), encoding="utf-8", newline="\\n")
+    plugin.write_text(source.replace(old, new, 1), encoding="utf-8", newline="\n")
     print(f"Patched {plugin}: preserve the exact native linker error.")
     return True
 
