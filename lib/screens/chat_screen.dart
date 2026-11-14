@@ -20,6 +20,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'settings_screen.dart';
 import 'pro_agentsos_hub.dart';
 import '../widgets/voice_orb.dart';
+import '../widgets/global_voice_orb_overlay_host.dart';
 import '../models/chat_session.dart';
 import 'dart:convert';
 import '../services/local_speech_recognition_service.dart';
@@ -1983,64 +1984,19 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<bool> _prepareLocalSpeechModel() async {
     if (_localSpeech.isModelReady) return true;
-    var progress = 0.0;
-    var downloading = false;
-    var error = '';
-    final accepted = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, updateDialog) => AlertDialog(
-          backgroundColor: GiantPalette.surface,
-          title: const Text('تجهيز التعرف الصوتي المحلي'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'يلزم تنزيل نموذج Whisper متعدد اللغات Base (نحو 143 MB) مرة واحدة. بعد اكتمال التنزيل، يعمل التعرف على الكلام دون اتصال أو إرسال الصوت إلى خادم.',
-                style: TextStyle(color: Colors.white70, height: 1.45),
-              ),
-              if (downloading) ...[
-                const SizedBox(height: 16),
-                LinearProgressIndicator(value: progress > 0 ? progress : null),
-                const SizedBox(height: 8),
-                Text('${(progress * 100).toStringAsFixed(0)}%',
-                    style: const TextStyle(color: Colors.white70)),
-              ],
-              if (error.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Text(error, style: const TextStyle(color: Colors.redAccent)),
-              ],
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: downloading ? null : () => Navigator.pop(dialogContext, false),
-              child: const Text('لاحقاً'),
-            ),
-            FilledButton(
-              onPressed: downloading ? null : () async {
-                updateDialog(() { downloading = true; error = ''; });
-                try {
-                  await _localSpeech.initialize(onProgress: (value) {
-                    updateDialog(() => progress = value);
-                  });
-                  if (dialogContext.mounted) Navigator.pop(dialogContext, true);
-                } catch (failure) {
-                  updateDialog(() {
-                    downloading = false;
-                    error = 'تعذر تجهيز نموذج Whisper: $failure';
-                  });
-                }
-              },
-              child: Text(downloading ? 'جارٍ التنزيل…' : 'تنزيل النموذج'),
-            ),
-          ],
-        ),
-      ),
-    );
-    return accepted == true && _localSpeech.isModelReady;
+    try {
+      // The multilingual Whisper Base weights ship in the APK and are copied
+      // into the plugin cache before initialization. No first-run download.
+      await _localSpeech.initialize();
+      return _localSpeech.isModelReady;
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تعذر تجهيز نموذج Whisper المضمّن: $error')),
+        );
+      }
+      return false;
+    }
   }
 
   Future<void> _interruptAssistantAndListen() async {
@@ -2145,71 +2101,20 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _prepareLocalTtsModel() async {
     final tts = LocalArabicTtsService.instance;
-    if (await tts.isInstalled()) return;
-    var progress = 0.0;
-    var currentFile = '';
-    var downloading = false;
-    var error = '';
-    final accepted = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, updateDialog) => AlertDialog(
-          backgroundColor: GiantPalette.surface,
-          title: const Text('تثبيت الصوت العربي العصبي'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'نموذج Nabra-82M INT8 يعمل محلياً (نحو 83 MB للنموذج، إضافة إلى ملفات النطق). بعد تثبيته لن يحتاج تحويل النص إلى كلام إلى الإنترنت. يمكنك التخطي واستخدام صوت Android المحلي إن كان مثبتاً.',
-                style: TextStyle(color: Colors.white70, height: 1.45),
-              ),
-              if (downloading) ...[
-                const SizedBox(height: 16),
-                LinearProgressIndicator(value: progress > 0 ? progress : null),
-                const SizedBox(height: 8),
-                Text('$currentFile • ${(progress * 100).toStringAsFixed(0)}%',
-                    style: const TextStyle(color: Colors.white70, fontSize: 11)),
-              ],
-              if (error.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Text(error, style: const TextStyle(color: Colors.redAccent)),
-              ],
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: downloading ? null : () => Navigator.pop(dialogContext, false),
-              child: const Text('استخدام صوت الجهاز'),
-            ),
-            FilledButton(
-              onPressed: downloading ? null : () async {
-                updateDialog(() { downloading = true; error = ''; });
-                try {
-                  await tts.install(onProgress: (file, value) {
-                    updateDialog(() {
-                      currentFile = file;
-                      progress = value;
-                    });
-                  });
-                  if (dialogContext.mounted) Navigator.pop(dialogContext, true);
-                } catch (failure) {
-                  updateDialog(() {
-                    downloading = false;
-                    error = 'تعذر تثبيت نموذج الصوت: $failure';
-                  });
-                }
-              },
-              child: Text(downloading ? 'جارٍ التثبيت…' : 'تثبيت Nabra'),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (accepted == true) {
+    try {
+      if (!await tts.isInstalled()) {
+        // Extract the Nabra archive already bundled in the APK. No manual
+        // installation and no network request are needed.
+        await tts.install();
+      }
       await tts.initialize();
       await _voiceOutput.refresh();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تعذر تجهيز نموذج Nabra المضمّن: $error')),
+        );
+      }
     }
   }
 
@@ -2863,6 +2768,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    GlobalVoiceOrbOverlayBridge.hide();
     _agentEventSubscription?.cancel();
     _nativeAgentEventSubscription?.cancel();
     _voiceActivitySubscription?.cancel();
@@ -3336,6 +3242,14 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_voiceOrbVisible) {
+        GlobalVoiceOrbOverlayBridge.show(_buildVoiceOrbOverlay());
+      } else {
+        GlobalVoiceOrbOverlayBridge.hide();
+      }
+    });
     return Scaffold(
       backgroundColor: GiantPalette.background,
       appBar: AppBar(
@@ -4080,8 +3994,6 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ),
       ),
-      if (_voiceOrbVisible)
-        _buildVoiceOrbOverlay(),
     ]),
     );
   }
