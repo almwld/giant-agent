@@ -209,6 +209,7 @@ class _ChatScreenState extends State<ChatScreen> {
           _voiceOutput.addStreamingText(visible);
           if (_voiceOrbState == AgentState.thinking && mounted) {
             setState(() => _voiceOrbState = AgentState.speaking);
+            _voiceSession.setPhase(VoiceSessionPhase.speaking);
           }
         }
         setState(() {
@@ -1742,7 +1743,8 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       } finally {
         if (_voiceRequestActive && mounted) {
-          setState(() => _voiceOrbState = AgentState.idle);
+          setState(() => _voiceOrbState = AgentState.listening);
+          _voiceSession.setPhase(VoiceSessionPhase.listening);
         }
       }
     }
@@ -2671,17 +2673,15 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
-    GlobalVoiceOrbOverlayBridge.hide();
+    // Voice capture, VAD and the root overlay are app-scoped. A route teardown
+    // only detaches this screen's callbacks; the user can keep navigating.
+    _voiceSession.detach();
     _agentEventSubscription?.cancel();
     _nativeAgentEventSubscription?.cancel();
-    _voiceActivitySubscription?.cancel();
     _modelService.requestTerminalApproval = null;
     _modelService.requestMcpApproval = null;
     _modelService.requestUserInput = null;
     _modelService.requestBrowserSession = null;
-    _localSpeech.cancelListening();
-    _voiceOutput.stop();
-    unawaited(_restoreVoiceProviderMode());
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -3145,14 +3145,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      if (_voiceOrbVisible) {
-        GlobalVoiceOrbOverlayBridge.show(_buildVoiceOrbOverlay());
-      } else {
-        GlobalVoiceOrbOverlayBridge.hide();
-      }
-    });
     return Scaffold(
       backgroundColor: GiantPalette.background,
       appBar: AppBar(
