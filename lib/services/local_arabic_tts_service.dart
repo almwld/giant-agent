@@ -27,7 +27,7 @@ class LocalArabicTtsService {
   static final LocalArabicTtsService instance = LocalArabicTtsService._();
 
   static const String modelArchiveSha256 =
-      'e7c644fabb1529190de9a2f7d6044f88c26bf6d9b717ad41ef5d2b748e01459b';
+      'a8608a504b1db4dd538b821409fe50b2d5cf37650c0a8753fa215bd6445e9964';
 
   final AudioPlayer _player = AudioPlayer();
   bool _ready = false;
