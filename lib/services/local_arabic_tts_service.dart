@@ -11,28 +11,25 @@ import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
 import 'package:audioplayers/audioplayers.dart';
-import 'package:http/http.dart' as http;
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sherpa_onnx/src/sherpa_onnx_bindings.dart' as sherpaBindings;
 import 'package:sherpa_onnx/src/tts.dart' as sherpa;
 
 import 'local_voice_text_chunker.dart';
 
-/// Fully on-device Arabic neural speech synthesis using the 82M Nabra model
-/// exported for sherpa-onnx. The model is downloaded once into app-private
-/// storage; inference and playback never call a remote service.
+/// Fully on-device Arabic neural speech synthesis using the bundled 82M Nabra
+/// model exported for sherpa-onnx. The archive ships inside the APK and is
+/// extracted once into app-private storage; no first-use network is needed.
 class LocalArabicTtsService {
   LocalArabicTtsService._();
 
   static final LocalArabicTtsService instance = LocalArabicTtsService._();
 
-  static const String modelArchiveUrl =
-      'https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/nabra-82m-arabic-int8.tar.bz2';
   static const String modelArchiveSha256 =
       'e7c644fabb1529190de9a2f7d6044f88c26bf6d9b717ad41ef5d2b748e01459b';
 
   final AudioPlayer _player = AudioPlayer();
-  final http.Client _client = http.Client();
   bool _ready = false;
   Directory? _modelDirectory;
   bool _downloading = false;
@@ -70,40 +67,6 @@ class LocalArabicTtsService {
         await File('${dir.path}/espeak-ng-data/phondata').exists();
   }
 
-  Future<void> _download(
-    Uri uri,
-    File destination, {
-    void Function(double fraction)? onProgress,
-  }) async {
-    final temporary = File('${destination.path}.part');
-    await temporary.parent.create(recursive: true);
-    if (await temporary.exists()) await temporary.delete();
-    final request = http.Request('GET', uri);
-    final response = await _client.send(request);
-    if (response.statusCode != HttpStatus.ok) {
-      throw HttpException('Model download failed: HTTP ${response.statusCode}', uri: uri);
-    }
-    final total = response.contentLength ?? 0;
-    var received = 0;
-    final sink = temporary.openWrite();
-    try {
-      await for (final chunk in response.stream) {
-        sink.add(chunk);
-        received += chunk.length;
-        if (total > 0) onProgress?.call(received / total);
-      }
-      await sink.flush();
-    } finally {
-      await sink.close();
-    }
-    if (received == 0 || (total > 0 && received != total)) {
-      if (await temporary.exists()) await temporary.delete();
-      throw const FormatException('Incomplete voice model download.');
-    }
-    if (await destination.exists()) await destination.delete();
-    await temporary.rename(destination.path);
-  }
-
   Future<void> install({
     void Function(String file, double fraction)? onProgress,
   }) async {
@@ -113,12 +76,15 @@ class LocalArabicTtsService {
     try {
       final dir = await _directory();
       final archiveFile = File('${dir.path}/nabra-82m-arabic-int8.tar.bz2');
-      await _download(
-        Uri.parse(modelArchiveUrl),
-        archiveFile,
-        onProgress: (p) => onProgress?.call('Nabra Arabic model', p),
+      final bundled = await rootBundle.load(
+        'assets/voice_models/nabra-82m-arabic-int8.tar.bz2',
       );
-      final archiveBytes = await archiveFile.readAsBytes();
+      final archiveBytes = bundled.buffer.asUint8List(
+        bundled.offsetInBytes,
+        bundled.lengthInBytes,
+      );
+      await archiveFile.writeAsBytes(archiveBytes, flush: true);
+      onProgress?.call('Nabra Arabic model (bundled)', 1.0);
       final actualDigest = sha256.convert(archiveBytes).toString();
       if (actualDigest != modelArchiveSha256) {
         await archiveFile.delete();
@@ -350,7 +316,6 @@ class LocalArabicTtsService {
     _workerStartup = null;
     _ready = false;
     await _player.dispose();
-    _client.close();
   }
 
   static Uint8List _encodeWave(Float32List samples, int sampleRate) {
