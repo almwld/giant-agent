@@ -154,17 +154,25 @@ class VoiceSessionController {
   Future<void> startCapture() async {
     if (_disposed) throw StateError('Voice session controller is disposed.');
     if (speech.isListening) {
+      _listenToActivity();
       _emit(snapshot.copyWith(active: true, isListening: true,
         phase: VoiceSessionPhase.listening, clearError: true));
-      _listenToActivity();
       return;
     }
-    await speech.startListening();
-    _emit(snapshot.copyWith(active: true, isListening: true,
-      transcript: '',
-      phase: VoiceSessionPhase.listening, finalizing: false,
-      clearError: true));
+    // Subscribe before opening the native microphone so the first VAD boundary
+    // cannot race past the app-scoped event listener.
     _listenToActivity();
+    try {
+      await speech.startListening();
+      _emit(snapshot.copyWith(active: true, isListening: true,
+        transcript: '',
+        phase: VoiceSessionPhase.listening, finalizing: false,
+        clearError: true));
+    } catch (_) {
+      await _activitySubscription?.cancel();
+      _activitySubscription = null;
+      rethrow;
+    }
   }
 
   void _listenToActivity() {
