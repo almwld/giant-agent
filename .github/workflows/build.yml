@@ -120,6 +120,14 @@ jobs:
               echo "Voice orb Lottie asset missing from $apk"
               exit 1
             }
+            unzip -l "$apk" | grep -q "assets/flutter_assets/assets/voice_models/ggml-base.bin" || {
+              echo "Bundled multilingual Whisper Base model missing from $apk"
+              exit 1
+            }
+            unzip -l "$apk" | grep -q "assets/flutter_assets/assets/voice_models/nabra-82m-arabic-int8.tar.bz2" || {
+              echo "Bundled Nabra Arabic TTS archive missing from $apk"
+              exit 1
+            }
             dex_found=false
             while IFS= read -r dex; do
               if unzip -p "$apk" "$dex" 2>/dev/null | strings | grep -q "GainPtyBridge"; then
