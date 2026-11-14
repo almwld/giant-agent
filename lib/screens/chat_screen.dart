@@ -2128,11 +2128,9 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted && _voiceOrbVisible) {
         setState(() => _voiceOrbState = AgentState.listening);
         _voiceSession.setPhase(VoiceSessionPhase.listening);
-        if (_voiceSession.bargeInReady && _localSpeech.isListening) {
-          _bargeInReady = false;
-          _voiceSession.setBargeInReady(false);
-          unawaited(_finishLocalVoiceTurn());
-        } else {
+        // VoiceSessionController dispatches any VAD boundary queued while the
+        // route was detached or the assistant was still speaking.
+        if (!_voiceSession.bargeInReady) {
           await _startVoiceRecognition();
         }
       }
