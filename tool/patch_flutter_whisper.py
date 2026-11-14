@@ -9,6 +9,7 @@ with a strict RIFF/WAVE PCM16 reader; it does not change Whisper inference.
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -157,8 +158,48 @@ def patch_source(source: str) -> str:
         raise RuntimeError("miniaudio references remain after applying the WAV decoder patch.")
     return source
 
+
+def patch_android_abis(gradle: str) -> str:
+    """Build the Whisper JNI library for physical ARM devices and x86_64 CI emulators."""
+    expected = 'abiFilters "arm64-v8a", "armeabi-v7a"'
+    replacement = 'abiFilters "arm64-v8a", "armeabi-v7a", "x86_64"'
+    if replacement in gradle:
+        return gradle
+    if expected not in gradle:
+        raise RuntimeError("Unexpected flutter_whisper Android Gradle config: ABI filter declaration not found.")
+    return gradle.replace(expected, replacement, 1)
+
+
+def prepare_native_engine(root: Path) -> None:
+    """Provision upstream whisper.cpp sources and enable the emulator ABI.
+
+    The published plugin contains its JNI/CMake glue but intentionally keeps
+    whisper.cpp out of the package archive. Its own fetch script provisions the
+    required source tree. Without it, no libwhisper.so is produced.
+    """
+    source_root = root / "third_party" / "whisper.cpp"
+    if not (source_root / "CMakeLists.txt").is_file():
+        fetch_script = root / "scripts" / "fetch_whisper_cpp.sh"
+        if not fetch_script.is_file():
+            raise RuntimeError("flutter_whisper source archive is missing scripts/fetch_whisper_cpp.sh.")
+        subprocess.run(["sh", str(fetch_script)], cwd=root, check=True)
+    if not (source_root / "CMakeLists.txt").is_file():
+        raise RuntimeError("whisper.cpp source provisioning completed without third_party/whisper.cpp/CMakeLists.txt.")
+
+    gradle = root / "android" / "build.gradle"
+    if not gradle.is_file():
+        raise RuntimeError("flutter_whisper Android Gradle file is missing.")
+    original = gradle.read_text(encoding="utf-8")
+    patched = patch_android_abis(original)
+    if patched != original:
+        gradle.write_text(patched, encoding="utf-8", newline="\\n")
+        print("Patched flutter_whisper Android ABI filters: arm64-v8a, armeabi-v7a, x86_64.")
+    else:
+        print("flutter_whisper Android ABI filters already include x86_64.")
+
 def main() -> int:
     root = package_root(Path.cwd())
+    prepare_native_engine(root)
     native = root / "android" / "src" / "main" / "cpp" / "whisper_jni.cpp"
     if not native.is_file():
         raise RuntimeError(f"Whisper JNI source not found: {native}")
