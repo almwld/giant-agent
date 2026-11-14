@@ -213,9 +213,11 @@ class AgentKernel {
         status: 'pending',
       );
       final selectedMode = await ModelProviderSettings.instance.getMode();
-      final openRouterEnabled = selectedMode == ModelProviderMode.openRouter &&
-          await OpenAICompatibleProvider.instance.isEnabled();
-      if (!openRouterEnabled) {
+      final externalProviderEnabled =
+          (selectedMode == ModelProviderMode.openRouter &&
+              await OpenAICompatibleProvider.instance.isEnabled()) ||
+          selectedMode == ModelProviderMode.zeroConfig;
+      if (!externalProviderEnabled) {
         if (!_models.hasActiveModel()) {
           throw StateError(
             'Load a local GGUF model or configure an external API provider before starting an agent task.',
@@ -233,13 +235,15 @@ class AgentKernel {
       _emit(
         requestId: request.id,
         type: 'model_ready',
-        title: openRouterEnabled
-            ? 'تم التحقق من اتصال المزوّد الخارجي'
+        title: externalProviderEnabled
+            ? 'تم تحديد محرك التوليد الخارجي'
             : 'تم التحقق من جاهزية النموذج المحلي',
         status: 'completed',
-        details: openRouterEnabled
-            ? 'سيستخدم الوكيل النموذج الخارجي المحدد.'
-            : 'سيستخدم الوكيل نموذج GGUF المحلي.',
+        details: selectedMode == ModelProviderMode.zeroConfig
+            ? 'سيستخدم الوكيل Pollinations التجريبي؛ التوفر والحدود يعتمدان على الخدمة.'
+            : externalProviderEnabled
+                ? 'سيستخدم الوكيل OpenRouter.'
+                : 'سيستخدم الوكيل نموذج GGUF المحلي.',
       );
 
       _state = AgentKernelState.executing;
@@ -373,8 +377,10 @@ class AgentKernel {
     _models.beginAgentRequest(requestId);
     try {
       final selectedMode = await ModelProviderSettings.instance.getMode();
-      final providerEnabled = selectedMode == ModelProviderMode.openRouter &&
-          await OpenAICompatibleProvider.instance.isEnabled();
+      final providerEnabled =
+          (selectedMode == ModelProviderMode.openRouter &&
+              await OpenAICompatibleProvider.instance.isEnabled()) ||
+          selectedMode == ModelProviderMode.zeroConfig;
       if (!providerEnabled) {
         if (!_models.hasActiveModel() || !await _models.isModelLoaded()) {
           throw StateError('يجب تحميل النموذج المحلي قبل استئناف الوكيل الفرعي.');
@@ -529,9 +535,13 @@ class AgentKernel {
     );
 
     final selectedMode = await ModelProviderSettings.instance.getMode();
-    final cloudParallelismEnabled = selectedMode == ModelProviderMode.openRouter &&
-        await OpenAICompatibleProvider.instance.isEnabled();
-    final workerConcurrency = cloudParallelismEnabled ? 3 : 1;
+    final cloudParallelismEnabled =
+        (selectedMode == ModelProviderMode.openRouter &&
+            await OpenAICompatibleProvider.instance.isEnabled()) ||
+        selectedMode == ModelProviderMode.zeroConfig;
+    final workerConcurrency = cloudParallelismEnabled
+        ? (selectedMode == ModelProviderMode.zeroConfig ? 2 : 3)
+        : 1;
     final orchestrator = SubagentOrchestrator(
       parentRequestId: requestId,
       conversationId: conversationId,
