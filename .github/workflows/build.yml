@@ -267,8 +267,27 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Patch flutter_whisper for Flutter 3.16 compatibility
-        run: python3 tool/patch_flutter_whisper.py
+      - name: Provision Whisper.cpp native engine for emulator ABI
+        run: |
+          set -euo pipefail
+          python3 tool/patch_flutter_whisper.py
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          from urllib.parse import unquote, urlparse
+          config = Path('.dart_tool/package_config.json')
+          packages = json.loads(config.read_text())['packages']
+          entry = next(p for p in packages if p['name'] == 'flutter_whisper')
+          uri = urlparse(entry['rootUri'])
+          root = Path(unquote(uri.path)) if uri.scheme == 'file' else (config.parent / entry['rootUri']).resolve()
+          native = root / 'android/src/main/cpp/whisper_jni.cpp'
+          cmake = root / 'third_party/whisper.cpp/CMakeLists.txt'
+          gradle = root / 'android/build.gradle'
+          assert native.is_file() and 'GIANT_AGENT_WAV_ONLY_DECODER' in native.read_text()
+          assert cmake.is_file(), 'whisper.cpp native source tree was not provisioned'
+          assert 'x86_64' in gradle.read_text(), 'emulator ABI is missing from Whisper plugin filters'
+          print('WHISPER_NATIVE_READY: patched JNI + whisper.cpp sources + x86_64 ABI')
+          PY
 
       - name: Enable KVM for Android emulator
         run: |
