@@ -77,6 +77,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _voiceRequestActive = false;
   bool _dictationActive = false;
   bool _orbCompact = false;
+  double _orbCompactSize = 112;
   double _orbOffsetY = 0;
   final Map<String, String> _inlineTimelinePanels = <String, String>{};
   bool _bargeInActive = false;
@@ -2077,7 +2078,7 @@ class _ChatScreenState extends State<ChatScreen> {
               GestureDetector(
                 onPanUpdate: (d) => setState(() => _orbOffsetY = (_orbOffsetY + d.delta.dy).clamp(-180.0, 180.0).toDouble()),
                 onTap: () => setState(() => _orbCompact = false),
-                child: GlowingOrb(state: _voiceOrbState, size: 112)),
+                child: GlowingOrb(state: _voiceOrbState, size: _orbCompactSize)),
               const SizedBox(width: 8),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min, children: [
@@ -2085,6 +2086,14 @@ class _ChatScreenState extends State<ChatScreen> {
                   if (transcript.isNotEmpty) Text(transcript, maxLines: 2,
                     overflow: TextOverflow.ellipsis, style: const TextStyle(color: GiantPalette.muted, fontSize: 10)),
                 ])),
+              IconButton(
+                tooltip: 'تصغير الدائرة',
+                onPressed: () => setState(() => _orbCompactSize = (_orbCompactSize - 18).clamp(56.0, 112.0).toDouble()),
+                icon: const Icon(Icons.remove_circle_outline_rounded, color: Colors.white70, size: 18)),
+              IconButton(
+                tooltip: 'تكبير الدائرة',
+                onPressed: () => setState(() => _orbCompactSize = (_orbCompactSize + 18).clamp(56.0, 132.0).toDouble()),
+                icon: const Icon(Icons.add_circle_outline_rounded, color: Colors.white70, size: 18)),
               IconButton(onPressed: () => setState(() => _orbCompact = false),
                 icon: const Icon(Icons.open_in_full_rounded, color: Colors.white70, size: 18)),
               IconButton(onPressed: _stopVoiceInteraction,
