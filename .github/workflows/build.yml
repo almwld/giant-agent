@@ -26,6 +26,7 @@ on:
       - integration/giant-agent-stabilization
       - chore/boosthis-mcp-mainline
       - feat/local-offline-voice-pipeline
+      - integration/complete-runtime-consolidation-v2-20261114
   workflow_dispatch:
 
 permissions:
