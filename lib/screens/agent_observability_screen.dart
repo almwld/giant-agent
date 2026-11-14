@@ -516,7 +516,6 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
                                         child: ExpansionTile(
                                           tilePadding: EdgeInsets.zero,
                                           childrenPadding: const EdgeInsets.only(bottom: 6),
-                                          dense: true,
                                           collapsedIconColor: const Color(0xFF64748B),
                                           iconColor: const Color(0xFF5EEAD4),
                                           title: const Text('تفاصيل العامل والأداة',
