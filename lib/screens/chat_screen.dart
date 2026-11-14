@@ -2069,13 +2069,13 @@ class _ChatScreenState extends State<ChatScreen> {
     final transcript = _controller.text.trim();
     if (_orbCompact) {
       return Positioned(left: 12, right: 12,
-        bottom: (106 + _orbOffsetY).clamp(78.0, MediaQuery.of(context).size.height - 180),
+        bottom: (106 + _orbOffsetY).clamp(78.0, MediaQuery.of(context).size.height - 180).toDouble(),
         child: SafeArea(child: Material(
           color: const Color(0xF0181D29), borderRadius: BorderRadius.circular(24),
           child: Padding(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             child: Row(children: [
               GestureDetector(
-                onPanUpdate: (d) => setState(() => _orbOffsetY = (_orbOffsetY + d.delta.dy).clamp(-180.0, 180.0)),
+                onPanUpdate: (d) => setState(() => _orbOffsetY = (_orbOffsetY + d.delta.dy).clamp(-180.0, 180.0).toDouble()),
                 onTap: () => setState(() => _orbCompact = false),
                 child: GlowingOrb(state: _voiceOrbState, size: 112)),
               const SizedBox(width: 8),
@@ -2098,7 +2098,7 @@ class _ChatScreenState extends State<ChatScreen> {
           onPanUpdate: (d) {
             if (d.delta.dy.abs() > 2) setState(() {
               _orbCompact = true;
-              _orbOffsetY = (_orbOffsetY + d.delta.dy).clamp(-180.0, 180.0);
+              _orbOffsetY = (_orbOffsetY + d.delta.dy).clamp(-180.0, 180.0).toDouble();
             });
           },
           child: Padding(padding: const EdgeInsets.symmetric(horizontal: 28),
@@ -2216,6 +2216,8 @@ class _ChatScreenState extends State<ChatScreen> {
     _voiceRequestActive = false;
     setState(() {
       _voiceOrbVisible = true;
+      _orbCompact = false;
+      _orbOffsetY = 0;
       _voiceOrbState = AgentState.listening;
     });
     _voiceActivitySubscription ??=
