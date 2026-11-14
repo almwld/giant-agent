@@ -60,5 +60,7 @@ jobs:
           cache: true
       - name: Install dependencies
         run: flutter pub get
+      - name: Patch flutter_whisper Flutter 3.16 widget compatibility
+        run: python tool/patch_flutter_whisper.py --compat-only
       - name: Run Flutter tests
         run: flutter test --no-pub
