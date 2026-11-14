@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:giant_agent_x/widgets/global_voice_orb_overlay_host.dart';
+import 'package:giant_agent_x/widgets/voice_session_overlay.dart';
+import 'package:giant_agent_x/services/voice_session_controller.dart';
 
 void main() {
   tearDown(GlobalVoiceOrbOverlayBridge.hide);
@@ -49,4 +51,47 @@ void main() {
     await tester.pump();
     expect(find.text('Global voice orb'), findsNothing);
   });
+
+  testWidgets('app-owned voice overlay survives replacing the chat route', (tester) async {
+    final session = VoiceSessionController.instance;
+    session.state.value = const VoiceSessionSnapshot(
+      active: true,
+      isListening: true,
+      phase: VoiceSessionPhase.listening,
+    );
+
+    await tester.pumpWidget(MaterialApp(
+      builder: (context, child) => GlobalVoiceOrbOverlayHost(
+        child: child ?? const SizedBox.shrink(),
+      ),
+      home: Builder(builder: (context) => Scaffold(
+        body: Center(child: ElevatedButton(
+          onPressed: () => Navigator.of(context).pushReplacement(
+            MaterialPageRoute<void>(builder: (_) => const Scaffold(
+              body: Center(child: Text('Another AgentsOS screen')),
+            )),
+          ),
+          child: const Text('Leave chat'),
+        )),
+      )),
+    ));
+
+    GlobalVoiceOrbOverlayBridge.show(const VoiceSessionOverlay());
+    await tester.pump();
+    expect(find.text('أستمع إليك محلياً…'), findsOneWidget);
+
+    await tester.tap(find.text('Leave chat'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Another AgentsOS screen'), findsOneWidget);
+    expect(find.text('أستمع إليك محلياً…'), findsOneWidget);
+    expect(session.isActive, isTrue);
+    expect(session.snapshot.isListening, isTrue);
+
+    GlobalVoiceOrbOverlayBridge.hide();
+    session.state.value = const VoiceSessionSnapshot();
+    await tester.pump();
+    expect(find.text('أستمع إليك محلياً…'), findsNothing);
+  });
+
 }
