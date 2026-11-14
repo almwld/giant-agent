@@ -15,7 +15,7 @@ enum TaskExecutionOutcome {
 
 class TaskManager {
   TaskManager._internal({AgentKernelStore? store})
-      : _store = store ?? AgentKernelStore(),
+      : _store = store ?? AgentKernelStore.shared,
         _agent = AgentService.instance;
 
   TaskManager.withStore(AgentKernelStore store)
@@ -27,6 +27,10 @@ class TaskManager {
 
   final AgentKernelStore _store;
   final AgentService _agent;
+
+  /// Confirms production task projections use the exact runtime store instance.
+  /// Injected stores remain available through [withStore] for isolated tests.
+  bool get usesCanonicalStore => identical(_store, AgentKernelStore.shared);
   final List<Map<String, dynamic>> _tasks = [];
   String _currentTask = '';
   bool _executing = false;

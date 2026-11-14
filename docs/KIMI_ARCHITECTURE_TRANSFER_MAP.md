@@ -83,10 +83,10 @@ transfer below is a clean implementation based on observed contracts.
 | Explicit recovery of interrupted children | `SubagentRecoveryCoordinator`, `AgentKernel.executeRecoveredSubagent` | Present; requires explicit side-effect disposition |
 | Status query API | `AgentService.subagentStatus` | Present as application API, not a model-facing tool |
 | Safe dismissal | `AgentService.dismissSubagent` | Present as a soft-dismissal; audit history is retained |
-| Dynamic model-facing create/spawn/delete/status operations | No corresponding tool definitions or runtime dispatch in the current branch | Missing |
-| Worker metadata (icon/motto/index) | Current task model stores role/title/prompt/dependencies only | Partial |
-| Progress percentage and async snapshot | Timeline has lifecycle statuses but no dedicated progress percentage or async projection | Partial |
-| Message/wait/ask-user/update-goal operations | No equivalent model-facing tool family | Missing |
+| Dynamic model-facing create/spawn/delete/status operations | `ToolManager`, `ModelService`, `SubagentLifecycleManager` | Present; create and spawn are separate, delete is soft-dismissal |
+| Worker metadata (icon/motto/index) | `DynamicSubagentRecord` persists icon, motto and stable index; lifecycle events, durable task projections, tool schema and Timeline preserve/render these fields | Present |
+| Progress percentage and async snapshot | `DynamicSubagentRecord.progressPercent`, `report_subagent_progress`, `wire_status`, `is_async`, durable pending snapshots, `spawn_subagent(run_in_background: true)` and the shared execution-kernel FIFO | Present; queued children resume after restart only if execution never began; running children become interrupted and require explicit side-effect review |
+| Message/wait/ask-user/update-goal operations | `SubagentLifecycleManager` mailbox, bounded wait, user-input handler and request goal state; dispatched by `ModelService` | Present |
 | MCP Streamable HTTP and typed results | `McpClient`, `McpToolResult` | Present in this branch |
 | Independent tool-call ID and per-call cancellation | `ToolCallRegistry`, timeline `tool_call_id` | Present in this branch |
 | OpenRouter incremental SSE | Existing provider singleton with cancellation and UTF-8-safe SSE parser | Present in this branch |
@@ -106,29 +106,60 @@ transfer below is a clean implementation based on observed contracts.
 5. MCP tool/resource access from the existing subagent roles.
 6. A durable task graph, lifecycle journal, restart reconciliation, and
    explicit child recovery through the shared local/cloud execution path.
+7. Detached child admission through the existing execution-kernel FIFO. A
+   background spawn returns a durable pending snapshot to the parent; the
+   child runs after the current request releases the shared model runtime.
+8. Pending async children that have not started are re-enqueued after process
+   restart. A child already running at process death is marked interrupted
+   and still requires explicit side-effect disposition before resume.
 
-## Remaining work before claiming Kimi-style dynamic orchestration
+## Current implementation status and remaining work
 
-- Add a model-facing, typed lifecycle tool contract for create, spawn, delete,
-  and status. Keep create (configuration/registration) separate from spawn
-  (execution).
-- Extend the scheduler to accept validated child tasks while a parent is
-  running, with strict depth, count, concurrency, and workspace-lease limits.
-- Persist worker metadata, parent/child ownership, progress, async mode, and
-  terminal state transitions atomically.
-- Make deletion a safe lifecycle operation: reject active children unless a
-  separately authorized cancellation path has completed; preserve immutable
-  audit history rather than physically deleting records.
-- Add status-event correlation and progress updates, and make status queries
-  return durable snapshots rather than model-generated claims.
-- Treat send/wait/message, ask-user, and goal-update as a separate later
-  protocol tranche. Their names are observed, but their exact contracts are
-  not yet available.
-- Inspect the empty `Qk/O.java` export and extract the missing runtime classes
-  and status enum before asserting exact Kimi execution semantics.
-- Run formatter, analyzer, tests, APK build, and real MCP-server integration.
-  At the time of this update, PR #28 has no visible workflow run or combined
-  commit status for its current head. Do not merge based on contract tests alone.
+The integration branch now implements the core local lifecycle surface; the
+older checklist below is retained here as a status correction, not as a list
+of wholly missing features.
+
+### Implemented in the current integration branch
+
+- Model-facing `create_subagent`, `spawn_subagent`, `delete_subagent`,
+  `check_subagent_status`, and `report_subagent_progress` are registered
+  and dispatched through the existing ToolManager/ModelService path.
+- Create and spawn are separate operations. Background spawn persists a
+  pending async child before admission to the shared AgentKernel FIFO.
+- Child status and progress are read from persisted lifecycle snapshots;
+  progress is bounded to 0..99 while running and completion owns 100.
+- Parent/child identifiers, conversation ownership, async marker, worker
+  presentation metadata, dependencies, and lifecycle transitions are
+  represented in the durable snapshot/event path.
+- Delete is a soft dismissal that retains lifecycle history; it is not a
+  physical deletion of the child audit record.
+- Timeline receives correlated lifecycle events and now renders the persisted
+  `progress_percent` field as a percentage. Tool cancellation remains scoped
+  to independent `tool_call_id` values; child cancellation uses its task id.
+
+### Remaining engineering and evidence gaps
+
+- The lifecycle manager enforces a six-child request limit, and child-role
+  allow-lists prevent nested child creation. Add race-focused tests for those
+  guards and implement workspace leases before allowing concurrent workers.
+  The current shared FIFO serializes local inference; it is not a
+  parallel-worker scheduler.
+- Add concurrency/race tests for duplicate background spawn, cancellation
+  before dequeue, cancellation during a running tool, process restart during
+  queue admission, and parent/child terminal-state ordering.
+- Verify whether lifecycle snapshot writes and event journal writes need a
+  single transactional boundary; do not claim cross-store atomicity without
+  an implementation and crash-recovery test.
+- Validate `send_message`, `wait_for_message`, `ask_user`, and
+  `update_goal` against the actual Kimi backend contracts. Their Giant
+  implementations exist, but exact remote dispatcher semantics remain
+  unverified because the decompiled export omits the handler bodies.
+- Add an external typed subagent-status event ingress only if the product
+  requires interoperability with Kimi's gateway; the current local Timeline
+  is backed by Giant's own durable event journal.
+- Complete real MCP-server integration tests, then run formatter, analyzer,
+  Flutter/Python tests, Android release APK build, and device/emulator smoke
+  tests on the latest integration head. Do not infer success from older runs.
 
 ## Additional JADX evidence needed
 

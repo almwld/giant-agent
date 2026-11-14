@@ -68,6 +68,10 @@ class KernelEventRecord {
 /// Durable request queue and append-only execution journal.
 /// Event rows are inserted only; lifecycle changes update request projections.
 class AgentKernelStore {
+  /// Process-wide production store shared by AgentService and ModelService.
+  /// Tests may still inject isolated stores through the regular constructor.
+  static final AgentKernelStore shared = AgentKernelStore();
+
   AgentKernelStore({KernelDatabaseProvider? databaseProvider})
       : _databaseProvider = databaseProvider ?? _openDefaultDatabase;
 
@@ -82,7 +86,7 @@ class AgentKernelStore {
       version: 5,
       onConfigure: (db) async {
         await db.execute('PRAGMA foreign_keys = ON');
-        await db.execute('PRAGMA journal_mode = WAL');
+        await db.rawQuery('PRAGMA journal_mode = WAL');
         await db.execute('PRAGMA synchronous = FULL');
       },
       onCreate: (db, version) async {
@@ -388,7 +392,12 @@ class AgentKernelStore {
       'parent_request_id': requestId,
       'conversation_id': event['session_id']?.toString() ?? 'global',
       'agent_type': event['agent_type']?.toString() ?? 'unknown',
+      'subagent_id': event['subagent_id']?.toString() ?? previous['subagent_id'],
+      'is_async': event['is_async'] == true || previous['is_async'] == true,
       'title': event['title']?.toString() ?? taskId,
+      'icon': event['icon']?.toString() ?? previous['icon'] ?? 'smart_toy',
+      'motto': event['motto']?.toString() ?? previous['motto'] ?? '',
+      'index': event['index'] is int ? event['index'] as int : previous['index'] ?? 0,
       'prompt': event['task_prompt']?.toString() ?? previous['prompt'],
       'depends_on': event['depends_on'] ?? previous['depends_on'] ?? const <String>[],
       'status': eventStatus,
@@ -416,9 +425,135 @@ class AgentKernelStore {
 
   /// Marks children interrupted after process death. Side effects are never replayed.
   Future<int> reconcileInterruptedSubagents() async {
+    var recoveredCount = 0;
+    final db = await database;
+    final canonicalDynamicTaskIds = <String>{};
+
+    // Request-scoped snapshots are the source of truth for dynamic children.
+    // Reconcile them before considering legacy task projections: a crash may
+    // occur after a state write but before the corresponding event projection.
+    final runtimeRows = await db.query('agent_subagent_runtime_state');
+    for (final row in runtimeRows) {
+      final requestId = row['request_id']?.toString() ?? '';
+      if (requestId.isEmpty) continue;
+      late Map<String, Object?> state;
+      try {
+        final decoded = jsonDecode(row['payload_json']! as String);
+        if (decoded is! Map || decoded['records'] is! Map) continue;
+        state = Map<String, Object?>.from(decoded);
+      } on FormatException {
+        // Preserve malformed durable state for diagnosis.
+        continue;
+      }
+      final rawRecords = state['records'];
+      if (rawRecords is! Map) continue;
+      final records = Map<String, Object?>.from(rawRecords);
+      var stateChanged = false;
+
+      for (final entry in records.entries.toList()) {
+        if (entry.value is! Map) continue;
+        final record = Map<String, dynamic>.from(entry.value as Map);
+        var status = record['status']?.toString() ?? 'idle';
+        final needsRecovery = status == 'running' ||
+            (status == 'pending' && record['is_async'] != true);
+        if (needsRecovery) {
+          final now = DateTime.now().toUtc().toIso8601String();
+          record
+            ..['status'] = 'interrupted'
+            ..['wire_status'] = 'STATUS_TERMINATED'
+            ..['error'] = 'Process restarted before this child reached a terminal state.'
+            ..['updated_at'] = now;
+          status = 'interrupted';
+          records[entry.key] = record;
+          stateChanged = true;
+          recoveredCount++;
+        }
+
+        final taskId = record['task_id']?.toString() ?? '';
+        if (taskId.isEmpty) continue;
+        canonicalDynamicTaskIds.add(taskId);
+        final now = DateTime.now().toUtc().toIso8601String();
+        final dependencies = (record['depends_on'] as List? ?? const <dynamic>[])
+            .map((value) => '${requestId}_dynamic_${value.toString()}')
+            .toList(growable: false);
+        final snapshot = <String, dynamic>{
+          'id': taskId,
+          'kind': 'subagent',
+          'parent_request_id': requestId,
+          'subagent_id': record['id']?.toString() ?? entry.key.toString(),
+          'conversation_id': record['conversation_id']?.toString() ?? 'global',
+          'agent_type': record['agent_type']?.toString() ?? 'unknown',
+          'title': record['title']?.toString() ?? taskId,
+          'icon': record['icon']?.toString() ?? 'smart_toy',
+          'motto': record['motto']?.toString() ?? '',
+          'index': record['index'] ?? 0,
+          'is_async': record['is_async'] == true,
+          'prompt': record['prompt']?.toString() ?? '',
+          'depends_on': dependencies,
+          'status': status,
+          'last_event_type': needsRecovery
+              ? 'subagent_interrupted_on_restart'
+              : status == 'completed'
+                  ? 'subagent_completed'
+                  : status == 'failed'
+                      ? 'subagent_failed'
+                      : status == 'cancelled'
+                          ? 'subagent_cancelled'
+                          : status == 'running'
+                              ? 'subagent_started'
+                              : 'subagent_snapshot_restored',
+          'last_details': record['error']?.toString(),
+          'last_result': record['result'],
+          'is_dismissed': record['dismissed'] == true,
+          'created_at': record['created_at']?.toString() ?? now,
+          'updated_at': record['updated_at']?.toString() ?? now,
+          if (status == 'interrupted' || status == 'failed')
+            'recovery_requires_explicit_resume': true,
+        };
+
+        if (needsRecovery) {
+          await saveTaskWithEvents(snapshot, events: <Map<String, Object?>>[
+            <String, Object?>{
+              'type': 'subagent_interrupted_on_restart',
+              'status': 'interrupted',
+              'payload': <String, Object?>{
+                'request_id': requestId,
+                'subagent_id': snapshot['subagent_id'],
+                'is_async': snapshot['is_async'],
+                'replay': false,
+                'requires_explicit_resume': true,
+              },
+            },
+          ]);
+        } else {
+          // Repair a stale/missing task projection without inventing a new
+          // lifecycle transition or duplicating the append-only event journal.
+          await saveTask(snapshot);
+        }
+      }
+
+      if (stateChanged) {
+        state['records'] = records;
+        state['updated_at'] = DateTime.now().toUtc().toIso8601String();
+        await db.update(
+          'agent_subagent_runtime_state',
+          <String, Object?>{
+            'payload_json': jsonEncode(state),
+            'updated_at': state['updated_at'],
+          },
+          where: 'request_id = ?',
+          whereArgs: [requestId],
+        );
+      }
+    }
+
+    // Reconcile legacy/static child projections that have no request-scoped
+    // dynamic record to repair them.
     final snapshots = (await getTasks())
         .where((task) => task['kind'] == 'subagent' &&
-            {'pending', 'running'}.contains(task['status']))
+            !canonicalDynamicTaskIds.contains(task['id']?.toString()) &&
+            (task['status'] == 'running' ||
+                (task['status'] == 'pending' && task['is_async'] != true)))
         .toList(growable: false);
     for (final task in snapshots) {
       final now = DateTime.now().toUtc().toIso8601String();
@@ -440,8 +575,9 @@ class AgentKernelStore {
           },
         },
       ]);
+      recoveredCount++;
     }
-    return snapshots.length;
+    return recoveredCount;
   }
 
   Future<List<Map<String, dynamic>>> subagentsForRequest(String requestId) async =>
@@ -449,6 +585,41 @@ class AgentKernelStore {
           .where((task) => task['kind'] == 'subagent' &&
               task['parent_request_id'] == requestId)
           .toList(growable: false);
+
+  /// Returns detached children admitted but not yet started. These are safe to
+  /// re-enqueue after process restart because no execution side effect began.
+  Future<List<Map<String, dynamic>>> pendingAsyncSubagents() async {
+    // The request-scoped lifecycle snapshot is written before the enqueue
+    // event is published. Read it as the admission source so a process death
+    // in the small event-projection window cannot lose a queued child.
+    final rows = await (await database).query('agent_subagent_runtime_state');
+    final pending = <Map<String, dynamic>>[];
+    for (final row in rows) {
+      final requestId = row['request_id']?.toString() ?? '';
+      if (requestId.isEmpty) continue;
+      try {
+        final decoded = jsonDecode(row['payload_json']! as String);
+        if (decoded is! Map || decoded['records'] is! Map) continue;
+        final records = decoded['records'] as Map;
+        for (final value in records.values) {
+          if (value is! Map) continue;
+          final record = Map<String, dynamic>.from(value);
+          if (record['status'] != 'pending' || record['is_async'] != true ||
+              record['dismissed'] == true) continue;
+          pending.add(<String, dynamic>{
+            ...record,
+            'subagent_id': record['id']?.toString() ?? '',
+            'task_id': record['task_id']?.toString() ?? '',
+            'parent_request_id': requestId,
+            'kind': 'subagent',
+          });
+        }
+      } on FormatException {
+        // Keep corrupt durable state intact for diagnosis; never invent a task.
+      }
+    }
+    return pending;
+  }
 
   /// Returns durable child snapshots grouped by the chat/conversation that owns them.
   Future<List<Map<String, dynamic>>> subagentsForConversation(String conversationId) async =>
@@ -945,6 +1116,33 @@ class AgentKernelStore {
 
   /// Appends a factual runtime/timeline event to its parent request journal.
   /// Events are immutable and duplicate IDs are ignored during stream retries.
+  /// Appends privacy-filtered analytics facts to the canonical event journal.
+  /// System analytics have no request owner and therefore use a null request_id.
+  Future<void> appendAnalyticsEvent({
+    required String eventType,
+    Map<String, Object?> data = const <String, Object?>{},
+  }) async {
+    final normalizedType = eventType.trim();
+    if (normalizedType.isEmpty || normalizedType.length > 80) {
+      throw ArgumentError.value(eventType, 'eventType', 'Invalid analytics event type.');
+    }
+    final id = 'analytics_${DateTime.now().microsecondsSinceEpoch}_${normalizedType.hashCode}';
+    final now = DateTime.now().toUtc().toIso8601String();
+    await (await database).insert('agent_events', <String, Object?>{
+      'id': id,
+      'request_id': null,
+      'task_id': null,
+      'type': 'analytics_$normalizedType',
+      'status': 'recorded',
+      'payload_json': jsonEncode(<String, Object?>{
+        'type': 'analytics_$normalizedType',
+        'status': 'recorded',
+        'data': data,
+      }),
+      'created_at': now,
+    }, conflictAlgorithm: ConflictAlgorithm.ignore);
+  }
+
   Future<void> appendRequestEvent(Map<String, dynamic> event) async {
     final requestId = event['request_id']?.toString() ?? '';
     if (requestId.isEmpty || requestId == 'runtime') return;

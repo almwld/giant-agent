@@ -75,18 +75,23 @@ class ToolManager {
 
     AgentToolDefinition(
       name: 'create_subagent',
-      description: 'تسجيل وكيل فرعي جديد دون تشغيله. استخدم id وtitle وprompt وagent_type وdepends_on؛ لا ينشئ الوكيل الفرعي وكلاء آخرين.',
-      example: '{"name":"create_subagent","arguments":{"id":"research","title":"بحث","prompt":"افحص مصادر المشروع ذات الصلة","agent_type":"explore","depends_on":[]}}',
+      description: 'تسجيل وكيل فرعي جديد دون تشغيله. استخدم id وtitle وprompt وagent_type وdepends_on، ويمكن تحديد icon وmotto وindex لبيانات بطاقة العامل؛ لا ينشئ الوكيل الفرعي وكلاء آخرين.',
+      example: '{"name":"create_subagent","arguments":{"id":"research","title":"بحث","prompt":"افحص مصادر المشروع ذات الصلة","agent_type":"explore","depends_on":[],"icon":"search","motto":"جمع الأدلة","index":0}}',
     ),
     AgentToolDefinition(
       name: 'spawn_subagent',
-      description: 'تشغيل وكيل مسجل مسبقاً عبر محرك النموذج الحالي المشترك، مع احترام التبعيات وصلاحيات الدور.',
-      example: '{"name":"spawn_subagent","arguments":{"id":"research"}}',
+      description: 'تشغيل وكيل مسجل مسبقاً عبر طابور AgentKernel المشترك. run_in_background=true يعيد حالة pending فوراً ويُنفّذ العامل بعد الطلب الحالي دون تشغيل نموذج متوازٍ.',
+      example: '{"name":"spawn_subagent","arguments":{"id":"research","run_in_background":true}}',
     ),
     AgentToolDefinition(
       name: 'delete_subagent',
       description: 'إخفاء وكيل غير نشط من الإدارة مع الاحتفاظ بسجل التدقيق؛ لا يحذف الملفات ولا يمحو التاريخ.',
       example: '{"name":"delete_subagent","arguments":{"id":"research"}}',
+    ),
+    AgentToolDefinition(
+      name: 'report_subagent_progress',
+      description: 'تحديث نسبة تقدم وكيل فرعي قيد التشغيل فقط. النسبة من 0 إلى 99؛ الإكمال النهائي يسجل 100 تلقائياً.',
+      example: '{"name":"report_subagent_progress","arguments":{"id":"research","progress_percent":45,"details":"اكتمل جمع المصادر"}}',
     ),
     AgentToolDefinition(
       name: 'check_subagent_status',

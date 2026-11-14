@@ -3,6 +3,8 @@ name: Build Giant Agent APK
 on:
   push:
     branches:
+      - integration/complete-runtime-consolidation-v2-20261114
+      - feat/agentsos-control-center
       - main
       - feat/integrated-agent-completion
       - feat/consolidate-sqlite-runtime-v2
@@ -11,14 +13,19 @@ on:
       - fix/openrouter-only-provider-policy
       - feat/voice-orb-in-chat-session
       - feat/chat-bubble-resize-teal-toasts
+      - feat/local-offline-voice-pipeline
+      - integration/unified-agent-runtime-v2
   pull_request:
     types: [opened, reopened, synchronize, edited]
     branches:
+      - integration/unified-agent-runtime-v2
       - main
       - feat/kimi-subagent-orchestration
       - feat/integrated-agent-completion
       - feat/consolidate-sqlite-runtime-v2
       - integration/giant-agent-stabilization
+      - chore/boosthis-mcp-mainline
+      - feat/local-offline-voice-pipeline
   workflow_dispatch:
 
 permissions:
@@ -65,6 +72,9 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Patch flutter_whisper native WAV decoder
+        run: python3 tool/patch_flutter_whisper.py
+
       - name: Analyze all Flutter and Dart sources
         run: flutter analyze --no-pub
 
@@ -105,12 +115,45 @@ jobs:
           verify_native dist/app-arm64-v8a-release.apk arm64-v8a
           verify_native dist/app-armeabi-v7a-release.apk armeabi-v7a
           verify_native dist/app-x86_64-release.apk x86_64
-          unzip -l dist/giant-agent-universal.apk | grep -q "assets/flutter_assets/assets/animations/voice_orb.json"
-          for apk in dist/*.apk; do
-            unzip -p "$apk" classes.dex 2>/dev/null | strings | grep -q "GainPtyBridge" || {
-              echo "GainPtyBridge class not found in $apk"
+          verify_whisper() {
+            apk="$1"
+            abi="$2"
+            unzip -l "$apk" | grep -q "lib/$abi/libwhisper.so" || {
+              echo "Missing Whisper JNI engine libwhisper.so for $abi in $apk"
               exit 1
             }
+            unzip -l "$apk" | grep -q "lib/$abi/libggml.so" || {
+              echo "Missing Whisper runtime dependency libggml.so for $abi in $apk"
+              exit 1
+            }
+          }
+          verify_whisper dist/app-arm64-v8a-release.apk arm64-v8a
+          verify_whisper dist/app-armeabi-v7a-release.apk armeabi-v7a
+          verify_whisper dist/app-x86_64-release.apk x86_64
+          for apk in dist/*.apk; do
+            unzip -l "$apk" | grep -q "assets/flutter_assets/assets/animations/voice_orb.json" || {
+              echo "Voice orb Lottie asset missing from $apk"
+              exit 1
+            }
+            unzip -l "$apk" | grep -q "assets/flutter_assets/assets/voice_models/ggml-base.bin" || {
+              echo "Bundled multilingual Whisper Base model missing from $apk"
+              exit 1
+            }
+            unzip -l "$apk" | grep -q "assets/flutter_assets/assets/voice_models/nabra-82m-arabic-int8.tar.bz2" || {
+              echo "Bundled Nabra Arabic TTS archive missing from $apk"
+              exit 1
+            }
+            dex_found=false
+            while IFS= read -r dex; do
+              if unzip -p "$apk" "$dex" 2>/dev/null | strings | grep -q "GainPtyBridge"; then
+                dex_found=true
+                break
+              fi
+            done < <(unzip -Z1 "$apk" | grep -E '^classes([0-9]+)?[.]dex')
+            if [ "$dex_found" != true ]; then
+              echo "GainPtyBridge reference not found in any DEX file in $apk"
+              exit 1
+            fi
           done
 
       - name: Verify APK outputs and checksums
@@ -188,3 +231,90 @@ jobs:
           echo "## Appetize cloud device" >> "$GITHUB_STEP_SUMMARY"
           echo "Launch the Android build in your browser: https://appetize.io/app/$APPETIZE_PUBLIC_KEY" >> "$GITHUB_STEP_SUMMARY"
           echo "Appetize public key: $APPETIZE_PUBLIC_KEY" >> "$GITHUB_STEP_SUMMARY"
+
+  gain-pty-emulator:
+    name: Android emulator Gain PTY smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Python for Chaquopy emulator build
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Verify emulator Chaquopy Python
+        run: |
+          python --version
+          python3.11 --version
+          command -v python3.11
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.16.0'
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Provision Whisper.cpp native engine for emulator ABI
+        run: |
+          set -euo pipefail
+          python3 tool/patch_flutter_whisper.py
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          from urllib.parse import unquote, urlparse
+          config = Path('.dart_tool/package_config.json')
+          packages = json.loads(config.read_text())['packages']
+          entry = next(p for p in packages if p['name'] == 'flutter_whisper')
+          uri = urlparse(entry['rootUri'])
+          root = Path(unquote(uri.path)) if uri.scheme == 'file' else (config.parent / entry['rootUri']).resolve()
+          native = root / 'android/src/main/cpp/whisper_jni.cpp'
+          cmake = root / 'third_party/whisper.cpp/CMakeLists.txt'
+          gradle = root / 'android/build.gradle'
+          assert native.is_file() and 'GIANT_AGENT_WAV_ONLY_DECODER' in native.read_text()
+          assert cmake.is_file(), 'whisper.cpp native source tree was not provisioned'
+          assert 'x86_64' in gradle.read_text(), 'emulator ABI is missing from Whisper plugin filters'
+          print('WHISPER_NATIVE_READY: patched JNI + whisper.cpp sources + x86_64 ABI')
+          PY
+
+      - name: Enable KVM for Android emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run cold-launch and Gain PTY smoke test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot -wipe-data -cores 2 -memory 4096
+          disable-animations: true
+          script: |
+            set +e
+            flutter test integration_test/gain_pty_emulator_smoke_test.dart -d emulator-5554
+            test_status=$?
+            echo "===== WHISPER / ANDROID LINKER LOGCAT ====="
+            adb -s emulator-5554 logcat -d -v threadtime | grep -E -i 'FlutterWhisper|UnsatisfiedLinkError|dlopen failed|linker|whisper|ggml' | tail -n 250 || true
+            echo "===== DEBUG APK NATIVE LIBRARY CONTENTS ====="
+            if [ -f build/app/outputs/flutter-apk/app-debug.apk ]; then
+              unzip -Z1 build/app/outputs/flutter-apk/app-debug.apk | grep -E "^lib/(x86_64|arm64-v8a)/lib(whisper|ggml.*)[.]so$" | sort || true
+            else
+              echo "Flutter debug APK was not produced."
+            fi
+            exit "$test_status"

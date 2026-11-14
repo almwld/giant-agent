@@ -17,12 +17,14 @@ import '../domain/kernel/agent_kernel_store.dart';
 import 'agent_memory_service.dart';
 import '../agent/skills/agent_skill_registry.dart';
 import 'openai_compatible_provider.dart';
+import 'providers/zero_config_provider.dart';
 import 'model_provider_settings.dart';
 import '../tools/tool_manager.dart';
 import '../tools/gain_terminal_tool.dart';
 import '../tools/terminal_tool_coordinator.dart';
 import '../domain/harness/evaluator_service.dart';
 import '../domain/harness/reflexion_service.dart';
+import '../domain/harness/tool_call_protocol.dart';
 import '../domain/mcp/mcp_client.dart';
 
 typedef AgentUserInputHandler = Future<String?> Function({required String question, required List<String> choices, bool Function()? isCancelled});
@@ -41,12 +43,33 @@ class ModelService {
   Future<bool> Function(String serverId, McpRemoteTool tool, Map<String, dynamic> arguments)? requestMcpApproval;
   AgentUserInputHandler? requestUserInput;
   Future<void> Function()? requestBrowserSession;
-  late final AgentKernelStore _subagentStore = AgentKernelStore();
-  late final SubagentLifecycleManager _subagents = SubagentLifecycleManager(
-    onEvent: AgentEventBus.instance.publish,
-    loadState: _subagentStore.loadSubagentRuntimeState,
-    saveState: _subagentStore.saveSubagentRuntimeState,
-  );
+  Future<void> Function({required String requestId, required String conversationId, required String agentId})? scheduleDynamicSubagent;
+  final Set<String> _cancelledDynamicSubagentIds = <String>{};
+  AgentKernelStore? _boundKernelStore;
+  SubagentLifecycleManager? _subagentLifecycle;
+
+  /// Binds child lifecycle persistence to the exact durable request store.
+  /// Must be called before the first dynamic child operation.
+  void bindKernelStore(AgentKernelStore store) {
+    final existing = _boundKernelStore;
+    if (existing != null && !identical(existing, store)) {
+      throw StateError('ModelService is already bound to another AgentKernelStore.');
+    }
+    if (_subagentLifecycle != null && !identical(existing, store)) {
+      throw StateError('Cannot replace the kernel store after child lifecycle initialization.');
+    }
+    _boundKernelStore = store;
+  }
+
+  AgentKernelStore get _subagentStore =>
+      _boundKernelStore ??= AgentKernelStore.shared;
+
+  SubagentLifecycleManager get _subagents =>
+      _subagentLifecycle ??= SubagentLifecycleManager(
+        onEvent: AgentEventBus.instance.publish,
+        loadState: _subagentStore.loadSubagentRuntimeState,
+        saveState: _subagentStore.saveSubagentRuntimeState,
+      );
   final GainTerminalTool _gainTerminal = GainTerminalTool();
   Future<void> _requestTail = Future<void>.value();
   Future<void> _toolTail = Future<void>.value();
@@ -101,6 +124,7 @@ class ModelService {
     String? status,
     String? stepId,
     String? toolCallId,
+    int? durationMs,
   }) {
     final sequence = ++_toolEventSequence;
     AgentEventBus.instance.publish({
@@ -111,6 +135,7 @@ class ModelService {
       'agent_type': _activeAgentType,
       'step_id': stepId ?? 'tool_${_activeRequestId}_$sequence',
       'tool_call_id': toolCallId,
+      'duration_ms': durationMs,
       'sequence': sequence,
       'type': type,
       'title': title,
@@ -244,10 +269,10 @@ class ModelService {
   }
 
   Future<bool?> _awaitToolApproval(
-    Future<bool> approval,
+    Future<bool> Function() approval,
     bool Function()? isCancelled,
   ) async {
-    if (isCancelled == null) return approval;
+    if (isCancelled == null) return approval();
     if (isCancelled()) return null;
     final result = Completer<bool?>();
     final cancellationPoll = Timer.periodic(
@@ -256,7 +281,7 @@ class ModelService {
         if (!result.isCompleted && isCancelled()) result.complete(null);
       },
     );
-    approval.then(
+    approval().then(
       (approved) {
         if (!result.isCompleted) result.complete(approved);
       },
@@ -279,7 +304,7 @@ class ModelService {
   Future<bool> cancelGeneration() async {
     _cancelRequested = true;
     final mode = await ModelProviderSettings.instance.getMode();
-    if (mode == ModelProviderMode.openRouter) return true;
+    if (mode == ModelProviderMode.openRouter || mode == ModelProviderMode.zeroConfig) return true;
     return _llama.cancel();
   }
 
@@ -433,9 +458,10 @@ class ModelService {
     final path = args['path']?.toString() ?? '';
     final content = args['content']?.toString() ?? '';
     final toolStepId = stepId ?? 'tool_step_${_activeRequestId}_${DateTime.now().microsecondsSinceEpoch}';
+    final toolStopwatch = Stopwatch()..start();
     if (name != 'gain_terminal') {
       _emitToolEvent('tool_start', _toolStartTitle(name), toolName: name, path: path,
-          content: name == 'execute_python' ? args['code']?.toString() : null, status: 'running', stepId: toolStepId);
+          content: name == 'execute_python' ? args['code']?.toString() : null, status: 'running', stepId: toolStepId, toolCallId: toolCallId);
     }
     try {
       late final Map<String, dynamic> result;
@@ -521,7 +547,7 @@ class ModelService {
               break;
             }
             final approved = await _awaitToolApproval(
-              approval(serverId, remoteTool, remoteArguments),
+              () => approval(serverId, remoteTool, remoteArguments),
               isCancelled,
             );
             if (approved == null || isCancelled?.call() == true) {
@@ -567,20 +593,80 @@ class ModelService {
             agentType: args['agent_type']?.toString() ?? 'explore',
             dependsOn: rawDependencies.map((item) => item.toString()).toList(),
             creatorTaskId: _activeTaskId,
+            icon: args['icon']?.toString() ?? 'smart_toy',
+            motto: args['motto']?.toString() ?? '',
+            index: args['index'] is int ? args['index'] as int : null,
           );
           result = <String, dynamic>{'ok': true, 'subagent': created.toMap()};
           break;
         case 'spawn_subagent':
-          result = await _spawnDynamicSubagent(
-            args['id']?.toString() ?? '',
-            isCancelled: isCancelled,
-          );
+          final agentId = args['id']?.toString() ?? '';
+          if (args['run_in_background'] == true) {
+            if (_activeTaskId.isNotEmpty) {
+              throw StateError('Only the coordinating agent may schedule detached subagents.');
+            }
+            final parentRequestId = _activeRequestId;
+            final parentConversationId = _activeConversationId;
+            final queued = await _subagents.enqueueBackground(parentRequestId, agentId);
+            final scheduler = scheduleDynamicSubagent;
+            if (scheduler == null) {
+              final error = StateError('The shared AgentKernel scheduler is not initialized.');
+              await _subagents.fail(parentRequestId, agentId, error);
+              throw error;
+            }
+            try {
+              unawaited(scheduler(
+                requestId: parentRequestId,
+                conversationId: parentConversationId,
+                agentId: agentId,
+              ).catchError((Object error) async {
+                await _subagents.fail(parentRequestId, agentId, error);
+              }));
+            } catch (error) {
+              await _subagents.fail(parentRequestId, agentId, error);
+              rethrow;
+            }
+            result = <String, dynamic>{
+              'ok': true,
+              'status': 'pending',
+              'is_async': true,
+              'subagent': queued.toMap(),
+            };
+          } else {
+            result = await _spawnDynamicSubagent(
+              agentId,
+              isCancelled: isCancelled,
+            );
+          }
           break;
         case 'delete_subagent':
           final agentId = args['id']?.toString() ?? '';
           await _subagents.delete(_activeRequestId, agentId);
           final deleted = _subagents.get(_activeRequestId, agentId);
           result = <String, dynamic>{'ok': deleted != null && deleted.dismissed, 'subagent': deleted?.toMap()};
+          break;
+        case 'report_subagent_progress':
+          final agentId = args['id']?.toString() ?? '';
+          final rawProgress = args['progress_percent'];
+          if (rawProgress is! int) {
+            throw const FormatException('progress_percent must be an integer from 0 to 99.');
+          }
+          final target = _subagents.get(_activeRequestId, agentId);
+          if (target == null) throw StateError('Subagent not found: $agentId');
+          if (_activeTaskId.isNotEmpty && target.taskId != _activeTaskId) {
+            throw StateError('A child agent may report progress only for itself.');
+          }
+          await _subagents.updateProgress(
+            _activeRequestId,
+            agentId,
+            rawProgress,
+            details: args['details']?.toString(),
+          );
+          final updated = _subagents.get(_activeRequestId, agentId);
+          result = <String, dynamic>{
+            'ok': true,
+            'subagent': updated?.toMap(),
+          };
           break;
         case 'check_subagent_status':
           final agentId = args['id']?.toString() ?? '';
@@ -1253,23 +1339,25 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
       if (ok && (name == 'create_file' || name == 'slides_generator')) {
         final createdPath = name == 'slides_generator' ? args['path']?.toString() ?? path : path;
         _emitToolEvent('file_created', 'تم إنشاء الملف', toolName: name, path: createdPath,
-            output: output, details: 'أنشأ المحرك الملف داخل مساحة العمل فعلياً.', stepId: toolStepId);
+            output: output, details: 'أنشأ المحرك الملف داخل مساحة العمل فعلياً.', stepId: toolStepId, toolCallId: toolCallId);
       } else if (ok && (name == 'write_file' || name == 'edit_file')) {
         _emitToolEvent('file_updated', 'تم تحديث الملف', toolName: name, path: path,
-            output: output, details: 'حُفظت التغييرات في مساحة العمل فعلياً.', stepId: toolStepId);
+            output: output, details: 'حُفظت التغييرات في مساحة العمل فعلياً.', stepId: toolStepId, toolCallId: toolCallId);
       }
       if (name != 'gain_terminal') {
         _emitToolEvent(ok ? 'tool_output' : 'tool_error',
             ok ? _toolCompleteTitle(name) : 'فشل تنفيذ الأداة',
             toolName: name, path: path, output: output,
             details: ok ? null : result['error']?.toString(),
-            status: ok ? 'completed' : 'failed', stepId: toolStepId);
+            status: ok ? 'completed' : 'failed', stepId: toolStepId,
+            toolCallId: toolCallId, durationMs: toolStopwatch.elapsedMilliseconds);
       }
       return result;
     } catch (error) {
       if (name != 'gain_terminal') {
         _emitToolEvent('tool_error', 'فشل تنفيذ الأداة', toolName: name,
-            path: path, output: error.toString(), status: 'failed', stepId: toolStepId);
+            path: path, output: error.toString(), status: 'failed', stepId: toolStepId,
+            toolCallId: toolCallId, durationMs: toolStopwatch.elapsedMilliseconds);
       }
       rethrow;
     }
@@ -1352,6 +1440,57 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
     await BrowserSessionService.instance.waitUntilReady(isCancelled: isCancelled);
   }
 
+  /// Executes a queued child only when the shared AgentKernel FIFO admits it.
+  /// This is the only detached execution entry point; it reuses this ModelService.
+  Future<void> executeScheduledDynamicSubagent({
+    required String requestId,
+    required String conversationId,
+    required String agentId,
+    bool Function()? shouldCancel,
+  }) async {
+    await _subagents.restoreRequest(requestId);
+    final queuedRecord = _subagents.get(requestId, agentId);
+    if (queuedRecord == null ||
+        queuedRecord.status != 'pending' ||
+        !queuedRecord.isAsync) return;
+    if (shouldCancel?.call() == true) {
+      await _subagents.cancelQueuedByTaskId(queuedRecord.taskId);
+      return;
+    }
+    beginAgentRequest(requestId);
+    try {
+      await runZoned(
+        () => _spawnDynamicSubagent(
+          agentId,
+          isCancelled: () => shouldCancel?.call() == true ||
+              _cancelledDynamicSubagentIds.contains(
+                _subagents.get(requestId, agentId)?.taskId ?? '',
+              ),
+        ),
+        zoneValues: <Object, Object?>{
+          _requestIdZoneKey: requestId,
+          _conversationIdZoneKey: conversationId,
+        },
+      );
+    } finally {
+      endAgentRequest(requestId);
+      final record = _subagents.get(requestId, agentId);
+      if (record != null) _cancelledDynamicSubagentIds.remove(record.taskId);
+    }
+  }
+
+  /// Requests cancellation of one queued or running dynamic child.
+  Future<bool> cancelDynamicSubagent(String taskId) async {
+    final record = _subagents.findByTaskId(taskId);
+    if (record == null) return false;
+    if (record.status == 'pending' && record.isAsync) {
+      return _subagents.cancelQueuedByTaskId(taskId);
+    }
+    if (record.status != 'running') return false;
+    _cancelledDynamicSubagentIds.add(taskId);
+    return true;
+  }
+
   Future<Map<String, dynamic>> _spawnDynamicSubagent(
     String agentId, {
     bool Function()? isCancelled,
@@ -1378,12 +1517,12 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
         'explore' || 'plan' || 'reviewer' => const <String>{
             'read_file', 'list_files', 'web_search', 'fetch_urls', 'visit', 'click', 'input', 'find', 'scrollup', 'scrolldown',
             'browser_visit', 'browser_click', 'browser_find', 'browser_input', 'browser_state', 'browser_scroll_up', 'browser_scroll_down',
-            'mcp_call', 'mcp_read_resource', 'send_message', 'wait_for_message',
+            'mcp_call', 'mcp_read_resource', 'send_message', 'wait_for_message', 'report_subagent_progress',
           },
         'coder' => const <String>{
             'create_file', 'read_file', 'write_file', 'list_files', 'web_search',
             'execute_python', 'gain_terminal', 'mcp_call', 'mcp_read_resource',
-            'send_message', 'wait_for_message',
+            'send_message', 'wait_for_message', 'report_subagent_progress',
           },
         _ => throw ArgumentError('Unknown subagent role: ${child.agentType}'),
       };
@@ -1414,7 +1553,7 @@ ${queuedMessages.isEmpty ? 'لا توجد رسائل.' : queuedMessages}
         () => _processInput(
           context.isEmpty ? childPrompt : '$context\n\nمهمة الوكيل: $childPrompt',
           allowedTools: allowedTools,
-          shouldCancel: () => _cancelRequested || isCancelled?.call() == true,
+          shouldCancel: () => _cancelRequested || isCancelled?.call() == true || _cancelledDynamicSubagentIds.contains(child.taskId),
         ),
         zoneValues: <Object, Object?>{
           _requestIdZoneKey: requestId,
@@ -1439,6 +1578,8 @@ ${queuedMessages.isEmpty ? 'لا توجد رسائل.' : queuedMessages}
     } catch (error) {
       await _subagents.fail(requestId, agentId, error, interrupted: error is ToolCallInterrupted);
       return <String, dynamic>{'ok': false, 'status': child.status, 'error': error.toString(), 'subagent': child.toMap()};
+    } finally {
+      _cancelledDynamicSubagentIds.remove(child.taskId);
     }
   }
 
@@ -1582,7 +1723,7 @@ ${queuedMessages.isEmpty ? 'لا توجد رسائل.' : queuedMessages}
     String? agentType,
   }) async {
     final mode = await ModelProviderSettings.instance.getMode();
-    final parallelProvider = mode == ModelProviderMode.openRouter;
+    final parallelProvider = mode == ModelProviderMode.openRouter || mode == ModelProviderMode.zeroConfig;
     Future<String> executeScoped() async {
       if (shouldCancel?.call() == true) {
         return 'تم إيقاف تنفيذ الوكيل بناءً على طلب المستخدم.';
@@ -1652,7 +1793,8 @@ ${queuedMessages.isEmpty ? 'لا توجد رسائل.' : queuedMessages}
       case ModelProviderMode.openRouter:
         return OpenAICompatibleProvider.instance.generateWithImage(image, prompt: prompt);
       case ModelProviderMode.local:
-        throw StateError('النموذج المحلي الحالي نصّي فقط. استخدم OCR المحلي أو اختر نموذج رؤية عبر OpenRouter.');
+      case ModelProviderMode.zeroConfig:
+        throw StateError('المحرك المحدد نصّي فقط. استخدم OCR المحلي أو اختر OpenRouter لنموذج يدعم الرؤية.');
     }
   }
 
@@ -1804,6 +1946,31 @@ $prompt
             });
           },
         );
+      case ModelProviderMode.zeroConfig:
+        if (shouldCancel?.call() == true || _cancelRequested) {
+          return 'تم إيقاف التوليد قبل إرسال الطلب إلى Pollinations.';
+        }
+        final generated = await ZeroConfigProvider.instance.generate(
+          prompt,
+          maxTokens: maxTokens,
+          temperature: temperature,
+          isCancelled: () => _cancelRequested || shouldCancel?.call() == true,
+        );
+        if (_cancelRequested || shouldCancel?.call() == true) {
+          return 'تم إيقاف التوليد.';
+        }
+        AgentEventBus.instance.publish(<String, dynamic>{
+          'id': 'stream_${_activeRequestId}_${DateTime.now().microsecondsSinceEpoch}',
+          'request_id': _activeRequestId,
+          'attempt_id': _activeRequestId,
+          'task_id': _activeTaskId,
+          'agent_type': _activeAgentType,
+          'type': 'stream_token',
+          'content': generated,
+          'status': 'completed',
+          'timestamp': DateTime.now().toUtc().toIso8601String(),
+        });
+        return generated;
     }
   }
 
@@ -1868,13 +2035,8 @@ $toolCatalog
                 ? 'تم إيقاف التوليد.'
                 : '${generated.trim()}\n\n[تم إيقاف التوليد]';
           }
-          final match = RegExp(r'<tool_call>\s*(\{.*?\})\s*</tool_call>', dotAll: true)
-              .firstMatch(generated);
-          if (match == null) return generated.trim();
-          final decoded = jsonDecode(match.group(1)!);
-          if (decoded is! Map<String, dynamic>) {
-            return 'تعذر تحليل استدعاء الأداة: يجب أن تكون البيانات كائن JSON.';
-          }
+          final decoded = ToolCallProtocol.extract(generated);
+          if (decoded == null) return generated.trim();
           payload = decoded;
         }
 
@@ -1910,6 +2072,7 @@ $toolCatalog
           requestId: _activeRequestId,
           toolName: toolName,
         );
+        final toolCallStopwatch = Stopwatch()..start();
         late Map<String, dynamic> result;
         late bool verificationPassed;
         late String verificationMessage;
@@ -1981,6 +2144,7 @@ $toolCatalog
               status: 'interrupted',
               stepId: toolStepId,
               toolCallId: toolCallId,
+              durationMs: toolCallStopwatch.elapsedMilliseconds,
             );
             return 'تم إيقاف استدعاء الأداة المحدد.';
           }
@@ -1992,6 +2156,7 @@ $toolCatalog
             status: 'completed',
             stepId: toolStepId,
             toolCallId: toolCallId,
+            durationMs: toolCallStopwatch.elapsedMilliseconds,
           );
         } finally {
           _toolCalls.finish(toolCallId);
