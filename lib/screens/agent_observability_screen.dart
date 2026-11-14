@@ -26,6 +26,8 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
   String? _typeFilter;
   final TextEditingController _searchController = TextEditingController();
   Timer? _searchDebounce;
+  Timer? _liveRefreshTimer;
+  bool _refreshInProgress = false;
   int? _cursor;
   bool _hasMore = false;
   bool _loading = true;
@@ -36,10 +38,14 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
   void initState() {
     super.initState();
     _refresh();
+    _liveRefreshTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (mounted && !_loadingMore) _refresh(silent: true);
+    });
   }
 
   @override
   void dispose() {
+    _liveRefreshTimer?.cancel();
     _searchDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
@@ -51,14 +57,19 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
     _searchDebounce = Timer(const Duration(milliseconds: 300), _refresh);
   }
 
-  Future<void> _refresh() async {
-    if (!mounted) return;
-    setState(() {
-      _loading = true;
-      _error = null;
-      _cursor = null;
-      _events.clear();
-    });
+  Future<void> _refresh({bool silent = false}) async {
+    if (!mounted || _refreshInProgress) return;
+    _refreshInProgress = true;
+    if (!silent) {
+      setState(() {
+        _loading = _events.isEmpty;
+        _error = null;
+        if (_events.isEmpty) {
+          _cursor = null;
+          _hasMore = false;
+        }
+      });
+    }
     try {
       final summary = await AgentService.instance.observabilitySummaryForConversation(
         widget.conversationId,
@@ -72,11 +83,25 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
       );
       if (!mounted) return;
       setState(() {
+        final byId = <String, AgentObservabilityEvent>{};
+        for (final event in page.events) {
+          byId[event.id] = event;
+        }
+        if (silent) {
+          for (final event in _events) {
+            byId.putIfAbsent(event.id, () => event);
+          }
+        }
+        final merged = byId.values.toList()
+          ..sort((a, b) => b.rowId.compareTo(a.rowId));
+        _events
+          ..clear()
+          ..addAll(merged);
         _summary = summary;
-        _events.addAll(page.events);
-        _cursor = page.nextCursor;
-        _hasMore = page.hasMore;
+        _cursor = _events.isEmpty ? page.nextCursor : _events.last.rowId;
+        _hasMore = page.hasMore || (silent && _events.length > page.events.length);
         _loading = false;
+        _error = null;
       });
     } catch (error) {
       if (!mounted) return;
@@ -84,6 +109,8 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
         _error = error.toString();
         _loading = false;
       });
+    } finally {
+      _refreshInProgress = false;
     }
   }
 
@@ -321,7 +348,10 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
                                   )),
                             ],
                             onChanged: (value) {
-                              setState(() => _typeFilter = value);
+                              setState(() {
+                                _typeFilter = value;
+                                _events.clear();
+                              });
                               _refresh();
                             },
                           ),
@@ -345,7 +375,10 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
                                   value: 'interrupted', child: Text('متوقف')),
                             ],
                             onChanged: (value) {
-                              setState(() => _statusFilter = value);
+                              setState(() {
+                                _statusFilter = value;
+                                _events.clear();
+                              });
                               _refresh();
                             },
                           ),
@@ -356,7 +389,7 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
                         const Padding(
                           padding: EdgeInsets.symmetric(vertical: 36),
                           child: Center(
-                            child: Text('لا توجد أحداث مسجلة لهذه الجلسة.',
+                            child: Text('لا توجد أحداث لهذه الجلسة بعد. أرسل طلباً في المحادثة وسيظهر هنا تسلسل التخطيط والتنفيذ والأدوات والوكلاء الفرعيين.',
                                 style: TextStyle(color: Color(0xFF94A3B8))),
                           ),
                         ),
