@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:giant_agent_x/services/voice_session_controller.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   final session = VoiceSessionController.instance;
 
   tearDown(() {
