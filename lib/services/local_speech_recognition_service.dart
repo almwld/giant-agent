@@ -82,6 +82,10 @@ class LocalSpeechRecognitionService {
     await temporary.rename(destination.path);
   }
 
+  /// Copies the packaged multilingual model into the Whisper plugin cache
+  /// without loading its native inference engine or consuming model RAM.
+  Future<void> prepareBundledModel() => _ensureBundledModel();
+
   Future<void> initialize({
     void Function(double fraction)? onProgress,
   }) async {
