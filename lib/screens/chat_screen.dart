@@ -27,6 +27,8 @@ import '../services/local_speech_recognition_service.dart';
 import '../services/local_arabic_tts_service.dart';
 import '../services/model_provider_settings.dart';
 import '../services/voice_output_service.dart';
+import '../services/voice_session_controller.dart';
+import '../widgets/voice_session_overlay.dart';
 import '../services/openai_compatible_provider.dart';
 import '../services/github_repository_service.dart';
 import '../services/cloud_storage_service.dart';
@@ -72,6 +74,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _terminalHasActivity = false;
   final LocalSpeechRecognitionService _localSpeech = LocalSpeechRecognitionService.instance;
   final VoiceOutputService _voiceOutput = VoiceOutputService.instance;
+  final VoiceSessionController _voiceSession = VoiceSessionController.instance;
   bool _finalizingVoiceInput = false;
   bool _voiceOrbVisible = false;
   bool _voiceRequestActive = false;
@@ -83,7 +86,6 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _bargeInActive = false;
   bool _voiceAecAvailable = false;
   bool _bargeInReady = false;
-  StreamSubscription<Map<String, dynamic>>? _voiceActivitySubscription;
   ModelProviderMode? _previousVoiceProviderMode;
   AgentState _voiceOrbState = AgentState.idle;
   bool _webSearchEnabled = false;
@@ -377,6 +379,23 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    _voiceSession.attach(onSpeechEnded: _finishLocalVoiceTurn);
+    if (_voiceSession.isActive) {
+      _voiceOrbVisible = true;
+      _voiceRequestActive = _voiceSession.voiceRequestActive;
+      _voiceOrbState = switch (_voiceSession.snapshot.phase) {
+        VoiceSessionPhase.idle => AgentState.idle,
+        VoiceSessionPhase.listening => AgentState.listening,
+        VoiceSessionPhase.thinking => AgentState.thinking,
+        VoiceSessionPhase.speaking => AgentState.speaking,
+        VoiceSessionPhase.error => AgentState.error,
+      };
+      GlobalVoiceOrbOverlayBridge.show(const VoiceSessionOverlay());
+    }
+    final pendingVoiceTranscript = _voiceSession.takePendingTranscript();
+    if (pendingVoiceTranscript != null && pendingVoiceTranscript.isNotEmpty) {
+      _controller.text = pendingVoiceTranscript;
+    }
     _modelService.requestTerminalApproval = _requestTerminalApproval;
     _modelService.requestMcpApproval = _requestMcpApproval;
     _modelService.requestUserInput = _requestAgentInput;
@@ -1903,18 +1922,20 @@ class _ChatScreenState extends State<ChatScreen> {
     _voiceRequestActive = false;
     _bargeInActive = false;
     _bargeInReady = false;
-    await _voiceActivitySubscription?.cancel();
-    _voiceActivitySubscription = null;
+    _voiceSession.setVoiceRequestActive(false);
+    _voiceSession.setBargeInActive(false);
+    _voiceSession.setBargeInReady(false);
     try {
-      await _localSpeech.cancelListening();
-      await _voiceOutput.stop();
+      await _voiceSession.stopSession();
       if (_isLoading && _agentModeEnabled) await _cancelAgent();
     } catch (_) {}
     await _restoreVoiceProviderMode();
+    GlobalVoiceOrbOverlayBridge.hide();
     if (!mounted) return;
     setState(() {
       _voiceOrbVisible = false;
       _voiceOrbState = AgentState.idle;
+      _finalizingVoiceInput = false;
     });
   }
 
@@ -1983,8 +2004,6 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<bool> _prepareLocalSpeechModel() async {
     if (_localSpeech.isModelReady) return true;
     try {
-      // The multilingual Whisper Base weights ship in the APK and are copied
-      // into the plugin cache before initialization. No first-run download.
       await _localSpeech.initialize();
       return _localSpeech.isModelReady;
     } catch (error) {
@@ -2001,99 +2020,9 @@ class _ChatScreenState extends State<ChatScreen> {
     if (!mounted || !_voiceOrbVisible) return;
     _bargeInActive = true;
     _bargeInReady = false;
-    await _voiceOutput.stop();
-    if (!_localSpeech.isListening) {
-      await _localSpeech.startListening();
-    }
-    if (!mounted || !_voiceOrbVisible) return;
-    setState(() {
-      _voiceOrbState = AgentState.listening;
-    });
-    // The native VAD speech_ended event submits this captured interruption.
-  }
-
-  Widget _buildVoiceOrbOverlay() {
-    final status = switch (_voiceOrbState) {
-      AgentState.idle => 'جاهز للاستماع',
-      AgentState.listening => 'أستمع إليك محلياً…',
-      AgentState.thinking => 'أعالج طلبك داخل المحادثة…',
-      AgentState.speaking => 'أجيبك صوتياً…',
-      AgentState.error => 'تعذر إكمال الاتصال الصوتي',
-    };
-    final transcript = _controller.text.trim();
-    if (_orbCompact) {
-      return Positioned(left: 12, right: 12,
-        bottom: (106 + _orbOffsetY).clamp(78.0, MediaQuery.of(context).size.height - 180).toDouble(),
-        child: SafeArea(child: Material(
-          color: const Color(0xF0181D29), borderRadius: BorderRadius.circular(24),
-          child: Padding(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            child: Row(children: [
-              GestureDetector(
-                onPanUpdate: (d) => setState(() => _orbOffsetY = (_orbOffsetY + d.delta.dy).clamp(-180.0, 180.0).toDouble()),
-                onTap: () => setState(() => _orbCompact = false),
-                child: GlowingOrb(state: _voiceOrbState, size: _orbCompactSize)),
-              const SizedBox(width: 8),
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min, children: [
-                  Text(status, style: const TextStyle(color: Colors.white, fontSize: 12)),
-                  if (transcript.isNotEmpty) Text(transcript, maxLines: 2,
-                    overflow: TextOverflow.ellipsis, style: const TextStyle(color: GiantPalette.muted, fontSize: 10)),
-                ])),
-              IconButton(
-                tooltip: 'تصغير الدائرة',
-                onPressed: () => setState(() => _orbCompactSize = (_orbCompactSize - 18).clamp(56.0, 112.0).toDouble()),
-                icon: const Icon(Icons.remove_circle_outline_rounded, color: Colors.white70, size: 18)),
-              IconButton(
-                tooltip: 'تكبير الدائرة',
-                onPressed: () => setState(() => _orbCompactSize = (_orbCompactSize + 18).clamp(56.0, 132.0).toDouble()),
-                icon: const Icon(Icons.add_circle_outline_rounded, color: Colors.white70, size: 18)),
-              IconButton(onPressed: () => setState(() => _orbCompact = false),
-                icon: const Icon(Icons.open_in_full_rounded, color: Colors.white70, size: 18)),
-              IconButton(onPressed: _stopVoiceInteraction,
-                icon: const Icon(Icons.close_rounded, color: Colors.white70, size: 18)),
-            ])))));
-    }
-    return Positioned.fill(child: Material(
-      color: const Color(0xE610131B),
-      child: SafeArea(child: Stack(children: [
-        Center(child: GestureDetector(
-          onPanUpdate: (d) {
-            if (d.delta.dy.abs() > 2) setState(() {
-              _orbCompact = true;
-              _orbOffsetY = (_orbOffsetY + d.delta.dy).clamp(-180.0, 180.0).toDouble();
-            });
-          },
-          child: Padding(padding: const EdgeInsets.symmetric(horizontal: 28),
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              GlowingOrb(state: _voiceOrbState, size: 270),
-              const SizedBox(height: 18),
-              Text(status, textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
-              if (transcript.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Text(transcript, maxLines: 3, overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 13, height: 1.5)),
-              ],
-              const SizedBox(height: 14),
-              if (_voiceOrbState == AgentState.speaking)
-                FilledButton.tonalIcon(onPressed: _interruptAssistantAndListen,
-                  icon: const Icon(Icons.hearing_rounded), label: const Text('قاطعني — استمع الآن')),
-              if (_voiceOrbState == AgentState.listening && _localSpeech.isListening)
-                FilledButton.icon(onPressed: _finishLocalVoiceTurn,
-                  icon: const Icon(Icons.send_rounded), label: const Text('انتهيت — أرسل كلامي')),
-              const SizedBox(height: 8),
-              const Text('التعرف على الكلام يعمل على الجهاز',
-                style: TextStyle(color: GiantPalette.muted, fontSize: 11)),
-            ])))),
-        PositionedDirectional(top: 12, end: 12, child: Row(children: [
-          IconButton.filledTonal(tooltip: 'تصغير المساعد الصوتي',
-            onPressed: () => setState(() => _orbCompact = true),
-            icon: const Icon(Icons.picture_in_picture_alt_rounded)),
-          IconButton.filledTonal(tooltip: 'إيقاف المساعد الصوتي',
-            onPressed: _stopVoiceInteraction, icon: const Icon(Icons.close_rounded)),
-        ])),
-      ]))));
+    await _voiceSession.interruptAndListen();
+    if (!mounted) return;
+    setState(() => _voiceOrbState = AgentState.listening);
   }
 
   Future<void> _prepareLocalTtsModel() async {
@@ -2125,68 +2054,47 @@ class _ChatScreenState extends State<ChatScreen> {
     if (!localReady || !mounted) return;
     _finalizingVoiceInput = false;
     _voiceRequestActive = false;
+    _voiceSession.setVoiceRequestActive(false);
+    _voiceSession.setFinalizing(false);
     setState(() {
       _voiceOrbVisible = true;
-      _orbCompact = false;
-      _orbOffsetY = 0;
       _voiceOrbState = AgentState.listening;
     });
-    _voiceActivitySubscription ??=
-        _localSpeech.activityEvents.listen(_handleVoiceActivity);
+    GlobalVoiceOrbOverlayBridge.show(const VoiceSessionOverlay());
     await _prepareLocalTtsModel();
     if (!mounted || !_voiceOrbVisible) return;
     await _startVoiceRecognition();
     if (!mounted || !_localSpeech.isListening) return;
     final capabilities = await _localSpeech.captureCapabilities();
     _voiceAecAvailable = capabilities['aec_active'] == true;
-  }
-
-  void _handleVoiceActivity(Map<String, dynamic> event) {
-    if (!mounted || !_voiceOrbVisible) return;
-    final type = event['type']?.toString() ?? '';
-    if (type == 'speech_started' &&
-        _voiceRequestActive &&
-        _voiceOrbState == AgentState.speaking &&
-        _localSpeech.isListening &&
-        _voiceAecAvailable) {
-      _bargeInActive = true;
-      _bargeInReady = false;
-      // Keep the microphone capture running: the VAD/AEC pipeline is already
-      // recording the interruption while the assistant audio is stopped.
-      unawaited(_voiceOutput.stop());
-      setState(() {
-        _voiceOrbState = AgentState.listening;
-      });
-    } else if (type == 'speech_ended' && _bargeInActive) {
-      _bargeInReady = true;
-      if (!_voiceRequestActive && !_finalizingVoiceInput) {
-        unawaited(_finishLocalVoiceTurn());
-      }
-    }
+    _voiceSession.setAecAvailable(_voiceAecAvailable);
   }
 
   Future<void> _finishLocalVoiceTurn() async {
     if (!mounted || !_voiceOrbVisible || _finalizingVoiceInput) return;
     _finalizingVoiceInput = true;
+    _voiceSession.setFinalizing(true);
     try {
-      final transcript = await _localSpeech.stopListening();
+      final transcript = await _voiceSession.stopCapture();
       if (transcript.isNotEmpty) {
         _controller.text = transcript;
         _controller.selection = TextSelection.collapsed(offset: transcript.length);
+        _voiceSession.setTranscript(transcript);
       }
       if (_controller.text.trim().isEmpty) {
         _finalizingVoiceInput = false;
+        _voiceSession.setFinalizing(false);
         return;
       }
       _bargeInActive = false;
       _bargeInReady = false;
+      _voiceSession.setBargeInActive(false);
+      _voiceSession.setBargeInReady(false);
       _voiceRequestActive = true;
-      // Re-arm native capture while the assistant responds. Android AEC and
-      // VAD can now detect a real user interruption during local TTS playback.
-      await _localSpeech.startListening();
-      if (mounted) setState(() {
-        _voiceOrbState = AgentState.thinking;
-      });
+      _voiceSession.setVoiceRequestActive(true);
+      await _voiceSession.startCapture();
+      if (mounted) setState(() => _voiceOrbState = AgentState.thinking);
+      _voiceSession.setPhase(VoiceSessionPhase.thinking);
       await _sendMessage();
     } catch (error) {
       if (mounted) {
@@ -2196,13 +2104,15 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     } finally {
       _voiceRequestActive = false;
+      _voiceSession.setVoiceRequestActive(false);
       _finalizingVoiceInput = false;
+      _voiceSession.setFinalizing(false);
       if (mounted && _voiceOrbVisible) {
-        setState(() {
-          _voiceOrbState = AgentState.listening;
-        });
-        if (_bargeInReady && _localSpeech.isListening) {
+        setState(() => _voiceOrbState = AgentState.listening);
+        _voiceSession.setPhase(VoiceSessionPhase.listening);
+        if (_voiceSession.bargeInReady && _localSpeech.isListening) {
           _bargeInReady = false;
+          _voiceSession.setBargeInReady(false);
           unawaited(_finishLocalVoiceTurn());
         } else {
           await _startVoiceRecognition();
@@ -2221,16 +2131,16 @@ class _ChatScreenState extends State<ChatScreen> {
           _voiceOrbVisible = false;
           _voiceOrbState = AgentState.idle;
         });
+        await _voiceSession.stopSession();
         await _restoreVoiceProviderMode();
         return;
       }
-      await _localSpeech.startListening();
+      await _voiceSession.startCapture();
       if (mounted && _voiceOrbVisible) {
-        setState(() {
-          _voiceOrbState = AgentState.listening;
-        });
+        setState(() => _voiceOrbState = AgentState.listening);
       }
     } catch (error) {
+      _voiceSession.setPhase(VoiceSessionPhase.error);
       if (!mounted) return;
       setState(() {
         _voiceOrbState = AgentState.error;
@@ -2239,6 +2149,7 @@ class _ChatScreenState extends State<ChatScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('تعذر بدء التسجيل الصوتي المحلي: $error')),
       );
+      await _voiceSession.stopSession();
       await _restoreVoiceProviderMode();
     }
   }
