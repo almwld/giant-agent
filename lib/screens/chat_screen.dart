@@ -2036,7 +2036,7 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('تعذر تجهيز نموذج Whisper المضمّن: $error')),
+          SnackBar(content: Text('تعذر تنزيل أو تجهيز نموذج Whisper المحلي: $error')),
         );
       }
       return false;
@@ -2047,8 +2047,8 @@ class _ChatScreenState extends State<ChatScreen> {
     final tts = LocalArabicTtsService.instance;
     try {
       if (!await tts.isInstalled()) {
-        // Extract the Nabra archive already bundled in the APK. No manual
-        // installation and no network request are needed.
+        // Download the pinned Nabra archive once into app-private storage.
+        // After installation, synthesis runs entirely offline.
         await tts.install();
       }
       await tts.initialize();
@@ -2056,7 +2056,7 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('تعذر تجهيز نموذج Nabra المضمّن: $error')),
+          SnackBar(content: Text('تعذر تنزيل أو تجهيز نموذج Nabra المحلي: $error')),
         );
       }
     }
