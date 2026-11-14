@@ -96,13 +96,13 @@ Open PR #57 adds six control-center surfaces: Dashboard, Task Manager, Agent Fle
 
 ## Pull request disposition from live listing
 
-### Open (18)
+### Open (16)
 #1 ReAct/assistant foundation; #5 enterprise architecture documentation; #8 durable task engine review; #12 Sehatak brand identity; #17 chat bubble sizing; #24 PTY emulator smoke test; #27 Android launch black screen; #32 Codemagic release; #36 production Timeline; #53 native Gain observability; #54 observability verification; #55 local Arabic voice; #56 unified runtime + Timeline integration; #57 AgentsOS control center; #58 Pollinations provider; #59 SQLite WAL pragma fix.
 
-### Merged (26)
+### Merged (29)
 #2 local GGUF; #3 integrated agent runtime/workflow/workspace/local services; #4 OpenRouter format fix; #14 SQLite task persistence consolidation; #21 voice terminal approval; #22 OpenRouter-only cloud policy; #23 voice orb in chat; #25 embedded resizable voice orb; #26 Kimi subagent orchestration; #28 MCP result contracts/tool identity/SSE; #29 dynamic subagent lifecycle; #30 model-facing dynamic orchestration; #31 Appetize cloud Android testing; #33 Mylib transfer; #38 full agent stack integration; #39 Gain PTY/local inference cancellation; #40 persistent skills/context compaction; #41 subagent goals/mailboxes; #42 durable lifecycle; #43 tool cancellation isolation; #44 MCP cancellation; #45 Python cancellation; #46 adaptive orchestration/evidence-aware context; #47 Hermes hybrid memory; #48 browser cancellation; #49 web-search cancellation; #50 context index fix; #51 media cancellation; #52 preserve initial instructions.
 
-### Closed without merge (15)
+### Closed without merge (14)
 #6 durable kernel/Gain PTY; #7 shared-runtime voice assistant; #9 AgentService durable integration phase; #10 TaskManager SQLite persistence; #11 PTY lifecycle hardening; #13 old SQLite consolidation attempt; #15 duplicate SQLite v2 PR; #16 earlier chat bubble polish; #18 split APK CI; #19 PTY integration PR; #20 voice integration PR; #34 watchdog progress fix; #35 Mylib transfer validation; #37 Boosthis connection. These are not automatically discarded: inspect their unique behavior/tests only where not represented by merged descendants or current main.
 
 > Counts above are the live PR list returned by GitHub at audit time. PR status must be refreshed before any merge decision.
