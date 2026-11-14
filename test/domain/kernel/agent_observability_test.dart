@@ -141,6 +141,12 @@ void main() {
       status: 'failed',
     );
     expect(failed.events.map((event) => event.id), ['tool-3']);
+
+    final searched = await store.observabilityEventsForConversation(
+      'chat-a',
+      search: 'tool_failed',
+    );
+    expect(searched.events.map((event) => event.id), ['tool-3']);
     await store.close();
   });
 
