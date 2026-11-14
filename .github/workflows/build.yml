@@ -313,9 +313,7 @@ jobs:
             adb -s emulator-5554 logcat -d -v threadtime | grep -E -i 'FlutterWhisper|UnsatisfiedLinkError|dlopen failed|linker|whisper|ggml' | tail -n 250 || true
             echo "===== DEBUG APK NATIVE LIBRARY CONTENTS ====="
             if [ -f build/app/outputs/flutter-apk/app-debug.apk ]; then
-              unzip -Z1 build/app/outputs/flutter-apk/app-debug.apk
-                | grep -E "^lib/(x86_64|arm64-v8a)/lib(whisper|ggml.*)[.]so$"
-                | sort || true
+              unzip -Z1 build/app/outputs/flutter-apk/app-debug.apk | grep -E "^lib/(x86_64|arm64-v8a)/lib(whisper|ggml.*)[.]so$" | sort || true
             else
               echo "Flutter debug APK was not produced."
             fi
