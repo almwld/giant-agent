@@ -71,6 +71,80 @@ android {
 
 flutter { source '../..' }
 
+// Download and pin the large offline speech weights at build time. The files
+// are Flutter assets in the APK, then copied to private model caches on first use.
+def bundledVoiceModelDir = rootProject.file("../assets/voice_models")
+def prepareVoiceModels = tasks.register("prepareVoiceModels") {
+    outputs.files(
+        new File(bundledVoiceModelDir, "ggml-base.bin"),
+        new File(bundledVoiceModelDir, "nabra-82m-arabic-int8.tar.bz2")
+    )
+    doLast {
+        bundledVoiceModelDir.mkdirs()
+        def downloadPinned = { String source, File destination, String expectedSha, Long expectedSize ->
+            def sha256 = { File file ->
+                def digest = java.security.MessageDigest.getInstance("SHA-256")
+                file.withInputStream { input ->
+                    byte[] buffer = new byte[1024 * 1024]
+                    int read
+                    while ((read = input.read(buffer)) > 0) digest.update(buffer, 0, read)
+                }
+                digest.digest().collect { String.format("%02x", it & 0xff) }.join()
+            }
+            if (destination.exists() &&
+                (expectedSize == null || destination.length() == expectedSize) &&
+                sha256(destination) == expectedSha) return
+            if (destination.exists()) destination.delete()
+            File partial = new File(destination.parentFile, destination.name + ".part")
+            if (partial.exists()) partial.delete()
+            logger.lifecycle("Downloading bundled offline voice model: ${destination.name}")
+            def connection = new URL(source).openConnection()
+            connection.connectTimeout = 30000
+            connection.readTimeout = 180000
+            connection.setRequestProperty("User-Agent", "GiantAgent-Android-Build/1.0")
+            connection.getInputStream().withCloseable { input ->
+                partial.withOutputStream { output ->
+                    byte[] buffer = new byte[1024 * 1024]
+                    int read
+                    while ((read = input.read(buffer)) > 0) output.write(buffer, 0, read)
+                }
+            }
+            if (expectedSize != null && partial.length() != expectedSize) {
+                def actualSize = partial.length()
+                partial.delete()
+                throw new GradleException("Wrong size for ${destination.name}: ${actualSize}")
+            }
+            def actualSha = sha256(partial)
+            if (actualSha != expectedSha) {
+                partial.delete()
+                throw new GradleException("SHA-256 mismatch for ${destination.name}: ${actualSha}")
+            }
+            if (!partial.renameTo(destination)) {
+                java.nio.file.Files.move(partial.toPath(), destination.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            }
+            logger.lifecycle("Verified ${destination.name}: ${destination.length()} bytes / ${actualSha}")
+        }
+        downloadPinned(
+            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin",
+            new File(bundledVoiceModelDir, "ggml-base.bin"),
+            "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe",
+            147951465L
+        )
+        downloadPinned(
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/nabra-82m-arabic-int8.tar.bz2",
+            new File(bundledVoiceModelDir, "nabra-82m-arabic-int8.tar.bz2"),
+            "e7c644fabb1529190de9a2f7d6044f88c26bf6d9b717ad41ef5d2b748e01459b",
+            null
+        )
+    }
+}
+tasks.configureEach { candidate ->
+    if (candidate.name.startsWith("compileFlutterBuild")) {
+        candidate.dependsOn(prepareVoiceModels)
+    }
+}
+
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
     implementation 'androidx.multidex:multidex:2.0.1'
