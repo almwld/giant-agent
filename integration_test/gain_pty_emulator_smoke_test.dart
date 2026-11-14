@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:giant_agent_x/main.dart' as app;
+import 'package:giant_agent_x/services/local_speech_recognition_service.dart';
+import 'package:giant_agent_x/services/local_arabic_tts_service.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -22,6 +24,28 @@ void main() {
     expect(find.byType(MaterialApp), findsOneWidget);
     expect(find.byType(Scaffold), findsWidgets);
     expect(tester.takeException(), isNull);
+
+    // These model payloads must be embedded in the APK. Initialize both
+    // services offline before exercising PTY; no runtime network download.
+    final whisperAsset = await rootBundle.load('assets/voice_models/ggml-base.bin');
+    expect(whisperAsset.lengthInBytes, 147951465);
+    final nabraAsset = await rootBundle.load(
+      'assets/voice_models/nabra-82m-arabic-int8.tar.bz2',
+    );
+    expect(nabraAsset.lengthInBytes, greaterThan(1024 * 1024));
+    print('VOICE_MODELS: packaged Whisper and Nabra assets found');
+
+    await LocalSpeechRecognitionService.instance
+        .initialize()
+        .timeout(const Duration(minutes: 3));
+    expect(LocalSpeechRecognitionService.instance.isModelReady, isTrue);
+    print('VOICE_MODELS: Whisper initialized from bundled weights');
+
+    final nabra = LocalArabicTtsService.instance;
+    await nabra.install().timeout(const Duration(minutes: 3));
+    expect(await nabra.isInstalled(), isTrue);
+    await nabra.initialize();
+    print('VOICE_MODELS: Nabra extracted and initialized from bundled archive');
 
     const method = MethodChannel('giant_agent/pty');
     const events = EventChannel('giant_agent/pty/events');
