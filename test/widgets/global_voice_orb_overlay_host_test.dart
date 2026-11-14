@@ -81,7 +81,8 @@ void main() {
     expect(find.text('أستمع إليك محلياً…'), findsOneWidget);
 
     await tester.tap(find.text('Leave chat'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
 
     expect(find.text('Another AgentsOS screen'), findsOneWidget);
     expect(find.text('أستمع إليك محلياً…'), findsOneWidget);
