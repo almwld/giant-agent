@@ -18,6 +18,8 @@ No voice request is sent to a cloud speech API. The old `speech_to_text` depende
 
 ## First-run model setup
 
+The APK intentionally excludes model weights to keep installation size near the previous 50 MB ARM64 baseline. First voice setup downloads the models once into app-private storage; after installation, voice processing is fully offline.
+
 - ASR: Whisper multilingual Base, downloaded once by `flutter_whisper` into app-private storage (roughly 143 MB).
 - Neural Arabic TTS: The official `nabra-82m-arabic-int8.tar.bz2` archive from sherpa-onnx, containing the 83 MB INT8 ONNX model, `voices.bin`, `tokens.txt`, and `espeak-ng-data`. The archive SHA-256 is checked before extraction.
 - Models are downloaded over HTTPS only during installation. Once installed, recognition, synthesis, and playback are local.
@@ -37,7 +39,7 @@ Nabra is an MSA voice with one speaker ID. It is not a general dialect voice-clo
 ## Privacy and limitations
 
 - No audio, transcript, or generated speech is uploaded by these local voice services.
-- The initial model downloads require internet access; runtime use after installation does not.
+- The initial model downloads require internet access; runtime use after installation does not. The APK itself does not contain either large model.
 - Microphone capture and TTS playback currently use a half-duplex interaction model. The interruption control is explicit; automatic barge-in while the speaker is playing is not enabled because reliable acoustic echo cancellation and full-duplex VAD are not yet wired into the Flutter audio capture path.
 - Whisper base and Nabra INT8 consume meaningful storage and RAM. Low-memory devices should be benchmarked before making these models the default on every device.
 - The ASR engine and Nabra synthesis run on native CPU inference. A persistent worker isolate keeps one Nabra engine loaded and prevents synthesis from blocking Flutter rendering.
