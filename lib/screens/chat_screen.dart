@@ -86,7 +86,6 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _bargeInActive = false;
   bool _voiceAecAvailable = false;
   bool _bargeInReady = false;
-  ModelProviderMode? _previousVoiceProviderMode;
   AgentState _voiceOrbState = AgentState.idle;
   bool _webSearchEnabled = false;
   bool _agentBrowserDialogOpen = false;
@@ -1991,17 +1990,13 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
     if (accepted != true) return false;
-    _previousVoiceProviderMode ??= currentMode;
+    _voiceSession.rememberProviderMode(currentMode);
     await settings.setMode(ModelProviderMode.local);
     return true;
   }
 
-  Future<void> _restoreVoiceProviderMode() async {
-    final previous = _previousVoiceProviderMode;
-    if (previous == null) return;
-    _previousVoiceProviderMode = null;
-    await ModelProviderSettings.instance.setMode(previous);
-  }
+  Future<void> _restoreVoiceProviderMode() =>
+      _voiceSession.restoreProviderMode();
 
   Future<bool> _prepareLocalSpeechModel() async {
     if (_localSpeech.isModelReady) return true;
