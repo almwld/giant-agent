@@ -13,7 +13,7 @@ Future<AgentKernelStore> _createStore(String path) async {
         version: 1,
         onConfigure: (db) async {
           await db.execute('PRAGMA foreign_keys = ON');
-          await db.execute('PRAGMA journal_mode = WAL');
+          await db.rawQuery('PRAGMA journal_mode = WAL');
           await db.execute('PRAGMA synchronous = FULL');
         },
         onCreate: (db, version) async {
