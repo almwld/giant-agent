@@ -192,7 +192,7 @@ def prepare_native_engine(root: Path) -> None:
     original = gradle.read_text(encoding="utf-8")
     patched = patch_android_abis(original)
     if patched != original:
-        gradle.write_text(patched, encoding="utf-8", newline="\\n")
+        gradle.write_text(patched, encoding="utf-8", newline="\n")
         print("Patched flutter_whisper Android ABI filters: arm64-v8a, armeabi-v7a, x86_64.")
     else:
         print("flutter_whisper Android ABI filters already include x86_64.")
