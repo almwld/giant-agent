@@ -122,8 +122,8 @@ jobs:
               echo "Missing Whisper JNI engine libwhisper.so for $abi in $apk"
               exit 1
             }
-            unzip -l "$apk" | grep -q "lib/$abi/libggml-cpu.so" || {
-              echo "Missing Whisper GGML CPU engine libggml-cpu.so for $abi in $apk"
+            unzip -l "$apk" | grep -q "lib/$abi/libggml.so" || {
+              echo "Missing Whisper runtime dependency libggml.so for $abi in $apk"
               exit 1
             }
           }
