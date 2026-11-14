@@ -337,3 +337,28 @@ The original snapshot contained 67 branches including `main`. All 66 other refs 
 | `verify/gain-replay-ci-2` | diverged | 53 | 757 | 20 | closed PR #19 lineage; preserve unique smoke/reliability tests |
 
 **Snapshot note:** This table intentionally excludes the audit branch created after the initial 67-branch inventory. At the time of this update the repository also contains `audit/complete-branch-feature-inventory-20261114`, which adds this report only.
+
+
+## Integration execution update — 2026-11-14
+
+A consolidated review candidate was created from the latest integrated AgentsOS branch, rather than merging the stacked PRs independently:
+
+- **PR #60:** `integration/complete-runtime-consolidation-v2-20261114` → `main`
+- Included lineage: local Arabic voice (#55), unified runtime + searchable Timeline (#56), AgentsOS control center (#57).
+- Added all WAL `PRAGMA journal_mode = WAL` corrections to the canonical shared store and SQLite test fixtures using `rawQuery`.
+- Restored the two-second live Timeline refresh and preservation of cursor-loaded older events from #53, while retaining the richer #57 Timeline filters, progress/duration metadata and targeted tool cancellation.
+- Added the Android cold-launch/Gain PTY emulator smoke test from #24, its Flutter integration-test SDK dependency, and a dedicated Android emulator workflow job.
+- Added a balanced JSON scanner for tagged ReAct tool calls to safely parse nested JSON and escaped quotes, replacing the non-greedy regular expression in ModelService. This ports the useful protocol hardening from #1 without introducing its parallel chat controller, SQLite conversation store or independent tool registry.
+- Added the experimental Pollinations text adapter from #58 through the existing ModelService and AgentKernel provider path. It remains explicitly experimental: the legacy no-key endpoint is not guaranteed and no free/unlimited availability is claimed.
+- Preserved the Codemagic release configuration from #32 and added the consolidated branch trigger.
+- Confirmed the existing chat screen already renders an in-chat execution timeline per message from factual AgentEventBus events; the separate Gain observability screen reads the canonical AgentKernelStore. No second Timeline database was introduced.
+
+### Current verification snapshot
+
+At the last check on PR #60 head `fa387eaf68c3b4bc95c6a546b6eab16f8f654bf9`:
+- Python parser/REPL tests: **success**.
+- Flutter unit tests, including the new ReAct protocol tests and Pollinations response parsing tests: **success**.
+- Flutter analysis on the immediately preceding candidate revision: **success**.
+- Android ABI APK builds and the Android emulator PTY/cold-launch smoke test: **in progress** on the latest rerun; the earlier emulator attempt was cancelled by a subsequent PR metadata edit, not a test failure.
+
+PR #60 remains unmerged. Main remains unchanged. The full 67-branch inventory remains preserved; this candidate is a controlled integration proposal, not a declaration that every historical branch-only capability has been merged or that physical-device validation is complete.
