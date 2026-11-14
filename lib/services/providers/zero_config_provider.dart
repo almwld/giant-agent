@@ -48,6 +48,16 @@ class ZeroConfigProvider {
     if (cleanPrompt.isEmpty) throw ArgumentError('Prompt cannot be empty.');
     if (isCancelled?.call() == true) throw const _PollinationsCancelled();
     final client = http.Client();
+    var cancellationSent = false;
+    final cancellationPoll = Timer.periodic(
+      const Duration(milliseconds: 100),
+      (_) {
+        if (!cancellationSent && isCancelled?.call() == true) {
+          cancellationSent = true;
+          client.close();
+        }
+      },
+    );
     try {
       final messages = <Map<String, String>>[
         if (systemPrompt != null && systemPrompt.trim().isNotEmpty)
@@ -82,9 +92,14 @@ class ZeroConfigProvider {
         decoded = raw;
       }
       return extractText(decoded);
+    } on http.ClientException {
+      if (isCancelled?.call() == true) return 'تم إيقاف التوليد.';
+      rethrow;
     } on TimeoutException {
+      if (isCancelled?.call() == true) return 'تم إيقاف التوليد.';
       throw TimeoutException('انتهت مهلة Pollinations بعد ${requestTimeout.inSeconds} ثانية.');
     } finally {
+      cancellationPoll.cancel();
       client.close();
     }
   }
