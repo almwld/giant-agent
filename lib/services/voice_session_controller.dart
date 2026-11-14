@@ -81,6 +81,7 @@ class VoiceSessionController {
 
   VoiceSessionSnapshot get snapshot => state.value;
   bool get isActive => snapshot.active;
+  bool get hasAttachedScreen => _onSpeechEnded != null;
   bool get isListening => speech.isListening;
   bool get voiceRequestActive => snapshot.voiceRequestActive;
   bool get bargeInActive => snapshot.bargeInActive;
