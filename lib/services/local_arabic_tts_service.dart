@@ -33,6 +33,7 @@ class LocalArabicTtsService {
   bool _ready = false;
   Directory? _modelDirectory;
   bool _downloading = false;
+  Future<void>? _installing;
   int _generationId = 0;
   int _nextSynthesisId = 0;
   Isolate? _worker;
@@ -68,6 +69,18 @@ class LocalArabicTtsService {
   }
 
   Future<void> install({
+    void Function(String file, double fraction)? onProgress,
+  }) {
+    final active = _installing;
+    if (active != null) return active;
+    final future = _installBundledArchive(onProgress: onProgress);
+    _installing = future;
+    return future.whenComplete(() {
+      if (identical(_installing, future)) _installing = null;
+    });
+  }
+
+  Future<void> _installBundledArchive({
     void Function(String file, double fraction)? onProgress,
   }) async {
     if (_downloading) throw StateError('Arabic TTS installation is already running.');
@@ -115,7 +128,6 @@ class LocalArabicTtsService {
       _downloading = false;
     }
   }
-
   Future<void> initialize() async {
     if (_ready) return;
     if (!await isInstalled()) {
