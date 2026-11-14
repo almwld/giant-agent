@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:giant_agent/services/providers/zero_config_provider.dart';
+import 'package:giant_agent_x/services/providers/zero_config_provider.dart';
 
 void main() {
   group('ZeroConfigProvider.extractText', () {
