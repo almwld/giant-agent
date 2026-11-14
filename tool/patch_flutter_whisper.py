@@ -170,6 +170,37 @@ def patch_android_abis(gradle: str) -> str:
     return gradle.replace(expected, replacement, 1)
 
 
+def patch_whisper_context_libraries(root: Path) -> bool:
+    """Load the GGML soname that the plugin's CMake build actually packages.
+
+    The upstream Kotlin wrapper loads ggml-cpu, but this plugin's CMakeLists
+    explicitly copies libggml-cpu.so to libggml.so for the Android loader.
+    Loading the nonexistent ggml-cpu soname raises UnsatisfiedLinkError and
+    is surfaced by the plugin as NATIVE_NOT_BUILT even when both APK assets
+    and libwhisper.so are present.
+    """
+    context = root / "android" / "src" / "main" / "kotlin" / "io" / "github" / "govindtank" / "flutter_whisper" / "WhisperContext.kt"
+    if not context.is_file():
+        raise RuntimeError(f"WhisperContext Kotlin source not found: {context}")
+    cmake = root / "android" / "src" / "main" / "cpp" / "CMakeLists.txt"
+    if not cmake.is_file():
+        raise RuntimeError(f"Whisper CMake file not found: {cmake}")
+    cmake_source = cmake.read_text(encoding="utf-8")
+    if "libggml-cpu.so" not in cmake_source or "libggml.so" not in cmake_source:
+        raise RuntimeError("Unexpected Whisper CMake config: expected libggml-cpu.so -> libggml.so packaging rule.")
+
+    source = context.read_text(encoding="utf-8")
+    old = 'System.loadLibrary("ggml-cpu")'
+    new = 'System.loadLibrary("ggml")'
+    if new in source and old not in source:
+        return False
+    if old not in source:
+        raise RuntimeError("Unexpected WhisperContext Kotlin source: ggml-cpu load declaration not found.")
+    context.write_text(source.replace(old, new, 1), encoding="utf-8", newline="\\n")
+    print(f"Patched {context}: load packaged libggml.so soname.")
+    return True
+
+
 def prepare_native_engine(root: Path) -> None:
     """Provision upstream whisper.cpp sources and enable the emulator ABI.
 
@@ -221,6 +252,7 @@ def main() -> int:
         return 0
 
     prepare_native_engine(root)
+    patch_whisper_context_libraries(root)
     native = root / "android" / "src" / "main" / "cpp" / "whisper_jni.cpp"
     if not native.is_file():
         raise RuntimeError(f"Whisper JNI source not found: {native}")
