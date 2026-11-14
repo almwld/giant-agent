@@ -174,9 +174,14 @@ class VoiceOutputService {
     _streaming = false;
     _streamBuffer = '';
     if (_useNabra) {
-      await LocalArabicTtsService.instance.stop();
-      if (epoch != _speechEpoch) return;
-      await LocalArabicTtsService.instance.speak(value);
+      _speaking = true;
+      try {
+        await LocalArabicTtsService.instance.stop();
+        if (epoch != _speechEpoch) return;
+        await LocalArabicTtsService.instance.speak(value);
+      } finally {
+        _speaking = false;
+      }
       return;
     }
     await _tts.stop();
