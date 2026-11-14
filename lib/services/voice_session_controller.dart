@@ -161,6 +161,7 @@ class VoiceSessionController {
     }
     await speech.startListening();
     _emit(snapshot.copyWith(active: true, isListening: true,
+      transcript: '',
       phase: VoiceSessionPhase.listening, finalizing: false,
       clearError: true));
     _listenToActivity();
