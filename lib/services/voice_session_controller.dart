@@ -234,7 +234,12 @@ class VoiceSessionController {
   }
 
   Future<String> stopCapture() async {
-    if (!speech.isListening) return '';
+    if (!speech.isListening) {
+      final buffered = _pendingTranscript ?? snapshot.transcript;
+      _pendingTranscript = null;
+      _emit(snapshot.copyWith(finalizing: false));
+      return buffered;
+    }
     setFinalizing(true);
     try {
       final transcript = await speech.stopListening();
@@ -275,10 +280,12 @@ class VoiceSessionController {
       await speech.cancelListening();
       await output.stop();
     } finally {
+      try {
+        await restoreProviderMode();
+      } catch (_) {}
       await _activitySubscription?.cancel();
       _activitySubscription = null;
       _pendingTranscript = null;
-      _previousProviderMode = null;
       _emit(const VoiceSessionSnapshot());
     }
   }
