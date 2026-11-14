@@ -79,9 +79,6 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _voiceOrbVisible = false;
   bool _voiceRequestActive = false;
   bool _dictationActive = false;
-  bool _orbCompact = false;
-  double _orbCompactSize = 112;
-  double _orbOffsetY = 0;
   final Map<String, String> _inlineTimelinePanels = <String, String>{};
   bool _bargeInActive = false;
   bool _voiceAecAvailable = false;
@@ -2042,15 +2039,6 @@ class _ChatScreenState extends State<ChatScreen> {
       }
       return false;
     }
-  }
-
-  Future<void> _interruptAssistantAndListen() async {
-    if (!mounted || !_voiceOrbVisible) return;
-    _bargeInActive = true;
-    _bargeInReady = false;
-    await _voiceSession.interruptAndListen();
-    if (!mounted) return;
-    setState(() => _voiceOrbState = AgentState.listening);
   }
 
   Future<void> _prepareLocalTtsModel() async {
