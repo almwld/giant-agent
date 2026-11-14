@@ -72,7 +72,6 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _terminalHasActivity = false;
   final LocalSpeechRecognitionService _localSpeech = LocalSpeechRecognitionService.instance;
   final VoiceOutputService _voiceOutput = VoiceOutputService.instance;
-  bool _isListening = false;
   bool _finalizingVoiceInput = false;
   bool _voiceOrbVisible = false;
   bool _voiceRequestActive = false;
@@ -1447,7 +1446,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       setState(() {
         _streamingResponse = '';
-        _messages.add({'isUser': false, 'content': response, 'time': DateTime.now(), 'requestId': requestId});
+        _messages.add({'isUser': false, 'content': response, 'time': DateTime.now()});
         _isLoading = false;
       });
       await _saveMessage(response, false);
@@ -1914,7 +1913,6 @@ class _ChatScreenState extends State<ChatScreen> {
     await _restoreVoiceProviderMode();
     if (!mounted) return;
     setState(() {
-      _isListening = false;
       _voiceOrbVisible = false;
       _voiceOrbState = AgentState.idle;
     });
@@ -2009,7 +2007,6 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     if (!mounted || !_voiceOrbVisible) return;
     setState(() {
-      _isListening = _localSpeech.isListening;
       _voiceOrbState = AgentState.listening;
     });
     // The native VAD speech_ended event submits this captured interruption.
@@ -2159,7 +2156,6 @@ class _ChatScreenState extends State<ChatScreen> {
       unawaited(_voiceOutput.stop());
       setState(() {
         _voiceOrbState = AgentState.listening;
-        _isListening = true;
       });
     } else if (type == 'speech_ended' && _bargeInActive) {
       _bargeInReady = true;
@@ -2189,7 +2185,6 @@ class _ChatScreenState extends State<ChatScreen> {
       // VAD can now detect a real user interruption during local TTS playback.
       await _localSpeech.startListening();
       if (mounted) setState(() {
-        _isListening = true;
         _voiceOrbState = AgentState.thinking;
       });
       await _sendMessage();
@@ -2204,7 +2199,6 @@ class _ChatScreenState extends State<ChatScreen> {
       _finalizingVoiceInput = false;
       if (mounted && _voiceOrbVisible) {
         setState(() {
-          _isListening = _localSpeech.isListening;
           _voiceOrbState = AgentState.listening;
         });
         if (_bargeInReady && _localSpeech.isListening) {
@@ -2233,14 +2227,12 @@ class _ChatScreenState extends State<ChatScreen> {
       await _localSpeech.startListening();
       if (mounted && _voiceOrbVisible) {
         setState(() {
-          _isListening = true;
           _voiceOrbState = AgentState.listening;
         });
       }
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _isListening = false;
         _voiceOrbState = AgentState.error;
         _voiceOrbVisible = false;
       });
