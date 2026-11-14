@@ -196,7 +196,7 @@ def patch_whisper_context_libraries(root: Path) -> bool:
         return False
     if old not in source:
         raise RuntimeError("Unexpected WhisperContext Kotlin source: ggml-cpu load declaration not found.")
-    context.write_text(source.replace(old, new, 1), encoding="utf-8", newline="\\n")
+    context.write_text(source.replace(old, new, 1), encoding="utf-8")
     print(f"Patched {context}: load packaged libggml.so soname.")
     return True
 
