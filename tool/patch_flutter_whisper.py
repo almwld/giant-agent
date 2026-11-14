@@ -197,22 +197,8 @@ def prepare_native_engine(root: Path) -> None:
     else:
         print("flutter_whisper Android ABI filters already include x86_64.")
 
-def main() -> int:
-    root = package_root(Path.cwd())
-    prepare_native_engine(root)
-    native = root / "android" / "src" / "main" / "cpp" / "whisper_jni.cpp"
-    if not native.is_file():
-        raise RuntimeError(f"Whisper JNI source not found: {native}")
-    original = native.read_text(encoding="utf-8")
-    patched = patch_source(original)
-    if patched != original:
-        native.write_text(patched, encoding="utf-8", newline="\n")
-        print(f"Patched {native}: strict 16 kHz mono PCM16 WAV decoder installed.")
-    else:
-        print(f"Already patched: {native}")
-
-    # surfaceContainerHighest was added after the app's pinned Flutter 3.16.
-    # Keep the optional upstream demo widget source-compatible with this SDK.
+def patch_flutter_316_widget(root: Path) -> bool:
+    """Patch only the optional upstream demo widget for Flutter 3.16 tests."""
     widget = root / "lib" / "src" / "widgets" / "transcription_view.dart"
     if not widget.is_file():
         raise RuntimeError(f"Whisper widget source not found: {widget}")
@@ -220,10 +206,33 @@ def main() -> int:
     incompatible_count = widget_source.count("surfaceContainerHighest")
     if incompatible_count:
         widget_source = widget_source.replace("surfaceContainerHighest", "surfaceVariant")
-        widget.write_text(widget_source, encoding="utf-8", newline="\n")
+        widget.write_text(widget_source, encoding="utf-8", newline="\\n")
         print(f"Patched {widget}: Flutter 3.16-compatible ColorScheme property.")
-    elif "surfaceVariant" not in widget_source:
+        return True
+    if "surfaceVariant" not in widget_source:
         raise RuntimeError("Unexpected flutter_whisper widget source: ColorScheme compatibility target not found.")
+    return False
+
+
+def main() -> int:
+    root = package_root(Path.cwd())
+    if "--compat-only" in sys.argv[1:]:
+        patch_flutter_316_widget(root)
+        return 0
+
+    prepare_native_engine(root)
+    native = root / "android" / "src" / "main" / "cpp" / "whisper_jni.cpp"
+    if not native.is_file():
+        raise RuntimeError(f"Whisper JNI source not found: {native}")
+    original = native.read_text(encoding="utf-8")
+    patched = patch_source(original)
+    if patched != original:
+        native.write_text(patched, encoding="utf-8", newline="\\n")
+        print(f"Patched {native}: strict 16 kHz mono PCM16 WAV decoder installed.")
+    else:
+        print(f"Already patched: {native}")
+
+    patch_flutter_316_widget(root)
     return 0
 
 if __name__ == "__main__":
