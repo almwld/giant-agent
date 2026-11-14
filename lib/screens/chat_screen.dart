@@ -379,6 +379,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    _voiceSession.state.addListener(_syncVoiceSessionState);
     _voiceSession.attach(onSpeechEnded: _finishLocalVoiceTurn);
     if (_voiceSession.isActive) {
       _voiceOrbVisible = true;
@@ -1918,6 +1919,36 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
 
+  void _syncVoiceSessionState() {
+    if (!mounted) return;
+    final state = _voiceSession.snapshot;
+    final nextOrbState = switch (state.phase) {
+      VoiceSessionPhase.idle => AgentState.idle,
+      VoiceSessionPhase.listening => AgentState.listening,
+      VoiceSessionPhase.thinking => AgentState.thinking,
+      VoiceSessionPhase.speaking => AgentState.speaking,
+      VoiceSessionPhase.error => AgentState.error,
+    };
+    if (_voiceOrbVisible == state.active &&
+        _voiceRequestActive == state.voiceRequestActive &&
+        _bargeInActive == state.bargeInActive &&
+        _bargeInReady == state.bargeInReady &&
+        _voiceAecAvailable == state.aecAvailable &&
+        _finalizingVoiceInput == state.finalizing &&
+        _voiceOrbState == nextOrbState) {
+      return;
+    }
+    setState(() {
+      _voiceOrbVisible = state.active;
+      _voiceRequestActive = state.voiceRequestActive;
+      _bargeInActive = state.bargeInActive;
+      _bargeInReady = state.bargeInReady;
+      _voiceAecAvailable = state.aecAvailable;
+      _finalizingVoiceInput = state.finalizing;
+      _voiceOrbState = nextOrbState;
+    });
+  }
+
   Future<void> _stopVoiceInteraction() async {
     _finalizingVoiceInput = true;
     _voiceRequestActive = false;
@@ -2671,6 +2702,7 @@ class _ChatScreenState extends State<ChatScreen> {
     // Voice capture, VAD and the root overlay are app-scoped. A route teardown
     // only detaches this screen's callbacks; the user can keep navigating.
     _voiceSession.detach();
+    _voiceSession.state.removeListener(_syncVoiceSessionState);
     _agentEventSubscription?.cancel();
     _nativeAgentEventSubscription?.cancel();
     _modelService.requestTerminalApproval = null;
