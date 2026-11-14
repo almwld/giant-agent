@@ -3,6 +3,7 @@ name: Build Giant Agent APK
 on:
   push:
     branches:
+      - integration/complete-runtime-consolidation-v2-20261114
       - feat/agentsos-control-center
       - main
       - feat/integrated-agent-completion
