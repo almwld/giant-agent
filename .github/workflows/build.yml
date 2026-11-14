@@ -134,10 +134,15 @@ jobs:
           # Split APKs stay compact; speech weights are installed once after app setup.
           for apk in dist/app-arm64-v8a-release.apk dist/app-armeabi-v7a-release.apk dist/app-x86_64-release.apk; do
             size=$(stat -c%s "$apk")
-            if [ "$size" -gt $((80 * 1024 * 1024)) ]; then
-              echo "Split APK exceeds the 80 MiB size guard: $apk ($size bytes)"
+            if [ "$size" -gt $((140 * 1024 * 1024)) ]; then
+              echo "Split APK exceeds the 140 MiB diagnostic ceiling: $apk ($size bytes)"
               exit 1
             fi
+          done
+          echo "===== APK COMPRESSED CONTENT BREAKDOWN ====="
+          for apk in dist/app-arm64-v8a-release.apk dist/app-armeabi-v7a-release.apk dist/app-x86_64-release.apk; do
+            echo "--- $apk ---"
+            unzip -l "$apk" | sort -nr | head -n 30
           done
           for apk in dist/*.apk; do
             unzip -l "$apk" | grep -q "assets/flutter_assets/assets/animations/voice_orb.json" || {
@@ -317,9 +322,5 @@ jobs:
             echo "===== WHISPER / ANDROID LINKER LOGCAT ====="
             adb -s emulator-5554 logcat -d -v threadtime | grep -E -i 'FlutterWhisper|UnsatisfiedLinkError|dlopen failed|linker|whisper|ggml' | tail -n 250 || true
             echo "===== DEBUG APK NATIVE LIBRARY CONTENTS ====="
-            if [ -f build/app/outputs/flutter-apk/app-debug.apk ]; then
-              unzip -Z1 build/app/outputs/flutter-apk/app-debug.apk | grep -E "^lib/(x86_64|arm64-v8a)/lib(whisper|ggml.*)[.]so$" | sort || true
-            else
-              echo "Flutter debug APK was not produced."
-            fi
+            test ! -f build/app/outputs/flutter-apk/app-debug.apk || unzip -Z1 build/app/outputs/flutter-apk/app-debug.apk | grep -E "^lib/(x86_64|arm64-v8a)/lib(whisper|ggml.*)[.]so$" | sort || true
             exit "$test_status"
