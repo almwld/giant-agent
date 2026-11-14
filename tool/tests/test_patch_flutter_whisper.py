@@ -40,6 +40,43 @@ static void parse_json() {}
             PATCHER.patch_android_abis('abiFilters "arm64-v8a"')
 
 
+    def test_patches_whisper_context_to_load_packaged_ggml_soname(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            context = root / "android/src/main/kotlin/io/github/govindtank/flutter_whisper/WhisperContext.kt"
+            context.parent.mkdir(parents=True)
+            context.write_text(
+                'System.loadLibrary("ggml-cpu")\\nSystem.loadLibrary("whisper")\\n',
+                encoding="utf-8",
+            )
+            cmake = root / "android/src/main/cpp/CMakeLists.txt"
+            cmake.parent.mkdir(parents=True)
+            cmake.write_text(
+                'copy_if_different libggml-cpu.so libggml.so',
+                encoding="utf-8",
+            )
+
+            self.assertTrue(PATCHER.patch_whisper_context_libraries(root))
+            patched = context.read_text(encoding="utf-8")
+            self.assertIn('System.loadLibrary("ggml")', patched)
+            self.assertIn('System.loadLibrary("whisper")', patched)
+            self.assertNotIn('System.loadLibrary("ggml-cpu")', patched)
+            self.assertFalse(PATCHER.patch_whisper_context_libraries(root))
+
+    def test_rejects_unexpected_whisper_ggml_packaging_rule(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            context = root / "android/src/main/kotlin/io/github/govindtank/flutter_whisper/WhisperContext.kt"
+            context.parent.mkdir(parents=True)
+            context.write_text('System.loadLibrary("ggml-cpu")', encoding="utf-8")
+            cmake = root / "android/src/main/cpp/CMakeLists.txt"
+            cmake.parent.mkdir(parents=True)
+            cmake.write_text("add_library(whisper)", encoding="utf-8")
+
+            with self.assertRaisesRegex(RuntimeError, "packaging rule"):
+                PATCHER.patch_whisper_context_libraries(root)
+
+
     def test_flutter_316_widget_patch_is_safe_and_idempotent(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
