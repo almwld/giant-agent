@@ -1583,7 +1583,7 @@ ${queuedMessages.isEmpty ? 'لا توجد رسائل.' : queuedMessages}
     String? agentType,
   }) async {
     final mode = await ModelProviderSettings.instance.getMode();
-    final parallelProvider = mode == ModelProviderMode.openRouter;
+    final parallelProvider = mode == ModelProviderMode.openRouter || mode == ModelProviderMode.zeroConfig;
     Future<String> executeScoped() async {
       if (shouldCancel?.call() == true) {
         return 'تم إيقاف تنفيذ الوكيل بناءً على طلب المستخدم.';
