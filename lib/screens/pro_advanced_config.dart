@@ -74,12 +74,15 @@ class _ProAdvancedConfigState extends State<ProAdvancedConfig> {
           apiKey: apiKey,
           model: _model.text,
         );
+        await ModelProviderSettings.instance.setMode(ModelProviderMode.openRouter);
         if (enteredKey.isNotEmpty && mounted) {
           setState(() => _hasStoredApiKey = true);
           _key.clear();
         }
       } else {
-        await ModelProviderSettings.instance.setMode(ModelProviderMode.local);
+        await ModelProviderSettings.instance.setMode(
+          _mode ?? ModelProviderMode.local,
+        );
       }
       await _control.refresh();
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Configuration saved securely.')));
@@ -151,6 +154,21 @@ class _ProAdvancedConfigState extends State<ProAdvancedConfig> {
                         title: const Text('OpenRouter'),
                         onChanged: (value) => setState(() => _mode = value),
                       ),
+                      RadioListTile<ModelProviderMode>(
+                        value: ModelProviderMode.zeroConfig,
+                        groupValue: _mode,
+                        title: const Text('Pollinations (experimental)'),
+                        subtitle: const Text('Legacy endpoint; availability and authorization may change.'),
+                        onChanged: (value) => setState(() => _mode = value),
+                      ),
+                      if (_mode == ModelProviderMode.zeroConfig)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          child: Text(
+                            'No API key is sent by this adapter. The legacy endpoint may nevertheless require authorization or apply rate limits; access is not guaranteed.',
+                            style: TextStyle(color: ProTheme.textSecondary, fontSize: 12),
+                          ),
+                        ),
                       if (_mode == ModelProviderMode.openRouter) ...[
                         TextField(
                           controller: _key,
