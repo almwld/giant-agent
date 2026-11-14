@@ -2325,7 +2325,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                     DropdownMenuItem(
                       value: ModelProviderMode.zeroConfig,
-                      child: Text('Pollinations — تجريبي، دون مفتاح عند توفر الخدمة'),
+                      child: Text('Pollinations — تجريبي (التوفر غير مضمون)'),
                     ),
                   ],
                   onChanged: busy ? null : (value) async {
