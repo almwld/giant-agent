@@ -130,19 +130,23 @@ jobs:
           verify_whisper dist/app-arm64-v8a-release.apk arm64-v8a
           verify_whisper dist/app-armeabi-v7a-release.apk armeabi-v7a
           verify_whisper dist/app-x86_64-release.apk x86_64
+          # Split APKs stay compact; speech weights are installed once after app setup.
+          for apk in dist/app-arm64-v8a-release.apk dist/app-armeabi-v7a-release.apk dist/app-x86_64-release.apk; do
+            size=$(stat -c%s "$apk")
+            if [ "$size" -gt $((80 * 1024 * 1024)) ]; then
+              echo "Split APK exceeds the 80 MiB size guard: $apk ($size bytes)"
+              exit 1
+            fi
+          done
           for apk in dist/*.apk; do
             unzip -l "$apk" | grep -q "assets/flutter_assets/assets/animations/voice_orb.json" || {
               echo "Voice orb Lottie asset missing from $apk"
               exit 1
             }
-            unzip -l "$apk" | grep -q "assets/flutter_assets/assets/voice_models/ggml-base.bin" || {
-              echo "Bundled multilingual Whisper Base model missing from $apk"
+            if unzip -l "$apk" | grep -Eq "assets/flutter_assets/assets/voice_models/(ggml-base[.]bin|nabra-82m-arabic-int8[.]tar[.]bz2)"; then
+              echo "Large offline speech weights must stay outside the install APK: $apk"
               exit 1
-            }
-            unzip -l "$apk" | grep -q "assets/flutter_assets/assets/voice_models/nabra-82m-arabic-int8.tar.bz2" || {
-              echo "Bundled Nabra Arabic TTS archive missing from $apk"
-              exit 1
-            }
+            fi
             dex_found=false
             while IFS= read -r dex; do
               if unzip -p "$apk" "$dex" 2>/dev/null | strings | grep -q "GainPtyBridge"; then
