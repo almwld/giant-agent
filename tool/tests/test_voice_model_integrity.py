@@ -7,30 +7,29 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class VoiceModelIntegrityTests(unittest.TestCase):
-    def test_nabra_archive_digest_matches_build_and_runtime(self):
-        gradle = (ROOT / "android/app/build.gradle").read_text(encoding="utf-8")
-        service = (
-            ROOT / "lib/services/local_arabic_tts_service.dart"
-        ).read_text(encoding="utf-8")
-
-        archive_block = re.search(
-            r'downloadPinned\(\s*"https://github\.com/k2-fsa/sherpa-onnx/releases/download/tts-models/nabra-82m-arabic-int8\.tar\.bz2",\s*'
-            r'new File\(bundledVoiceModelDir, "nabra-82m-arabic-int8\.tar\.bz2"\),\s*'
-            r'"([0-9a-f]{64})"',
-            gradle,
-        )
-        runtime_digest = re.search(
-            r'modelArchiveSha256\s*=\s*\n\s*\'([0-9a-f]{64})\'',
-            service,
-        )
-
-        self.assertIsNotNone(archive_block, "Nabra build digest declaration is missing")
+    def test_nabra_archive_digest_matches_runtime_documentation(self):
+        service = (ROOT / "lib/services/local_arabic_tts_service.dart").read_text(encoding="utf-8")
+        readme = (ROOT / "assets/voice_models/README.md").read_text(encoding="utf-8")
+        runtime_digest = re.search(r"modelArchiveSha256\s*=\s*\n\s*'([0-9a-f]{64})'", service)
+        documented_digest = re.search(r"Nabra Arabic TTS.*?SHA-256 `([0-9a-f]{64})`", readme)
         self.assertIsNotNone(runtime_digest, "Nabra runtime digest declaration is missing")
-        self.assertEqual(
-            archive_block.group(1),
-            runtime_digest.group(1),
-            "Nabra archive digest differs between Gradle provisioning and runtime extraction",
-        )
+        self.assertIsNotNone(documented_digest, "Nabra documented digest is missing")
+        self.assertEqual(runtime_digest.group(1), documented_digest.group(1))
+
+    def test_large_voice_weights_are_not_bundled_in_apk(self):
+        gradle = (ROOT / "android/app/build.gradle").read_text(encoding="utf-8")
+        pubspec = (ROOT / "pubspec.yaml").read_text(encoding="utf-8")
+        workflow = (ROOT / ".github/workflows/build.yml").read_text(encoding="utf-8")
+        self.assertNotIn("prepareVoiceModels", gradle)
+        self.assertNotIn("assets/voice_models/", pubspec)
+        self.assertIn("Large offline speech weights must stay outside the install APK", workflow)
+        self.assertIn("80 * 1024 * 1024", workflow)
+
+    def test_whisper_model_is_not_loaded_from_flutter_assets(self):
+        service = (ROOT / "lib/services/local_speech_recognition_service.dart").read_text(encoding="utf-8")
+        self.assertNotIn("assets/voice_models/ggml-base.bin", service)
+        self.assertNotIn("rootBundle.load", service)
+        self.assertIn("_whisper.initialize", service)
 
 
 if __name__ == "__main__":
