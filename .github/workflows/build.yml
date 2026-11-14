@@ -305,4 +305,17 @@ jobs:
           emulator-boot-timeout: 900
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot -wipe-data -cores 2 -memory 4096
           disable-animations: true
-          script: flutter test integration_test/gain_pty_emulator_smoke_test.dart -d emulator-5554
+          script: |
+            set +e
+            flutter test integration_test/gain_pty_emulator_smoke_test.dart -d emulator-5554
+            test_status=$?
+            echo "===== WHISPER / ANDROID LINKER LOGCAT ====="
+            adb -s emulator-5554 logcat -d -v threadtime | grep -E -i 'FlutterWhisper|UnsatisfiedLinkError|dlopen failed|linker|whisper|ggml' | tail -n 250 || true
+            echo "===== DEBUG APK NATIVE LIBRARY CONTENTS ====="
+            if [ -f build/app/outputs/flutter-apk/app-debug.apk ]; then
+              unzip -Z1 build/app/outputs/flutter-apk/app-debug.apk | grep -E '^lib/(x86_64|arm64-v8a)/lib(whisper|ggml[^/]*)[.]so
+ | sort || true
+            else
+              echo "Flutter debug APK was not produced."
+            fi
+            exit "$test_status"
