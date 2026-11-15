@@ -245,6 +245,31 @@ void main() {
     }
   });
 
+  test('marks a transient failure terminal after the third attempt', () async {
+    final directory = await _tempDirectory();
+    var executions = 0;
+    final kernel = AgentKernel(
+      store: await _store('${directory.path}/retry-exhausted.db'),
+      executor: (_) async {
+        executions++;
+        throw const RetryableKernelFailure('provider unavailable');
+      },
+    );
+    try {
+      final result = await kernel.submit(id: 'retry-exhausted', prompt: 'bounded retry')
+          .timeout(const Duration(seconds: 5));
+      expect(executions, 3);
+      expect(result.status, 'failed');
+      expect(result.attempts, 3);
+      final events = await kernel.eventsFor('retry-exhausted');
+      expect(events.where((event) => event.type == 'request_retry_scheduled'), hasLength(2));
+      expect(events.last.type, 'request_failed');
+    } finally {
+      await kernel.dispose();
+      await directory.delete(recursive: true);
+    }
+  });
+
   test('does not retry unclassified failures or interruptions', () async {
     final directory = await _tempDirectory();
     var executions = 0;
