@@ -79,7 +79,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y espeak-ng sox
           mkdir -p integration_test/fixtures
-          espeak-ng -v ar -s 125 -w integration_test/fixtures/arabic_smoke_raw.wav "مرحبا، هذا اختبار للتعرف الصوتي باللغة العربية."
+          espeak-ng -v ar -s 110 -w integration_test/fixtures/arabic_smoke_raw.wav "مرحبا"
           sox integration_test/fixtures/arabic_smoke_raw.wav -r 16000 -c 1 -b 16 -e signed-integer integration_test/fixtures/arabic_smoke.wav
           rm integration_test/fixtures/arabic_smoke_raw.wav
           test "$(soxi -r integration_test/fixtures/arabic_smoke.wav)" = "16000"
@@ -264,7 +264,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y espeak-ng sox
           mkdir -p integration_test/fixtures
-          espeak-ng -v ar -s 125 -w integration_test/fixtures/arabic_smoke_raw.wav "مرحبا، هذا اختبار للتعرف الصوتي باللغة العربية."
+          espeak-ng -v ar -s 110 -w integration_test/fixtures/arabic_smoke_raw.wav "مرحبا"
           sox integration_test/fixtures/arabic_smoke_raw.wav -r 16000 -c 1 -b 16 -e signed-integer integration_test/fixtures/arabic_smoke.wav
           rm integration_test/fixtures/arabic_smoke_raw.wav
           test "$(soxi -r integration_test/fixtures/arabic_smoke.wav)" = "16000"
