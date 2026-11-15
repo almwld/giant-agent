@@ -79,11 +79,11 @@ static void parse_json() {}
 
 
     def test_escapes_underscore_in_whisper_jni_package_symbols(self):
-        old_prefix = "Java_io_github_govindtank_flutter_whisper_WhisperContext_native"
+        old_prefix = "Java_io_github_govindtank_flutter_whisper_WhisperContext_"
         methods = ("nativeInit", "nativeTranscribe", "nativeCancel", "nativeFree")
         source = "\\n".join(old_prefix + method for method in methods)
         patched = PATCHER.patch_jni_symbol_mangling(source)
-        new_prefix = "Java_io_github_govindtank_flutter_1whisper_WhisperContext_native"
+        new_prefix = "Java_io_github_govindtank_flutter_1whisper_WhisperContext_"
         for method in methods:
             self.assertIn(new_prefix + method, patched)
         self.assertNotIn(old_prefix, patched)
