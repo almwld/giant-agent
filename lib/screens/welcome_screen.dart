@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../theme/giant_palette.dart';
-import 'pro_home_shell.dart';
+import 'chat_screen.dart';
 
 class WelcomeScreen extends StatefulWidget {
   const WelcomeScreen({super.key});
@@ -23,7 +23,7 @@ class _WelcomeScreenState extends State<WelcomeScreen>
     Timer(const Duration(milliseconds: 1700), () {
       if (mounted) {
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const ProHomeShell()),
+          MaterialPageRoute(builder: (_) => const ChatScreen()),
         );
       }
     });
