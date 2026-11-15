@@ -40,7 +40,12 @@ void main() {
       try {
         print('WHISPER_INFERENCE_START: reusing initialized native context');
         final result = await speech
-            .transcribeFile(wav.path, threads: 2)
+            .transcribeFile(
+              wav.path,
+              threads: 2,
+              onProgress: (percent) =>
+                  print('WHISPER_NATIVE_PROGRESS: $percent%'),
+            )
             .timeout(const Duration(minutes: 10));
 
         print('WHISPER_ARABIC_LANGUAGE: ${result.language}');
