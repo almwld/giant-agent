@@ -13,6 +13,10 @@ void main() {
     sqfliteFfiInit();
   });
 
+  test('production TaskManager shares the canonical AgentService kernel store', () {
+    expect(TaskManager().usesCanonicalStore, isTrue);
+  });
+
   test('classifies task outcomes without treating interruption as completion', () {
     expect(
       TaskManager.classifyResult('تم إيقاف تنفيذ الوكيل بناءً على طلب المستخدم.'),
