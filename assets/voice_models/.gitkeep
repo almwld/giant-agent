@@ -1,1 +1,1 @@
-Bundled speech model payloads are fetched and SHA-256 verified by the Android Gradle prepareVoiceModels task.
+Speech model weights are downloaded on first voice setup, SHA-256 verified, and stored in app-private storage. They are not bundled in APK assets.
