@@ -1100,13 +1100,18 @@ class AgentKernelStore {
       await _appendEvent(
         txn,
         id,
-        retry\n            ? 'request_retry_scheduled'\n            : sideEffectsStarted\n                ? 'request_retry_blocked_after_side_effect'\n                : 'request_failed',
+        retry
+            ? 'request_retry_scheduled'
+            : sideEffectsStarted
+                ? 'request_retry_blocked_after_side_effect'
+                : 'request_failed',
         nextStatus,
         <String, Object?>{
           'error': error.toString(),
           'attempt': attempts,
           'max_attempts': maxAttempts,
-          'retryable': true,\n          'side_effects_started': sideEffectsStarted,
+          'retryable': true,
+          'side_effects_started': sideEffectsStarted,
         },
         now,
       );
