@@ -63,8 +63,8 @@ void main() {
         );
         expect(
           normalizedTranscript,
-          contains('مرحبا'),
-          reason: 'The model must recognize the spoken Arabic greeting, not return unrelated Arabic-script noise.',
+          contains('السلام'),
+          reason: 'The model must recognize the spoken Arabic phrase, not return unrelated Arabic-script noise.',
         );
       } finally {
         if (await wav.exists()) await wav.delete();
