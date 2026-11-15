@@ -3,6 +3,7 @@ name: Giant Agent Tests
 on:
   push:
     branches:
+      - main
       - integration/complete-runtime-consolidation-v2-20261114
       - feat/agentsos-control-center
       - feat/local-offline-voice-pipeline
