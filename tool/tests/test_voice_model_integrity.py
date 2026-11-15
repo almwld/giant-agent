@@ -39,7 +39,7 @@ class VoiceModelIntegrityTests(unittest.TestCase):
         readme = (ROOT / "assets/voice_models/README.md").read_text(encoding="utf-8")
         runtime_size = re.search(r"_baseModelBytes\s*=\s*(\d+)", service)
         runtime_digest = re.search(r"_baseModelSha256\s*=\s*\n\s*'([0-9a-f]{64})'", service)
-        documented_size = re.search(r"ggml-base\.bin`?\s*\(([\d,]+) bytes\)", readme)
+        documented_size = re.search(r"ggml-base\.bin\.gz`?\s*\([^)]*?([\d,]+) bytes\)", readme)
         documented_digest = re.search(r"SHA-256 \x60([0-9a-f]{64})\x60", readme)
         self.assertIsNotNone(runtime_size, "Whisper Base exact byte count is missing")
         self.assertIsNotNone(runtime_digest, "Whisper Base SHA-256 is missing")
