@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/voice_session_controller.dart';
 import '../theme/giant_palette.dart';
@@ -18,7 +19,26 @@ class _VoiceSessionOverlayState extends State<VoiceSessionOverlay> {
   final VoiceSessionController _session = VoiceSessionController.instance;
   bool _compact = false;
   double _compactSize = 112;
+  double _fullSize = 270;
   double _offsetY = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFullSize();
+  }
+
+  Future<void> _loadFullSize() async {
+    final preferences = await SharedPreferences.getInstance();
+    final saved = preferences.getDouble('giant_voice_orb_size');
+    if (!mounted || saved == null) return;
+    setState(() => _fullSize = saved.clamp(120.0, 310.0).toDouble());
+  }
+
+  Future<void> _saveFullSize(double value) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setDouble('giant_voice_orb_size', value);
+  }
 
   AgentState _orbState(VoiceSessionPhase phase) {
     switch (phase) {
@@ -137,7 +157,7 @@ class _VoiceSessionOverlayState extends State<VoiceSessionOverlay> {
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 28),
                     child: Column(mainAxisSize: MainAxisSize.min, children: [
-                      GlowingOrb(state: orbState, size: 270),
+                      GlowingOrb(state: orbState, size: _fullSize),
                       const SizedBox(height: 18),
                       Text(status, textAlign: TextAlign.center,
                         style: const TextStyle(color: Colors.white,
@@ -150,6 +170,32 @@ class _VoiceSessionOverlayState extends State<VoiceSessionOverlay> {
                           style: const TextStyle(color: Color(0xFFCBD5E1),
                             fontSize: 13, height: 1.5)),
                       ],
+                      const SizedBox(height: 14),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 310),
+                        child: Row(children: [
+                          const Icon(Icons.remove_circle_outline_rounded,
+                              color: Colors.white70, size: 18),
+                          Expanded(
+                            child: Slider(
+                              min: 120,
+                              max: 310,
+                              divisions: 19,
+                              value: _fullSize.clamp(120.0, 310.0).toDouble(),
+                              activeColor: const Color(0xFF22D3EE),
+                              onChanged: (value) =>
+                                  setState(() => _fullSize = value),
+                              onChangeEnd: _saveFullSize,
+                            ),
+                          ),
+                          const Icon(Icons.add_circle_outline_rounded,
+                              color: Colors.white70, size: 18),
+                        ]),
+                      ),
+                      Text('حجم الدائرة',
+                          style: TextStyle(
+                              color: Colors.white.withOpacity(.65),
+                              fontSize: 11)),
                       const SizedBox(height: 14),
                       if (state.phase == VoiceSessionPhase.speaking)
                         FilledButton.tonalIcon(
