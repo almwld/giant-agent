@@ -24,7 +24,7 @@ Do not mark physical-device acceptance complete until the logs demonstrate:
 - Arabic language detection and non-empty Arabic-script transcription.
 - Successful Nabra synthesis and audible playback.
 - No crash, ANR, or native worker leak across three cold runs.
-- Peak RSS and latency recorded on the target device; agree device-specific
+- RSS and latency recorded on the target device; agree device-specific
   budgets before setting a universal threshold (low-end Android devices vary).
 - Microphone-route, Bluetooth/headset, thermal and battery behavior reviewed.
 
