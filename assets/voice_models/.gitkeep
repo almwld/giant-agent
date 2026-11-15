@@ -1,0 +1,1 @@
+Bundled speech model payloads are fetched and SHA-256 verified by the Android Gradle prepareVoiceModels task.
