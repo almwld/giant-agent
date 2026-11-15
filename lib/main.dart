@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'screens/welcome_screen.dart';
-import 'screens/chat_screen.dart';
+import 'screens/pro_home_shell.dart';
 import 'widgets/global_voice_orb_overlay_host.dart';
 import 'services/app_preferences.dart';
 import 'services/notification_service.dart';
@@ -246,7 +246,7 @@ class MyApp extends StatelessWidget {
             elevation: 0,
           ),
         ),
-        home: showSplash ? const WelcomeScreen() : const ChatScreen(),
+        home: showSplash ? const WelcomeScreen() : const ProHomeShell(),
       ),
     );
   }
