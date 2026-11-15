@@ -43,6 +43,10 @@ class VoiceOutputService {
   Future<void> initialize() async {
     if (_initialized) return;
     final localTts = LocalArabicTtsService.instance;
+    // Install from the APK-bundled archive into app-private storage; never fetch over the network.
+    if (!await localTts.isInstalled()) {
+      await localTts.install();
+    }
     if (await localTts.isInstalled()) {
       await localTts.initialize();
       _useNabra = true;

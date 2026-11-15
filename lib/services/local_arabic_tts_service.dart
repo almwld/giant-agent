@@ -8,10 +8,11 @@ import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
 
+import 'package:flutter/services.dart';
+
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
 import 'package:audioplayers/audioplayers.dart';
-import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:sherpa_onnx/src/sherpa_onnx_bindings.dart' as sherpaBindings;
 import 'package:sherpa_onnx/src/tts.dart' as sherpa;
@@ -19,23 +20,20 @@ import 'package:sherpa_onnx/src/tts.dart' as sherpa;
 import 'local_voice_text_chunker.dart';
 
 /// Fully on-device Arabic neural speech synthesis using the 82M Nabra model.
-/// The pinned archive is downloaded once into app-private storage; inference
-/// and playback remain local after installation.
+/// The pinned archive is bundled in the APK and extracted into app-private
+/// storage on first initialization; inference and playback remain fully local.
 class LocalArabicTtsService {
   LocalArabicTtsService._();
 
   static final LocalArabicTtsService instance = LocalArabicTtsService._();
 
-  static const String modelArchiveUrl =
-      'https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/nabra-82m-arabic-int8.tar.bz2';
   static const String modelArchiveSha256 =
       'a8608a504b1db4dd538b821409fe50b2d5cf37650c0a8753fa215bd6445e9964';
 
   final AudioPlayer _player = AudioPlayer();
-  final http.Client _client = http.Client();
   bool _ready = false;
   Directory? _modelDirectory;
-  bool _downloading = false;
+  bool _installingArchive = false;
   Future<void>? _installing;
   int _generationId = 0;
   int _nextSynthesisId = 0;
@@ -52,7 +50,7 @@ class LocalArabicTtsService {
   final Map<int, Completer<Map<String, Object>>> _pendingSynthesis = {};
 
   bool get isReady => _ready;
-  bool get isDownloading => _downloading;
+  bool get isDownloading => _installingArchive;
 
   Future<Directory> _directory() async {
     if (_modelDirectory != null) return _modelDirectory!;
@@ -76,87 +74,46 @@ class LocalArabicTtsService {
   }) {
     final active = _installing;
     if (active != null) return active;
-    final future = _installDownloadedArchive(onProgress: onProgress);
+    final future = _installBundledArchive(onProgress: onProgress);
     _installing = future;
     return future.whenComplete(() {
       if (identical(_installing, future)) _installing = null;
     });
   }
 
-  Future<void> _downloadArchive(Uri uri, File destination, {
-    void Function(double fraction)? onProgress,
-  }) async {
-    final temporary = File('${destination.path}.part');
-    await temporary.parent.create(recursive: true);
-    if (await temporary.exists()) await temporary.delete();
-    final response = await _client.send(http.Request('GET', uri));
-    if (response.statusCode != HttpStatus.ok) {
-      throw HttpException('Nabra model download failed: HTTP ${response.statusCode}', uri: uri);
-    }
-    final total = response.contentLength ?? 0;
-    var received = 0;
-    final sink = temporary.openWrite();
-    try {
-      await for (final chunk in response.stream) {
-        sink.add(chunk);
-        received += chunk.length;
-        if (total > 0) onProgress?.call(received / total);
-      }
-      await sink.flush();
-    } catch (_) {
-      await sink.close();
-      if (await temporary.exists()) await temporary.delete();
-      rethrow;
-    }
-    await sink.close();
-    if (received == 0 || (total > 0 && received != total)) {
-      if (await temporary.exists()) await temporary.delete();
-      throw const FormatException('Incomplete Nabra model download.');
-    }
-    if (await destination.exists()) await destination.delete();
-    await temporary.rename(destination.path);
-  }
-
-  Future<void> _installDownloadedArchive({
+  Future<void> _installBundledArchive({
     void Function(String file, double fraction)? onProgress,
   }) async {
-    if (_downloading) throw StateError('Arabic TTS installation is already running.');
+    if (_installingArchive) throw StateError('Arabic TTS installation is already running.');
     if (await isInstalled()) return;
-    _downloading = true;
+    _installingArchive = true;
     try {
       final dir = await _directory();
-      final archiveFile = File('${dir.path}/nabra-82m-arabic-int8.tar.bz2');
-      await _downloadArchive(Uri.parse(modelArchiveUrl), archiveFile,
-        onProgress: (fraction) => onProgress?.call('Nabra Arabic model', fraction));
-      final archiveBytes = await archiveFile.readAsBytes();
-      final actualDigest = sha256.convert(archiveBytes).toString();
-      if (actualDigest != modelArchiveSha256) {
-        await archiveFile.delete();
-        throw const FormatException('Nabra model archive SHA-256 mismatch.');
+      final data = await rootBundle.load('assets/voice_models/nabra-82m-arabic-int8.tar.bz2');
+      final archiveBytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+      if (sha256.convert(archiveBytes).toString() != modelArchiveSha256) {
+        throw const FormatException('Bundled Nabra model archive SHA-256 mismatch.');
       }
-      try {
-        final decoded = BZip2Decoder().decodeBytes(archiveBytes);
-        final archive = TarDecoder().decodeBytes(decoded);
-        for (final entry in archive) {
-          if (!entry.isFile) continue;
-          final parts = entry.name.replaceAll('\\', '/').split('/');
-          if (parts.any((part) => part == '..')) {
-            throw const FormatException('Unsafe path in Nabra model archive.');
-          }
-          final relativeParts = parts.first == 'nabra-82m-arabic-int8' ? parts.skip(1) : parts;
-          final relative = relativeParts.join('/');
-          if (relative.isEmpty) continue;
-          final output = File('${dir.path}/$relative');
-          await output.parent.create(recursive: true);
-          await output.writeAsBytes(entry.content as List<int>, flush: false);
+      onProgress?.call('Nabra Arabic model', 0.25);
+      final decoded = BZip2Decoder().decodeBytes(archiveBytes);
+      final archive = TarDecoder().decodeBytes(decoded);
+      for (final entry in archive) {
+        if (!entry.isFile) continue;
+        final parts = entry.name.replaceAll('\\', '/').split('/');
+        if (parts.any((part) => part == '..')) {
+          throw const FormatException('Unsafe path in Nabra model archive.');
         }
-      } finally {
-        if (await archiveFile.exists()) await archiveFile.delete();
+        final relativeParts = parts.first == 'nabra-82m-arabic-int8' ? parts.skip(1) : parts;
+        final relative = relativeParts.join('/');
+        if (relative.isEmpty) continue;
+        final output = File('${dir.path}/$relative');
+        await output.parent.create(recursive: true);
+        await output.writeAsBytes(entry.content as List<int>, flush: false);
       }
-      if (!await isInstalled()) throw StateError('Arabic TTS model package is missing required files.');
+      if (!await isInstalled()) throw StateError('Arabic TTS bundled model is missing required files.');
       onProgress?.call('Nabra Arabic model', 1.0);
     } finally {
-      _downloading = false;
+      _installingArchive = false;
     }
   }
   Future<void> initialize() async {
@@ -359,7 +316,6 @@ class LocalArabicTtsService {
     _workerStartup = null;
     _ready = false;
     await _player.dispose();
-    _client.close();
   }
 
   static Uint8List _encodeWave(Float32List samples, int sampleRate) {

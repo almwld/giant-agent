@@ -1,24 +1,20 @@
-# Offline voice model installation
+# Bundled offline voice models
 
-Large speech weights are deliberately **not** bundled into APKs. Bundling the
-multilingual Whisper Base model (147,951,465 bytes) and Nabra Arabic TTS archive
-adds roughly 200 MB to every ABI package and universal build.
+The release APKs include both pinned speech models as Flutter assets. CI downloads
+the model artifacts at build time, verifies their SHA-256 digests (and Whisper's
+exact byte count), and packages them into all three ABI APKs. The app does not
+download speech models after launch.
 
-The first local-voice setup downloads the following pinned artifacts over HTTPS
-into app-private storage. Whisper's cached or newly downloaded model is checked
-against its exact byte count and SHA-256 before native loading; partial downloads
-resume through HTTP Range. Both engines then run fully on-device; no audio,
-transcript, or synthesis request is sent to a cloud speech service.
+At first use, the app decompresses the bundled Whisper `.gz` asset and writes the restored model into app-private storage
+because flutter_whisper requires a filesystem path, and extracts the bundled
+Nabra archive into app-private storage for sherpa-onnx. This is local extraction
+from the installed APK, not a network download. Both engines then run offline.
 
-| Component | Artifact | Source | License | Integrity |
-|---|---|---|---|---|
-| Whisper multilingual ASR | `ggml-base.bin` (147,951,465 bytes) | `ggerganov/whisper.cpp` at commit `5359861c739e955e79d9a303bcbc70fb988958b1`, installed by the app's verified downloader | MIT | Exact byte count + SHA-256 `60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe` before JNI initialization |
-| Nabra Arabic TTS | `nabra-82m-arabic-int8.tar.bz2` | `k2-fsa/sherpa-onnx` release | Apache-2.0 | SHA-256 `a8608a504b1db4dd538b821409fe50b2d5cf37650c0a8753fa215bd6445e9964` |
+| Component | Bundled artifact | Integrity | License |
+|---|---|---|---|
+| Whisper multilingual ASR | `ggml-base.bin.gz` (gzip level 9; restores to 147,951,465 bytes) | SHA-256 `60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe` | MIT |
+| Nabra Arabic TTS | `nabra-82m-arabic-int8.tar.bz2` (upstream bzip2-compressed archive; retained without wasteful recompression) | SHA-256 `a8608a504b1db4dd538b821409fe50b2d5cf37650c0a8753fa215bd6445e9964` | Apache-2.0 |
 
-A network connection is required only for the initial model installation (or
-when the user explicitly reinstalls a missing/corrupt model). After successful
-installation, voice recognition and synthesis work offline. The models remain
-in app-private storage and are not copied into APK assets.
-
-Do not commit model binaries into Git history or add `assets/voice_models/` to
-the Flutter asset manifest.
+APK size increases substantially because the speech models are now included.
+CI checks that both assets exist in every ABI output and uses a higher diagnostic
+size ceiling. Model binaries are fetched by the build script, not committed to Git.
