@@ -35,7 +35,8 @@ apply from: "$flutterRoot/packages/flutter_tools/gradle/flutter.gradle"
 
 android {
     compileSdk 34
-    // Keep all native plugins on the NDK version required by Whisper/GGML.\n    ndkVersion "26.1.10909125"
+    // Keep all native plugins on the NDK version required by Whisper/GGML.
+    ndkVersion "26.1.10909125"
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
