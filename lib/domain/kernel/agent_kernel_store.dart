@@ -19,6 +19,7 @@ class KernelRequestRecord {
     this.result,
     this.error,
     this.attempts = 0,
+    this.taskId,
   });
 
   final String id;
@@ -31,6 +32,7 @@ class KernelRequestRecord {
   final String? result;
   final String? error;
   final int attempts;
+  final String? taskId;
 
   factory KernelRequestRecord.fromMap(Map<String, Object?> row) =>
       KernelRequestRecord(
@@ -44,6 +46,7 @@ class KernelRequestRecord {
         result: row['result'] as String?,
         error: row['error'] as String?,
         attempts: row['attempts'] as int? ?? 0,
+        taskId: row['task_id']?.toString(),
       );
 }
 
@@ -83,7 +86,7 @@ class AgentKernelStore {
     await Directory(directory.path).create(recursive: true);
     return openDatabase(
       '${directory.path}/giant_agent_kernel.db',
-      version: 5,
+      version: 6,
       onConfigure: (db) async {
         await db.execute('PRAGMA foreign_keys = ON');
         await db.rawQuery('PRAGMA journal_mode = WAL');
@@ -103,12 +106,17 @@ class AgentKernelStore {
             completed_at TEXT,
             result TEXT,
             error TEXT,
-            attempts INTEGER NOT NULL DEFAULT 0
+            attempts INTEGER NOT NULL DEFAULT 0,
+            task_id TEXT REFERENCES agent_tasks(id) ON DELETE SET NULL
           )
         ''');
         await db.execute('''
           CREATE INDEX idx_agent_requests_queue
           ON agent_requests(status, sequence)
+        ''');
+        await db.execute('''
+          CREATE INDEX idx_agent_requests_task_attempts
+          ON agent_requests(task_id, sequence)
         ''');
         await db.execute('''
           CREATE TABLE agent_events (
@@ -153,6 +161,35 @@ class AgentKernelStore {
         }
         if (oldVersion < 4) await _createOutputTable(db);
         if (oldVersion < 5) await _createSubagentRuntimeStateTable(db);
+        if (oldVersion < 6) {
+          await db.execute(
+            'ALTER TABLE agent_requests ADD COLUMN task_id TEXT REFERENCES agent_tasks(id) ON DELETE SET NULL',
+          );
+          await db.execute('''
+            CREATE INDEX IF NOT EXISTS idx_agent_requests_task_attempts
+            ON agent_requests(task_id, sequence)
+          ''');
+          // Backfill the latest known attempt from the task snapshot. Older
+          // attempts remain unlinked because their ownership cannot be inferred.
+          final tasks = await db.query('agent_tasks', columns: ['id', 'payload_json']);
+          for (final row in tasks) {
+            try {
+              final decoded = jsonDecode(row['payload_json']! as String);
+              if (decoded is! Map) continue;
+              final requestId = decoded['request_id']?.toString() ?? '';
+              final taskId = row['id']?.toString() ?? '';
+              if (requestId.isEmpty || taskId.isEmpty) continue;
+              await db.update(
+                'agent_requests',
+                {'task_id': taskId},
+                where: 'id = ? AND task_id IS NULL',
+                whereArgs: [requestId],
+              );
+            } on FormatException {
+              // Keep malformed legacy task payloads untouched for diagnosis.
+            }
+          }
+        }
       },
     );
   }
@@ -940,6 +977,7 @@ class AgentKernelStore {
     required String id,
     required String prompt,
     required String conversationId,
+    String? taskId,
   }) async {
     final db = await database;
     final now = DateTime.now().toUtc().toIso8601String();
@@ -957,10 +995,94 @@ class AgentKernelStore {
         'created_at': now,
         'updated_at': now,
         'attempts': 0,
+        if (taskId != null) 'task_id': taskId,
       });
       await _appendEvent(txn, id, 'request_queued', 'pending', {
         'sequence': nextSequence,
-      }, now);
+        if (taskId != null) 'task_id': taskId,
+      }, now, taskId: taskId);
+    });
+  }
+
+  /// Atomically commits a task's running projection, its request attempt, and
+  /// both lifecycle events. A crash cannot leave a running task without its
+  /// durable request, or a queued request without its owning task.
+  Future<void> enqueueForTask({
+    required Map<String, dynamic> task,
+    required String requestId,
+    required String prompt,
+    required String conversationId,
+    required List<Map<String, Object?>> events,
+  }) async {
+    final taskId = task['id']?.toString() ?? '';
+    if (taskId.isEmpty || requestId.trim().isEmpty || prompt.trim().isEmpty) {
+      throw ArgumentError('Task id, request id, and prompt are required.');
+    }
+    final db = await database;
+    final now = DateTime.now().toUtc().toIso8601String();
+    await db.transaction((txn) async {
+      final existingTask = await txn.query(
+        'agent_tasks',
+        columns: ['id'],
+        where: 'id = ?',
+        whereArgs: [taskId],
+        limit: 1,
+      );
+      if (existingTask.isEmpty) {
+        throw StateError('Cannot enqueue a request for unknown task $taskId.');
+      }
+      final existingRequest = await txn.query(
+        'agent_requests',
+        columns: ['id'],
+        where: 'id = ?',
+        whereArgs: [requestId],
+        limit: 1,
+      );
+      if (existingRequest.isNotEmpty) {
+        throw StateError('Duplicate request id: $requestId');
+      }
+      final nextSequence = Sqflite.firstIntValue(await txn.rawQuery(
+            'SELECT COALESCE(MAX(sequence), 0) + 1 FROM agent_requests',
+          )) ??
+          1;
+      await txn.update('agent_tasks', <String, Object?>{
+        'id': taskId,
+        'conversation_id': task['conversation_id']?.toString() ?? 'global',
+        'status': task['status']?.toString() ?? 'running',
+        'payload_json': jsonEncode(task),
+        'created_at': task['created_at']?.toString() ?? now,
+        'updated_at': task['updated_at']?.toString() ?? now,
+      }, where: 'id = ?', whereArgs: [taskId]);
+      await txn.insert('agent_requests', <String, Object?>{
+        'id': requestId,
+        'prompt': prompt.trim(),
+        'conversation_id': conversationId,
+        'sequence': nextSequence,
+        'status': 'queued',
+        'created_at': now,
+        'updated_at': now,
+        'attempts': 0,
+        'task_id': taskId,
+      });
+      await _appendEvent(
+        txn,
+        requestId,
+        'request_queued',
+        'pending',
+        <String, Object?>{'sequence': nextSequence, 'task_id': taskId},
+        now,
+        taskId: taskId,
+      );
+      for (final event in events) {
+        await _appendTaskEvent(
+          txn,
+          taskId,
+          event['type']! as String,
+          event['status']! as String,
+          (event['payload'] as Map?)?.cast<String, Object?>() ?? const {},
+          now,
+        );
+      }
     });
   }
 
@@ -1309,11 +1431,13 @@ class AgentKernelStore {
     String type,
     String status,
     Map<String, Object?> payload,
-    String timestamp,
-  ) async {
+    String timestamp, {
+    String? taskId,
+  }) async {
     await txn.insert('agent_events', {
       'id': '${requestId}_${type}_${DateTime.now().microsecondsSinceEpoch}',
       'request_id': requestId,
+      if (taskId != null) 'task_id': taskId,
       'type': type,
       'status': status,
       'payload_json': jsonEncode(payload),
