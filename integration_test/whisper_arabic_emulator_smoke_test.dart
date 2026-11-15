@@ -56,6 +56,15 @@ void main() {
           RegExp(r'[\u0600-\u06FF]').hasMatch(result.text),
           isTrue,
           reason: 'The Arabic WAV must produce Arabic-script text, not merely a loaded native library.',
+        ); 
+        final normalizedTranscript = result.text.replaceAll(
+          RegExp(r'[^\\u0600-\\u06FF]'),
+          '',
+        );
+        expect(
+          normalizedTranscript,
+          contains('مرحبا'),
+          reason: 'The model must recognize the spoken Arabic greeting, not return unrelated Arabic-script noise.',
         );
       } finally {
         if (await wav.exists()) await wav.delete();
