@@ -39,6 +39,19 @@ class TaskManager {
   /// Loads and reconciles the durable task snapshot during app startup.
   Future<void> initialize() => _ensureLoaded();
 
+  /// Refreshes the in-memory UI projection from SQLite. SQLite remains the
+  /// lifecycle authority; this cache is never used to decide recovery state.
+  Future<void> refreshFromStore() async {
+    await _ensureLoaded();
+    final persisted = await _store.getTasks();
+    _tasks
+      ..clear()
+      ..addAll(persisted.map(_normalizeRecoveredTask));
+    if (!_executing && _tasks.isNotEmpty) {
+      _currentTask = _tasks.last['id']?.toString() ?? '';
+    }
+  }
+
   Future<void> _ensureLoaded() {
     _loading ??= _load();
     return _loading!;
