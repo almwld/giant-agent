@@ -6,6 +6,20 @@ typedef KernelRequestExecutor = Future<String> Function(
   KernelRequestRecord request,
 );
 
+/// An explicitly classified transient failure. Only failures wrapped in this
+/// type may be retried; arbitrary exceptions and side-effecting interruptions
+/// remain terminal until an operator/user explicitly resumes them.
+class RetryableKernelFailure implements Exception {
+  const RetryableKernelFailure(this.message, {this.maxAttempts = 3})
+      : assert(maxAttempts >= 1);
+
+  final String message;
+  final int maxAttempts;
+
+  @override
+  String toString() => message;
+}
+
 /// Signals a safe interruption. The result is retained, but never reported as
 /// a successful completion and never replayed automatically.
 class KernelRequestInterrupted implements Exception {
@@ -117,19 +131,43 @@ class AgentKernel {
       } on KernelRequestInterrupted catch (interrupted) {
         await _store.interrupt(request.id, interrupted.result);
       } catch (error) {
-        try {
-          await _store.fail(request.id, error);
-        } catch (_) {
-          // A persistence failure must not be disguised as a successful result.
+        var retryScheduled = false;
+        if (error is RetryableKernelFailure) {
+          try {
+            retryScheduled = await _store.retryOrFail(
+              request.id,
+              error,
+              maxAttempts: error.maxAttempts,
+            );
+            if (retryScheduled) {
+              final latest = await _store.getRequest(request.id);
+              final attempt = latest?.attempts ?? 1;
+              await Future<void>.delayed(
+                Duration(milliseconds: 200 * (1 << (attempt - 1).clamp(0, 2))),
+              );
+            }
+          } catch (_) {
+            retryScheduled = false;
+          }
+        }
+        if (!retryScheduled) {
+          try {
+            await _store.fail(request.id, error);
+          } catch (_) {
+            // A persistence failure must not be disguised as a successful result.
+          }
         }
       } finally {
         final completed = await _store.getRequest(request.id);
-        final waiter = _waiters.remove(request.id);
-        if (waiter != null && !waiter.isCompleted) {
-          if (completed == null) {
-            waiter.completeError(StateError('Request could not be reloaded.'));
-          } else {
-            waiter.complete(completed);
+        // Retain the original waiter while this request is durably requeued.
+        if (completed?.status != 'queued') {
+          final waiter = _waiters.remove(request.id);
+          if (waiter != null && !waiter.isCompleted) {
+            if (completed == null) {
+              waiter.completeError(StateError('Request could not be reloaded.'));
+            } else {
+              waiter.complete(completed);
+            }
           }
         }
       }
