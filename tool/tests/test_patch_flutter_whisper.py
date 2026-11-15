@@ -52,7 +52,8 @@ static void parse_json() {}
             cmake = root / "android/src/main/cpp/CMakeLists.txt"
             cmake.parent.mkdir(parents=True)
             cmake.write_text(
-                'copy_if_different libggml-cpu.so libggml.so',
+                'copy_if_different libggml-cpu.so libggml.so\\n'
+                'set_target_properties(whisper_jni PROPERTIES OUTPUT_NAME whisper)',
                 encoding="utf-8",
             )
 
@@ -60,7 +61,11 @@ static void parse_json() {}
             patched = context.read_text(encoding="utf-8")
             self.assertIn('System.loadLibrary("ggml")', patched)
             self.assertIn('System.loadLibrary("whisper")', patched)
+            self.assertIn('System.loadLibrary("whisper_jni")', patched)
             self.assertNotIn('System.loadLibrary("ggml-cpu")', patched)
+            cmake_patched = cmake.read_text(encoding="utf-8")
+            self.assertIn('OUTPUT_NAME whisper_jni', cmake_patched)
+            self.assertNotIn('OUTPUT_NAME whisper)', cmake_patched)
             self.assertFalse(PATCHER.patch_whisper_context_libraries(root))
 
     def test_rejects_unexpected_whisper_ggml_packaging_rule(self):
