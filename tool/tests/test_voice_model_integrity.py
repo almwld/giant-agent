@@ -22,10 +22,12 @@ class VoiceModelIntegrityTests(unittest.TestCase):
         script = (ROOT / "tool/prepare_voice_models.py").read_text(encoding="utf-8")
         asr = (ROOT / "lib/services/local_speech_recognition_service.dart").read_text(encoding="utf-8")
         tts = (ROOT / "lib/services/local_arabic_tts_service.dart").read_text(encoding="utf-8")
-        self.assertIn("assets/voice_models/ggml-base.bin", pubspec)
+        self.assertIn("assets/voice_models/ggml-base.bin.gz", pubspec)
         self.assertIn("assets/voice_models/nabra-82m-arabic-int8.tar.bz2", pubspec)
         self.assertIn("tool/prepare_voice_models.py", workflow)
-        self.assertIn("rootBundle.load('assets/voice_models/ggml-base.bin')", asr)
+        self.assertIn("rootBundle.load('assets/voice_models/ggml-base.bin.gz')", asr)
+        self.assertIn('GZipDecoder().decodeBytes(compressed)', asr)
+        self.assertIn('compresslevel=9', script)
         self.assertIn("rootBundle.load(", tts)
         self.assertNotIn("http.Request", asr)
         self.assertNotIn("http.Request", tts)
@@ -49,7 +51,7 @@ class VoiceModelIntegrityTests(unittest.TestCase):
 
     def test_whisper_model_is_loaded_from_bundled_flutter_asset(self):
         service = (ROOT / "lib/services/local_speech_recognition_service.dart").read_text(encoding="utf-8")
-        self.assertIn("assets/voice_models/ggml-base.bin", service)
+        self.assertIn("assets/voice_models/ggml-base.bin.gz", service)
         self.assertIn("rootBundle.load", service)
         self.assertIn("_whisper.initialize", service)
 
