@@ -1017,7 +1017,10 @@ class AgentKernelStore {
           'status': 'running',
           'started_at': now,
           'updated_at': now,
-          'attempts': 1,
+          'attempts': (Sqflite.firstIntValue(await txn.rawQuery(
+                'SELECT attempts FROM agent_requests WHERE id = ?',
+                [id],
+              )) ?? 0) + 1,
           'error': null,
         },
         where: "id = ? AND status = 'queued'",
@@ -1034,8 +1037,63 @@ class AgentKernelStore {
   Future<void> interrupt(String id, String result) =>
       _finish(id, 'interrupted', result: result);
 
-  Future<void> fail(String id, Object error) =>
-      _finish(id, 'failed', error: error.toString());
+  /// Records a classified transient failure and requeues the same request
+  /// only while its durable attempt count remains below the bounded limit.
+  /// Returns true only when a retry was committed to SQLite.
+  Future<bool> retryOrFail(
+    String id,
+    Object error, {
+    required int maxAttempts,
+  }) async {
+    if (maxAttempts < 1) {
+      throw ArgumentError.value(maxAttempts, 'maxAttempts', 'Must be positive.');
+    }
+    final db = await database;
+    final now = DateTime.now().toUtc().toIso8601String();
+    return db.transaction((txn) async {
+      final rows = await txn.query(
+        'agent_requests',
+        columns: ['attempts', 'status'],
+        where: 'id = ?',
+        whereArgs: [id],
+        limit: 1,
+      );
+      if (rows.isEmpty || rows.single['status'] != 'running') {
+        throw StateError('Request $id is not running.');
+      }
+      final attempts = (rows.single['attempts'] as num?)?.toInt() ?? 1;
+      final retry = attempts < maxAttempts;
+      final nextStatus = retry ? 'queued' : 'failed';
+      final changed = await txn.update(
+        'agent_requests',
+        <String, Object?>{
+          'status': nextStatus,
+          'error': error.toString(),
+          'completed_at': retry ? null : now,
+          'updated_at': now,
+        },
+        where: "id = ? AND status = 'running'",
+        whereArgs: [id],
+      );
+      if (changed != 1) {
+        throw StateError('Request $id changed during retry classification.');
+      }
+      await _appendEvent(
+        txn,
+        id,
+        retry ? 'request_retry_scheduled' : 'request_failed',
+        nextStatus,
+        <String, Object?>{
+          'error': error.toString(),
+          'attempt': attempts,
+          'max_attempts': maxAttempts,
+          'retryable': true,
+        },
+        now,
+      );
+      return retry;
+    });
+  }
 
   Future<void> _finish(
     String id,
