@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
@@ -173,13 +172,17 @@ class LocalSpeechRecognitionService {
   }
 
   Future<String> _sha256File(File file) async {
-    final output = AccumulatorSink<Digest>();
+    final output = _DigestAccumulator();
     final input = sha256.startChunkedConversion(output);
     await for (final chunk in file.openRead()) {
       input.add(chunk);
     }
     input.close();
-    return output.events.single.toString();
+    final digest = output.digest;
+    if (digest == null) {
+      throw StateError('SHA-256 stream completed without a digest.');
+    }
+    return digest.toString();
   }
 
   Future<void> startListening() async {
@@ -258,4 +261,17 @@ class LocalSpeechRecognitionService {
     await _whisper.dispose();
     _initialized = false;
   }
+}
+
+
+class _DigestAccumulator implements Sink<Digest> {
+  Digest? digest;
+
+  @override
+  void add(Digest value) {
+    digest = value;
+  }
+
+  @override
+  void close() {}
 }
