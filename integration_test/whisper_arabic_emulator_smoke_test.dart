@@ -12,7 +12,7 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets(
-    'Whisper verifies multilingual Base, loads JNI and transcribes Arabic WAV offline',
+    'Whisper verifies multilingual Base, loads JNI and transcribes Arabic WAV locally',
     (tester) async {
       await app.main();
       await tester.pump();
@@ -53,7 +53,7 @@ void main() {
         expect(result.text.trim(), isNotEmpty);
         expect(result.language, 'ar');
         expect(
-          RegExp(r'[\\u0600-\\u06FF]').hasMatch(result.text),
+          RegExp(r'[\u0600-\u06FF]').hasMatch(result.text),
           isTrue,
           reason: 'The Arabic WAV must produce Arabic-script text, not merely a loaded native library.',
         );
