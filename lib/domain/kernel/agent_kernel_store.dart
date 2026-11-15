@@ -1065,7 +1065,23 @@ class AgentKernelStore {
         throw StateError('Request $id is not running.');
       }
       final attempts = (rows.single['attempts'] as num?)?.toInt() ?? 1;
-      final retry = attempts < maxAttempts;
+      final priorEvents = await txn.query(
+        'agent_events',
+        columns: ['type'],
+        where: 'request_id = ?',
+        whereArgs: [id],
+      );
+      // A whole-request retry is unsafe after any tool or child started:
+      // its external side effects may already have happened.
+      final sideEffectsStarted = priorEvents.any((row) {
+        final type = row['type']?.toString() ?? '';
+        return type == 'tool_call_started' ||
+            type.startsWith('subagent_started') ||
+            type == 'tool_output' ||
+            type == 'file_created' ||
+            type == 'file_updated';
+      });
+      final retry = attempts < maxAttempts && !sideEffectsStarted;
       final nextStatus = retry ? 'queued' : 'failed';
       final changed = await txn.update(
         'agent_requests',
@@ -1084,13 +1100,13 @@ class AgentKernelStore {
       await _appendEvent(
         txn,
         id,
-        retry ? 'request_retry_scheduled' : 'request_failed',
+        retry\n            ? 'request_retry_scheduled'\n            : sideEffectsStarted\n                ? 'request_retry_blocked_after_side_effect'\n                : 'request_failed',
         nextStatus,
         <String, Object?>{
           'error': error.toString(),
           'attempt': attempts,
           'max_attempts': maxAttempts,
-          'retryable': true,
+          'retryable': true,\n          'side_effects_started': sideEffectsStarted,
         },
         now,
       );
