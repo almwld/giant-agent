@@ -44,9 +44,60 @@ class TaskManager {
   Future<void> refreshFromStore() async {
     await _ensureLoaded();
     final persisted = await _store.getTasks();
+    final projected = <Map<String, dynamic>>[];
+    for (final source in persisted) {
+      final task = Map<String, dynamic>.from(source);
+      final requestId = task['request_id']?.toString() ?? '';
+      if (requestId.isNotEmpty) {
+        final request = await _store.getRequest(requestId);
+        if (request != null) {
+          final steps = task['steps'];
+          final step = steps is List && steps.isNotEmpty && steps.first is Map
+              ? Map<String, dynamic>.from(steps.first as Map)
+              : null;
+          switch (request.status) {
+            case 'queued':
+              task['status'] = 'pending';
+              if (step != null) step['status'] = 'pending';
+              break;
+            case 'running':
+              task['status'] = 'running';
+              if (step != null) step['status'] = 'running';
+              break;
+            case 'completed':
+              task['status'] = 'completed';
+              task['result'] = request.result ?? task['result'];
+              if (step != null) {
+                step['status'] = 'completed';
+                step['result'] = request.result ?? step['result'];
+              }
+              break;
+            case 'interrupted':
+              task['status'] = 'paused';
+              task['recovery_note'] =
+                  'انقطع تنفيذ الطلب؛ افحص التأثيرات قبل الاستئناف.';
+              if (step != null) {
+                step['status'] = 'uncertain';
+                step['recovery_state'] = 'side_effect_unknown';
+              }
+              break;
+            case 'failed':
+              task['status'] = 'failed';
+              task['error'] = request.error ?? 'فشل الطلب الدائم.';
+              if (step != null) {
+                step['status'] = 'failed';
+                step['error'] = task['error'];
+              }
+              break;
+          }
+          if (step != null) (task['steps'] as List)[0] = step;
+        }
+      }
+      projected.add(task);
+    }
     _tasks
       ..clear()
-      ..addAll(persisted.map((task) => Map<String, dynamic>.from(task)));
+      ..addAll(projected);
     if (!_executing && _tasks.isNotEmpty) {
       _currentTask = _tasks.last['id']?.toString() ?? '';
     }
@@ -451,11 +502,31 @@ $checkpoint
 
 تابع من حالة العمل الحالية. لا تكرر العمليات التي تظهر نتائجها مكتملة؛ افحص الحالة أولاً، ثم نفّذ ما تبقى فقط. لا تعلن اكتمال المهمة قبل التحقق من النتيجة.
 ''';
-      final result = await _agent.runTask(
+      final attempt =
+          ((task['execution_attempts'] as num?)?.toInt() ?? 0) + 1;
+      final requestId = '${task['id']}_attempt_$attempt';
+      task['execution_attempts'] = attempt;
+      task['request_id'] = requestId;
+      await _store.saveTask(task);
+
+      final executionResult = await _agent.runTask(
         executionPrompt,
         conversationId: task['conversation_id']?.toString() ?? 'global',
+        requestId: requestId,
       );
-      final outcome = classifyResult(result);
+      final durableRequest = await _agent.request(requestId);
+      if (durableRequest == null) {
+        throw StateError('تعذر تحميل سجل الطلب الدائم $requestId.');
+      }
+      final result = durableRequest.result ?? executionResult;
+      final outcome = switch (durableRequest.status) {
+        'completed' => TaskExecutionOutcome.completed,
+        'interrupted' => TaskExecutionOutcome.interrupted,
+        'failed' => TaskExecutionOutcome.failed,
+        _ => throw StateError(
+            'حالة الطلب غير نهائية: ${durableRequest.status}',
+          ),
+      };
       if (outcome == TaskExecutionOutcome.interrupted) {
         step['status'] = 'uncertain';
         step['recovery_state'] = 'side_effect_unknown';

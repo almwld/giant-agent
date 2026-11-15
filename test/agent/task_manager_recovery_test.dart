@@ -199,6 +199,37 @@ void main() {
     expect(homeTasks.single['id'], homeTask['id']);
     expect(homeTasks.single['conversation_id'], 'home');
 
+    // AgentsOS must project the canonical SQLite request state instead of
+    // trusting a stale task snapshot when the request has reached a terminal state.
+    final linkedTask = await manager.createTask(
+      'مهمة مرتبطة بطلب دائم',
+      conversationId: 'agentsos-test',
+    );
+    final linkedTaskSnapshot = Map<String, dynamic>.from(linkedTask)
+      ..['request_id'] = 'request-linked-agentsos-1';
+    await store.saveTask(linkedTaskSnapshot);
+    await store.enqueue(
+      id: 'request-linked-agentsos-1',
+      prompt: 'تنفيذ اختبار الربط',
+      conversationId: 'agentsos-test',
+    );
+    await store.markRunning('request-linked-agentsos-1');
+    await store.complete(
+      'request-linked-agentsos-1',
+      'النتيجة المرجعية من SQLite',
+    );
+
+    await manager.refreshFromStore();
+    final projectedTask = manager.getTasks().singleWhere(
+      (task) => task['id'] == linkedTask['id'],
+    );
+    expect(projectedTask['status'], 'completed');
+    expect(projectedTask['result'], 'النتيجة المرجعية من SQLite');
+    expect(
+      (projectedTask['steps'] as List).single['status'],
+      'completed',
+    );
+
     await manager.closeForTesting();
   });
 }
