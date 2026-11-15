@@ -11,7 +11,7 @@ typedef KernelRequestExecutor = Future<String> Function(
 /// remain terminal until an operator/user explicitly resumes them.
 class RetryableKernelFailure implements Exception {
   const RetryableKernelFailure(this.message, {this.maxAttempts = 3})
-      : assert(maxAttempts >= 1);
+      : assert(maxAttempts >= 1 && maxAttempts <= 3);
 
   final String message;
   final int maxAttempts;
