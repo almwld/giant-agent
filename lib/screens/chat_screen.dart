@@ -2047,7 +2047,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final tts = LocalArabicTtsService.instance;
     try {
       if (!await tts.isInstalled()) {
-        // Download the pinned Nabra archive once into app-private storage.
+        // Extract the pinned Nabra archive bundled inside the APK into app-private storage.
         // After installation, synthesis runs entirely offline.
         await tts.install();
       }
