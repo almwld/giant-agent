@@ -171,13 +171,12 @@ def patch_android_abis(gradle: str) -> str:
 
 
 def patch_whisper_context_libraries(root: Path) -> bool:
-    """Load the GGML soname that the plugin's CMake build actually packages.
+    """Load GGML, the upstream engine, and the distinct JNI bridge sonames.
 
-    The upstream Kotlin wrapper loads ggml-cpu, but this plugin's CMakeLists
-    explicitly copies libggml-cpu.so to libggml.so for the Android loader.
-    Loading the nonexistent ggml-cpu soname raises UnsatisfiedLinkError and
-    is surfaced by the plugin as NATIVE_NOT_BUILT even when both APK assets
-    and libwhisper.so are present.
+    whisper.cpp builds its own shared libwhisper.so on Android. The plugin's
+    JNI target must therefore be libwhisper_jni.so; giving both targets the
+    OUTPUT_NAME "whisper" causes the packaged engine library to shadow the JNI
+    bridge and produces "No implementation found" for nativeInit.
     """
     context = root / "android" / "src" / "main" / "kotlin" / "io" / "github" / "govindtank" / "flutter_whisper" / "WhisperContext.kt"
     if not context.is_file():
@@ -185,20 +184,40 @@ def patch_whisper_context_libraries(root: Path) -> bool:
     cmake = root / "android" / "src" / "main" / "cpp" / "CMakeLists.txt"
     if not cmake.is_file():
         raise RuntimeError(f"Whisper CMake file not found: {cmake}")
+
     cmake_source = cmake.read_text(encoding="utf-8")
     if "libggml-cpu.so" not in cmake_source or "libggml.so" not in cmake_source:
         raise RuntimeError("Unexpected Whisper CMake config: expected libggml-cpu.so -> libggml.so packaging rule.")
+    old_output = "set_target_properties(whisper_jni PROPERTIES OUTPUT_NAME whisper)"
+    new_output = "set_target_properties(whisper_jni PROPERTIES OUTPUT_NAME whisper_jni)"
+    changed = False
+    if old_output in cmake_source:
+        cmake_source = cmake_source.replace(old_output, new_output, 1)
+        changed = True
+    elif new_output not in cmake_source:
+        raise RuntimeError("Unexpected Whisper CMake config: JNI bridge output name is not recognized.")
+    if changed:
+        cmake.write_text(cmake_source, encoding="utf-8", newline="\\n")
+        print(f"Patched {cmake}: keep upstream libwhisper.so separate from libwhisper_jni.so.")
 
     source = context.read_text(encoding="utf-8")
-    old = 'System.loadLibrary("ggml-cpu")'
-    new = 'System.loadLibrary("ggml")'
-    if new in source and old not in source:
-        return False
-    if old not in source:
-        raise RuntimeError("Unexpected WhisperContext Kotlin source: ggml-cpu load declaration not found.")
-    context.write_text(source.replace(old, new, 1), encoding="utf-8")
-    print(f"Patched {context}: load packaged libggml.so soname.")
-    return True
+    if 'System.loadLibrary("ggml-cpu")' in source:
+        source = source.replace('System.loadLibrary("ggml-cpu")', 'System.loadLibrary("ggml")', 1)
+        changed = True
+    elif 'System.loadLibrary("ggml")' not in source:
+        raise RuntimeError("Unexpected WhisperContext Kotlin source: GGML load declaration not found.")
+
+    engine_load = 'System.loadLibrary("whisper")'
+    bridge_load = 'System.loadLibrary("whisper_jni")'
+    if engine_load not in source:
+        raise RuntimeError("Unexpected WhisperContext Kotlin source: upstream whisper engine load declaration not found.")
+    if bridge_load not in source:
+        source = source.replace(engine_load, engine_load + "\\n        " + bridge_load, 1)
+        changed = True
+    if changed:
+        context.write_text(source, encoding="utf-8", newline="\\n")
+        print(f"Patched {context}: load libwhisper.so engine then libwhisper_jni.so JNI bridge.")
+    return changed
 
 
 def patch_plugin_native_diagnostics(root: Path) -> bool:
