@@ -13,7 +13,7 @@ Future<AgentKernelStore> _store(String path) async {
     databaseProvider: () => databaseFactoryFfi.openDatabase(
       path,
       options: OpenDatabaseOptions(
-        version: 1,
+        version: 6,
         onConfigure: (db) async {
           await db.execute('PRAGMA foreign_keys = ON');
           await db.rawQuery('PRAGMA journal_mode = WAL');
@@ -26,14 +26,27 @@ Future<AgentKernelStore> _store(String path) async {
               conversation_id TEXT NOT NULL, sequence INTEGER NOT NULL UNIQUE,
               status TEXT NOT NULL, created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL, started_at TEXT, completed_at TEXT,
-              result TEXT, error TEXT, attempts INTEGER NOT NULL DEFAULT 0
+              result TEXT, error TEXT, attempts INTEGER NOT NULL DEFAULT 0,
+              task_id TEXT REFERENCES agent_tasks(id) ON DELETE SET NULL
             )
           ''');
           await db.execute('CREATE INDEX idx_agent_requests_queue ON agent_requests(status, sequence)');
+          await db.execute('CREATE INDEX idx_agent_requests_task_attempts ON agent_requests(task_id, sequence)');
+          await db.execute('''
+            CREATE TABLE agent_tasks (
+              sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+              id TEXT NOT NULL UNIQUE,
+              conversation_id TEXT NOT NULL DEFAULT 'global',
+              status TEXT NOT NULL,
+              payload_json TEXT NOT NULL,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            )
+          ''');
           await db.execute('''
             CREATE TABLE agent_events (
               row_id INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE,
-              request_id TEXT, type TEXT NOT NULL, status TEXT NOT NULL,
+              request_id TEXT, task_id TEXT, type TEXT NOT NULL, status TEXT NOT NULL,
               payload_json TEXT NOT NULL, created_at TEXT NOT NULL,
               FOREIGN KEY(request_id) REFERENCES agent_requests(id)
             )
@@ -59,6 +72,78 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
+
+  test('atomically links task snapshots to every durable execution attempt', () async {
+    final directory = await _tempDirectory();
+    final store = await _store('${directory.path}/task-link.db');
+    final task = <String, dynamic>{
+      'id': 'task-linked-1',
+      'description': 'durable task relation',
+      'conversation_id': 'task-link-test',
+      'status': 'running',
+      'steps': <Map<String, dynamic>>[
+        {'step': 1, 'status': 'running'},
+      ],
+      'created_at': DateTime.now().toUtc().toIso8601String(),
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    };
+    final executions = <String>[];
+    final kernel = AgentKernel(
+      store: store,
+      executor: (request) async {
+        executions.add(request.id);
+        return 'result-${request.id}';
+      },
+    );
+    try {
+      await store.saveTask(task);
+      for (var attempt = 1; attempt <= 2; attempt++) {
+        final requestId = 'task-linked-1-attempt-$attempt';
+        task['execution_attempts'] = attempt;
+        task['request_id'] = requestId;
+        await store.enqueueForTask(
+          task: task,
+          requestId: requestId,
+          prompt: 'run attempt $attempt',
+          conversationId: 'task-link-test',
+          events: [
+            {
+              'type': attempt == 1 ? 'task_started' : 'task_resumed',
+              'status': 'running',
+              'payload': <String, Object?>{'request_id': requestId},
+            },
+          ],
+        );
+        final result = await kernel.submit(
+          id: requestId,
+          prompt: 'run attempt $attempt',
+          conversationId: 'task-link-test',
+          taskId: 'task-linked-1',
+          alreadyEnqueued: true,
+        ).timeout(const Duration(seconds: 5));
+        expect(result.status, 'completed');
+      }
+
+      final db = await store.database;
+      final linkedRequests = await db.query(
+        'agent_requests',
+        columns: ['id', 'task_id', 'status'],
+        where: 'task_id = ?',
+        whereArgs: ['task-linked-1'],
+        orderBy: 'sequence ASC',
+      );
+      expect(linkedRequests, hasLength(2));
+      expect(linkedRequests.map((row) => row['status']),
+          everyElement('completed'));
+      expect(linkedRequests.map((row) => row['id']), executions);
+      final savedTask = (await store.getTasks()).single;
+      expect(savedTask['request_id'], 'task-linked-1-attempt-2');
+      expect(savedTask['execution_attempts'], 2);
+    } finally {
+      await kernel.dispose();
+      await directory.delete(recursive: true);
+    }
+  });
 
   test('executes three concurrently submitted requests in durable FIFO order', () async {
     final directory = await _tempDirectory();

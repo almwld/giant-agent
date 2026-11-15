@@ -296,6 +296,8 @@ class AgentService {
     String prompt, {
     String conversationId = 'global',
     String? requestId,
+    String? taskId,
+    bool requestAlreadyEnqueued = false,
   }) async {
     final stopwatch = Stopwatch()..start();
     await initialize();
@@ -315,6 +317,8 @@ class AgentService {
         id: resolvedRequestId,
         prompt: prompt,
         conversationId: conversationId,
+        taskId: taskId,
+        alreadyEnqueued: requestAlreadyEnqueued,
       );
       await StatsService().incrementMessageCount();
       if (record.status == 'failed') {

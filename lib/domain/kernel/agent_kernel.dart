@@ -69,8 +69,9 @@ class AgentKernel {
     required String id,
     required String prompt,
     String conversationId = 'default',
+    String? taskId,
+    bool alreadyEnqueued = false,
   }) async {
-    if (!_initialized) await initialize();
     final normalized = prompt.trim();
     if (normalized.isEmpty) {
       throw ArgumentError.value(prompt, 'prompt', 'Request cannot be empty.');
@@ -79,20 +80,42 @@ class AgentKernel {
       throw StateError('Duplicate request id: $id');
     }
 
-    // Reserve the identifier before the asynchronous persistence lookup. Two
-    // concurrent submissions must not both pass the duplicate check and then
-    // overwrite one another's completion waiter.
+    // Register before initialize(): initialization may immediately pump a
+    // task/request pair committed atomically just before this call.
     final waiter = Completer<KernelRequestRecord>();
     _waiters[id] = waiter;
     try {
-      if (await _store.getRequest(id) != null) {
-        throw StateError('Duplicate request id: $id');
+      if (!_initialized) await initialize();
+      final existing = await _store.getRequest(id);
+      if (alreadyEnqueued) {
+        if (existing == null ||
+            existing.prompt != normalized ||
+            existing.conversationId != conversationId ||
+            existing.taskId != taskId) {
+          throw StateError(
+            'Pre-enqueued request $id does not match its task, prompt, or conversation.',
+          );
+        }
+        if (existing.status == 'completed' ||
+            existing.status == 'failed' ||
+            existing.status == 'interrupted') {
+          if (identical(_waiters[id], waiter)) _waiters.remove(id);
+          return existing;
+        }
+        if (existing.status != 'queued' && existing.status != 'running') {
+          throw StateError('Unexpected pre-enqueued request state: ${existing.status}');
+        }
+      } else {
+        if (existing != null) {
+          throw StateError('Duplicate request id: $id');
+        }
+        await _store.enqueue(
+          id: id,
+          prompt: normalized,
+          conversationId: conversationId,
+          taskId: taskId,
+        );
       }
-      await _store.enqueue(
-        id: id,
-        prompt: normalized,
-        conversationId: conversationId,
-      );
       _schedulePump();
       return await waiter.future;
     } catch (_) {
