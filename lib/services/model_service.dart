@@ -244,10 +244,10 @@ class ModelService {
   }
 
   Future<bool?> _awaitToolApproval(
-    Future<bool> approval,
+    Future<bool> Function() approval,
     bool Function()? isCancelled,
   ) async {
-    if (isCancelled == null) return approval;
+    if (isCancelled == null) return approval();
     if (isCancelled()) return null;
     final result = Completer<bool?>();
     final cancellationPoll = Timer.periodic(
@@ -256,7 +256,7 @@ class ModelService {
         if (!result.isCompleted && isCancelled()) result.complete(null);
       },
     );
-    approval.then(
+    approval().then(
       (approved) {
         if (!result.isCompleted) result.complete(approved);
       },
@@ -521,7 +521,7 @@ class ModelService {
               break;
             }
             final approved = await _awaitToolApproval(
-              approval(serverId, remoteTool, remoteArguments),
+              () => approval(serverId, remoteTool, remoteArguments),
               isCancelled,
             );
             if (approved == null || isCancelled?.call() == true) {

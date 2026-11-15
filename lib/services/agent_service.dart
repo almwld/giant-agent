@@ -4,6 +4,7 @@ import '../agent/architecture/agent_timeline_event.dart';
 import '../agent/architecture/agent_event_bus.dart';
 import '../domain/kernel/agent_kernel.dart' as durable;
 import '../domain/kernel/agent_kernel_store.dart';
+import '../domain/kernel/agent_observability.dart';
 import '../domain/kernel/subagent_recovery_coordinator.dart';
 import 'model_service.dart';
 import 'agent_background_execution_service.dart';
@@ -225,6 +226,33 @@ class AgentService {
 
   Future<List<KernelEventRecord>> eventsFor(String requestId) =>
       _durableKernel.eventsFor(requestId);
+
+  /// Read the canonical execution journal through the same store that records requests.
+  Future<AgentObservabilitySummary> observabilitySummaryForConversation(
+    String conversationId,
+  ) async {
+    await initialize();
+    return _store.observabilitySummaryForConversation(conversationId);
+  }
+
+  Future<AgentObservabilityPage> observabilityEventsForConversation(
+    String conversationId, {
+    int? beforeRowId,
+    int limit = 50,
+    String? type,
+    String? status,
+    String? search,
+  }) async {
+    await initialize();
+    return _store.observabilityEventsForConversation(
+      conversationId,
+      beforeRowId: beforeRowId,
+      limit: limit,
+      type: type,
+      status: status,
+      search: search,
+    );
+  }
 
   /// Returns saved artifacts (text, code, documents and media) for one request.
   Future<List<Map<String, dynamic>>> outputsForRequest(String requestId) =>
