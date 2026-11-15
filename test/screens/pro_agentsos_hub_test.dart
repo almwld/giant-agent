@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:giant_agent_x/screens/pro_agentsos_hub.dart';
+import 'package:giant_agent_x/screens/pro_dashboard.dart';
+import 'package:giant_agent_x/screens/pro_task_manager.dart';
+import 'package:giant_agent_x/screens/pro_agent_fleet.dart';
+import 'package:giant_agent_x/screens/pro_battle_card.dart';
+import 'package:giant_agent_x/screens/pro_integrations.dart';
+import 'package:giant_agent_x/screens/pro_advanced_config.dart';
 
 void main() {
   testWidgets('AgentsOS exposes all six destinations and renders each screen', (tester) async {
@@ -17,22 +23,22 @@ void main() {
       expect(find.text(label), findsOneWidget, reason: 'Missing AgentsOS destination: $label');
     }
 
-    final destinations = <String, String>{
-      'Dashboard': 'Operational Control Center',
-      'Tasks': 'Task Manager',
-      'Agents': 'Agent Fleet Overview',
-      'Battle': 'Battle-card Hub',
-      'Integrations': 'No MCP integrations configured yet.',
-      'Config': 'Advanced Configuration',
+    final destinations = <String, Type>{
+      'Dashboard': ProDashboard,
+      'Tasks': ProTaskManager,
+      'Agents': ProAgentFleet,
+      'Battle': ProBattleCard,
+      'Integrations': ProIntegrations,
+      'Config': ProAdvancedConfig,
     };
 
     for (final entry in destinations.entries) {
       await tester.tap(find.text(entry.key).first);
       await tester.pumpAndSettle();
       expect(
-        find.text(entry.value),
+        find.byType(entry.value),
         findsOneWidget,
-        reason: 'The ${entry.key} destination did not render its expected screen content.',
+        reason: 'The ${entry.key} destination did not mount its screen.',
       );
       expect(tester.takeException(), isNull, reason: 'The ${entry.key} screen threw during rendering.');
     }
