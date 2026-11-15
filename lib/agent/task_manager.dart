@@ -471,24 +471,6 @@ class TaskManager {
     task['updated_at'] = DateTime.now().toIso8601String();
     step['status'] = 'running';
     try {
-      await _store.saveTaskWithEvents(task, events: [
-        {
-          'type': isResume ? 'task_resumed' : 'task_started',
-          'status': 'running',
-          'payload': <String, Object?>{
-            'execution_path': 'task_manager',
-            if (isResume) 'resume_authorized': true,
-          },
-        },
-        {
-          'type': 'step_started',
-          'status': 'running',
-          'payload': <String, Object?>{
-            'step': step['step'],
-            'action': step['action'],
-          },
-        },
-      ]);
       final originalPrompt = task['description'] as String;
       final checkpoint = task['resume_context']?.toString().trim() ?? '';
       final executionPrompt = checkpoint.isEmpty
@@ -507,12 +489,42 @@ $checkpoint
       final requestId = '${task['id']}_attempt_$attempt';
       task['execution_attempts'] = attempt;
       task['request_id'] = requestId;
-      await _store.saveTask(task);
+
+      // Task projection and queued request are committed in one SQLite
+      // transaction before the AgentKernel is allowed to execute the request.
+      await _store.enqueueForTask(
+        task: task,
+        requestId: requestId,
+        prompt: executionPrompt,
+        conversationId: task['conversation_id']?.toString() ?? 'global',
+        events: [
+          {
+            'type': isResume ? 'task_resumed' : 'task_started',
+            'status': 'running',
+            'payload': <String, Object?>{
+              'execution_path': 'task_manager',
+              'request_id': requestId,
+              if (isResume) 'resume_authorized': true,
+            },
+          },
+          {
+            'type': 'step_started',
+            'status': 'running',
+            'payload': <String, Object?>{
+              'step': step['step'],
+              'action': step['action'],
+              'request_id': requestId,
+            },
+          },
+        ],
+      );
 
       final executionResult = await _agent.runTask(
         executionPrompt,
         conversationId: task['conversation_id']?.toString() ?? 'global',
         requestId: requestId,
+        taskId: task['id']?.toString(),
+        requestAlreadyEnqueued: true,
       );
       final durableRequest = await _agent.request(requestId);
       if (durableRequest == null) {
