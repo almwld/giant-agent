@@ -106,6 +106,10 @@ static bool load_audio_16k(const std::string& path, std::vector<float>& out) {
     if (!haveFormat || !haveData || audioFormat != 1 || channels != 1 ||
         sampleRate != 16000 || bitsPerSample != 16 || blockAlign != 2 ||
         pcm.empty() || (pcm.size() % 2) != 0) {
+        std::fprintf(stderr,
+            "WHISPER_WAV_DIAG: fmt=%d data=%d format=%u channels=%u rate=%u bits=%u align=%u bytes=%zu riff=%u\\n",
+            haveFormat ? 1 : 0, haveData ? 1 : 0, audioFormat, channels,
+            sampleRate, bitsPerSample, blockAlign, pcm.size(), riffSize);
         return false;
     }
 
