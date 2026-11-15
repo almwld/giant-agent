@@ -99,6 +99,8 @@ extension AgentKernelObservability on AgentKernelStore {
     }
     final normalizedSearch = search?.trim().toLowerCase();
     if (normalizedSearch != null && normalizedSearch.isNotEmpty) {
+      // Search only the already-persisted local event record. The bound value
+      // is parameterized; user input is never interpolated into SQL.
       where.add("lower(e.type || ' ' || e.status || ' ' || e.id || ' ' || COALESCE(e.task_id, '') || ' ' || e.payload_json) LIKE ?");
       args.add('%$normalizedSearch%');
     }
