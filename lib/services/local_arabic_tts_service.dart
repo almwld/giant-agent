@@ -99,7 +99,7 @@ class LocalArabicTtsService {
       final archive = TarDecoder().decodeBytes(decoded);
       for (final entry in archive) {
         if (!entry.isFile) continue;
-        final parts = entry.name.replaceAll('\\\\', '/').split('/');
+        final parts = entry.name.replaceAll('\\', '/').split('/');
         if (parts.any((part) => part == '..')) {
           throw const FormatException('Unsafe path in Nabra model archive.');
         }
