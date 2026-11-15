@@ -47,10 +47,10 @@ class VoiceModelIntegrityTests(unittest.TestCase):
         self.assertEqual(runtime_digest.group(1), documented_digest.group(1))
         self.assertLess(service.index("_ensureVerifiedBaseModel"), service.index("_whisper.initialize"))
 
-    def test_whisper_model_is_not_loaded_from_flutter_assets(self):
+    def test_whisper_model_is_loaded_from_bundled_flutter_asset(self):
         service = (ROOT / "lib/services/local_speech_recognition_service.dart").read_text(encoding="utf-8")
-        self.assertNotIn("assets/voice_models/ggml-base.bin", service)
-        self.assertNotIn("rootBundle.load", service)
+        self.assertIn("assets/voice_models/ggml-base.bin", service)
+        self.assertIn("rootBundle.load", service)
         self.assertIn("_whisper.initialize", service)
 
 
