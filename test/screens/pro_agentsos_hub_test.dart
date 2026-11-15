@@ -3,10 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:giant_agent_x/screens/pro_agentsos_hub.dart';
 
 void main() {
-  setUp(() {
-    // Keep the control-center singleton isolated from previous widget tests.
-  });
-
   testWidgets('AgentsOS exposes all six destinations and renders each screen', (tester) async {
     tester.view.physicalSize = const Size(900, 1200);
     tester.view.devicePixelRatio = 1;
@@ -42,7 +38,7 @@ void main() {
     }
   });
 
-  testWidgets('AgentsOS retains the selected destination when rebuilding its shell', (tester) async {
+  testWidgets('AgentsOS retains the selected destination when its parent rebuilds', (tester) async {
     tester.view.physicalSize = const Size(900, 1200);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -56,6 +52,6 @@ void main() {
 
     await tester.pumpWidget(const MaterialApp(home: ProAgentsOsHub()));
     await tester.pumpAndSettle();
-    expect(find.text('Operational Control Center'), findsOneWidget);
+    expect(find.text('Task Manager'), findsOneWidget);
   });
 }
