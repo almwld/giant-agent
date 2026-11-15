@@ -17,6 +17,9 @@ class AgentTimelineEvent {
     this.result,
     this.taskId,
     this.agentType,
+    this.agentIcon,
+    this.agentMotto,
+    this.agentIndex,
     this.taskPrompt,
     this.dependsOn = const <String>[],
   });
@@ -35,6 +38,9 @@ class AgentTimelineEvent {
   final String? result;
   final String? taskId;
   final String? agentType;
+  final String? agentIcon;
+  final String? agentMotto;
+  final int? agentIndex;
   final String? taskPrompt;
   final List<String> dependsOn;
 
@@ -53,6 +59,9 @@ class AgentTimelineEvent {
         if (result != null && result!.isNotEmpty) 'result': result,
         if (taskId != null && taskId!.isNotEmpty) 'task_id': taskId,
         if (agentType != null && agentType!.isNotEmpty) 'agent_type': agentType,
+        if (agentIcon != null && agentIcon!.isNotEmpty) 'agent_icon': agentIcon,
+        if (agentMotto != null && agentMotto!.isNotEmpty) 'agent_motto': agentMotto,
+        if (agentIndex != null) 'agent_index': agentIndex,
         if (taskPrompt != null && taskPrompt!.isNotEmpty) 'task_prompt': taskPrompt,
         if (dependsOn.isNotEmpty) 'depends_on': dependsOn,
       };
@@ -81,6 +90,9 @@ class AgentTimelineEvent {
       result: map['result']?.toString(),
       taskId: map['task_id']?.toString(),
       agentType: map['agent_type']?.toString(),
+      agentIcon: (map['agent_icon'] ?? map['icon'])?.toString(),
+      agentMotto: (map['agent_motto'] ?? map['motto'])?.toString(),
+      agentIndex: map['agent_index'] is num ? (map['agent_index'] as num).toInt() : map['index'] is num ? (map['index'] as num).toInt() : null,
       taskPrompt: map['task_prompt']?.toString(),
       dependsOn: (map['depends_on'] as List?)?.map((item) => item.toString()).toList(growable: false) ?? const <String>[],
     );
