@@ -197,7 +197,7 @@ def patch_whisper_context_libraries(root: Path) -> bool:
     elif new_output not in cmake_source:
         raise RuntimeError("Unexpected Whisper CMake config: JNI bridge output name is not recognized.")
     if changed:
-        cmake.write_text(cmake_source, encoding="utf-8", newline="\\n")
+        cmake.write_text(cmake_source, encoding="utf-8")
         print(f"Patched {cmake}: keep upstream libwhisper.so separate from libwhisper_jni.so.")
 
     source = context.read_text(encoding="utf-8")
@@ -215,7 +215,7 @@ def patch_whisper_context_libraries(root: Path) -> bool:
         source = source.replace(engine_load, engine_load + "\\n        " + bridge_load, 1)
         changed = True
     if changed:
-        context.write_text(source, encoding="utf-8", newline="\\n")
+        context.write_text(source, encoding="utf-8")
         print(f"Patched {context}: load libwhisper.so engine then libwhisper_jni.so JNI bridge.")
     return changed
 
