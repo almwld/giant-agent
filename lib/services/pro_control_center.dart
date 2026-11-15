@@ -101,7 +101,8 @@ class ProControlCenter extends ChangeNotifier {
     return accepted;
   }
 
-  // Derive active state from the persisted task projection, not a process-local flag.\n  bool get isTaskExecuting => tasks.any((task) => task['status'] == 'running');
+  // Derive active state from the persisted task projection, not a process-local flag.
+  bool get isTaskExecuting => tasks.any((task) => task['status'] == 'running');
 
   Future<bool> cancelCurrentTask() async {
     final accepted = await _tasks.cancelTask();
