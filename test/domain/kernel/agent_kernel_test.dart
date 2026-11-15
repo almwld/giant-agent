@@ -206,4 +206,69 @@ void main() {
       await directory.delete(recursive: true);
     }
   });
+
+  test('retries only explicitly classified transient failures within a durable bound', () async {
+    final directory = await _tempDirectory();
+    var executions = 0;
+    final kernel = AgentKernel(
+      store: await _store('${directory.path}/retry.db'),
+      executor: (request) async {
+        executions++;
+        if (executions < 3) {
+          throw const RetryableKernelFailure('temporary provider timeout');
+        }
+        return 'recovered';
+      },
+    );
+    try {
+      final result = await kernel.submit(id: 'retry-me', prompt: 'retry safely')
+          .timeout(const Duration(seconds: 5));
+      expect(executions, 3);
+      expect(result.status, 'completed');
+      expect(result.attempts, 3);
+      expect(result.result, 'recovered');
+      expect(
+        (await kernel.eventsFor('retry-me')).map((event) => event.type),
+        [
+          'request_queued',
+          'request_started',
+          'request_retry_scheduled',
+          'request_started',
+          'request_retry_scheduled',
+          'request_started',
+          'request_completed',
+        ],
+      );
+    } finally {
+      await kernel.dispose();
+      await directory.delete(recursive: true);
+    }
+  });
+
+  test('does not retry unclassified failures or interruptions', () async {
+    final directory = await _tempDirectory();
+    var executions = 0;
+    final kernel = AgentKernel(
+      store: await _store('${directory.path}/no-retry.db'),
+      executor: (_) async {
+        executions++;
+        throw StateError('unclassified failure');
+      },
+    );
+    try {
+      final result = await kernel.submit(id: 'no-retry', prompt: 'do not replay')
+          .timeout(const Duration(seconds: 5));
+      expect(executions, 1);
+      expect(result.status, 'failed');
+      expect(result.attempts, 1);
+      expect((await kernel.eventsFor('no-retry')).map((event) => event.type), [
+        'request_queued',
+        'request_started',
+        'request_failed',
+      ]);
+    } finally {
+      await kernel.dispose();
+      await directory.delete(recursive: true);
+    }
+  });
 }
