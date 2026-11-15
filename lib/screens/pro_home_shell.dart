@@ -24,7 +24,6 @@ class ProHomeShell extends StatefulWidget {
 class _ProHomeShellState extends State<ProHomeShell> {
   int _selectedIndex = 0;
   final Set<int> _visited = {0};
-  late final Future<void> _initialization;
 
   static const _destinations = <_HomeDestination>[
     _HomeDestination('الدردشة', Icons.chat_bubble_outline_rounded),
@@ -49,8 +48,7 @@ class _ProHomeShellState extends State<ProHomeShell> {
   @override
   void initState() {
     super.initState();
-    _initialization = ProControlCenter.instance.initialize();
-    unawaited(_initialization.catchError((Object error) {
+    unawaited(ProControlCenter.instance.initialize().catchError((Object error) {
       debugPrint('AgentsOS control-center initialization failed: $error');
     }));
   }
