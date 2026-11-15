@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
 import 'package:flutter_whisper/flutter_whisper.dart';
@@ -32,9 +31,6 @@ class LocalSpeechRecognitionService {
   static const int _baseModelBytes = 147951465;
   static const String _baseModelSha256 =
       '60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe';
-  static const String _baseModelUrl =
-      'https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-base.bin';
-  static final http.Client _modelClient = http.Client();
 
   bool get isListening => _recording;
   bool get isModelReady => _initialized;
@@ -85,91 +81,23 @@ class LocalSpeechRecognitionService {
     final model = File('${models.path}/base.bin');
     if (await _isVerifiedModel(model)) return;
 
-    if (await model.exists()) await model.delete();
-    final partial = File('${model.path}.part');
-
-    Object? lastError;
-    for (var attempt = 1; attempt <= 3; attempt++) {
-      IOSink? sink;
-      try {
-        var offset = await partial.exists() ? await partial.length() : 0;
-        if (offset >= _baseModelBytes) {
-          await partial.delete();
-          offset = 0;
-        }
-
-        final request = http.Request('GET', Uri.parse(_baseModelUrl));
-        if (offset > 0) request.headers['Range'] = 'bytes=$offset-';
-        final response = await _modelClient
-            .send(request)
-            .timeout(const Duration(seconds: 60));
-
-        if (offset > 0 && response.statusCode == 200) {
-          // The server ignored Range; restart rather than append a full body.
-          if (await partial.exists()) await partial.delete();
-          offset = 0;
-        } else if (response.statusCode == 206) {
-          final contentRange = response.headers['content-range'] ?? '';
-          if (!contentRange.startsWith('bytes $offset-')) {
-            throw HttpException('Invalid model Content-Range: $contentRange');
-          }
-        } else if (response.statusCode != 200) {
-          throw HttpException('Whisper model download returned HTTP ${response.statusCode}.');
-        }
-
-        sink = partial.openWrite(
-          mode: offset > 0 ? FileMode.append : FileMode.write,
-        );
-        var received = offset;
-        var lastReportedPercent = -1;
-        await for (final chunk in response.stream.timeout(
-          const Duration(seconds: 60),
-        )) {
-          sink.add(chunk);
-          received += chunk.length;
-          final percent = (received * 100 ~/ _baseModelBytes).clamp(0, 100);
-          if (percent != lastReportedPercent) {
-            lastReportedPercent = percent;
-            onProgress?.call(percent / 100.0);
-          }
-        }
-        await sink.flush();
-        await sink.close();
-        sink = null;
-
-        final actualBytes = await partial.length();
-        if (actualBytes == _baseModelBytes &&
-            await _sha256File(partial) == _baseModelSha256) {
-          await partial.rename(model.path);
-          onProgress?.call(1.0);
-          return;
-        }
-
-        if (actualBytes >= _baseModelBytes) {
-          await partial.delete();
-          throw const FormatException(
-            'Whisper Base model failed exact size/SHA-256 verification.',
-          );
-        }
-        throw HttpException(
-          'Whisper Base download incomplete: $actualBytes/$_baseModelBytes bytes.',
-        );
-      } catch (error) {
-        lastError = error;
-        try {
-          await sink?.close();
-        } catch (_) {}
-        if (attempt < 3) {
-          await Future<void>.delayed(Duration(seconds: attempt * 2));
-        }
-      }
+    // Bundled APK asset: copy locally because flutter_whisper requires a file path.
+    final data = await rootBundle.load('assets/voice_models/ggml-base.bin');
+    final bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+    if (bytes.length != _baseModelBytes ||
+        sha256.convert(bytes).toString() != _baseModelSha256) {
+      throw const FormatException('Bundled Whisper Base model failed size/SHA-256 verification.');
     }
-
-    throw StateError(
-      'تعذر تنزيل نموذج Whisper Base والتحقق من سلامته بعد 3 محاولات: $lastError',
-    );
+    final partial = File('${model.path}.part');
+    await partial.writeAsBytes(bytes, flush: true);
+    if (!await _isVerifiedModel(partial)) {
+      await partial.delete();
+      throw const FormatException('Copied Whisper Base model failed verification.');
+    }
+    if (await model.exists()) await model.delete();
+    await partial.rename(model.path);
+    onProgress?.call(1.0);
   }
-
   Future<bool> _isVerifiedModel(File file) async {
     if (!await file.exists()) return false;
     if (await file.length() != _baseModelBytes) return false;
