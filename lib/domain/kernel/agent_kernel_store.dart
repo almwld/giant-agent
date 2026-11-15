@@ -1075,8 +1075,8 @@ class AgentKernelStore {
       // its external side effects may already have happened.
       final sideEffectsStarted = priorEvents.any((row) {
         final type = row['type']?.toString() ?? '';
-        return type == 'tool_call_started' ||
-            type.startsWith('subagent_started') ||
+        return type.startsWith('tool_call_') ||
+            type.startsWith('subagent_') ||
             type == 'tool_output' ||
             type == 'file_created' ||
             type == 'file_updated';
