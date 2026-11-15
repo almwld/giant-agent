@@ -81,7 +81,7 @@ class _ProHomeShellState extends State<ProHomeShell> {
           decoration: BoxDecoration(
             color: ProTheme.bgCard,
             border: Border(
-              top: BorderSide(color: ProTheme.textSecondary.withValues(alpha: .18)),
+              top: BorderSide(color: ProTheme.textSecondary.withOpacity(.18)),
             ),
           ),
           child: SingleChildScrollView(
@@ -105,7 +105,7 @@ class _ProHomeShellState extends State<ProHomeShell> {
                       margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
                       decoration: BoxDecoration(
                         color: selected
-                            ? ProTheme.neonGreen.withValues(alpha: .12)
+                            ? ProTheme.neonGreen.withOpacity(.12)
                             : Colors.transparent,
                         borderRadius: BorderRadius.circular(14),
                       ),
