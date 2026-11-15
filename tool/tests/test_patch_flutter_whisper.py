@@ -77,6 +77,37 @@ static void parse_json() {}
                 PATCHER.patch_whisper_context_libraries(root)
 
 
+
+    def test_corrects_multilingual_base_model_metadata(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            model = root / "lib/src/whisper_model.dart"
+            model.parent.mkdir(parents=True)
+            model.write_text(
+                "WhisperModel.base => 149544538,\\n"
+                "WhisperModel.base => '143 MB',\\n"
+                "/// ~75 MB, English-only, fast with balanced accuracy (~250 MB RAM required).\\n"
+                "this != WhisperModel.tiny && this != WhisperModel.base;\\n",
+                encoding="utf-8",
+            )
+            self.assertTrue(PATCHER.patch_whisper_model_metadata(root))
+            patched = model.read_text(encoding="utf-8")
+            self.assertIn("WhisperModel.base => 147951465,", patched)
+            self.assertIn("WhisperModel.base => '148 MB',", patched)
+            self.assertIn("~148 MB, multilingual", patched)
+            self.assertIn("this != WhisperModel.tiny;", patched)
+            self.assertFalse(PATCHER.patch_whisper_model_metadata(root))
+
+    def test_rejects_unrecognized_base_model_metadata(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            model = root / "lib/src/whisper_model.dart"
+            model.parent.mkdir(parents=True)
+            model.write_text("unrecognized model metadata", encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "Unexpected flutter_whisper model metadata"):
+                PATCHER.patch_whisper_model_metadata(root)
+
+
     def test_flutter_316_widget_patch_is_safe_and_idempotent(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
