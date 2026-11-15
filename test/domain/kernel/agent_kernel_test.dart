@@ -245,6 +245,37 @@ void main() {
     }
   });
 
+  test('blocks a transient retry after a tool side effect has started', () async {
+    final directory = await _tempDirectory();
+    var executions = 0;
+    final store = await _store('${directory.path}/retry-side-effect.db');
+    final kernel = AgentKernel(
+      store: store,
+      executor: (request) async {
+        executions++;
+        await store.appendRequestEvent({
+          'id': 'tool-started-${executions}',
+          'request_id': request.id,
+          'type': 'tool_call_started',
+          'status': 'running',
+        });
+        throw const RetryableKernelFailure('provider timeout after tool');
+      },
+    );
+    try {
+      final result = await kernel.submit(id: 'unsafe-retry', prompt: 'may have side effects')
+          .timeout(const Duration(seconds: 5));
+      expect(executions, 1);
+      expect(result.status, 'failed');
+      expect(result.attempts, 1);
+      final events = await kernel.eventsFor('unsafe-retry');
+      expect(events.map((event) => event.type), contains('request_retry_blocked_after_side_effect'));
+    } finally {
+      await kernel.dispose();
+      await directory.delete(recursive: true);
+    }
+  });
+
   test('marks a transient failure terminal after the third attempt', () async {
     final directory = await _tempDirectory();
     var executions = 0;
