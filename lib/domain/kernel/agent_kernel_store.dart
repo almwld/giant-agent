@@ -1017,7 +1017,10 @@ class AgentKernelStore {
           'status': 'running',
           'started_at': now,
           'updated_at': now,
-          'attempts': 1,
+          'attempts': (Sqflite.firstIntValue(await txn.rawQuery(
+                'SELECT attempts FROM agent_requests WHERE id = ?',
+                [id],
+              )) ?? 0) + 1,
           'error': null,
         },
         where: "id = ? AND status = 'queued'",
@@ -1036,6 +1039,85 @@ class AgentKernelStore {
 
   Future<void> fail(String id, Object error) =>
       _finish(id, 'failed', error: error.toString());
+
+  /// Records a classified transient failure and requeues the same request
+  /// only while its durable attempt count remains below the bounded limit.
+  /// Returns true only when a retry was committed to SQLite.
+  Future<bool> retryOrFail(
+    String id,
+    Object error, {
+    required int maxAttempts,
+  }) async {
+    if (maxAttempts < 1 || maxAttempts > 3) {
+      throw ArgumentError.value(maxAttempts, 'maxAttempts', 'Must be between 1 and 3.');
+    }
+    final db = await database;
+    final now = DateTime.now().toUtc().toIso8601String();
+    return db.transaction((txn) async {
+      final rows = await txn.query(
+        'agent_requests',
+        columns: ['attempts', 'status'],
+        where: 'id = ?',
+        whereArgs: [id],
+        limit: 1,
+      );
+      if (rows.isEmpty || rows.single['status'] != 'running') {
+        throw StateError('Request $id is not running.');
+      }
+      final attempts = (rows.single['attempts'] as num?)?.toInt() ?? 1;
+      final priorEvents = await txn.query(
+        'agent_events',
+        columns: ['type'],
+        where: 'request_id = ?',
+        whereArgs: [id],
+      );
+      // A whole-request retry is unsafe after any tool or child started:
+      // its external side effects may already have happened.
+      final sideEffectsStarted = priorEvents.any((row) {
+        final type = row['type']?.toString() ?? '';
+        return type.startsWith('tool_call_') ||
+            type.startsWith('subagent_') ||
+            type == 'tool_output' ||
+            type == 'file_created' ||
+            type == 'file_updated';
+      });
+      final retry = attempts < maxAttempts && !sideEffectsStarted;
+      final nextStatus = retry ? 'queued' : 'failed';
+      final changed = await txn.update(
+        'agent_requests',
+        <String, Object?>{
+          'status': nextStatus,
+          'error': error.toString(),
+          'completed_at': retry ? null : now,
+          'updated_at': now,
+        },
+        where: "id = ? AND status = 'running'",
+        whereArgs: [id],
+      );
+      if (changed != 1) {
+        throw StateError('Request $id changed during retry classification.');
+      }
+      await _appendEvent(
+        txn,
+        id,
+        retry
+            ? 'request_retry_scheduled'
+            : sideEffectsStarted
+                ? 'request_retry_blocked_after_side_effect'
+                : 'request_failed',
+        nextStatus,
+        <String, Object?>{
+          'error': error.toString(),
+          'attempt': attempts,
+          'max_attempts': maxAttempts,
+          'retryable': true,
+          'side_effects_started': sideEffectsStarted,
+        },
+        now,
+      );
+      return retry;
+    });
+  }
 
   Future<void> _finish(
     String id,

@@ -66,6 +66,9 @@ class ProControlCenter extends ChangeNotifier {
     try {
       await _agent.initialize();
       await _tasks.initialize();
+      // Refresh every AgentsOS panel from the same durable runtime snapshot.
+      // TaskManager's local list is only a UI cache, never a second authority.
+      await _tasks.refreshFromStore();
       _listenForRuntimeChanges();
       final results = await Future.wait<Object>([
         _agent.observabilitySummaryForConversation('global'),
@@ -98,7 +101,8 @@ class ProControlCenter extends ChangeNotifier {
     return accepted;
   }
 
-  bool get isTaskExecuting => _tasks.isExecuting;
+  // Derive active state from the persisted task projection, not a process-local flag.
+  bool get isTaskExecuting => tasks.any((task) => task['status'] == 'running');
 
   Future<bool> cancelCurrentTask() async {
     final accepted = await _tasks.cancelTask();

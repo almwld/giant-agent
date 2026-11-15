@@ -225,9 +225,9 @@ jobs:
 
 
   gain-pty-emulator:
-    name: Android emulator Gain PTY and Whisper Arabic inference smoke tests
+    name: Android emulator Gain PTY, Whisper ASR and Nabra TTS smoke tests
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 55
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

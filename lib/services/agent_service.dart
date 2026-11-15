@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'dart:io';
+
+import 'package:http/http.dart' as http;
 import '../agent/architecture/agent_kernel.dart' as execution;
 import '../agent/architecture/agent_timeline_event.dart';
 import '../agent/architecture/agent_event_bus.dart';
@@ -81,6 +84,14 @@ class AgentService {
         failure: error.toString(),
       );
       await instance._flushExecutionJournal();
+      // Only classify transport-level failures. The SQLite store independently
+      // blocks whole-request retries once any tool/subagent side effect started.
+      if (error is TimeoutException ||
+          error is SocketException ||
+          error is HttpException ||
+          error is http.ClientException) {
+        throw durable.RetryableKernelFailure(error.toString());
+      }
       rethrow;
     }
     await instance._flushExecutionJournal();

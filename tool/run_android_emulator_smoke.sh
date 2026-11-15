@@ -1,17 +1,19 @@
 #!/usr/bin/env bash
-# Run both emulator smoke tests and retain diagnostics without losing shell state.
+# Run emulator runtime, Whisper ASR and Nabra TTS tests; retain diagnostics.
 set +e
 flutter test integration_test/gain_pty_emulator_smoke_test.dart -d emulator-5554
 pty_status=$?
 flutter test integration_test/whisper_arabic_emulator_smoke_test.dart -d emulator-5554
 whisper_status=$?
+flutter test integration_test/nabra_tts_emulator_smoke_test.dart -d emulator-5554
+nabra_status=$?
 test_status=0
-if [ "$pty_status" -ne 0 ] || [ "$whisper_status" -ne 0 ]; then
+if [ "$pty_status" -ne 0 ] || [ "$whisper_status" -ne 0 ] || [ "$nabra_status" -ne 0 ]; then
   test_status=1
 fi
 
-echo "===== WHISPER / ANDROID LINKER LOGCAT ====="
-adb -s emulator-5554 logcat -d -v threadtime | grep -E -i 'WHISPER_|FlutterWhisper|UnsatisfiedLinkError|dlopen failed|linker|whisper|ggml' | tail -n 300 || true
+echo "===== VOICE / ANDROID LINKER LOGCAT ====="
+adb -s emulator-5554 logcat -d -v threadtime | grep -E -i 'WHISPER_|NABRA_|FlutterWhisper|UnsatisfiedLinkError|dlopen failed|linker|whisper|ggml|sherpa' | tail -n 300 || true
 
 echo "===== DEBUG APK NATIVE LIBRARY CONTENTS ====="
 debug_apk=build/app/outputs/flutter-apk/app-debug.apk

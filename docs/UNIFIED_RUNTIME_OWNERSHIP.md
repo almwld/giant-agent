@@ -1,18 +1,19 @@
 # Unified Runtime Ownership
 
-This document records the operational ownership boundaries on
-`integration/unified-agent-runtime-v2`. It is an implementation map, not a
-claim that device validation or every optional capability is complete.
+This document records the operational ownership boundaries used by `main`.
+SQLite is the only durable authority for request/task lifecycle state. This is
+an implementation map, not a claim that device validation or every optional
+capability is complete.
 
 ## Canonical ownership
 
 | Capability | Canonical owner | Integration contract |
 | --- | --- | --- |
 | Application task admission | `AgentService` | The only application-facing request boundary. |
-| Durable request queue and recovery | `domain/kernel/AgentKernel` + `AgentKernelStore` | SQLite owns FIFO sequence, request projection, append-only event journal, output artifacts and restart reconciliation. |
-| Actual execution | `agent/architecture/AgentKernel` | Existing process-wide execution kernel owns planner, model facade, tool execution and cancellation. |
+| Durable request queue and recovery | `domain/kernel/AgentKernel` + `AgentKernelStore` | SQLite alone owns FIFO sequence, request status, attempt count, append-only event journal, output artifacts and restart reconciliation. |
+| Volatile execution adapter | `agent/architecture/AgentKernel` | Runs the active planner/model/tool invocation and scoped cancellation handles only. Its in-memory active flag is diagnostic/transient; it is not a request-status authority and is never used for recovery or AgentsOS status. |
 | Model/runtime selection | `ModelService` + `ModelProviderSettings` + `OpenAICompatibleProvider` | Local GGUF and OpenRouter are provider modes behind the existing model facade; do not instantiate another inference runtime in services. |
-| Agent lifecycle and UI event fan-out | `AgentEventBus` | Stable request/session/task/step/tool-call correlation; token deltas are excluded from the durable journal. |
+| Agent lifecycle and UI event fan-out | `AgentEventBus` + `AgentService` journal subscriber | Events are append-projected into the same SQLite store; token deltas are excluded. EventBus is transport, not state authority. |
 | Timeline and Gain diagnostics | `AgentService` + `AgentKernelObservability` | Read the canonical kernel database; cursor pagination is based on immutable event row IDs. |
 | MCP sessions and remote tools | `McpClient` | Owns MCP server configuration/session lifecycle only; it never owns inference. Tool results retain content blocks, structured content and metadata. |
 | Tool cancellation | `AgentService.cancelToolCall` -> `ModelService` | Cancellation is scoped by independent `tool_call_id`; do not substitute request IDs. |
@@ -48,6 +49,17 @@ barge-in is gated on reported AEC availability, with manual interruption as a
 fallback. Platform effect quality remains device/route dependent; neural VAD,
 custom software AEC and device-specific latency/thermal qualification are not
 claimed complete.
+
+## Durable retry contract
+
+Only an executor error explicitly wrapped as `RetryableKernelFailure` is
+eligible for automatic retry. The ceiling is three total attempts, the attempt
+counter and retry/failure transitions are committed transactionally to SQLite,
+and each retry is appended to the immutable event journal. Unclassified errors
+fail immediately. `KernelRequestInterrupted` and work interrupted by process
+death are never automatically retried because prior external side effects may
+be ambiguous. UI caches in `TaskManager` are refreshed from SQLite and must not
+normalize a live `running` row into a recovered `paused` state.
 
 ## Safe extension rules
 

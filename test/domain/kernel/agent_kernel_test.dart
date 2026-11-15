@@ -206,4 +206,125 @@ void main() {
       await directory.delete(recursive: true);
     }
   });
+
+  test('retries only explicitly classified transient failures within a durable bound', () async {
+    final directory = await _tempDirectory();
+    var executions = 0;
+    final kernel = AgentKernel(
+      store: await _store('${directory.path}/retry.db'),
+      executor: (request) async {
+        executions++;
+        if (executions < 3) {
+          throw const RetryableKernelFailure('temporary provider timeout');
+        }
+        return 'recovered';
+      },
+    );
+    try {
+      final result = await kernel.submit(id: 'retry-me', prompt: 'retry safely')
+          .timeout(const Duration(seconds: 5));
+      expect(executions, 3);
+      expect(result.status, 'completed');
+      expect(result.attempts, 3);
+      expect(result.result, 'recovered');
+      expect(
+        (await kernel.eventsFor('retry-me')).map((event) => event.type),
+        [
+          'request_queued',
+          'request_started',
+          'request_retry_scheduled',
+          'request_started',
+          'request_retry_scheduled',
+          'request_started',
+          'request_completed',
+        ],
+      );
+    } finally {
+      await kernel.dispose();
+      await directory.delete(recursive: true);
+    }
+  });
+
+  test('blocks a transient retry after a tool side effect has started', () async {
+    final directory = await _tempDirectory();
+    var executions = 0;
+    final store = await _store('${directory.path}/retry-side-effect.db');
+    final kernel = AgentKernel(
+      store: store,
+      executor: (request) async {
+        executions++;
+        await store.appendRequestEvent({
+          'id': 'tool-started-$executions',
+          'request_id': request.id,
+          'type': 'tool_call_started',
+          'status': 'running',
+        });
+        throw const RetryableKernelFailure('provider timeout after tool');
+      },
+    );
+    try {
+      final result = await kernel.submit(id: 'unsafe-retry', prompt: 'may have side effects')
+          .timeout(const Duration(seconds: 5));
+      expect(executions, 1);
+      expect(result.status, 'failed');
+      expect(result.attempts, 1);
+      final events = await kernel.eventsFor('unsafe-retry');
+      expect(events.map((event) => event.type), contains('request_retry_blocked_after_side_effect'));
+    } finally {
+      await kernel.dispose();
+      await directory.delete(recursive: true);
+    }
+  });
+
+  test('marks a transient failure terminal after the third attempt', () async {
+    final directory = await _tempDirectory();
+    var executions = 0;
+    final kernel = AgentKernel(
+      store: await _store('${directory.path}/retry-exhausted.db'),
+      executor: (_) async {
+        executions++;
+        throw const RetryableKernelFailure('provider unavailable');
+      },
+    );
+    try {
+      final result = await kernel.submit(id: 'retry-exhausted', prompt: 'bounded retry')
+          .timeout(const Duration(seconds: 5));
+      expect(executions, 3);
+      expect(result.status, 'failed');
+      expect(result.attempts, 3);
+      final events = await kernel.eventsFor('retry-exhausted');
+      expect(events.where((event) => event.type == 'request_retry_scheduled'), hasLength(2));
+      expect(events.last.type, 'request_failed');
+    } finally {
+      await kernel.dispose();
+      await directory.delete(recursive: true);
+    }
+  });
+
+  test('does not retry unclassified failures or interruptions', () async {
+    final directory = await _tempDirectory();
+    var executions = 0;
+    final kernel = AgentKernel(
+      store: await _store('${directory.path}/no-retry.db'),
+      executor: (_) async {
+        executions++;
+        throw StateError('unclassified failure');
+      },
+    );
+    try {
+      final result = await kernel.submit(id: 'no-retry', prompt: 'do not replay')
+          .timeout(const Duration(seconds: 5));
+      expect(executions, 1);
+      expect(result.status, 'failed');
+      expect(result.attempts, 1);
+      expect((await kernel.eventsFor('no-retry')).map((event) => event.type), [
+        'request_queued',
+        'request_started',
+        'request_failed',
+      ]);
+    } finally {
+      await kernel.dispose();
+      await directory.delete(recursive: true);
+    }
+  });
 }
