@@ -62,9 +62,9 @@ void main() {
           '',
         );
         expect(
-          normalizedTranscript.runes.length,
-          greaterThanOrEqualTo(2),
-          reason: 'The emulator must produce a non-empty Arabic transcription; exact word accuracy is validated separately with recorded speech, not a synthetic eSpeak fixture.',
+          normalizedTranscript,
+          contains('السلام'),
+          reason: 'The Arabic fixture contains the spoken greeting "السلام عليكم"; the transcript must retain its key word.',
         );
       } finally {
         if (await wav.exists()) await wav.delete();
