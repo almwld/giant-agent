@@ -134,7 +134,11 @@ jobs:
             apk="$1"
             abi="$2"
             unzip -l "$apk" | grep -q "lib/$abi/libwhisper.so" || {
-              echo "Missing Whisper JNI engine libwhisper.so for $abi in $apk"
+              echo "Missing upstream Whisper engine libwhisper.so for $abi in $apk"
+              exit 1
+            }
+            unzip -l "$apk" | grep -q "lib/$abi/libwhisper_jni.so" || {
+              echo "Missing JNI bridge libwhisper_jni.so for $abi in $apk"
               exit 1
             }
             unzip -l "$apk" | grep -q "lib/$abi/libggml.so" || {
@@ -315,9 +319,13 @@ jobs:
           root = Path(unquote(uri.path)) if uri.scheme == 'file' else (config.parent / entry['rootUri']).resolve()
           native = root / 'android/src/main/cpp/whisper_jni.cpp'
           cmake = root / 'third_party/whisper.cpp/CMakeLists.txt'
+          plugin_cmake = root / 'android/src/main/cpp/CMakeLists.txt'
+          context = root / 'android/src/main/kotlin/io/github/govindtank/flutter_whisper/WhisperContext.kt'
           gradle = root / 'android/build.gradle'
           native_source = native.read_text()
           assert native.is_file() and 'GIANT_AGENT_WAV_ONLY_DECODER' in native_source
+          assert 'OUTPUT_NAME whisper_jni' in plugin_cmake.read_text(), 'JNI bridge must not collide with upstream libwhisper.so'
+          assert 'System.loadLibrary("whisper_jni")' in context.read_text(), 'Kotlin must load the distinct JNI bridge'
           for method in ('nativeInit', 'nativeTranscribe', 'nativeCancel', 'nativeFree'):
               assert f'Java_io_github_govindtank_flutter_1whisper_WhisperContext_{method}' in native_source, f'JNI export is not correctly mangled: {method}'
           assert cmake.is_file(), 'whisper.cpp native source tree was not provisioned'
@@ -352,13 +360,13 @@ jobs:
             adb -s emulator-5554 logcat -d -v threadtime | grep -E -i 'WHISPER_|FlutterWhisper|UnsatisfiedLinkError|dlopen failed|linker|whisper|ggml' | tail -n 300 || true
             echo "===== DEBUG APK NATIVE LIBRARY CONTENTS ====="
             debug_apk=build/app/outputs/flutter-apk/app-debug.apk
-            test ! -f "$debug_apk" || unzip -Z1 "$debug_apk" | grep -E "^lib/(x86_64|arm64-v8a)/lib(whisper|ggml.*)[.]so$" | sort || true
+            test ! -f "$debug_apk" || unzip -Z1 "$debug_apk" | grep -E "^lib/(x86_64|arm64-v8a)/lib(whisper|whisper_jni|ggml.*)[.]so$" | sort || true
             if [ -f "$debug_apk" ]; then
-              unzip -p "$debug_apk" lib/x86_64/libwhisper.so > /tmp/libwhisper.so
+              unzip -p "$debug_apk" lib/x86_64/libwhisper_jni.so > /tmp/libwhisper_jni.so
               for method in nativeInit nativeTranscribe nativeCancel nativeFree; do
                 symbol="Java_io_github_govindtank_flutter_1whisper_WhisperContext_${method}"
-                if ! readelf -Ws /tmp/libwhisper.so | grep -Fq "$symbol"; then
-                  echo "Missing JNI export in libwhisper.so: $symbol"
+                if ! readelf -Ws /tmp/libwhisper_jni.so | grep -Fq "$symbol"; then
+                  echo "Missing JNI export in libwhisper_jni.so: $symbol"
                   test_status=1
                 else
                   echo "JNI_EXPORT_OK: $symbol"
@@ -377,6 +385,6 @@ jobs:
             exit 1
           fi
           unzip -Z1 "$apk" | grep -E "^lib/x86_64/lib(whisper|whisper_jni)[.]so$" | sort
-          unzip -p "$apk" lib/x86_64/libwhisper.so > /tmp/libwhisper.so
-          echo "===== DYNAMIC JNI SYMBOLS IN PACKAGED libwhisper.so ====="
-          readelf -Ws /tmp/libwhisper.so | grep -E "Java_io_github_govindtank_flutter(_1)?whisper_WhisperContext_native" || true
+          unzip -p "$apk" lib/x86_64/libwhisper_jni.so > /tmp/libwhisper_jni.so
+          echo "===== DYNAMIC JNI SYMBOLS IN PACKAGED libwhisper_jni.so ====="
+          readelf -Ws /tmp/libwhisper_jni.so | grep -E "Java_io_github_govindtank_flutter(_1)?whisper_WhisperContext_native" || true
