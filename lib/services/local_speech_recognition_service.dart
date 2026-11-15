@@ -121,12 +121,17 @@ class LocalSpeechRecognitionService {
           mode: offset > 0 ? FileMode.append : FileMode.write,
         );
         var received = offset;
+        var lastReportedPercent = -1;
         await for (final chunk in response.stream.timeout(
           const Duration(seconds: 60),
         )) {
           sink.add(chunk);
           received += chunk.length;
-          onProgress?.call((received / _baseModelBytes).clamp(0.0, 1.0).toDouble());
+          final percent = (received * 100 ~/ _baseModelBytes).clamp(0, 100);
+          if (percent != lastReportedPercent) {
+            lastReportedPercent = percent;
+            onProgress?.call(percent / 100.0);
+          }
         }
         await sink.flush();
         await sink.close();
