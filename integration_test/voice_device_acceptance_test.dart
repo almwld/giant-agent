@@ -42,7 +42,7 @@ void main() {
         .timeout(const Duration(minutes: 4));
     ttsWatch.stop();
 
-    final rssAfter = ProcessInfo.currentRss;
+    final rssAfterTts = ProcessInfo.currentRss;
     print('DEVICE_VOICE_ACCEPTANCE: ${{
       'device': Platform.operatingSystem,
       'asr_ms': asrWatch.elapsedMilliseconds,
