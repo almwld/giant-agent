@@ -315,6 +315,7 @@ jobs:
           api-level: 30
           target: google_apis
           arch: x86_64
+          cores: 4
           profile: pixel_2
           emulator-boot-timeout: 900
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot -wipe-data -cores 4 -memory 6144
@@ -331,18 +332,18 @@ jobs:
             echo "===== DEBUG APK NATIVE LIBRARY CONTENTS ====="
             debug_apk=build/app/outputs/flutter-apk/app-debug.apk
             test ! -f "$debug_apk" || unzip -Z1 "$debug_apk" | grep -E "^lib/(x86_64|arm64-v8a)/lib(whisper|whisper_jni|ggml.*)[.]so$" | sort || true
-            if [ -f "$debug_apk" ]; then
-              unzip -p "$debug_apk" lib/x86_64/libwhisper_jni.so > /tmp/libwhisper_jni.so
-              for method in nativeInit nativeTranscribe nativeCancel nativeFree; do
-                symbol="Java_io_github_govindtank_flutter_1whisper_WhisperContext_${method}"
-                if ! readelf -Ws /tmp/libwhisper_jni.so | grep -Fq "$symbol"; then
-                  echo "Missing JNI export in libwhisper_jni.so: $symbol"
-                  test_status=1
-                else
-                  echo "JNI_EXPORT_OK: $symbol"
-                fi
-              done
-            fi
+            test -f "$debug_apk" || {
+              echo "Debug APK was not produced; JNI exports cannot be inspected."
+              test_status=1
+            }
+            test ! -f "$debug_apk" || unzip -p "$debug_apk" lib/x86_64/libwhisper_jni.so > /tmp/libwhisper_jni.so || test_status=1
+            for method in nativeInit nativeTranscribe nativeCancel nativeFree; do
+              symbol="Java_io_github_govindtank_flutter_1whisper_WhisperContext_${method}"
+              readelf -Ws /tmp/libwhisper_jni.so 2>/dev/null | grep -Fq "$symbol" || {
+                echo "Missing JNI export in libwhisper_jni.so: $symbol"
+                test_status=1
+              }
+            done
             exit "$test_status"
 
       - name: Inspect packaged Whisper JNI symbols even after smoke-test failure
