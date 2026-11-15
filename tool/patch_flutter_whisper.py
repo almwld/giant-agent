@@ -275,7 +275,7 @@ def patch_whisper_model_metadata(root: Path) -> bool:
         elif new not in source:
             raise RuntimeError(f"Unexpected flutter_whisper model metadata; missing expected declaration: {old}")
     if changed:
-        model.write_text(source, encoding="utf-8", newline="\\n")
+        model.write_text(source, encoding="utf-8")
         print(f"Patched {model}: pin exact multilingual Base metadata (147,951,465 bytes).")
     return changed
 
