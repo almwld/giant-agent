@@ -21,6 +21,10 @@ class DynamicSubagentRecord {
     this.result,
     this.error,
     this.dismissed = false,
+    this.icon = 'smart_toy',
+    this.motto = '',
+    this.index = 0,
+    this.isAsync = false,
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now().toUtc();
 
@@ -38,6 +42,10 @@ class DynamicSubagentRecord {
   String? result;
   String? error;
   bool dismissed;
+  final String icon;
+  final String motto;
+  final int index;
+  bool isAsync;
 
   String get wireStatus => switch (status) {
         'idle' => 'STATUS_IDLE',
@@ -64,6 +72,10 @@ class DynamicSubagentRecord {
         result: map['result']?.toString(),
         error: map['error']?.toString(),
         dismissed: map['dismissed'] == true,
+        icon: map['icon']?.toString() ?? 'smart_toy',
+        motto: map['motto']?.toString() ?? '',
+        index: map['index'] is num ? (map['index'] as num).toInt() : 0,
+        isAsync: map['is_async'] == true,
         createdAt: DateTime.tryParse(map['created_at']?.toString() ?? ''),
       );
 
@@ -82,6 +94,10 @@ class DynamicSubagentRecord {
         'result': result,
         'error': error,
         'dismissed': dismissed,
+        'icon': icon,
+        'motto': motto,
+        'index': index,
+        'is_async': isAsync,
         'created_at': createdAt.toIso8601String(),
       };
 }
@@ -183,6 +199,9 @@ class SubagentLifecycleManager {
     required String agentType,
     List<String> dependsOn = const <String>[],
     String? creatorTaskId,
+    String icon = 'smart_toy',
+    String motto = '',
+    int? index,
   }) async {
     await restoreRequest(requestId);
     if (requestId.trim().isEmpty ||
@@ -194,7 +213,9 @@ class SubagentLifecycleManager {
       throw StateError('A child agent cannot create another child agent.');
     }
     if (title.trim().isEmpty || title.length > 100 ||
-        prompt.trim().isEmpty || prompt.length > 1200) {
+        prompt.trim().isEmpty || prompt.length > 1200 ||
+        icon.trim().isEmpty || icon.length > 48 || motto.length > 160 ||
+        (index != null && (index < 0 || index > maxChildrenPerRequest - 1))) {
       throw ArgumentError('Subagent title or prompt is empty or exceeds its limit.');
     }
     if (!const {'explore', 'plan', 'coder', 'reviewer'}.contains(agentType)) {
@@ -222,6 +243,9 @@ class SubagentLifecycleManager {
       prompt: prompt.trim(),
       agentType: agentType,
       dependsOn: List<String>.unmodifiable(dependsOn),
+      icon: icon.trim(),
+      motto: motto.trim(),
+      index: index ?? children.length,
     );
     children[id] = record;
     await _persistRequest(requestId);
@@ -231,6 +255,60 @@ class SubagentLifecycleManager {
 
   DynamicSubagentRecord? get(String requestId, String agentId) =>
       _requests[requestId]?[agentId];
+
+  DynamicSubagentRecord? findByTaskId(String taskId) {
+    for (final records in _requests.values) {
+      for (final record in records.values) {
+        if (record.taskId == taskId) return record;
+      }
+    }
+    return null;
+  }
+
+  /// Durably queues a child for execution by the shared AgentKernel FIFO.
+  /// The caller must not start a second model runtime or launch a detached Future.
+  Future<DynamicSubagentRecord> enqueueBackground(
+    String requestId,
+    String agentId,
+  ) async {
+    await restoreRequest(requestId);
+    final record = _require(requestId, agentId);
+    if (record.dismissed) throw StateError('Subagent was dismissed.');
+    if (record.status != 'idle' && record.status != 'pending') {
+      throw StateError('Only an idle or pending subagent can be queued.');
+    }
+    for (final dependencyId in record.dependsOn) {
+      final dependency = _require(requestId, dependencyId);
+      if (dependency.status != 'completed') {
+        throw StateError('Dependency $dependencyId has not completed.');
+      }
+    }
+    if (record.isAsync && record.status == 'pending') return record;
+    record
+      ..status = 'pending'
+      ..isAsync = true
+      ..progressPercent = null
+      ..error = null;
+    await _persistRequest(requestId);
+    await _emit(record, 'subagent_queued',
+        details: 'أضيف الوكيل إلى طابور التنفيذ الدائم المشترك.');
+    return record;
+  }
+
+  /// Cancels a queued child without removing its durable audit history.
+  Future<bool> cancelQueuedByTaskId(String taskId) async {
+    final record = findByTaskId(taskId);
+    if (record == null || record.status != 'pending' || !record.isAsync) {
+      return false;
+    }
+    record
+      ..status = 'cancelled'
+      ..error = 'Cancelled before execution.';
+    await _persistRequest(record.parentRequestId);
+    await _emit(record, 'subagent_cancelled',
+        details: 'أُلغي الوكيل قبل سحبه من طابور التنفيذ.');
+    return true;
+  }
 
   List<DynamicSubagentRecord> forRequest(String requestId) =>
       List<DynamicSubagentRecord>.unmodifiable(
@@ -293,8 +371,10 @@ class SubagentLifecycleManager {
     Object error, {
     bool interrupted = false,
   }) async {
+    await restoreRequest(requestId);
     final record = _require(requestId, agentId);
-    if (record.status != 'running') return;
+    if (record.status != 'running' &&
+        !(record.status == 'pending' && record.isAsync)) return;
     record
       ..status = interrupted ? 'interrupted' : 'failed'
       ..error = error.toString();
@@ -405,6 +485,31 @@ class SubagentLifecycleManager {
     return message;
   }
 
+  /// Persists a truthful progress snapshot for a running child.
+  /// 100 is reserved for complete(); callers may report 0..99 while running.
+  Future<void> updateProgress(
+    String requestId,
+    String agentId,
+    int progressPercent, {
+    String? details,
+  }) async {
+    await restoreRequest(requestId);
+    if (progressPercent < 0 || progressPercent > 99) {
+      throw ArgumentError.value(progressPercent, 'progressPercent',
+          'Progress updates must be between 0 and 99; completion owns 100.');
+    }
+    final record = _require(requestId, agentId);
+    if (record.status != 'running') {
+      throw StateError('Progress can only be updated for a running subagent.');
+    }
+    record.progressPercent = progressPercent;
+    await _persistRequest(requestId);
+    await _emit(record, 'subagent_progress',
+        details: details == null || details.trim().isEmpty
+            ? 'التقدم: $progressPercent%'
+            : details.trim().substring(0, details.trim().length.clamp(0, 500).toInt()));
+  }
+
   Future<void> updateGoal(String requestId, String goal) async {
     await restoreRequest(requestId);
     final normalized = goal.trim();
@@ -442,9 +547,14 @@ class SubagentLifecycleManager {
             'session_id': record.conversationId,
             'chat_id': record.conversationId,
             'agent_id': record.taskId,
+            'subagent_id': record.id,
+            'is_async': record.isAsync,
             'task_id': record.taskId,
             'agent_type': record.agentType,
             'title': record.title,
+            'icon': record.icon,
+            'motto': record.motto,
+            'index': record.index,
             'task_prompt': record.prompt,
             'depends_on': record.dependsOn.map((id) => '${record.parentRequestId}_dynamic_$id').toList(growable: false),
             'type': type,
