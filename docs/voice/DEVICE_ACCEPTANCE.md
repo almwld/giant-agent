@@ -5,6 +5,11 @@ for the device ABI and allowing microphone/audio permissions:
 
 ```bash
 flutter pub get
+sudo apt-get install -y espeak-ng sox
+mkdir -p integration_test/fixtures
+espeak-ng -v ar -s 125 -w integration_test/fixtures/arabic_smoke_raw.wav "السلام عليكم"
+sox integration_test/fixtures/arabic_smoke_raw.wav -r 16000 -c 1 -b 16 -e signed-integer integration_test/fixtures/arabic_smoke.wav
+rm integration_test/fixtures/arabic_smoke_raw.wav
 python3 tool/patch_flutter_whisper.py
 flutter test integration_test/voice_device_acceptance_test.dart -d <ANDROID_DEVICE_ID>
 ```
