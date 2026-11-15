@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
@@ -82,8 +83,11 @@ class LocalSpeechRecognitionService {
     if (await _isVerifiedModel(model)) return;
 
     // Bundled APK asset: copy locally because flutter_whisper requires a file path.
-    final data = await rootBundle.load('assets/voice_models/ggml-base.bin');
-    final bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+    final data = await rootBundle.load('assets/voice_models/ggml-base.bin.gz');
+    final compressed = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+    // The APK carries the model gzip-compressed at level 9; restore the exact
+    // upstream binary locally because flutter_whisper requires a real file.
+    final bytes = GZipDecoder().decodeBytes(compressed);
     if (bytes.length != _baseModelBytes ||
         sha256.convert(bytes).toString() != _baseModelSha256) {
       throw const FormatException('Bundled Whisper Base model failed size/SHA-256 verification.');
