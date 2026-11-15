@@ -252,6 +252,34 @@ def prepare_native_engine(root: Path) -> None:
     else:
         print("flutter_whisper Android ABI filters already include x86_64.")
 
+
+def patch_whisper_model_metadata(root: Path) -> bool:
+    """Correct upstream metadata: ggml-base.bin is multilingual Arabic-capable."""
+    model = root / "lib" / "src" / "whisper_model.dart"
+    if not model.is_file():
+        raise RuntimeError(f"Whisper model metadata source not found: {model}")
+    source = model.read_text(encoding="utf-8")
+    replacements = (
+        ("WhisperModel.base => 149544538,", "WhisperModel.base => 147951465,"),
+        ("WhisperModel.base => '143 MB',", "WhisperModel.base => '148 MB',"),
+        ("/// ~75 MB, English-only, fast with balanced accuracy (~250 MB RAM required).",
+         "/// ~148 MB, multilingual, fast with balanced accuracy (~250 MB RAM required)."),
+        ("this != WhisperModel.tiny && this != WhisperModel.base;",
+         "this != WhisperModel.tiny;"),
+    )
+    changed = False
+    for old, new in replacements:
+        if old in source:
+            source = source.replace(old, new, 1)
+            changed = True
+        elif new not in source:
+            raise RuntimeError(f"Unexpected flutter_whisper model metadata; missing expected declaration: {old}")
+    if changed:
+        model.write_text(source, encoding="utf-8", newline="\\n")
+        print(f"Patched {model}: pin exact multilingual Base metadata (147,951,465 bytes).")
+    return changed
+
+
 def patch_flutter_316_widget(root: Path) -> bool:
     """Patch only the optional upstream demo widget for Flutter 3.16 tests."""
     widget = root / "lib" / "src" / "widgets" / "transcription_view.dart"
@@ -276,6 +304,7 @@ def main() -> int:
         return 0
 
     prepare_native_engine(root)
+    patch_whisper_model_metadata(root)
     patch_whisper_context_libraries(root)
     patch_plugin_native_diagnostics(root)
     native = root / "android" / "src" / "main" / "cpp" / "whisper_jni.cpp"
