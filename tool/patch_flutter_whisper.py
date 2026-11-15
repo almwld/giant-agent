@@ -163,6 +163,35 @@ def patch_source(source: str) -> str:
     return source
 
 
+def patch_native_inference_threads(root: Path) -> bool:
+    """Respect available Android CPU cores instead of oversubscribing emulators.
+
+    flutter_whisper 0.2.0 hard-codes four inference threads and ignores the
+    Dart WhisperOptions. On two-core Android emulators this can starve the
+    native inference worker. Keep a conservative 1..4 thread cap.
+    """
+    native = root / "android" / "src" / "main" / "cpp" / "whisper_jni.cpp"
+    if not native.is_file():
+        raise RuntimeError(f"Whisper JNI source not found: {native}")
+    source = native.read_text(encoding="utf-8")
+    marker = "// GIANT_AGENT_CPU_AWARE_THREADS"
+    if marker in source:
+        return False
+    old = "    params.n_threads = 4;"
+    new = """    // GIANT_AGENT_CPU_AWARE_THREADS
+    const unsigned int cpu_count = std::thread::hardware_concurrency();
+    params.n_threads = static_cast<int>(
+        cpu_count == 0 ? 2u : std::max(1u, std::min(4u, cpu_count)));"""
+    if old not in source:
+        raise RuntimeError("Unexpected Whisper JNI source: hard-coded inference thread count not found.")
+    if "#include <thread>" not in source:
+        source = source.replace("#include <cstring>", "#include <cstring>\\n#include <algorithm>\\n#include <thread>", 1)
+    source = source.replace(old, new, 1)
+    native.write_text(source, encoding="utf-8", newline="\\n")
+    print("Patched Whisper inference threads: use 1-4 threads based on Android CPU cores.")
+    return True
+
+
 def patch_android_abis(gradle: str) -> str:
     """Build the Whisper JNI library for physical ARM devices and x86_64 CI emulators."""
     expected = 'abiFilters "arm64-v8a", "armeabi-v7a"'
@@ -347,6 +376,7 @@ def main() -> int:
     prepare_native_engine(root)
     patch_whisper_model_metadata(root)
     patch_whisper_context_libraries(root)
+    patch_native_inference_threads(root)
     patch_plugin_native_diagnostics(root)
     native = root / "android" / "src" / "main" / "cpp" / "whisper_jni.cpp"
     if not native.is_file():
