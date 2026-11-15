@@ -58,7 +58,7 @@ void main() {
           reason: 'The Arabic WAV must produce Arabic-script text, not merely a loaded native library.',
         ); 
         final normalizedTranscript = result.text.replaceAll(
-          RegExp(r'[^\\u0600-\\u06FF]'),
+          RegExp(r'[^\u0600-\u06FF]'),
           '',
         );
         expect(
