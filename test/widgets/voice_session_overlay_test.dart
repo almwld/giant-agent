@@ -51,7 +51,7 @@ void main() {
 
     await tester.drag(find.byType(Slider), const Offset(65, 0));
     await tester.pump();
-    await Future<void>.delayed(const Duration(milliseconds: 20));
+    await tester.pump(const Duration(milliseconds: 20));
 
     final preferences = await SharedPreferences.getInstance();
     expect(
