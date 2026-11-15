@@ -32,6 +32,14 @@ class _ProBattleCardState extends State<ProBattleCard> {
             future: _future,
             builder: (context, snapshot) {
               if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
+              if (snapshot.hasError) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text('Runtime data unavailable: ${snapshot.error}', textAlign: TextAlign.center),
+                  ),
+                );
+              }
               final metrics = _control.metrics;
               return ListView(
                 padding: const EdgeInsets.all(18),
