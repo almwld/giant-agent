@@ -256,8 +256,8 @@ def prepare_native_engine(root: Path) -> None:
 
 def patch_jni_symbol_mangling(source: str) -> str:
     """Escape the underscore in the Kotlin package name per JNI name mangling."""
-    old_prefix = "Java_io_github_govindtank_flutter_whisper_WhisperContext_native"
-    new_prefix = "Java_io_github_govindtank_flutter_1whisper_WhisperContext_native"
+    old_prefix = "Java_io_github_govindtank_flutter_whisper_WhisperContext_"
+    new_prefix = "Java_io_github_govindtank_flutter_1whisper_WhisperContext_"
     if old_prefix in source:
         source = source.replace(old_prefix, new_prefix)
         print("Patched Whisper JNI exports: escaped package underscore as _1.")
