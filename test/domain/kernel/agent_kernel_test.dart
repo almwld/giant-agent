@@ -254,7 +254,7 @@ void main() {
       executor: (request) async {
         executions++;
         await store.appendRequestEvent({
-          'id': 'tool-started-${executions}',
+          'id': 'tool-started-$executions',
           'request_id': request.id,
           'type': 'tool_call_started',
           'status': 'running',
