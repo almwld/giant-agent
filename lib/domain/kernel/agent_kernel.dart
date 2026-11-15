@@ -143,7 +143,7 @@ class AgentKernel {
               final latest = await _store.getRequest(request.id);
               final attempt = latest?.attempts ?? 1;
               await Future<void>.delayed(
-                Duration(milliseconds: 200 * (1 << (attempt - 1).clamp(0, 2))),
+                Duration(milliseconds: 200 * (1 << (attempt - 1).clamp(0, 2).toInt())),
               );
             }
           } catch (_) {
