@@ -7,6 +7,7 @@ on:
       - feat/integrated-agent-completion
       - feat/consolidate-sqlite-runtime-v2
       - integration/giant-agent-stabilization
+      - integration/ultimate-feature-unification-20261115
       - fix/voice-terminal-approval-stabilization
       - fix/openrouter-only-provider-policy
       - feat/voice-orb-in-chat-session
@@ -67,6 +68,9 @@ jobs:
 
       - name: Analyze all Flutter and Dart sources
         run: flutter analyze --no-pub
+
+      - name: Prepare APK artifact directory
+        run: mkdir -p dist
 
       - name: Build arm64-v8a release APK
         run: |

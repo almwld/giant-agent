@@ -16,7 +16,7 @@ Future<AgentKernelStore> _store(String path) async {
         version: 1,
         onConfigure: (db) async {
           await db.execute('PRAGMA foreign_keys = ON');
-          await db.execute('PRAGMA journal_mode = WAL');
+          await db.rawQuery('PRAGMA journal_mode = WAL');
           await db.execute('PRAGMA synchronous = FULL');
         },
         onCreate: (db, version) async {
@@ -283,6 +283,75 @@ void main() {
     );
     await service.disposeForTesting();
   });
+
+  test('durable kernel preserves persisted FIFO order across 50 concurrent submissions', () async {
+    final store = await _store('${directory.path}/concurrent-50.db');
+    final started = <String>[];
+    final kernel = durable.AgentKernel(
+      store: store,
+      executor: (request) async {
+        started.add(request.id);
+        return 'done:${request.id}';
+      },
+    );
+    await kernel.initialize();
+
+    final futures = List.generate(
+      50,
+      (index) => kernel.submit(
+        id: 'parallel-$index',
+        prompt: 'task-$index',
+        conversationId: 'session-${index % 4}',
+      ),
+    );
+    final completed = await Future.wait(futures).timeout(const Duration(seconds: 30));
+    final rows = await (await store.database).query(
+      'agent_requests',
+      columns: ['id', 'status', 'sequence'],
+      orderBy: 'sequence ASC',
+    );
+
+    expect(completed, hasLength(50));
+    expect(rows, hasLength(50));
+    expect(rows.every((row) => row['status'] == 'completed'), isTrue);
+    expect(
+      started,
+      rows.map((row) => row['id'] as String).toList(growable: false),
+    );
+    expect(rows.map((row) => row['sequence']).toSet(), hasLength(50));
+    await kernel.dispose();
+  });
+
+  test('concurrent duplicate request ids cannot overwrite a completion waiter', () async {
+    final store = await _store('${directory.path}/duplicate-id.db');
+    final started = Completer<void>();
+    final release = Completer<void>();
+    final kernel = durable.AgentKernel(
+      store: store,
+      executor: (request) async {
+        if (!started.isCompleted) started.complete();
+        await release.future;
+        return 'only-one';
+      },
+    );
+    await kernel.initialize();
+
+    final first = kernel.submit(id: 'same-id', prompt: 'first');
+    await started.future.timeout(const Duration(seconds: 5));
+    await expectLater(
+      kernel.submit(id: 'same-id', prompt: 'second'),
+      throwsA(isA<StateError>()),
+    );
+    release.complete();
+    expect((await first).result, 'only-one');
+    expect((await store.database).query(
+      'agent_requests',
+      where: 'id = ?',
+      whereArgs: ['same-id'],
+    ), completes);
+    await kernel.dispose();
+  });
+
 }
 
 Future<String> _requestIdForPrompt(

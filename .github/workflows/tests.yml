@@ -1,6 +1,9 @@
 name: Giant Agent Tests
 
 on:
+  push:
+    branches:
+      - integration/ultimate-feature-unification-20261115
   pull_request:
     types: [opened, reopened, synchronize, edited]
     branches:

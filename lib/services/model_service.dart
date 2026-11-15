@@ -12,6 +12,7 @@ import '../agent/task_manager.dart';
 import '../agent/architecture/agent_event_bus.dart';
 import '../agent/architecture/context_compactor.dart';
 import '../agent/architecture/tool_call_registry.dart';
+import '../agent/architecture/react_decision.dart';
 import '../agent/architecture/subagent_lifecycle_manager.dart';
 import '../domain/kernel/agent_kernel_store.dart';
 import 'agent_memory_service.dart';
@@ -244,10 +245,10 @@ class ModelService {
   }
 
   Future<bool?> _awaitToolApproval(
-    Future<bool> approval,
+    Future<bool> Function() approval,
     bool Function()? isCancelled,
   ) async {
-    if (isCancelled == null) return approval;
+    if (isCancelled == null) return approval();
     if (isCancelled()) return null;
     final result = Completer<bool?>();
     final cancellationPoll = Timer.periodic(
@@ -256,7 +257,7 @@ class ModelService {
         if (!result.isCompleted && isCancelled()) result.complete(null);
       },
     );
-    approval.then(
+    approval().then(
       (approved) {
         if (!result.isCompleted) result.complete(approved);
       },
@@ -521,7 +522,7 @@ class ModelService {
               break;
             }
             final approved = await _awaitToolApproval(
-              approval(serverId, remoteTool, remoteArguments),
+              () => approval(serverId, remoteTool, remoteArguments),
               isCancelled,
             );
             if (approved == null || isCancelled?.call() == true) {
@@ -1868,14 +1869,17 @@ $toolCatalog
                 ? 'تم إيقاف التوليد.'
                 : '${generated.trim()}\n\n[تم إيقاف التوليد]';
           }
-          final match = RegExp(r'<tool_call>\s*(\{.*?\})\s*</tool_call>', dotAll: true)
-              .firstMatch(generated);
-          if (match == null) return generated.trim();
-          final decoded = jsonDecode(match.group(1)!);
-          if (decoded is! Map<String, dynamic>) {
-            return 'تعذر تحليل استدعاء الأداة: يجب أن تكون البيانات كائن JSON.';
+          final ReactToolCall? decision;
+          try {
+            decision = ReactDecisionParser.parseToolCall(generated);
+          } on FormatException {
+            return 'تعذر تحليل استدعاء الأداة: بنية القرار غير صالحة؛ لم تُنفذ أي أداة.';
           }
-          payload = decoded;
+          if (decision == null) return generated.trim();
+          payload = <String, dynamic>{
+            'name': decision.name,
+            'arguments': decision.arguments,
+          };
         }
 
         final toolName = payload['name']?.toString() ?? '';
@@ -1888,10 +1892,7 @@ $toolCatalog
           continue;
         }
 
-        final signature = jsonEncode(<String, dynamic>{
-          'name': toolName,
-          'arguments': rawArgs,
-        });
+        final signature = ReactDecisionParser.signature(toolName, rawArgs);
         if (!executedCalls.add(signature)) {
           _emitToolEvent(
             'reflexion_failed',
