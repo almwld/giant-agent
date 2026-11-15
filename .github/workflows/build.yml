@@ -316,7 +316,10 @@ jobs:
           native = root / 'android/src/main/cpp/whisper_jni.cpp'
           cmake = root / 'third_party/whisper.cpp/CMakeLists.txt'
           gradle = root / 'android/build.gradle'
-          assert native.is_file() and 'GIANT_AGENT_WAV_ONLY_DECODER' in native.read_text()
+          native_source = native.read_text()
+          assert native.is_file() and 'GIANT_AGENT_WAV_ONLY_DECODER' in native_source
+          for method in ('nativeInit', 'nativeTranscribe', 'nativeCancel', 'nativeFree'):
+              assert f'Java_io_github_govindtank_flutter_1whisper_WhisperContext_{method}' in native_source, f'JNI export is not correctly mangled: {method}'
           assert cmake.is_file(), 'whisper.cpp native source tree was not provisioned'
           assert 'x86_64' in gradle.read_text(), 'emulator ABI is missing from Whisper plugin filters'
           print('WHISPER_NATIVE_READY: patched JNI + whisper.cpp sources + x86_64 ABI')
