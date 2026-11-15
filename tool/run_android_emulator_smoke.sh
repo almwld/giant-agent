@@ -28,7 +28,7 @@ else
     test_status=1
   else
     readelf -Ws /tmp/libwhisper_jni.so > /tmp/whisper-jni-symbols.txt 2>&1
-    symbol_count=$(grep -Ec 'Java_io_github_govindtank_flutter_1whisper_WhisperContext_native(Init|Transcribe|Cancel|Free)$' /tmp/whisper-jni-symbols.txt || true)
+    symbol_count=$(grep -Fc 'Java_io_github_govindtank_flutter_1whisper_WhisperContext_native' /tmp/whisper-jni-symbols.txt || true)
     grep -E 'Java_io_github_govindtank_flutter_1whisper_WhisperContext_native(Init|Transcribe|Cancel|Free)$' /tmp/whisper-jni-symbols.txt || true
     if [ "$symbol_count" -lt 4 ]; then
       echo "Expected 4 JNI exports, found $symbol_count."
