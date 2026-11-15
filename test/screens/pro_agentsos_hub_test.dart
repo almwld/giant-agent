@@ -9,14 +9,17 @@ import 'package:giant_agent_x/screens/pro_integrations.dart';
 import 'package:giant_agent_x/screens/pro_advanced_config.dart';
 
 void main() {
-  testWidgets('AgentsOS exposes all six destinations and renders each screen', (tester) async {
+  testWidgets('AgentsOS exposes all six destinations and mounts each screen', (tester) async {
     tester.view.physicalSize = const Size(900, 1200);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
     await tester.pumpWidget(const MaterialApp(home: ProAgentsOsHub()));
-    await tester.pumpAndSettle();
+    // Several destinations intentionally show an indeterminate loading spinner
+    // while the shared SQLite runtime initializes. pumpAndSettle would time out
+    // on that valid state, so advance a bounded frame instead.
+    await tester.pump(const Duration(milliseconds: 100));
 
     expect(find.byType(BottomNavigationBar), findsOneWidget);
     for (final label in ['Dashboard', 'Tasks', 'Agents', 'Battle', 'Integrations', 'Config']) {
@@ -34,7 +37,7 @@ void main() {
 
     for (final entry in destinations.entries) {
       await tester.tap(find.text(entry.key).first);
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 100));
       expect(
         find.byType(entry.value),
         findsOneWidget,
@@ -44,20 +47,22 @@ void main() {
     }
   });
 
-  testWidgets('AgentsOS retains the selected destination when its parent rebuilds', (tester) async {
+  testWidgets('AgentsOS retains the selected destination across a parent rebuild', (tester) async {
     tester.view.physicalSize = const Size(900, 1200);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
     await tester.pumpWidget(const MaterialApp(home: ProAgentsOsHub()));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 100));
     await tester.tap(find.text('Tasks').first);
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 100));
     expect(find.text('Task Manager'), findsOneWidget);
 
+    // Pumping the same root configuration rebuilds its parent while retaining
+    // the hub State, matching the production IndexedStack lifecycle.
     await tester.pumpWidget(const MaterialApp(home: ProAgentsOsHub()));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 100));
     expect(find.text('Task Manager'), findsOneWidget);
   });
 }
