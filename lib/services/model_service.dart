@@ -1420,7 +1420,7 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
           isCancelled: isCancelled,
         );
         return answer == 'السماح';
-      },
+      }(),
       isCancelled,
     );
   }
