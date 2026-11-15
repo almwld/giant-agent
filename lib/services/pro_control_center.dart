@@ -78,7 +78,7 @@ class ProControlCenter extends ChangeNotifier {
       metrics = results[0] as AgentObservabilitySummary;
       agents = results[1] as List<Map<String, dynamic>>;
       integrations = results[2] as List<McpServerConfig>;
-      tasks = await _tasks.getTasksForConversation('global');
+      tasks = _tasks.getTasks();
       lastUpdated = DateTime.now();
     } catch (error) {
       lastError = error;
