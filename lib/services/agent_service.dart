@@ -1,4 +1,7 @@
-import 'dart:async';\nimport 'dart:io';\n\nimport 'package:http/http.dart' as http;
+import 'dart:async';
+import 'dart:io';
+
+import 'package:http/http.dart' as http;
 import '../agent/architecture/agent_kernel.dart' as execution;
 import '../agent/architecture/agent_timeline_event.dart';
 import '../agent/architecture/agent_event_bus.dart';
