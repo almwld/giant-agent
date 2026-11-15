@@ -62,6 +62,10 @@ static void parse_json() {}
             self.assertIn('System.loadLibrary("ggml")', patched)
             self.assertIn('System.loadLibrary("whisper")', patched)
             self.assertIn('System.loadLibrary("whisper_jni")', patched)
+            self.assertIn(
+                'System.loadLibrary("whisper")' + chr(10) + '        System.loadLibrary("whisper_jni")',
+                patched,
+            )
             self.assertLess(
                 patched.index('System.loadLibrary("whisper")'),
                 patched.index('System.loadLibrary("whisper_jni")'),
