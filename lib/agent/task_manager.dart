@@ -46,7 +46,7 @@ class TaskManager {
     final persisted = await _store.getTasks();
     _tasks
       ..clear()
-      ..addAll(persisted.map(_normalizeRecoveredTask));
+      ..addAll(persisted.map((task) => Map<String, dynamic>.from(task)));
     if (!_executing && _tasks.isNotEmpty) {
       _currentTask = _tasks.last['id']?.toString() ?? '';
     }
