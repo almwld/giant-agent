@@ -210,7 +210,7 @@ jobs:
             unzip -l "$apk" | grep -q 'assets/flutter_assets/assets/voice_models/ggml-base.bin.gz' || { echo "Bundled Whisper model missing: $apk"; exit 1; }
             unzip -l "$apk" | grep -q 'assets/flutter_assets/assets/voice_models/nabra-82m-arabic-int8.tar.bz2' || { echo "Bundled Nabra model missing: $apk"; exit 1; }
           done
-          # Split APKs stay compact; speech weights are installed once after app setup.
+          # Voice models are compressed in APK assets and expanded into app-private files on first use.
           for apk in dist/app-arm64-v8a-release.apk dist/app-armeabi-v7a-release.apk dist/app-x86_64-release.apk; do
             size=$(stat -c%s "$apk")
             if [ "$size" -gt $((360 * 1024 * 1024)) ]; then
