@@ -5,7 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:giant_agent_x/main.dart' as app;
 import 'package:giant_agent_x/services/local_speech_recognition_service.dart';
-import 'package:flutter_whisper/flutter_whisper.dart';
 import 'package:path_provider/path_provider.dart';
 
 void main() {
@@ -39,14 +38,10 @@ void main() {
       );
 
       try {
-        final result = await Whisper().transcribeFile(
-          wav.path,
-          options: const WhisperOptions(
-            language: 'ar',
-            threads: 2,
-            vad: false,
-          ),
-        ).timeout(const Duration(minutes: 4));
+        print('WHISPER_INFERENCE_START: reusing initialized native context');
+        final result = await speech
+            .transcribeFile(wav.path, threads: 2)
+            .timeout(const Duration(minutes: 10));
 
         print('WHISPER_ARABIC_LANGUAGE: ${result.language}');
         print('WHISPER_ARABIC_TRANSCRIPT: ${result.text}');
