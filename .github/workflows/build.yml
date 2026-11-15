@@ -74,19 +74,29 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Generate deterministic Arabic WAV smoke fixture
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y espeak-ng sox
+          mkdir -p integration_test/fixtures
+          espeak-ng -v ar -s 125 -w integration_test/fixtures/arabic_smoke_raw.wav "السلام عليكم"
+          sox integration_test/fixtures/arabic_smoke_raw.wav -r 16000 -c 1 -b 16 -e signed-integer integration_test/fixtures/arabic_smoke.wav
+          rm integration_test/fixtures/arabic_smoke_raw.wav
+          test "$(soxi -r integration_test/fixtures/arabic_smoke.wav)" = "16000"
+          test "$(soxi -c integration_test/fixtures/arabic_smoke.wav)" = "1"
+          test "$(soxi -b integration_test/fixtures/arabic_smoke.wav)" = "16"
+          file integration_test/fixtures/arabic_smoke.wav
+          od -An -tx1 -N44 integration_test/fixtures/arabic_smoke.wav
+          test -s integration_test/fixtures/arabic_smoke.wav
+
       - name: Patch flutter_whisper native WAV decoder
         run: python3 tool/patch_flutter_whisper.py
 
       - name: Analyze all Flutter and Dart sources
         run: flutter analyze --no-pub
 
-      # Do not use --split-per-abi: Chaquopy requires ndk.abiFilters.
-      # Build each ABI in its own Flutter invocation instead.
-      - name: Build universal release APK
-        run: |
-          mkdir -p dist
-          flutter build apk --release
-          cp build/app/outputs/flutter-apk/app-release.apk dist/giant-agent-universal.apk
+      - name: Prepare split APK output directory
+        run: mkdir -p dist
 
       - name: Build arm64-v8a release APK
         run: |
@@ -121,7 +131,11 @@ jobs:
             apk="$1"
             abi="$2"
             unzip -l "$apk" | grep -q "lib/$abi/libwhisper.so" || {
-              echo "Missing Whisper JNI engine libwhisper.so for $abi in $apk"
+              echo "Missing upstream Whisper engine libwhisper.so for $abi in $apk"
+              exit 1
+            }
+            unzip -l "$apk" | grep -q "lib/$abi/libwhisper_jni.so" || {
+              echo "Missing JNI bridge libwhisper_jni.so for $abi in $apk"
               exit 1
             }
             unzip -l "$apk" | grep -q "lib/$abi/libggml.so" || {
@@ -170,7 +184,6 @@ jobs:
       - name: Verify APK outputs and checksums
         run: |
           set -e
-          test -s dist/giant-agent-universal.apk
           test -s dist/app-arm64-v8a-release.apk
           test -s dist/app-armeabi-v7a-release.apk
           test -s dist/app-x86_64-release.apk
@@ -183,14 +196,6 @@ jobs:
         with:
           name: giant-agent-sha256-checksums
           path: dist/SHA256SUMS.txt
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: 📤 Upload universal APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: giant-agent-universal-release
-          path: dist/giant-agent-universal.apk
           if-no-files-found: error
           retention-days: 30
 
@@ -218,33 +223,9 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      # Optional cloud-device upload. Set APPETIZE_ENABLED=true and configure APPETIZE_API_KEY in GitHub Actions secrets.
-      - name: Upload universal APK to Appetize
-        id: appetize
-        if: ${{ vars.APPETIZE_ENABLED == 'true' && github.event_name != 'pull_request' }}
-        uses: appetizeio/github-action-appetize@v1.1.0
-        continue-on-error: true
-        env:
-          APPETIZE_API_KEY: ${{ secrets.APPETIZE_API_KEY }}
-        with:
-          apiToken: ${{ secrets.APPETIZE_API_KEY }}
-          publicKey: ${{ secrets.APPETIZE_PUBLIC_KEY }}
-          appFile: dist/giant-agent-universal.apk
-          platform: android
-          note: Giant Agent - GitHub Actions build ${{ github.run_number }}
-          timeout: '600'
-
-      - name: Publish Appetize test link
-        if: ${{ steps.appetize.outputs.publicKey != '' }}
-        env:
-          APPETIZE_PUBLIC_KEY: ${{ steps.appetize.outputs.publicKey }}
-        run: |
-          echo "## Appetize cloud device" >> "$GITHUB_STEP_SUMMARY"
-          echo "Launch the Android build in your browser: https://appetize.io/app/$APPETIZE_PUBLIC_KEY" >> "$GITHUB_STEP_SUMMARY"
-          echo "Appetize public key: $APPETIZE_PUBLIC_KEY" >> "$GITHUB_STEP_SUMMARY"
 
   gain-pty-emulator:
-    name: Android emulator Gain PTY smoke test
+    name: Android emulator Gain PTY and Whisper Arabic inference smoke tests
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -278,6 +259,21 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Generate deterministic Arabic WAV inference fixture
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y espeak-ng sox
+          mkdir -p integration_test/fixtures
+          espeak-ng -v ar -s 125 -w integration_test/fixtures/arabic_smoke_raw.wav "السلام عليكم"
+          sox integration_test/fixtures/arabic_smoke_raw.wav -r 16000 -c 1 -b 16 -e signed-integer integration_test/fixtures/arabic_smoke.wav
+          rm integration_test/fixtures/arabic_smoke_raw.wav
+          test "$(soxi -r integration_test/fixtures/arabic_smoke.wav)" = "16000"
+          test "$(soxi -c integration_test/fixtures/arabic_smoke.wav)" = "1"
+          test "$(soxi -b integration_test/fixtures/arabic_smoke.wav)" = "16"
+          file integration_test/fixtures/arabic_smoke.wav
+          od -An -tx1 -N44 integration_test/fixtures/arabic_smoke.wav
+          test -s integration_test/fixtures/arabic_smoke.wav
+
       - name: Provision Whisper.cpp native engine for emulator ABI
         run: |
           set -euo pipefail
@@ -293,8 +289,15 @@ jobs:
           root = Path(unquote(uri.path)) if uri.scheme == 'file' else (config.parent / entry['rootUri']).resolve()
           native = root / 'android/src/main/cpp/whisper_jni.cpp'
           cmake = root / 'third_party/whisper.cpp/CMakeLists.txt'
+          plugin_cmake = root / 'android/src/main/cpp/CMakeLists.txt'
+          context = root / 'android/src/main/kotlin/io/github/govindtank/flutter_whisper/WhisperContext.kt'
           gradle = root / 'android/build.gradle'
-          assert native.is_file() and 'GIANT_AGENT_WAV_ONLY_DECODER' in native.read_text()
+          native_source = native.read_text()
+          assert native.is_file() and 'GIANT_AGENT_WAV_ONLY_DECODER' in native_source
+          assert 'OUTPUT_NAME whisper_jni' in plugin_cmake.read_text(), 'JNI bridge must not collide with upstream libwhisper.so'
+          assert 'System.loadLibrary("whisper_jni")' in context.read_text(), 'Kotlin must load the distinct JNI bridge'
+          for method in ('nativeInit', 'nativeTranscribe', 'nativeCancel', 'nativeFree'):
+              assert f'Java_io_github_govindtank_flutter_1whisper_WhisperContext_{method}' in native_source, f'JNI export is not correctly mangled: {method}'
           assert cmake.is_file(), 'whisper.cpp native source tree was not provisioned'
           assert 'x86_64' in gradle.read_text(), 'emulator ABI is missing from Whisper plugin filters'
           print('WHISPER_NATIVE_READY: patched JNI + whisper.cpp sources + x86_64 ABI')
@@ -312,16 +315,23 @@ jobs:
           api-level: 30
           target: google_apis
           arch: x86_64
+          cores: 4
           profile: pixel_2
           emulator-boot-timeout: 900
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot -wipe-data -cores 2 -memory 4096
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot -wipe-data -cores 4 -memory 6144
           disable-animations: true
-          script: |
-            set +e
-            flutter test integration_test/gain_pty_emulator_smoke_test.dart -d emulator-5554
-            test_status=$?
-            echo "===== WHISPER / ANDROID LINKER LOGCAT ====="
-            adb -s emulator-5554 logcat -d -v threadtime | grep -E -i 'FlutterWhisper|UnsatisfiedLinkError|dlopen failed|linker|whisper|ggml' | tail -n 250 || true
-            echo "===== DEBUG APK NATIVE LIBRARY CONTENTS ====="
-            test ! -f build/app/outputs/flutter-apk/app-debug.apk || unzip -Z1 build/app/outputs/flutter-apk/app-debug.apk | grep -E "^lib/(x86_64|arm64-v8a)/lib(whisper|ggml.*)[.]so$" | sort || true
-            exit "$test_status"
+          script: bash tool/run_android_emulator_smoke.sh
+
+      - name: Inspect packaged Whisper JNI symbols even after smoke-test failure
+        if: always()
+        run: |
+          set -euo pipefail
+          apk=build/app/outputs/flutter-apk/app-debug.apk
+          if [ ! -f "$apk" ]; then
+            echo "Debug APK was not produced; cannot inspect Whisper JNI exports."
+            exit 1
+          fi
+          unzip -Z1 "$apk" | grep -E "^lib/x86_64/lib(whisper|whisper_jni)[.]so$" | sort
+          unzip -p "$apk" lib/x86_64/libwhisper_jni.so > /tmp/libwhisper_jni.so
+          echo "===== DYNAMIC JNI SYMBOLS IN PACKAGED libwhisper_jni.so ====="
+          readelf -Ws /tmp/libwhisper_jni.so | grep -E "Java_io_github_govindtank_flutter(_1)?whisper_WhisperContext_native" || true

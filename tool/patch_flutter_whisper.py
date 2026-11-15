@@ -106,6 +106,10 @@ static bool load_audio_16k(const std::string& path, std::vector<float>& out) {
     if (!haveFormat || !haveData || audioFormat != 1 || channels != 1 ||
         sampleRate != 16000 || bitsPerSample != 16 || blockAlign != 2 ||
         pcm.empty() || (pcm.size() % 2) != 0) {
+        std::fprintf(stderr,
+            "WHISPER_WAV_DIAG: fmt=%d data=%d format=%u channels=%u rate=%u bits=%u align=%u bytes=%zu riff=%u\\n",
+            haveFormat ? 1 : 0, haveData ? 1 : 0, audioFormat, channels,
+            sampleRate, bitsPerSample, blockAlign, pcm.size(), riffSize);
         return false;
     }
 
@@ -151,12 +155,41 @@ def patch_source(source: str) -> str:
     # orphaned miniaudio declarations in the compiled translation unit.
     source = source[:start] + DECODER.strip() + "\n\n" + source[end:]
     source = source.replace(MINIAUDIO_BLOCK, "// miniaudio is not required for canonical PCM16 WAV input.")
-    source = source.replace("#include <cstring>", "#include <cstring>\n#include <cstdint>\n#include <fstream>")
+    source = source.replace("#include <cstring>", "#include <cstring>\n#include <cstdio>\n#include <cstdint>\n#include <fstream>")
     if ('#include "miniaudio.h"' in source or "MINIAUDIO_IMPLEMENTATION" in source or
             "ma_decoder_init_file(" in source or "ma_decoder_read_pcm_frames(" in source or
             "ma_decoder_uninit(" in source):
         raise RuntimeError("miniaudio references remain after applying the WAV decoder patch.")
     return source
+
+
+def patch_native_inference_threads(root: Path) -> bool:
+    """Respect available Android CPU cores instead of oversubscribing emulators.
+
+    flutter_whisper 0.2.0 hard-codes four inference threads and ignores the
+    Dart WhisperOptions. On two-core Android emulators this can starve the
+    native inference worker. Keep a conservative 1..4 thread cap.
+    """
+    native = root / "android" / "src" / "main" / "cpp" / "whisper_jni.cpp"
+    if not native.is_file():
+        raise RuntimeError(f"Whisper JNI source not found: {native}")
+    source = native.read_text(encoding="utf-8")
+    marker = "// GIANT_AGENT_CPU_AWARE_THREADS"
+    if marker in source:
+        return False
+    old = "    params.n_threads = 4;"
+    new = """    // GIANT_AGENT_CPU_AWARE_THREADS
+    const unsigned int cpu_count = std::thread::hardware_concurrency();
+    params.n_threads = static_cast<int>(
+        cpu_count == 0 ? 2u : std::max(1u, std::min(4u, cpu_count)));"""
+    if old not in source:
+        raise RuntimeError("Unexpected Whisper JNI source: hard-coded inference thread count not found.")
+    if "#include <thread>" not in source:
+        source = source.replace("#include <cstring>", "#include <cstring>\n#include <algorithm>\n#include <thread>", 1)
+    source = source.replace(old, new, 1)
+    native.write_text(source, encoding="utf-8", newline="\n")
+    print("Patched Whisper inference threads: use 1-4 threads based on Android CPU cores.")
+    return True
 
 
 def patch_android_abis(gradle: str) -> str:
@@ -171,13 +204,12 @@ def patch_android_abis(gradle: str) -> str:
 
 
 def patch_whisper_context_libraries(root: Path) -> bool:
-    """Load the GGML soname that the plugin's CMake build actually packages.
+    """Load GGML, the upstream engine, and the distinct JNI bridge sonames.
 
-    The upstream Kotlin wrapper loads ggml-cpu, but this plugin's CMakeLists
-    explicitly copies libggml-cpu.so to libggml.so for the Android loader.
-    Loading the nonexistent ggml-cpu soname raises UnsatisfiedLinkError and
-    is surfaced by the plugin as NATIVE_NOT_BUILT even when both APK assets
-    and libwhisper.so are present.
+    whisper.cpp builds its own shared libwhisper.so on Android. The plugin's
+    JNI target must therefore be libwhisper_jni.so; giving both targets the
+    OUTPUT_NAME "whisper" causes the packaged engine library to shadow the JNI
+    bridge and produces "No implementation found" for nativeInit.
     """
     context = root / "android" / "src" / "main" / "kotlin" / "io" / "github" / "govindtank" / "flutter_whisper" / "WhisperContext.kt"
     if not context.is_file():
@@ -185,20 +217,40 @@ def patch_whisper_context_libraries(root: Path) -> bool:
     cmake = root / "android" / "src" / "main" / "cpp" / "CMakeLists.txt"
     if not cmake.is_file():
         raise RuntimeError(f"Whisper CMake file not found: {cmake}")
+
     cmake_source = cmake.read_text(encoding="utf-8")
     if "libggml-cpu.so" not in cmake_source or "libggml.so" not in cmake_source:
         raise RuntimeError("Unexpected Whisper CMake config: expected libggml-cpu.so -> libggml.so packaging rule.")
+    old_output = "set_target_properties(whisper_jni PROPERTIES OUTPUT_NAME whisper)"
+    new_output = "set_target_properties(whisper_jni PROPERTIES OUTPUT_NAME whisper_jni)"
+    changed = False
+    if old_output in cmake_source:
+        cmake_source = cmake_source.replace(old_output, new_output, 1)
+        changed = True
+    elif new_output not in cmake_source:
+        raise RuntimeError("Unexpected Whisper CMake config: JNI bridge output name is not recognized.")
+    if changed:
+        cmake.write_text(cmake_source, encoding="utf-8")
+        print(f"Patched {cmake}: keep upstream libwhisper.so separate from libwhisper_jni.so.")
 
     source = context.read_text(encoding="utf-8")
-    old = 'System.loadLibrary("ggml-cpu")'
-    new = 'System.loadLibrary("ggml")'
-    if new in source and old not in source:
-        return False
-    if old not in source:
-        raise RuntimeError("Unexpected WhisperContext Kotlin source: ggml-cpu load declaration not found.")
-    context.write_text(source.replace(old, new, 1), encoding="utf-8")
-    print(f"Patched {context}: load packaged libggml.so soname.")
-    return True
+    if 'System.loadLibrary("ggml-cpu")' in source:
+        source = source.replace('System.loadLibrary("ggml-cpu")', 'System.loadLibrary("ggml")', 1)
+        changed = True
+    elif 'System.loadLibrary("ggml")' not in source:
+        raise RuntimeError("Unexpected WhisperContext Kotlin source: GGML load declaration not found.")
+
+    engine_load = 'System.loadLibrary("whisper")'
+    bridge_load = 'System.loadLibrary("whisper_jni")'
+    if engine_load not in source:
+        raise RuntimeError("Unexpected WhisperContext Kotlin source: upstream whisper engine load declaration not found.")
+    if bridge_load not in source:
+        source = source.replace(engine_load, engine_load + chr(10) + "        " + bridge_load, 1)
+        changed = True
+    if changed:
+        context.write_text(source, encoding="utf-8")
+        print(f"Patched {context}: load libwhisper.so engine then libwhisper_jni.so JNI bridge.")
+    return changed
 
 
 def patch_plugin_native_diagnostics(root: Path) -> bool:
@@ -252,6 +304,52 @@ def prepare_native_engine(root: Path) -> None:
     else:
         print("flutter_whisper Android ABI filters already include x86_64.")
 
+
+
+def patch_jni_symbol_mangling(source: str) -> str:
+    """Escape the underscore in the Kotlin package name per JNI name mangling."""
+    old_prefix = "Java_io_github_govindtank_flutter_whisper_WhisperContext_"
+    new_prefix = "Java_io_github_govindtank_flutter_1whisper_WhisperContext_"
+    if old_prefix in source:
+        source = source.replace(old_prefix, new_prefix)
+        print("Patched Whisper JNI exports: escaped package underscore as _1.")
+    required = ("nativeInit", "nativeTranscribe", "nativeCancel", "nativeFree")
+    missing = [method for method in required if new_prefix + method not in source]
+    if missing:
+        raise RuntimeError(
+            "Whisper JNI exports do not match Kotlin package "
+            "io.github.govindtank.flutter_whisper: " + ", ".join(missing)
+        )
+    return source
+
+
+def patch_whisper_model_metadata(root: Path) -> bool:
+    """Correct upstream metadata: ggml-base.bin is multilingual Arabic-capable."""
+    model = root / "lib" / "src" / "whisper_model.dart"
+    if not model.is_file():
+        raise RuntimeError(f"Whisper model metadata source not found: {model}")
+    source = model.read_text(encoding="utf-8")
+    replacements = (
+        ("WhisperModel.base => 149544538,", "WhisperModel.base => 147951465,"),
+        ("WhisperModel.base => '143 MB',", "WhisperModel.base => '148 MB',"),
+        ("/// ~75 MB, English-only, fast with balanced accuracy (~250 MB RAM required).",
+         "/// ~148 MB, multilingual, fast with balanced accuracy (~250 MB RAM required)."),
+        ("this != WhisperModel.tiny && this != WhisperModel.base;",
+         "this != WhisperModel.tiny;"),
+    )
+    changed = False
+    for old, new in replacements:
+        if old in source:
+            source = source.replace(old, new, 1)
+            changed = True
+        elif new not in source:
+            raise RuntimeError(f"Unexpected flutter_whisper model metadata; missing expected declaration: {old}")
+    if changed:
+        model.write_text(source, encoding="utf-8")
+        print(f"Patched {model}: pin exact multilingual Base metadata (147,951,465 bytes).")
+    return changed
+
+
 def patch_flutter_316_widget(root: Path) -> bool:
     """Patch only the optional upstream demo widget for Flutter 3.16 tests."""
     widget = root / "lib" / "src" / "widgets" / "transcription_view.dart"
@@ -276,13 +374,16 @@ def main() -> int:
         return 0
 
     prepare_native_engine(root)
+    patch_whisper_model_metadata(root)
     patch_whisper_context_libraries(root)
+    patch_native_inference_threads(root)
     patch_plugin_native_diagnostics(root)
     native = root / "android" / "src" / "main" / "cpp" / "whisper_jni.cpp"
     if not native.is_file():
         raise RuntimeError(f"Whisper JNI source not found: {native}")
     original = native.read_text(encoding="utf-8")
     patched = patch_source(original)
+    patched = patch_jni_symbol_mangling(patched)
     if patched != original:
         native.write_text(patched, encoding="utf-8", newline="\n")
         print(f"Patched {native}: strict 16 kHz mono PCM16 WAV decoder installed.")

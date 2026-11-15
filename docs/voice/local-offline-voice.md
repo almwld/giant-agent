@@ -20,8 +20,9 @@ No voice request is sent to a cloud speech API. The old `speech_to_text` depende
 
 The APK intentionally excludes model weights to keep installation size near the previous 50 MB ARM64 baseline. First voice setup downloads the models once into app-private storage; after installation, voice processing is fully offline.
 
-- ASR: Whisper multilingual Base, downloaded once by `flutter_whisper` into app-private storage (roughly 143 MB).
-- Neural Arabic TTS: The official `nabra-82m-arabic-int8.tar.bz2` archive from sherpa-onnx, containing the 83 MB INT8 ONNX model, `voices.bin`, `tokens.txt`, and `espeak-ng-data`. The archive SHA-256 is checked before extraction.
+- ASR: Whisper multilingual Base (`ggml-base.bin`, 147,951,465 bytes), downloaded into app-private storage by the app's verified installer. The URL is pinned to whisper.cpp commit `5359861c739e955e79d9a303bcbc70fb988958b1`; exact size and SHA-256 are checked before JNI initialization. Interrupted downloads resume with HTTP Range.
+- The patched Android decoder intentionally accepts canonical RIFF/WAVE PCM16, mono, 16 kHz audio; microphone and test WAV paths must be normalized to that format before native transcription. CI checks the fixture's sample rate, channel count, and sample width.
+- The Android JNI bridge escapes the underscore in the Kotlin package `flutter_whisper` as `_1` in all four exports (`nativeInit`, `nativeTranscribe`, `nativeCancel`, `nativeFree`). The JNI target is packaged as `libwhisper_jni.so`, separately from upstream `libwhisper.so`; Kotlin loads the engine first and then the bridge. This separation is required because whisper.cpp itself builds a shared `libwhisper.so`, so naming both targets `whisper` silently shadows the JNI implementation.\n- Neural Arabic TTS: The official `nabra-82m-arabic-int8.tar.bz2` archive from sherpa-onnx, containing the 83 MB INT8 ONNX model, `voices.bin`, `tokens.txt`, and `espeak-ng-data`. The archive SHA-256 is checked before extraction.
 - Models are downloaded over HTTPS only during installation. Once installed, recognition, synthesis, and playback are local.
 - If Nabra is skipped, TTS may use an Android Arabic voice only when Android reports `network_required == false`. Unknown or network-required voices are rejected.
 
@@ -48,7 +49,7 @@ Nabra is an MSA voice with one speaker ID. It is not a general dialect voice-clo
 ## Verification
 
 - `LocalVoiceTextChunker` unit tests cover whitespace, chunk bounds, oversized tokens, and invalid limits.
-- CI must verify Flutter dependency resolution, analysis, tests, and release APK builds for the supported Android ABIs.
+- CI verifies Flutter dependency resolution, analysis, native patch safety, release APK builds, and an Android x86_64 emulator run that downloads/verifies multilingual Base, loads the JNI context, and transcribes a generated Arabic WAV fixture. Physical-device acceptance is still required for production performance and microphone-route behavior.
 - Physical-device acceptance still needs to measure Arabic dialect accuracy, first-token latency, real-time factor, peak RAM, thermal behavior, battery drain, and interruption latency.
 
 

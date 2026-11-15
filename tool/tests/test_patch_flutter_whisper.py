@@ -29,6 +29,23 @@ static void parse_json() {}
 """
 
 
+    def test_limits_native_inference_threads_to_available_cpu_cores(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            native = root / "android/src/main/cpp/whisper_jni.cpp"
+            native.parent.mkdir(parents=True)
+            native.write_text(
+                '#include <cstring>\n    params.n_threads = 4;\n',
+                encoding="utf-8",
+            )
+            self.assertTrue(PATCHER.patch_native_inference_threads(root))
+            patched = native.read_text(encoding="utf-8")
+            self.assertIn("std::thread::hardware_concurrency()", patched)
+            self.assertIn("std::min(4u, cpu_count)", patched)
+            self.assertIn("#include <algorithm>", patched)
+            self.assertFalse(PATCHER.patch_native_inference_threads(root))
+            self.assertEqual(native.read_text(encoding="utf-8"), patched)
+
     def test_adds_x86_64_to_native_plugin_abis(self):
         gradle = 'abiFilters "arm64-v8a", "armeabi-v7a"'
         patched = PATCHER.patch_android_abis(gradle)
@@ -52,7 +69,8 @@ static void parse_json() {}
             cmake = root / "android/src/main/cpp/CMakeLists.txt"
             cmake.parent.mkdir(parents=True)
             cmake.write_text(
-                'copy_if_different libggml-cpu.so libggml.so',
+                'copy_if_different libggml-cpu.so libggml.so\\n'
+                'set_target_properties(whisper_jni PROPERTIES OUTPUT_NAME whisper)',
                 encoding="utf-8",
             )
 
@@ -60,7 +78,19 @@ static void parse_json() {}
             patched = context.read_text(encoding="utf-8")
             self.assertIn('System.loadLibrary("ggml")', patched)
             self.assertIn('System.loadLibrary("whisper")', patched)
+            self.assertIn('System.loadLibrary("whisper_jni")', patched)
+            self.assertIn(
+                'System.loadLibrary("whisper")' + chr(10) + '        System.loadLibrary("whisper_jni")',
+                patched,
+            )
+            self.assertLess(
+                patched.index('System.loadLibrary("whisper")'),
+                patched.index('System.loadLibrary("whisper_jni")'),
+            )
             self.assertNotIn('System.loadLibrary("ggml-cpu")', patched)
+            cmake_patched = cmake.read_text(encoding="utf-8")
+            self.assertIn('OUTPUT_NAME whisper_jni', cmake_patched)
+            self.assertNotIn('OUTPUT_NAME whisper)', cmake_patched)
             self.assertFalse(PATCHER.patch_whisper_context_libraries(root))
 
     def test_rejects_unexpected_whisper_ggml_packaging_rule(self):
@@ -75,6 +105,54 @@ static void parse_json() {}
 
             with self.assertRaisesRegex(RuntimeError, "packaging rule"):
                 PATCHER.patch_whisper_context_libraries(root)
+
+
+
+    def test_escapes_underscore_in_whisper_jni_package_symbols(self):
+        old_prefix = "Java_io_github_govindtank_flutter_whisper_WhisperContext_"
+        methods = ("nativeInit", "nativeTranscribe", "nativeCancel", "nativeFree")
+        source = "\\n".join(old_prefix + method for method in methods)
+        patched = PATCHER.patch_jni_symbol_mangling(source)
+        new_prefix = "Java_io_github_govindtank_flutter_1whisper_WhisperContext_"
+        for method in methods:
+            self.assertIn(new_prefix + method, patched)
+        self.assertNotIn(old_prefix, patched)
+        self.assertEqual(PATCHER.patch_jni_symbol_mangling(patched), patched)
+
+    def test_rejects_incomplete_whisper_jni_exports(self):
+        with self.assertRaisesRegex(RuntimeError, "nativeTranscribe"):
+            PATCHER.patch_jni_symbol_mangling(
+                "Java_io_github_govindtank_flutter_1whisper_WhisperContext_nativeInit"
+            )
+
+    def test_corrects_multilingual_base_model_metadata(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            model = root / "lib/src/whisper_model.dart"
+            model.parent.mkdir(parents=True)
+            model.write_text(
+                "WhisperModel.base => 149544538,\\n"
+                "WhisperModel.base => '143 MB',\\n"
+                "/// ~75 MB, English-only, fast with balanced accuracy (~250 MB RAM required).\\n"
+                "this != WhisperModel.tiny && this != WhisperModel.base;\\n",
+                encoding="utf-8",
+            )
+            self.assertTrue(PATCHER.patch_whisper_model_metadata(root))
+            patched = model.read_text(encoding="utf-8")
+            self.assertIn("WhisperModel.base => 147951465,", patched)
+            self.assertIn("WhisperModel.base => '148 MB',", patched)
+            self.assertIn("~148 MB, multilingual", patched)
+            self.assertIn("this != WhisperModel.tiny;", patched)
+            self.assertFalse(PATCHER.patch_whisper_model_metadata(root))
+
+    def test_rejects_unrecognized_base_model_metadata(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            model = root / "lib/src/whisper_model.dart"
+            model.parent.mkdir(parents=True)
+            model.write_text("unrecognized model metadata", encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "Unexpected flutter_whisper model metadata"):
+                PATCHER.patch_whisper_model_metadata(root)
 
 
     def test_flutter_316_widget_patch_is_safe_and_idempotent(self):

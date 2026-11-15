@@ -23,7 +23,22 @@ class VoiceModelIntegrityTests(unittest.TestCase):
         self.assertNotIn("prepareVoiceModels", gradle)
         self.assertNotIn("assets/voice_models/", pubspec)
         self.assertIn("Large offline speech weights must stay outside the install APK", workflow)
-        self.assertIn("80 * 1024 * 1024", workflow)
+        self.assertIn("140 * 1024 * 1024", workflow)
+
+    def test_whisper_base_digest_and_size_match_runtime_documentation(self):
+        service = (ROOT / "lib/services/local_speech_recognition_service.dart").read_text(encoding="utf-8")
+        readme = (ROOT / "assets/voice_models/README.md").read_text(encoding="utf-8")
+        runtime_size = re.search(r"_baseModelBytes\s*=\s*(\d+)", service)
+        runtime_digest = re.search(r"_baseModelSha256\s*=\s*\n\s*'([0-9a-f]{64})'", service)
+        documented_size = re.search(r"ggml-base\.bin`?\s*\(([\d,]+) bytes\)", readme)
+        documented_digest = re.search(r"SHA-256 \x60([0-9a-f]{64})\x60", readme)
+        self.assertIsNotNone(runtime_size, "Whisper Base exact byte count is missing")
+        self.assertIsNotNone(runtime_digest, "Whisper Base SHA-256 is missing")
+        self.assertIsNotNone(documented_size, "Whisper Base documented byte count is missing")
+        self.assertIsNotNone(documented_digest, "Whisper Base documented SHA-256 is missing")
+        self.assertEqual(runtime_size.group(1), documented_size.group(1).replace(',', ''))
+        self.assertEqual(runtime_digest.group(1), documented_digest.group(1))
+        self.assertLess(service.index("_ensureVerifiedBaseModel"), service.index("_whisper.initialize"))
 
     def test_whisper_model_is_not_loaded_from_flutter_assets(self):
         service = (ROOT / "lib/services/local_speech_recognition_service.dart").read_text(encoding="utf-8")
