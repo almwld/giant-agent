@@ -154,6 +154,11 @@ jobs:
               echo "Large offline speech weights must stay outside the install APK: $apk"
               exit 1
             fi
+            voice_payload_bytes=$(unzip -l "$apk" | awk '$4 ~ /^assets\/flutter_assets\/assets\/voice_models\// { total += $1 } END { print total + 0 }')
+            if [ "$voice_payload_bytes" -gt $((80 * 1024 * 1024)) ]; then
+              echo "Large offline speech weights exceed the 80 MiB APK budget: $apk ($voice_payload_bytes bytes)"
+              exit 1
+            fi
             dex_found=false
             while IFS= read -r dex; do
               if unzip -p "$apk" "$dex" 2>/dev/null | strings | grep -q "GainPtyBridge"; then
