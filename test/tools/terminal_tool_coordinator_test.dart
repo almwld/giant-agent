@@ -55,7 +55,12 @@ void main() {
           throw StateError('must not execute');
         },
       );
-      final result = await coordinator.execute(command: 'id', isCancelled: () => true);
+
+      final result = await coordinator.execute(
+        command: 'id',
+        isCancelled: () => true,
+      );
+
       expect(requested, isFalse);
       expect(executed, isFalse);
       expect(result['cancelled'], isTrue);
@@ -72,11 +77,16 @@ void main() {
           throw StateError('must not execute');
         },
       );
-      final pending = coordinator.execute(command: 'id', isCancelled: () => cancelled);
+
+      final pending = coordinator.execute(
+        command: 'id',
+        isCancelled: () => cancelled,
+      );
       await Future<void>.delayed(const Duration(milliseconds: 100));
       cancelled = true;
       final result = await pending;
       approval.complete(true);
+
       expect(executed, isFalse);
       expect(result['cancelled'], isTrue);
     });
@@ -102,7 +112,12 @@ void main() {
         },
         onEvent: events.add,
       );
-      final result = await coordinator.execute(command: 'sleep 30', isCancelled: () => cancelled);
+
+      final result = await coordinator.execute(
+        command: 'sleep 30',
+        isCancelled: () => cancelled,
+      );
+
       expect(receivedCancellationCallback, isTrue);
       expect(result['ok'], isFalse);
       expect(result['cancelled'], isTrue);

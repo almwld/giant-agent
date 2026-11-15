@@ -68,6 +68,7 @@ class AgentKernel {
   bool _cancellationRequested = false;
   SubagentOrchestrator? _activeSubagentOrchestrator;
   final Set<String> _activeSubagentIds = <String>{};
+  final Set<String> _scheduledSubagentIds = <String>{};
   final Set<String> _cancelledSubagentIds = <String>{};
   String? _activeSubagentParentRequestId;
   final FifoTaskQueue _requestQueue = FifoTaskQueue();
@@ -133,6 +134,7 @@ class AgentKernel {
   }
 
   Future<void> _initialize() async {
+    _models.scheduleDynamicSubagent = scheduleDynamicSubagent;
     _state = AgentKernelState.initializing;
     _emit(
       requestId: 'runtime',
@@ -211,9 +213,11 @@ class AgentKernel {
         status: 'pending',
       );
       final selectedMode = await ModelProviderSettings.instance.getMode();
-      final openRouterEnabled = selectedMode == ModelProviderMode.openRouter &&
-          await OpenAICompatibleProvider.instance.isEnabled();
-      if (!openRouterEnabled) {
+      final externalProviderEnabled =
+          (selectedMode == ModelProviderMode.openRouter &&
+              await OpenAICompatibleProvider.instance.isEnabled()) ||
+          selectedMode == ModelProviderMode.zeroConfig;
+      if (!externalProviderEnabled) {
         if (!_models.hasActiveModel()) {
           throw StateError(
             'Load a local GGUF model or configure an external API provider before starting an agent task.',
@@ -231,13 +235,15 @@ class AgentKernel {
       _emit(
         requestId: request.id,
         type: 'model_ready',
-        title: openRouterEnabled
-            ? 'تم التحقق من اتصال المزوّد الخارجي'
+        title: externalProviderEnabled
+            ? 'تم تحديد محرك التوليد الخارجي'
             : 'تم التحقق من جاهزية النموذج المحلي',
         status: 'completed',
-        details: openRouterEnabled
-            ? 'سيستخدم الوكيل النموذج الخارجي المحدد.'
-            : 'سيستخدم الوكيل نموذج GGUF المحلي.',
+        details: selectedMode == ModelProviderMode.zeroConfig
+            ? 'سيستخدم الوكيل Pollinations التجريبي؛ التوفر والحدود يعتمدان على الخدمة.'
+            : externalProviderEnabled
+                ? 'سيستخدم الوكيل OpenRouter.'
+                : 'سيستخدم الوكيل نموذج GGUF المحلي.',
       );
 
       _state = AgentKernelState.executing;
@@ -371,8 +377,10 @@ class AgentKernel {
     _models.beginAgentRequest(requestId);
     try {
       final selectedMode = await ModelProviderSettings.instance.getMode();
-      final providerEnabled = selectedMode == ModelProviderMode.openRouter &&
-          await OpenAICompatibleProvider.instance.isEnabled();
+      final providerEnabled =
+          (selectedMode == ModelProviderMode.openRouter &&
+              await OpenAICompatibleProvider.instance.isEnabled()) ||
+          selectedMode == ModelProviderMode.zeroConfig;
       if (!providerEnabled) {
         if (!_models.hasActiveModel() || !await _models.isModelLoaded()) {
           throw StateError('يجب تحميل النموذج المحلي قبل استئناف الوكيل الفرعي.');
@@ -527,9 +535,13 @@ class AgentKernel {
     );
 
     final selectedMode = await ModelProviderSettings.instance.getMode();
-    final cloudParallelismEnabled = selectedMode == ModelProviderMode.openRouter &&
-        await OpenAICompatibleProvider.instance.isEnabled();
-    final workerConcurrency = cloudParallelismEnabled ? 3 : 1;
+    final cloudParallelismEnabled =
+        (selectedMode == ModelProviderMode.openRouter &&
+            await OpenAICompatibleProvider.instance.isEnabled()) ||
+        selectedMode == ModelProviderMode.zeroConfig;
+    final workerConcurrency = cloudParallelismEnabled
+        ? (selectedMode == ModelProviderMode.zeroConfig ? 2 : 3)
+        : 1;
     final orchestrator = SubagentOrchestrator(
       parentRequestId: requestId,
       conversationId: conversationId,
@@ -792,6 +804,7 @@ $evidence
         'spawn_subagent',
         'delete_subagent',
         'check_subagent_status',
+        'report_subagent_progress',
         'send_message',
         'wait_for_message',
         'ask_user',
@@ -1025,12 +1038,59 @@ $evidence
     return tasks;
   }
 
+  /// Enqueues detached dynamic children on the same FIFO as parent requests.
+  /// The child cannot contend with the single local JNI inference context.
+  Future<void> scheduleDynamicSubagent({
+    required String requestId,
+    required String conversationId,
+    required String agentId,
+  }) {
+    final taskId = '${requestId}_dynamic_$agentId';
+    if (!_scheduledSubagentIds.add(taskId)) return Future<void>.value();
+    return _requestQueue.enqueue(() async {
+      AgentEventBus.instance.bindRequest(requestId, conversationId);
+      _activeRequestId = requestId;
+      _activeSubagentParentRequestId = requestId;
+      _activeSubagentIds.add(taskId);
+      _state = AgentKernelState.executing;
+      _emit(
+        requestId: requestId,
+        taskId: taskId,
+        type: 'subagent_dequeued',
+        title: 'بدأ تنفيذ الوكيل الفرعي من الطابور الدائم',
+        status: 'running',
+      );
+      try {
+        await _models.executeScheduledDynamicSubagent(
+          requestId: requestId,
+          conversationId: conversationId,
+          agentId: agentId,
+          shouldCancel: () => _cancelledSubagentIds.contains(taskId),
+        );
+      } finally {
+        _activeSubagentIds.remove(taskId);
+        _scheduledSubagentIds.remove(taskId);
+        _cancelledSubagentIds.remove(taskId);
+        if (_activeSubagentParentRequestId == requestId) {
+          _activeSubagentParentRequestId = null;
+        }
+        _activeRequestId = null;
+        AgentEventBus.instance.unbindRequest(requestId);
+        if (_state != AgentKernelState.failed) _state = AgentKernelState.idle;
+      }
+    });
+  }
+
   Future<bool> cancelSubagent(String taskId) async {
+    final dynamicChild = await _models.cancelDynamicSubagent(taskId);
     final orchestrator = _activeSubagentOrchestrator;
     final scheduledChild = orchestrator != null && orchestrator.cancelTask(taskId);
     final recoveredChild = _activeSubagentIds.contains(taskId);
-    if (!scheduledChild && !recoveredChild) return false;
-    if (recoveredChild) _cancelledSubagentIds.add(taskId);
+    final queuedDynamicChild = _scheduledSubagentIds.contains(taskId);
+    if (!dynamicChild && !scheduledChild && !recoveredChild && !queuedDynamicChild) {
+      return false;
+    }
+    if (recoveredChild || queuedDynamicChild) _cancelledSubagentIds.add(taskId);
     _emit(
       requestId: _activeSubagentParentRequestId ?? _activeRequestId ?? 'runtime',
       taskId: taskId,
@@ -1038,13 +1098,11 @@ $evidence
       title: 'طلب إيقاف الوكيل الفرعي',
       status: 'running',
     );
-    if (recoveredChild) {
-      try {
-        await _models.cancelGeneration();
-      } catch (_) {
-        // The worker will observe its cancellation token at the next boundary.
-      }
-    }
+    // Dynamic workers share the single model/runtime queue. Do not call the
+    // global cancelGeneration() here: it would cancel the shared inference
+    // context rather than this child alone. The child's cancellation token is
+    // observed at the next model/tool boundary; active tool calls retain their
+    // own independent tool_call_id cancellation path.
     return true;
   }
 

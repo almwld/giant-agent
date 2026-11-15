@@ -1,0 +1,75 @@
+import 'package:flutter/material.dart';
+
+import '../theme/pro_theme.dart';
+
+class ProAppBar extends StatelessWidget implements PreferredSizeWidget {
+  final String? breadcrumb;
+  final String? title;
+  final bool showAddButton;
+  final VoidCallback? onAddPressed;
+  final VoidCallback? onSearchPressed;
+  final VoidCallback? onNotificationPressed;
+  final VoidCallback? onAvatarPressed;
+
+  const ProAppBar({
+    super.key,
+    this.breadcrumb,
+    this.title,
+    this.showAddButton = false,
+    this.onAddPressed,
+    this.onSearchPressed,
+    this.onNotificationPressed,
+    this.onAvatarPressed,
+  });
+
+  @override
+  Size get preferredSize => Size.fromHeight(title == null ? kToolbarHeight : 104);
+
+  @override
+  Widget build(BuildContext context) => AppBar(
+        backgroundColor: ProTheme.bgDark,
+        elevation: 0,
+        surfaceTintColor: Colors.transparent,
+        automaticallyImplyLeading: true,
+        titleSpacing: 16,
+        title: Row(
+          children: [
+            const Icon(Icons.settings_input_component, color: ProTheme.neonGreen, size: 26),
+            const SizedBox(width: 8),
+            const Text('AgentOS', style: TextStyle(color: ProTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 19)),
+            const Spacer(),
+            if (showAddButton)
+              IconButton(tooltip: 'Add', onPressed: onAddPressed, icon: const Icon(Icons.add, color: ProTheme.neonGreen)),
+            IconButton(tooltip: 'Search', onPressed: onSearchPressed, icon: const Icon(Icons.search, color: ProTheme.textSecondary)),
+            IconButton(tooltip: 'Notifications', onPressed: onNotificationPressed, icon: const Icon(Icons.notifications_none, color: ProTheme.textSecondary)),
+            GestureDetector(
+              onTap: onAvatarPressed,
+              child: Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: ProTheme.neonGreen.withOpacity(.5))),
+                child: const CircleAvatar(backgroundColor: ProTheme.bgCard, child: Icon(Icons.person, color: ProTheme.neonGreen, size: 19)),
+              ),
+            ),
+            const SizedBox(width: 4),
+          ],
+        ),
+        bottom: title == null
+            ? null
+            : PreferredSize(
+                preferredSize: const Size.fromHeight(50),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (breadcrumb != null)
+                        Text(breadcrumb!, style: const TextStyle(color: ProTheme.textSecondary, fontSize: 11, fontFamily: 'monospace')),
+                      Text(title!, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: ProTheme.neonGreen, fontSize: 19, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
+              ),
+      );
+}

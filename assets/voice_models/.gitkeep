@@ -1,0 +1,1 @@
+Speech model weights are downloaded on first voice setup, SHA-256 verified, and stored in app-private storage. They are not bundled in APK assets.
