@@ -35,7 +35,7 @@ static void parse_json() {}
             native = root / "android/src/main/cpp/whisper_jni.cpp"
             native.parent.mkdir(parents=True)
             native.write_text(
-                '#include <cstring>\\n    params.n_threads = 4;\\n',
+                '#include <cstring>\n    params.n_threads = 4;\n',
                 encoding="utf-8",
             )
             self.assertTrue(PATCHER.patch_native_inference_threads(root))
