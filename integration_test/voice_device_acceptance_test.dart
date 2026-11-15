@@ -48,8 +48,8 @@ void main() {
       'asr_ms': asrWatch.elapsedMilliseconds,
       'tts_ms': ttsWatch.elapsedMilliseconds,
       'rss_before_bytes': rssBefore,
-      'rss_after_bytes': rssAfter,
-      'rss_delta_bytes': rssAfter - rssBefore,
+      'rss_after_tts_bytes': rssAfterTts,
+      'rss_delta_bytes': rssAfterTts - rssBefore,
       'language': transcript.language,
       'transcript': transcript.text,
     }}');
