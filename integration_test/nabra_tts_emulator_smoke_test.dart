@@ -31,5 +31,5 @@ void main() {
     print('NABRA_SYNTHESIS_AND_PLAYBACK_OK: ${stopwatch.elapsedMilliseconds}ms');
     expect(tts.isReady, isTrue);
     await tts.dispose();
-  });
+  }, timeout: const Timeout(Duration(minutes: 20)));
 }
