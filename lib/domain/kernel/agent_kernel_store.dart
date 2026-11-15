@@ -1037,6 +1037,9 @@ class AgentKernelStore {
   Future<void> interrupt(String id, String result) =>
       _finish(id, 'interrupted', result: result);
 
+  Future<void> fail(String id, Object error) =>
+      _finish(id, 'failed', error: error.toString());
+
   /// Records a classified transient failure and requeues the same request
   /// only while its durable attempt count remains below the bounded limit.
   /// Returns true only when a retry was committed to SQLite.
