@@ -144,9 +144,15 @@ void main() {
 
     final searched = await store.observabilityEventsForConversation(
       'chat-a',
-      search: 'tool_failed',
+      search: 'CALL-2',
     );
     expect(searched.events.map((event) => event.id), ['tool-3']);
+
+    final noMatch = await store.observabilityEventsForConversation(
+      'chat-a',
+      search: 'private prompt',
+    );
+    expect(noMatch.events, isEmpty);
     await store.close();
   });
 
