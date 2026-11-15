@@ -192,7 +192,11 @@ class LocalSpeechRecognitionService {
 
   /// Transcribes an existing WAV file with the same verified native Whisper
   /// context used by live microphone capture.
-  Future<TranscriptionResult> transcribeFile(String path, {int threads = 2}) async {
+  Future<TranscriptionResult> transcribeFile(
+    String path, {
+    int threads = 2,
+    void Function(int percent)? onProgress,
+  }) async {
     if (_disposed) throw StateError('Speech service has been disposed.');
     if (!_initialized) {
       throw StateError('Speech service must be initialized before transcription.');
@@ -200,6 +204,7 @@ class LocalSpeechRecognitionService {
     return _whisper.transcribeFile(
       path,
       options: WhisperOptions(language: 'ar', threads: threads, vad: false),
+      onProgress: onProgress,
     );
   }
 
