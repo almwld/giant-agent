@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../services/pro_control_center.dart';
@@ -48,6 +50,9 @@ class _ProHomeShellState extends State<ProHomeShell> {
   void initState() {
     super.initState();
     _initialization = ProControlCenter.instance.initialize();
+    unawaited(_initialization.catchError((Object error) {
+      debugPrint('AgentsOS control-center initialization failed: $error');
+    }));
   }
 
   void _select(int index) {
