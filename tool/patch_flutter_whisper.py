@@ -253,6 +253,24 @@ def prepare_native_engine(root: Path) -> None:
         print("flutter_whisper Android ABI filters already include x86_64.")
 
 
+
+def patch_jni_symbol_mangling(source: str) -> str:
+    """Escape the underscore in the Kotlin package name per JNI name mangling."""
+    old_prefix = "Java_io_github_govindtank_flutter_whisper_WhisperContext_native"
+    new_prefix = "Java_io_github_govindtank_flutter_1whisper_WhisperContext_native"
+    if old_prefix in source:
+        source = source.replace(old_prefix, new_prefix)
+        print("Patched Whisper JNI exports: escaped package underscore as _1.")
+    required = ("nativeInit", "nativeTranscribe", "nativeCancel", "nativeFree")
+    missing = [method for method in required if new_prefix + method not in source]
+    if missing:
+        raise RuntimeError(
+            "Whisper JNI exports do not match Kotlin package "
+            "io.github.govindtank.flutter_whisper: " + ", ".join(missing)
+        )
+    return source
+
+
 def patch_whisper_model_metadata(root: Path) -> bool:
     """Correct upstream metadata: ggml-base.bin is multilingual Arabic-capable."""
     model = root / "lib" / "src" / "whisper_model.dart"
@@ -312,6 +330,7 @@ def main() -> int:
         raise RuntimeError(f"Whisper JNI source not found: {native}")
     original = native.read_text(encoding="utf-8")
     patched = patch_source(original)
+    patched = patch_jni_symbol_mangling(patched)
     if patched != original:
         native.write_text(patched, encoding="utf-8", newline="\n")
         print(f"Patched {native}: strict 16 kHz mono PCM16 WAV decoder installed.")
