@@ -23,7 +23,7 @@ class VoiceModelIntegrityTests(unittest.TestCase):
         self.assertNotIn("prepareVoiceModels", gradle)
         self.assertNotIn("assets/voice_models/", pubspec)
         self.assertIn("Large offline speech weights must stay outside the install APK", workflow)
-        self.assertIn("80 * 1024 * 1024", workflow)
+        self.assertIn("140 * 1024 * 1024", workflow)
 
     def test_whisper_base_digest_and_size_match_runtime_documentation(self):
         service = (ROOT / "lib/services/local_speech_recognition_service.dart").read_text(encoding="utf-8")
