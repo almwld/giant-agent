@@ -95,6 +95,9 @@ jobs:
       - name: Analyze all Flutter and Dart sources
         run: flutter analyze --no-pub
 
+      - name: Prepare split APK output directory
+        run: mkdir -p dist
+
       - name: Build arm64-v8a release APK
         run: |
           flutter build apk --release --target-platform android-arm64
