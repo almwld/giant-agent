@@ -366,3 +366,17 @@ jobs:
               done
             fi
             exit "$test_status"
+
+      - name: Inspect packaged Whisper JNI symbols even after smoke-test failure
+        if: always()
+        run: |
+          set -euo pipefail
+          apk=build/app/outputs/flutter-apk/app-debug.apk
+          if [ ! -f "$apk" ]; then
+            echo "Debug APK was not produced; cannot inspect Whisper JNI exports."
+            exit 1
+          fi
+          unzip -Z1 "$apk" | grep -E "^lib/x86_64/lib(whisper|whisper_jni)[.]so$" | sort
+          unzip -p "$apk" lib/x86_64/libwhisper.so > /tmp/libwhisper.so
+          echo "===== DYNAMIC JNI SYMBOLS IN PACKAGED libwhisper.so ====="
+          readelf -Ws /tmp/libwhisper.so | grep -E "Java_io_github_govindtank_flutter(_1)?whisper_WhisperContext_native" || true
