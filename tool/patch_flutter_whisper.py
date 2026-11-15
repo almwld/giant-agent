@@ -185,9 +185,9 @@ def patch_native_inference_threads(root: Path) -> bool:
     if old not in source:
         raise RuntimeError("Unexpected Whisper JNI source: hard-coded inference thread count not found.")
     if "#include <thread>" not in source:
-        source = source.replace("#include <cstring>", "#include <cstring>\\n#include <algorithm>\\n#include <thread>", 1)
+        source = source.replace("#include <cstring>", "#include <cstring>\n#include <algorithm>\n#include <thread>", 1)
     source = source.replace(old, new, 1)
-    native.write_text(source, encoding="utf-8", newline="\\n")
+    native.write_text(source, encoding="utf-8", newline="\n")
     print("Patched Whisper inference threads: use 1-4 threads based on Android CPU cores.")
     return True
 
