@@ -85,6 +85,8 @@ jobs:
           test "$(soxi -r integration_test/fixtures/arabic_smoke.wav)" = "16000"
           test "$(soxi -c integration_test/fixtures/arabic_smoke.wav)" = "1"
           test "$(soxi -b integration_test/fixtures/arabic_smoke.wav)" = "16"
+          file integration_test/fixtures/arabic_smoke.wav
+          od -An -tx1 -N44 integration_test/fixtures/arabic_smoke.wav
           test -s integration_test/fixtures/arabic_smoke.wav
 
       - name: Patch flutter_whisper native WAV decoder
