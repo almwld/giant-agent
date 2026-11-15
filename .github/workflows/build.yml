@@ -95,14 +95,6 @@ jobs:
       - name: Analyze all Flutter and Dart sources
         run: flutter analyze --no-pub
 
-      # Do not use --split-per-abi: Chaquopy requires ndk.abiFilters.
-      # Build each ABI in its own Flutter invocation instead.
-      - name: Build universal release APK
-        run: |
-          mkdir -p dist
-          flutter build apk --release
-          cp build/app/outputs/flutter-apk/app-release.apk dist/giant-agent-universal.apk
-
       - name: Build arm64-v8a release APK
         run: |
           flutter build apk --release --target-platform android-arm64
@@ -189,7 +181,6 @@ jobs:
       - name: Verify APK outputs and checksums
         run: |
           set -e
-          test -s dist/giant-agent-universal.apk
           test -s dist/app-arm64-v8a-release.apk
           test -s dist/app-armeabi-v7a-release.apk
           test -s dist/app-x86_64-release.apk
@@ -202,14 +193,6 @@ jobs:
         with:
           name: giant-agent-sha256-checksums
           path: dist/SHA256SUMS.txt
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: 📤 Upload universal APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: giant-agent-universal-release
-          path: dist/giant-agent-universal.apk
           if-no-files-found: error
           retention-days: 30
 
@@ -237,30 +220,6 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      # Optional cloud-device upload. Set APPETIZE_ENABLED=true and configure APPETIZE_API_KEY in GitHub Actions secrets.
-      - name: Upload universal APK to Appetize
-        id: appetize
-        if: ${{ vars.APPETIZE_ENABLED == 'true' && github.event_name != 'pull_request' }}
-        uses: appetizeio/github-action-appetize@v1.1.0
-        continue-on-error: true
-        env:
-          APPETIZE_API_KEY: ${{ secrets.APPETIZE_API_KEY }}
-        with:
-          apiToken: ${{ secrets.APPETIZE_API_KEY }}
-          publicKey: ${{ secrets.APPETIZE_PUBLIC_KEY }}
-          appFile: dist/giant-agent-universal.apk
-          platform: android
-          note: Giant Agent - GitHub Actions build ${{ github.run_number }}
-          timeout: '600'
-
-      - name: Publish Appetize test link
-        if: ${{ steps.appetize.outputs.publicKey != '' }}
-        env:
-          APPETIZE_PUBLIC_KEY: ${{ steps.appetize.outputs.publicKey }}
-        run: |
-          echo "## Appetize cloud device" >> "$GITHUB_STEP_SUMMARY"
-          echo "Launch the Android build in your browser: https://appetize.io/app/$APPETIZE_PUBLIC_KEY" >> "$GITHUB_STEP_SUMMARY"
-          echo "Appetize public key: $APPETIZE_PUBLIC_KEY" >> "$GITHUB_STEP_SUMMARY"
 
   gain-pty-emulator:
     name: Android emulator Gain PTY and Whisper Arabic inference smoke tests
