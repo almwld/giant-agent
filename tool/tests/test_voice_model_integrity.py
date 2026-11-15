@@ -16,14 +16,21 @@ class VoiceModelIntegrityTests(unittest.TestCase):
         self.assertIsNotNone(documented_digest, "Nabra documented digest is missing")
         self.assertEqual(runtime_digest.group(1), documented_digest.group(1))
 
-    def test_large_voice_weights_are_not_bundled_in_apk(self):
-        gradle = (ROOT / "android/app/build.gradle").read_text(encoding="utf-8")
+    def test_voice_models_are_bundled_and_prepared_before_flutter_build(self):
         pubspec = (ROOT / "pubspec.yaml").read_text(encoding="utf-8")
         workflow = (ROOT / ".github/workflows/build.yml").read_text(encoding="utf-8")
-        self.assertNotIn("prepareVoiceModels", gradle)
-        self.assertNotIn("assets/voice_models/", pubspec)
-        self.assertIn("Large offline speech weights must stay outside the install APK", workflow)
-        self.assertIn("140 * 1024 * 1024", workflow)
+        script = (ROOT / "tool/prepare_voice_models.py").read_text(encoding="utf-8")
+        asr = (ROOT / "lib/services/local_speech_recognition_service.dart").read_text(encoding="utf-8")
+        tts = (ROOT / "lib/services/local_arabic_tts_service.dart").read_text(encoding="utf-8")
+        self.assertIn("assets/voice_models/ggml-base.bin", pubspec)
+        self.assertIn("assets/voice_models/nabra-82m-arabic-int8.tar.bz2", pubspec)
+        self.assertIn("tool/prepare_voice_models.py", workflow)
+        self.assertIn("rootBundle.load('assets/voice_models/ggml-base.bin')", asr)
+        self.assertIn("rootBundle.load(", tts)
+        self.assertNotIn("http.Request", asr)
+        self.assertNotIn("http.Request", tts)
+        self.assertIn("60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe", script)
+        self.assertIn("a8608a504b1db4dd538b821409fe50b2d5cf37650c0a8753fa215bd6445e9964", script)
 
     def test_whisper_base_digest_and_size_match_runtime_documentation(self):
         service = (ROOT / "lib/services/local_speech_recognition_service.dart").read_text(encoding="utf-8")
