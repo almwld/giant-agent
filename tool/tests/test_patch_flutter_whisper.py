@@ -29,6 +29,23 @@ static void parse_json() {}
 """
 
 
+    def test_limits_native_inference_threads_to_available_cpu_cores(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            native = root / "android/src/main/cpp/whisper_jni.cpp"
+            native.parent.mkdir(parents=True)
+            native.write_text(
+                '#include <cstring>\\n    params.n_threads = 4;\\n',
+                encoding="utf-8",
+            )
+            self.assertTrue(PATCHER.patch_native_inference_threads(root))
+            patched = native.read_text(encoding="utf-8")
+            self.assertIn("std::thread::hardware_concurrency()", patched)
+            self.assertIn("std::min(4u, cpu_count)", patched)
+            self.assertIn("#include <algorithm>", patched)
+            self.assertFalse(PATCHER.patch_native_inference_threads(root))
+            self.assertEqual(native.read_text(encoding="utf-8"), patched)
+
     def test_adds_x86_64_to_native_plugin_abis(self):
         gradle = 'abiFilters "arm64-v8a", "armeabi-v7a"'
         patched = PATCHER.patch_android_abis(gradle)
