@@ -212,7 +212,7 @@ def patch_whisper_context_libraries(root: Path) -> bool:
     if engine_load not in source:
         raise RuntimeError("Unexpected WhisperContext Kotlin source: upstream whisper engine load declaration not found.")
     if bridge_load not in source:
-        source = source.replace(engine_load, engine_load + "\\n        " + bridge_load, 1)
+        source = source.replace(engine_load, engine_load + chr(10) + "        " + bridge_load, 1)
         changed = True
     if changed:
         context.write_text(source, encoding="utf-8")
