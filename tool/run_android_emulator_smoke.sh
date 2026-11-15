@@ -5,6 +5,8 @@ flutter test integration_test/gain_pty_emulator_smoke_test.dart -d emulator-5554
 pty_status=$?
 flutter test integration_test/whisper_arabic_emulator_smoke_test.dart -d emulator-5554
 whisper_status=$?
+flutter test integration_test/nabra_tts_emulator_smoke_test.dart -d emulator-5554
+nabra_status=$?
 test_status=0
 if [ "$pty_status" -ne 0 ] || [ "$whisper_status" -ne 0 ]; then
   test_status=1
