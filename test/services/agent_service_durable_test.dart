@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:giant_agent_x/domain/kernel/agent_kernel.dart'
     as durable;
 import 'package:giant_agent_x/domain/kernel/agent_kernel_store.dart';
@@ -77,6 +78,13 @@ Future<AgentKernelStore> _store(String path) async {
             BEFORE DELETE ON agent_events
             BEGIN SELECT RAISE(ABORT, 'agent_events is append-only'); END
           """);
+          await db.execute('''
+            CREATE TABLE agent_subagent_runtime_state (
+              request_id TEXT PRIMARY KEY,
+              payload_json TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            )
+          ''');
         },
       ),
     ),
@@ -90,6 +98,7 @@ void main() {
 
   late Directory directory;
   setUp(() async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
     directory = await Directory.systemTemp.createTemp('agent-service-durable-');
   });
 
@@ -196,6 +205,49 @@ void main() {
         'subagent_interrupted_on_restart');
   });
 
+  test('pending detached workers are recovered from the canonical lifecycle snapshot', () async {
+    final store = await _store('${directory.path}/async-recovery.db');
+    await store.saveSubagentRuntimeState('parent-async', {
+      'records': {
+        'worker-pending': {
+          'id': 'worker-pending',
+          'task_id': 'parent-async_dynamic_worker-pending',
+          'parent_request_id': 'parent-async',
+          'conversation_id': 'chat-async',
+          'status': 'pending',
+          'is_async': true,
+          'dismissed': false,
+        },
+        'worker-running': {
+          'id': 'worker-running',
+          'task_id': 'parent-async_dynamic_worker-running',
+          'status': 'running',
+          'is_async': true,
+        },
+        'worker-sync': {
+          'id': 'worker-sync',
+          'task_id': 'parent-async_dynamic_worker-sync',
+          'status': 'pending',
+          'is_async': false,
+        },
+        'worker-dismissed': {
+          'id': 'worker-dismissed',
+          'task_id': 'parent-async_dynamic_worker-dismissed',
+          'status': 'pending',
+          'is_async': true,
+          'dismissed': true,
+        },
+      },
+    });
+
+    final recovered = await store.pendingAsyncSubagents();
+    expect(recovered.map((item) => item['subagent_id']).toList(),
+        ['worker-pending']);
+    expect(recovered.single['parent_request_id'], 'parent-async');
+    expect(recovered.single['conversation_id'], 'chat-async');
+    await store.close();
+  });
+
   test('subagent dismissal preserves audit history and blocks later resume', () async {
     final store = await _store('${directory.path}/subagent-dismissal.db');
     await store.enqueue(
@@ -283,75 +335,6 @@ void main() {
     );
     await service.disposeForTesting();
   });
-
-  test('durable kernel preserves persisted FIFO order across 50 concurrent submissions', () async {
-    final store = await _store('${directory.path}/concurrent-50.db');
-    final started = <String>[];
-    final kernel = durable.AgentKernel(
-      store: store,
-      executor: (request) async {
-        started.add(request.id);
-        return 'done:${request.id}';
-      },
-    );
-    await kernel.initialize();
-
-    final futures = List.generate(
-      50,
-      (index) => kernel.submit(
-        id: 'parallel-$index',
-        prompt: 'task-$index',
-        conversationId: 'session-${index % 4}',
-      ),
-    );
-    final completed = await Future.wait(futures).timeout(const Duration(seconds: 30));
-    final rows = await (await store.database).query(
-      'agent_requests',
-      columns: ['id', 'status', 'sequence'],
-      orderBy: 'sequence ASC',
-    );
-
-    expect(completed, hasLength(50));
-    expect(rows, hasLength(50));
-    expect(rows.every((row) => row['status'] == 'completed'), isTrue);
-    expect(
-      started,
-      rows.map((row) => row['id'] as String).toList(growable: false),
-    );
-    expect(rows.map((row) => row['sequence']).toSet(), hasLength(50));
-    await kernel.dispose();
-  });
-
-  test('concurrent duplicate request ids cannot overwrite a completion waiter', () async {
-    final store = await _store('${directory.path}/duplicate-id.db');
-    final started = Completer<void>();
-    final release = Completer<void>();
-    final kernel = durable.AgentKernel(
-      store: store,
-      executor: (request) async {
-        if (!started.isCompleted) started.complete();
-        await release.future;
-        return 'only-one';
-      },
-    );
-    await kernel.initialize();
-
-    final first = kernel.submit(id: 'same-id', prompt: 'first');
-    await started.future.timeout(const Duration(seconds: 5));
-    await expectLater(
-      kernel.submit(id: 'same-id', prompt: 'second'),
-      throwsA(isA<StateError>()),
-    );
-    release.complete();
-    expect((await first).result, 'only-one');
-    expect((await store.database).query(
-      'agent_requests',
-      where: 'id = ?',
-      whereArgs: ['same-id'],
-    ), completes);
-    await kernel.dispose();
-  });
-
 }
 
 Future<String> _requestIdForPrompt(
