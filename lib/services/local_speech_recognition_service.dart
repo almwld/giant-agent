@@ -127,7 +127,7 @@ class LocalSpeechRecognitionService {
         )) {
           sink.add(chunk);
           received += chunk.length;
-          onProgress?.call((received / _baseModelBytes).clamp(0.0, 1.0));
+          onProgress?.call((received / _baseModelBytes).clamp(0.0, 1.0).toDouble());
         }
         await sink.flush();
         await sink.close();
