@@ -62,6 +62,10 @@ static void parse_json() {}
             self.assertIn('System.loadLibrary("ggml")', patched)
             self.assertIn('System.loadLibrary("whisper")', patched)
             self.assertIn('System.loadLibrary("whisper_jni")', patched)
+            self.assertLess(
+                patched.index('System.loadLibrary("whisper")'),
+                patched.index('System.loadLibrary("whisper_jni")'),
+            )
             self.assertNotIn('System.loadLibrary("ggml-cpu")', patched)
             cmake_patched = cmake.read_text(encoding="utf-8")
             self.assertIn('OUTPUT_NAME whisper_jni', cmake_patched)
