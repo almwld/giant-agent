@@ -49,7 +49,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/animations/voice_orb.json
-    - assets/voice_models/ggml-base.bin
+    - assets/voice_models/ggml-base.bin.gz
     - assets/voice_models/nabra-82m-arabic-int8.tar.bz2
     - assets/branding/giant_mark.svg
     - integration_test/fixtures/arabic_smoke.wav
