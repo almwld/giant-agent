@@ -20,8 +20,8 @@ import 'package:sherpa_onnx/src/tts.dart' as sherpa;
 import 'local_voice_text_chunker.dart';
 
 /// Fully on-device Arabic neural speech synthesis using the 82M Nabra model.
-/// The pinned archive is downloaded once into app-private storage; inference
-/// and playback remain local after installation.
+/// The pinned archive is bundled in the APK and extracted into app-private
+/// storage on first initialization; inference and playback remain fully local.
 class LocalArabicTtsService {
   LocalArabicTtsService._();
 
@@ -33,7 +33,7 @@ class LocalArabicTtsService {
   final AudioPlayer _player = AudioPlayer();
   bool _ready = false;
   Directory? _modelDirectory;
-  bool _downloading = false;
+  bool _installingArchive = false;
   Future<void>? _installing;
   int _generationId = 0;
   int _nextSynthesisId = 0;
@@ -50,7 +50,7 @@ class LocalArabicTtsService {
   final Map<int, Completer<Map<String, Object>>> _pendingSynthesis = {};
 
   bool get isReady => _ready;
-  bool get isDownloading => _downloading;
+  bool get isDownloading => _installingArchive;
 
   Future<Directory> _directory() async {
     if (_modelDirectory != null) return _modelDirectory!;
@@ -84,9 +84,9 @@ class LocalArabicTtsService {
   Future<void> _installBundledArchive({
     void Function(String file, double fraction)? onProgress,
   }) async {
-    if (_downloading) throw StateError('Arabic TTS installation is already running.');
+    if (_installingArchive) throw StateError('Arabic TTS installation is already running.');
     if (await isInstalled()) return;
-    _downloading = true;
+    _installingArchive = true;
     try {
       final dir = await _directory();
       final data = await rootBundle.load('assets/voice_models/nabra-82m-arabic-int8.tar.bz2');
@@ -113,7 +113,7 @@ class LocalArabicTtsService {
       if (!await isInstalled()) throw StateError('Arabic TTS bundled model is missing required files.');
       onProgress?.call('Nabra Arabic model', 1.0);
     } finally {
-      _downloading = false;
+      _installingArchive = false;
     }
   }
   Future<void> initialize() async {
