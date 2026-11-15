@@ -38,8 +38,62 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  python-tests:
+    name: Python parser and REPL tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validate voice native patch script syntax
+        run: python -m py_compile tool/patch_flutter_whisper.py
+      - name: Test Whisper native patch safety and idempotence
+        run: python -m unittest discover -s tool/tests -v
+      - name: Install parser test dependencies
+        run: python -m pip install pypdf==4.2.0 reportlab==4.2.0
+      - name: Run parser and sandbox tests
+        working-directory: android/app/src/main/python
+        run: python -m unittest -v test_document_parser test_sandbox_repl
+
+
+  flutter-tests:
+    name: Flutter unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.16.0'
+          channel: stable
+          cache: true
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Generate Arabic WAV asset required by the Flutter asset manifest
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y espeak-ng sox
+          mkdir -p integration_test/fixtures
+          espeak-ng -v ar -s 125 -w integration_test/fixtures/arabic_smoke_raw.wav "مرحبا، هذا اختبار للتعرف الصوتي باللغة العربية."
+          sox integration_test/fixtures/arabic_smoke_raw.wav -r 16000 -c 1 -b 16 -e signed-integer integration_test/fixtures/arabic_smoke.wav
+          rm integration_test/fixtures/arabic_smoke_raw.wav
+          test "$(soxi -r integration_test/fixtures/arabic_smoke.wav)" = "16000"
+          test "$(soxi -c integration_test/fixtures/arabic_smoke.wav)" = "1"
+          test "$(soxi -b integration_test/fixtures/arabic_smoke.wav)" = "16"
+          test -s integration_test/fixtures/arabic_smoke.wav
+      - name: Patch flutter_whisper Flutter 3.16 widget compatibility
+        run: python tool/patch_flutter_whisper.py --compat-only
+      - name: Run Flutter tests
+        run: flutter test --no-pub
+
+
   build:
     name: Build Android APKs
+    needs: [python-tests, flutter-tests]
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
