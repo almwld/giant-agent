@@ -1045,8 +1045,8 @@ class AgentKernelStore {
     Object error, {
     required int maxAttempts,
   }) async {
-    if (maxAttempts < 1) {
-      throw ArgumentError.value(maxAttempts, 'maxAttempts', 'Must be positive.');
+    if (maxAttempts < 1 || maxAttempts > 3) {
+      throw ArgumentError.value(maxAttempts, 'maxAttempts', 'Must be between 1 and 3.');
     }
     final db = await database;
     final now = DateTime.now().toUtc().toIso8601String();
