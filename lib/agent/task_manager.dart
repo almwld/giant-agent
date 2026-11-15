@@ -49,7 +49,7 @@ class TaskManager {
       final task = Map<String, dynamic>.from(source);
       final requestId = task['request_id']?.toString() ?? '';
       if (requestId.isNotEmpty) {
-        final request = await _agent.request(requestId);
+        final request = await _store.getRequest(requestId);
         if (request != null) {
           final steps = task['steps'];
           final step = steps is List && steps.isNotEmpty && steps.first is Map
