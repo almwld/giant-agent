@@ -80,6 +80,9 @@ void main() {
         'task_id': 'subtask-2',
         'status': 'completed',
         'title': 'Research worker',
+        'prompt': 'private task prompt must not be rendered',
+        'api_key': 'secret-token-value',
+        'raw_payload': 'private event payload',
       }),
     ));
 
@@ -89,6 +92,9 @@ void main() {
     expect(find.text('researcher'), findsOneWidget);
     expect(find.text('subtask-2'), findsOneWidget);
     expect(find.text('completed'), findsNWidgets(2));
+    expect(find.textContaining('private task prompt'), findsNothing);
+    expect(find.textContaining('secret-token-value'), findsNothing);
+    expect(find.textContaining('private event payload'), findsNothing);
   });
 
   testWidgets('agent event history shows lifecycle metadata without payload contents', (tester) async {
