@@ -79,25 +79,16 @@ class ProFeatureDirectoryScreen extends StatelessWidget {
   }
 
   void _open(BuildContext context, _FeatureRoute route) {
-    final Widget page;
-    switch (route) {
-      case _FeatureRoute.workflow:
-        page = const AgentWorkflowScreen();
-      case _FeatureRoute.workspace:
-        page = const AgentWorkspaceScreen(steps: []);
-      case _FeatureRoute.models:
-        page = const FileBrowser();
-      case _FeatureRoute.observability:
-        page = const AgentObservabilityScreen(conversationId: 'home');
-      case _FeatureRoute.performance:
-        page = const PerformanceScreen();
-      case _FeatureRoute.stats:
-        page = const StatsScreen();
-      case _FeatureRoute.benchmark:
-        page = const BenchmarkScreen();
-      case _FeatureRoute.settings:
-        page = const AdvancedSettingsScreen();
-    }
+    final Widget page = switch (route) {
+      _FeatureRoute.workflow => const AgentWorkflowScreen(),
+      _FeatureRoute.workspace => const AgentWorkspaceScreen(steps: []),
+      _FeatureRoute.models => const FileBrowser(),
+      _FeatureRoute.observability => const AgentObservabilityScreen(conversationId: 'home'),
+      _FeatureRoute.performance => const PerformanceScreen(),
+      _FeatureRoute.stats => const StatsScreen(),
+      _FeatureRoute.benchmark => const BenchmarkScreen(),
+      _FeatureRoute.settings => const AdvancedSettingsScreen(),
+    };
     Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => page));
   }
 }
