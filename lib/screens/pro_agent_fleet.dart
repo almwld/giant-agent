@@ -25,6 +25,43 @@ class _ProAgentFleetState extends State<ProAgentFleet> {
     await _future;
   }
 
+  Future<void> _resumeAgent(String taskId) async {
+    final disposition = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Review subagent recovery'),
+        content: const Text(
+          'A previous attempt may have performed external actions. Inspect the saved result and external system first. Choose the statement that accurately describes the side effects before allowing another attempt.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          OutlinedButton(
+            onPressed: () => Navigator.pop(dialogContext, 'verified_no_side_effects'),
+            child: const Text('Verified no side effects'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, 'user_authorized_retry'),
+            child: const Text('Authorize retry'),
+          ),
+        ],
+      ),
+    );
+    if (disposition == null) return;
+    try {
+      await _control.resumeAgent(taskId, sideEffectDisposition: disposition);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Subagent recovery finished.')),
+      );
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.toString())),
+      );
+    }
+  }
+
   Future<void> _openAgent(Map<String, dynamic> agent) async {
     await Navigator.of(context).push(MaterialPageRoute<void>(
       builder: (_) => ProAgentDetailScreen(agent: Map<String, dynamic>.unmodifiable(agent)),
@@ -67,6 +104,7 @@ class _ProAgentFleetState extends State<ProAgentFleet> {
                   final id = agent['task_id']?.toString() ?? agent['id']?.toString() ?? '';
                   final status = agent['status']?.toString() ?? 'unknown';
                   final canCancel = status == 'running' || status == 'queued';
+                  final canResume = status == 'interrupted' || status == 'failed' || status == 'paused';
                   return Card(
                     color: ProTheme.bgCard,
                     child: ListTile(
@@ -78,6 +116,7 @@ class _ProAgentFleetState extends State<ProAgentFleet> {
                         onSelected: (value) async {
                           try {
                             if (value == 'cancel' && canCancel) await _control.cancelAgent(id);
+                            if (value == 'resume' && canResume) await _resumeAgent(id);
                             if (value == 'dismiss') await _control.dismissAgent(id);
                             if (mounted) setState(() {});
                           } catch (error) {
@@ -86,6 +125,7 @@ class _ProAgentFleetState extends State<ProAgentFleet> {
                         },
                         itemBuilder: (_) => [
                           if (canCancel) const PopupMenuItem(value: 'cancel', child: Text('Cancel')),
+                          if (canResume) const PopupMenuItem(value: 'resume', child: Text('Review & resume')),
                           const PopupMenuItem(value: 'dismiss', child: Text('Dismiss')),
                         ],
                       ),
