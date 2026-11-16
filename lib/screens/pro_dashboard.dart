@@ -38,7 +38,7 @@ class _ProDashboardState extends State<ProDashboard> {
       animation: _control,
       builder: (context, _) => Scaffold(
         backgroundColor: ProTheme.bgDark,
-        appBar: const ProAppBar(title: 'Operational Control Center', breadcrumb: 'AgentOS / Dashboard'),
+        appBar: ProAppBar(title: 'Operational Control Center', breadcrumb: 'AgentOS / Dashboard'),
         body: Container(
           decoration: const BoxDecoration(gradient: ProTheme.bgGradient),
           child: RefreshIndicator(
