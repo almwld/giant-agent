@@ -5,8 +5,8 @@ import 'package:giant_agent_x/screens/pro_feature_directory.dart';
 
 void main() {
   testWidgets('AgentOS tools directory exposes every supporting service', (tester) async {
-    await tester.view.setPhysicalSize(const Size(900, 1600));
-    await tester.view.setDevicePixelRatio(1);
+    tester.view.physicalSize = const Size(900, 1600);
+    tester.view.devicePixelRatio = 1;
     await tester.pumpWidget(const MaterialApp(home: ProFeatureDirectoryScreen()));
 
     const destinations = [
