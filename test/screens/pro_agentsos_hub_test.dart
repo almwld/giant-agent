@@ -15,6 +15,14 @@ void main() {
     expect(find.text('Battle'), findsOneWidget);
     expect(find.text('Integrations'), findsOneWidget);
     expect(find.text('Config'), findsOneWidget);
+    expect(
+      Theme.of(tester.element(find.byType(BottomNavigationBar))).colorScheme.primary,
+      const Color(0xFF0A8F83),
+    );
+    expect(
+      Theme.of(tester.element(find.byType(BottomNavigationBar))).scaffoldBackgroundColor,
+      const Color(0xFF111111),
+    );
 
     await tester.tap(find.text('Tasks'));
     await tester.pump();
