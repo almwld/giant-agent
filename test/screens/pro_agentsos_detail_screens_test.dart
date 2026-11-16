@@ -36,6 +36,43 @@ void main() {
     expect(find.textContaining('side_effect_unknown'), findsOneWidget);
   });
 
+  testWidgets('task details expose a route to persisted lifecycle history', (tester) async {
+    await tester.pumpWidget(const MaterialApp(
+      home: ProTaskDetailScreen(task: {
+        'id': 'task-history-1',
+        'description': 'Run production checks',
+        'status': 'completed',
+        'steps': [],
+      }),
+    ));
+    await tester.scrollUntilVisible(
+      find.text('Open persisted task lifecycle history'),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('Open persisted task lifecycle history'), findsOneWidget);
+  });
+
+  testWidgets('task event history shows lifecycle metadata without payload contents', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: ProTaskEventHistoryScreen(
+        taskTitle: 'Run production checks',
+        events: [
+          KernelEventRecord(
+            id: 'task-event-1',
+            requestId: 'request-1',
+            type: 'task_completed',
+            status: 'completed',
+            payload: const {'private_result': 'must not be rendered in the task timeline'},
+            createdAt: DateTime.utc(2026, 11, 17),
+          ),
+        ],
+      ),
+    ));
+    expect(find.text('task completed'), findsOneWidget);
+    expect(find.textContaining('must not be rendered in the task timeline'), findsNothing);
+  });
+
   testWidgets('agent details display only fields from the persisted snapshot', (tester) async {
     await tester.pumpWidget(const MaterialApp(
       home: ProAgentDetailScreen(agent: {
