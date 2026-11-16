@@ -122,6 +122,18 @@ class ProControlCenter extends ChangeNotifier {
     return accepted;
   }
 
+  Future<String> resumeAgent(
+    String taskId, {
+    required String sideEffectDisposition,
+  }) async {
+    final result = await _agent.resumeSubagent(
+      taskId,
+      sideEffectDisposition: sideEffectDisposition,
+    );
+    await refresh();
+    return result;
+  }
+
   Future<bool> dismissAgent(String taskId) async {
     final accepted = await _agent.dismissSubagent(taskId);
     await refresh();
