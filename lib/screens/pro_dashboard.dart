@@ -40,9 +40,22 @@ class _ProDashboardState extends State<ProDashboard> {
             future: _future,
             builder: (context, snapshot) {
               if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
-              if (snapshot.hasError) return Center(child: Text(snapshot.error.toString(), style: const TextStyle(color: ProTheme.dangerRed)));
+              if (snapshot.hasError) return ListView(children: [
+                const SizedBox(height: 180),
+                Center(child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    Text('Runtime data unavailable: ${snapshot.error}', textAlign: TextAlign.center, style: const TextStyle(color: ProTheme.dangerRed)),
+                    const SizedBox(height: 12),
+                    FilledButton.icon(onPressed: _refresh, icon: const Icon(Icons.refresh), label: const Text('Retry')),
+                  ]),
+                )),
+              ]);
               final AgentObservabilitySummary? metrics = _control.metrics;
-              if (metrics == null) return const Center(child: Text('No runtime metrics available', style: TextStyle(color: ProTheme.textSecondary)));
+              if (metrics == null) return ListView(children: const [
+                SizedBox(height: 180),
+                Center(child: Text('No runtime metrics available', style: TextStyle(color: ProTheme.textSecondary))),
+              ]);
               final taskCount = _control.tasks.length;
               final agentCount = _control.agents.length;
               final integrationCount = _control.integrations.length;
@@ -70,6 +83,8 @@ class _ProDashboardState extends State<ProDashboard> {
                   ]),
                   const SizedBox(height: 18),
                   _panel('Lifecycle event distribution', metrics.eventTypes.entries.map((entry) => _line(entry.key, entry.value.toString())).toList()),
+                  const SizedBox(height: 12),
+                  Text('Metrics are sourced from the shared AgentService observability journal and persisted task/MCP projections.', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: ProTheme.textSecondary)),
                 ],
               );
             },
