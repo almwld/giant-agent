@@ -116,6 +116,79 @@ class _McpSettingsScreenState extends State<McpSettingsScreen> {
     }
   }
 
+  Future<void> _editServer(McpServerConfig server) async {
+    final name = TextEditingController(text: server.name);
+    final endpoint = TextEditingController(text: server.endpoint);
+    final token = TextEditingController();
+    try {
+      final values = await showDialog<Map<String, String>>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(tr('تعديل خادم MCP', 'Edit MCP server')),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(initialValue: server.id, readOnly: true,
+                  decoration: InputDecoration(labelText: tr('المعرّف', 'Server ID'))),
+                TextField(controller: name, textInputAction: TextInputAction.next,
+                  decoration: InputDecoration(labelText: tr('اسم الخادم', 'Server name'))),
+                TextField(controller: endpoint, keyboardType: TextInputType.url,
+                  decoration: InputDecoration(labelText: tr('رابط MCP عبر HTTPS', 'MCP HTTPS endpoint'))),
+                TextField(controller: token, obscureText: true,
+                  decoration: InputDecoration(
+                    labelText: tr('رمز جديد (اتركه فارغاً للإبقاء على الحالي)', 'New token (blank keeps the current token)'),
+                    helperText: tr('لن يظهر الرمز المحفوظ ولن يُستبدل ما لم تدخل رمزاً جديداً.',
+                      'The stored token is never displayed or replaced unless you enter a new one.'),
+                  )),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext),
+              child: Text(tr('إلغاء', 'Cancel'))),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, {
+                'name': name.text.trim(),
+                'endpoint': endpoint.text.trim(),
+                'token': token.text.trim(),
+              }),
+              child: Text(tr('حفظ التعديلات', 'Save changes')),
+            ),
+          ],
+        ),
+      );
+      if (values == null) return;
+      final enteredToken = values['token'] ?? '';
+      await _agent.addMcpServer(
+        id: server.id,
+        name: values['name'] ?? '',
+        endpoint: values['endpoint'] ?? '',
+        bearerToken: enteredToken.isNotEmpty
+            ? enteredToken
+            : server.bearerToken,
+      );
+      if (!mounted) return;
+      setState(() {
+        _tools.remove(server.id);
+        _resources.remove(server.id);
+      });
+      await _loadServers();
+      await _discover(McpServerConfig(
+        id: server.id,
+        name: values['name'] ?? '',
+        endpoint: values['endpoint'] ?? '',
+        bearerToken: enteredToken.isNotEmpty ? enteredToken : server.bearerToken,
+      ));
+    } catch (error) {
+      _message(error.toString(), isError: true);
+    } finally {
+      name.dispose();
+      endpoint.dispose();
+      token.dispose();
+    }
+  }
+
   Future<void> _discover(McpServerConfig server) async {
     if (_loading.contains(server.id)) return;
     setState(() => _loading.add(server.id));
@@ -233,6 +306,11 @@ class _McpSettingsScreenState extends State<McpSettingsScreen> {
                       Text(server.id, style: Theme.of(context).textTheme.bodySmall),
                     ],
                   ),
+                ),
+                IconButton(
+                  tooltip: tr('تعديل', 'Edit'),
+                  onPressed: busy ? null : () => _editServer(server),
+                  icon: const Icon(Icons.edit_outlined),
                 ),
                 IconButton(
                   tooltip: tr('إزالة', 'Remove'),
