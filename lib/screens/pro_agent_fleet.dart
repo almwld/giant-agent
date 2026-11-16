@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/pro_control_center.dart';
 import '../theme/pro_theme.dart';
 import '../widgets/pro_app_bar.dart';
+import 'pro_agentsos_detail_screens.dart';
 
 class ProAgentFleet extends StatefulWidget {
   const ProAgentFleet({super.key});
@@ -24,6 +25,12 @@ class _ProAgentFleetState extends State<ProAgentFleet> {
     await _future;
   }
 
+  Future<void> _openAgent(Map<String, dynamic> agent) async {
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => ProAgentDetailScreen(agent: Map<String, dynamic>.unmodifiable(agent)),
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -37,7 +44,14 @@ class _ProAgentFleetState extends State<ProAgentFleet> {
           future: _future,
           builder: (context, snapshot) {
             if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
-            if (snapshot.hasError) return Center(child: Text(snapshot.error.toString()));
+            if (snapshot.hasError) return Center(child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Text(snapshot.error.toString(), textAlign: TextAlign.center, style: const TextStyle(color: ProTheme.dangerRed)),
+                const SizedBox(height: 12),
+                FilledButton.icon(onPressed: _refresh, icon: const Icon(Icons.refresh), label: const Text('Retry')),
+              ]),
+            ));
             final agents = _control.agents;
             if (agents.isEmpty) return const Center(child: Padding(
               padding: EdgeInsets.all(28),
@@ -52,25 +66,27 @@ class _ProAgentFleetState extends State<ProAgentFleet> {
                   final agent = agents[index];
                   final id = agent['task_id']?.toString() ?? agent['id']?.toString() ?? '';
                   final status = agent['status']?.toString() ?? 'unknown';
+                  final canCancel = status == 'running' || status == 'queued';
                   return Card(
                     color: ProTheme.bgCard,
                     child: ListTile(
+                      onTap: () => _openAgent(agent),
                       leading: const Icon(Icons.smart_toy, color: ProTheme.neonGreen),
                       title: Text(agent['title']?.toString() ?? agent['agent_id']?.toString() ?? 'Subagent', style: const TextStyle(color: ProTheme.textPrimary)),
                       subtitle: Text('$status • $id', style: const TextStyle(color: ProTheme.textSecondary, fontSize: 11)),
                       trailing: PopupMenuButton<String>(
                         onSelected: (value) async {
                           try {
-                            if (value == 'cancel') await _control.cancelAgent(id);
+                            if (value == 'cancel' && canCancel) await _control.cancelAgent(id);
                             if (value == 'dismiss') await _control.dismissAgent(id);
                             if (mounted) setState(() {});
                           } catch (error) {
                             if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
                           }
                         },
-                        itemBuilder: (_) => const [
-                          PopupMenuItem(value: 'cancel', child: Text('Cancel')),
-                          PopupMenuItem(value: 'dismiss', child: Text('Dismiss')),
+                        itemBuilder: (_) => [
+                          if (canCancel) const PopupMenuItem(value: 'cancel', child: Text('Cancel')),
+                          const PopupMenuItem(value: 'dismiss', child: Text('Dismiss')),
                         ],
                       ),
                     ),
