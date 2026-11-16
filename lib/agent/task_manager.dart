@@ -32,8 +32,6 @@ class TaskManager {
   /// Injected stores remain available through [withStore] for isolated tests.
   bool get usesCanonicalStore => identical(_store, AgentKernelStore.shared);
 
-  /// Exposes the canonical execution lock to UI coordinators without allowing mutation.
-  bool get isExecuting => _executing;
   final List<Map<String, dynamic>> _tasks = [];
   String _currentTask = '';
   bool _executing = false;
