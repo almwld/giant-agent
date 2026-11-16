@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../theme/pro_theme.dart';
 import '../widgets/pro_app_bar.dart';
-import 'advanced_settings_screen.dart';
 import 'agent_observability_screen.dart';
 import 'agent_workflow_screen.dart';
 import 'agent_workspace_screen.dart';
@@ -10,6 +9,7 @@ import 'benchmark_screen.dart';
 import 'file_browser.dart';
 import 'performance_screen.dart';
 import 'stats_screen.dart';
+import 'mcp_settings_screen.dart';
 
 /// Secondary directory for the supporting tools behind the six AgentsOS
 /// control surfaces. Each destination opens the existing production screen.
@@ -28,8 +28,8 @@ class ProFeatureDirectoryScreen extends StatelessWidget {
       _Feature('Usage statistics', 'Review application usage counters.', Icons.query_stats_outlined, _FeatureRoute.stats),
       _Feature('Model benchmark', 'Run a response-time benchmark against the loaded local model.', Icons.timer_outlined, _FeatureRoute.benchmark),
     ]),
-    _FeatureGroup('Preferences', [
-      _Feature('Advanced app settings', 'Manage language, notifications and display preferences.', Icons.settings_outlined, _FeatureRoute.settings),
+    _FeatureGroup('Integrations & configuration', [
+      _Feature('MCP servers', 'Configure secure endpoints and discover remote tools and resources.', Icons.hub_outlined, _FeatureRoute.mcp),
     ]),
   ];
 
@@ -87,7 +87,7 @@ class ProFeatureDirectoryScreen extends StatelessWidget {
       _FeatureRoute.performance => const PerformanceScreen(),
       _FeatureRoute.stats => const StatsScreen(),
       _FeatureRoute.benchmark => const BenchmarkScreen(),
-      _FeatureRoute.settings => const AdvancedSettingsScreen(),
+      _FeatureRoute.mcp => const McpSettingsScreen(),
     };
     Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => page));
   }
@@ -108,7 +108,7 @@ enum _FeatureRoute {
   performance,
   stats,
   benchmark,
-  settings,
+  mcp,
 }
 
 class _Feature {
