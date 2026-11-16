@@ -53,7 +53,38 @@ class _ProAgentsOsHubState extends State<ProAgentsOsHub> {
     return FutureBuilder<void>(
       future: _initialization,
       builder: (context, snapshot) {
-        return Scaffold(
+        return Theme(
+          data: Theme.of(context).copyWith(
+            brightness: Brightness.dark,
+            scaffoldBackgroundColor: ProTheme.bgDark,
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: ProTheme.neonGreen,
+              brightness: Brightness.dark,
+            ).copyWith(
+              primary: ProTheme.neonGreen,
+              secondary: ProTheme.neonGreenDim,
+              surface: ProTheme.bgCard,
+              error: ProTheme.dangerRed,
+              onPrimary: Colors.white,
+              onSurface: ProTheme.textPrimary,
+            ),
+            appBarTheme: const AppBarTheme(
+              backgroundColor: ProTheme.bgDark,
+              foregroundColor: ProTheme.textPrimary,
+              surfaceTintColor: Colors.transparent,
+              elevation: 0,
+            ),
+            cardTheme: CardTheme(
+              color: ProTheme.bgCard,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: const BorderSide(color: Color(0xFF2A2A2E)),
+              ),
+            ),
+            dividerColor: const Color(0xFF2A2A2E),
+          ),
+          child: Scaffold(
           backgroundColor: ProTheme.bgDark,
           body: IndexedStack(
             index: _selectedIndex,
@@ -80,6 +111,7 @@ class _ProAgentsOsHubState extends State<ProAgentsOsHub> {
                   child: const Icon(Icons.refresh),
                 )
               : null,
+          ),
         );
       },
     );
