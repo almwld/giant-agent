@@ -44,9 +44,40 @@ class ProTaskDetailScreen extends StatelessWidget {
           _section('Steps', steps.isEmpty
               ? [const Text('No step records are available.', style: TextStyle(color: ProTheme.textSecondary))]
               : steps.whereType<Map>().map((step) => _step(Map<String, dynamic>.from(step))).toList()),
+          if ((task['id'] ?? '').toString().isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 14),
+              child: SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _openTaskEventHistory(context),
+                  icon: const Icon(Icons.timeline),
+                  label: const Text('Open persisted task lifecycle history'),
+                ),
+              ),
+            ),
         ],
       ),
     );
+  }
+
+  Future<void> _openTaskEventHistory(BuildContext context) async {
+    final taskId = task['id'].toString();
+    try {
+      final events = await ProControlCenter.instance.eventsForTask(taskId);
+      if (!context.mounted) return;
+      await Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => ProTaskEventHistoryScreen(
+          taskTitle: task['description']?.toString() ?? taskId,
+          events: events,
+        ),
+      ));
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not load task lifecycle history: $error')),
+      );
+    }
   }
 
   Widget _step(Map<String, dynamic> step) => Padding(
@@ -60,6 +91,46 @@ class ProTaskDetailScreen extends StatelessWidget {
       if (step['recovery_state'] != null) Text('Recovery: ${step['recovery_state']}', style: const TextStyle(color: ProTheme.textSecondary)),
       const Divider(color: Colors.white12),
     ]),
+  );
+}
+
+class ProTaskEventHistoryScreen extends StatelessWidget {
+  const ProTaskEventHistoryScreen({
+    super.key,
+    required this.taskTitle,
+    required this.events,
+  });
+
+  final String taskTitle;
+  final List<KernelEventRecord> events;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: ProTheme.bgDark,
+    appBar: ProAppBar(title: 'Task activity · $taskTitle'),
+    body: events.isEmpty
+        ? const Center(child: Text('No persisted task lifecycle events found.', style: TextStyle(color: ProTheme.textSecondary)))
+        : ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: events.length,
+            separatorBuilder: (_, __) => const Divider(color: Colors.white12),
+            itemBuilder: (context, index) {
+              final event = events[index];
+              final failed = event.status == 'failed' || event.status == 'error';
+              final completed = event.status == 'completed';
+              return ListTile(
+                leading: Icon(
+                  failed ? Icons.error_outline : completed ? Icons.check_circle_outline : Icons.timeline,
+                  color: failed ? ProTheme.dangerRed : completed ? ProTheme.neonGreen : ProTheme.textSecondary,
+                ),
+                title: Text(event.type.replaceAll('_', ' '), style: const TextStyle(color: ProTheme.textPrimary)),
+                subtitle: Text(
+                  '${event.status} • ${event.createdAt.toLocal()}',
+                  style: const TextStyle(color: ProTheme.textSecondary, fontSize: 11),
+                ),
+              );
+            },
+          ),
   );
 }
 
