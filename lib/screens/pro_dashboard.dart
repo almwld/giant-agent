@@ -47,7 +47,7 @@ class _ProDashboardState extends State<ProDashboard> {
               future: _future,
               builder: (context, snapshot) {
                 if (snapshot.connectionState != ConnectionState.done) {
-                  return const ListView(children: [SizedBox(height: 220), Center(child: CircularProgressIndicator())]);
+                  return ListView(children: const [SizedBox(height: 220), Center(child: CircularProgressIndicator())]);
                 }
                 if (snapshot.hasError) return ListView(children: [
                   const SizedBox(height: 180),
