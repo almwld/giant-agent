@@ -161,6 +161,10 @@ class ProControlCenter extends ChangeNotifier {
     return result;
   }
 
+  /// Reads the durable task lifecycle journal without exposing event payloads.
+  Future<List<KernelEventRecord>> eventsForTask(String taskId) =>
+      _tasks.eventsForTask(taskId);
+
   @override
   void dispose() {
     _refreshDebounce?.cancel();
