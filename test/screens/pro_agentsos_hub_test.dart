@@ -32,6 +32,18 @@ void main() {
     await tester.pump();
     expect(find.text('Agent Fleet Overview'), findsOneWidget);
 
+    await tester.tap(find.text('Battle').first);
+    await tester.pump();
+    expect(find.text('Battle Cards'), findsOneWidget);
+
+    await tester.tap(find.text('Integrations').first);
+    await tester.pump();
+    expect(find.text('Integrations'), findsWidgets);
+
+    await tester.tap(find.text('Config').first);
+    await tester.pump();
+    expect(find.text('Advanced Configuration'), findsOneWidget);
+
     tester.view.resetPhysicalSize();
     tester.view.resetDevicePixelRatio();
   });
