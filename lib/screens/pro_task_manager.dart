@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/pro_control_center.dart';
 import '../theme/pro_theme.dart';
 import '../widgets/pro_app_bar.dart';
+import 'pro_agentsos_detail_screens.dart';
 
 class ProTaskManager extends StatefulWidget {
   const ProTaskManager({super.key});
@@ -62,6 +63,12 @@ class _ProTaskManagerState extends State<ProTaskManager> {
     }
   }
 
+  Future<void> _openTask(Map<String, dynamic> task) async {
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => ProTaskDetailScreen(task: Map<String, dynamic>.unmodifiable(task)),
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -75,7 +82,16 @@ class _ProTaskManagerState extends State<ProTaskManager> {
             future: _loading,
             builder: (context, state) {
               if (state.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
-              if (state.hasError) return Center(child: Text(state.error.toString()));
+              if (state.hasError) {
+                return Center(child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    Text(state.error.toString(), textAlign: TextAlign.center, style: const TextStyle(color: ProTheme.dangerRed)),
+                    const SizedBox(height: 12),
+                    FilledButton.icon(onPressed: () => setState(() => _loading = _control.refresh()), icon: const Icon(Icons.refresh), label: const Text('Retry')),
+                  ]),
+                ));
+              }
               final tasks = _control.tasks.where((task) {
                 final status = task['status']?.toString() ?? '';
                 return _filter == 'All' ||
@@ -121,18 +137,18 @@ class _ProTaskManagerState extends State<ProTaskManager> {
                             return Card(
                               color: ProTheme.bgCard,
                               child: ListTile(
+                                onTap: () => _openTask(task),
                                 title: Text(task['description']?.toString() ?? 'Task', style: const TextStyle(color: ProTheme.textPrimary)),
                                 subtitle: Text('$status • ${task['updated_at'] ?? task['created_at'] ?? ''}', style: const TextStyle(color: ProTheme.textSecondary, fontSize: 11)),
-                                trailing: canResume
-                                  ? IconButton(
+                                trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                                  if (canResume)
+                                    IconButton(
                                       tooltip: 'Review and resume',
                                       icon: const Icon(Icons.play_circle_outline, color: ProTheme.neonGreen),
                                       onPressed: () => _resume(id),
-                                    )
-                                  : Icon(
-                                      status == 'failed' ? Icons.error_outline : status == 'completed' ? Icons.check_circle : status == 'running' ? Icons.sync : Icons.pending,
-                                      color: status == 'failed' ? ProTheme.dangerRed : ProTheme.neonGreen,
                                     ),
+                                  const Icon(Icons.chevron_right, color: ProTheme.textSecondary),
+                                ]),
                               ),
                             );
                           },
