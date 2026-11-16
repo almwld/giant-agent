@@ -113,6 +113,15 @@ void main() {
       expect(saved, hasLength(1));
       expect(saved.single['source_url'], record['source_url']);
       expect(saved.single['confidence'], 'high');
+      await store.saveBattleCard({
+        ...record,
+        'evidence_excerpt': 'Updated official evidence confirms the annual plan and published price.',
+        'confidence': 'medium',
+      });
+      final updated = await store.getBattleCards();
+      expect(updated, hasLength(1));
+      expect(updated.single['evidence_excerpt'], contains('Updated official evidence'));
+      expect(updated.single['confidence'], 'medium');
       await store.deleteBattleCard('evidence-1');
       expect(await store.getBattleCards(), isEmpty);
     } finally {
