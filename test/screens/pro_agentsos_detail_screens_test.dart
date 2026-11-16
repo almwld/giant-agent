@@ -72,7 +72,7 @@ void main() {
     ));
 
     expect(find.text('subagent completed'), findsOneWidget);
-    expect(find.textContaining('completed'), findsOneWidget);
+    expect(find.textContaining('completed'), findsNWidgets(2));
     expect(find.textContaining('must not be rendered in the timeline'), findsNothing);
   });
 }
