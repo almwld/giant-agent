@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'pro_feature_directory.dart';
 import '../services/pro_control_center.dart';
 import '../domain/kernel/agent_observability.dart';
 import '../theme/pro_theme.dart';
@@ -38,7 +39,7 @@ class _ProDashboardState extends State<ProDashboard> {
       animation: _control,
       builder: (context, _) => Scaffold(
         backgroundColor: ProTheme.bgDark,
-        appBar: ProAppBar(title: 'Operational Control Center', breadcrumb: 'AgentOS / Dashboard'),
+        appBar: ProAppBar(title: 'Operational Control Center', breadcrumb: 'AgentOS / Dashboard', onToolsPressed: () => openProFeatureDirectory(context)),
         body: Container(
           decoration: const BoxDecoration(gradient: ProTheme.bgGradient),
           child: RefreshIndicator(
