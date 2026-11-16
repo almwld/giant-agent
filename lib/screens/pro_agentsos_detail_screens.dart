@@ -105,6 +105,8 @@ class ProAgentDetailScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
   Future<void> _openEventHistory(BuildContext context) async {
     final taskId = (agent['task_id'] ?? agent['id']).toString();
     try {
@@ -138,7 +140,7 @@ class ProAgentEventHistoryScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: ProTheme.bgDark,
-    appBar: ProAppBar(title: 'Agent activity'),
+    appBar: ProAppBar(title: 'Activity · $agentTitle'),
     body: events.isEmpty
         ? const Center(child: Text('No persisted lifecycle events found.', style: TextStyle(color: ProTheme.textSecondary)))
         : ListView.separated(
