@@ -95,6 +95,9 @@ class ProControlCenter extends ChangeNotifier {
   }
 
   Future<Map<String, dynamic>> createTask(String description) async {
+    if (isTaskExecuting) {
+      throw StateError('أوقف المهمة النشطة أو انتظر اكتمالها قبل بدء مهمة أخرى.');
+    }
     await _agent.initialize();
     final task = await _tasks.createTask(description);
     await refresh();
