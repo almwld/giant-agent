@@ -36,9 +36,11 @@ void main() {
       }),
     ));
 
-    expect(find.text('Research worker'), findsOneWidget);
+    // The title/status appear in both the summary header and raw persisted
+    // record, making their provenance visible in both contexts.
+    expect(find.text('Research worker'), findsNWidgets(2));
     expect(find.text('researcher'), findsOneWidget);
     expect(find.text('subtask-2'), findsOneWidget);
-    expect(find.text('completed'), findsOneWidget);
+    expect(find.text('completed'), findsNWidgets(2));
   });
 }
