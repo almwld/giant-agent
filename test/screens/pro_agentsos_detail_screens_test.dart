@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:giant_agent_x/screens/pro_agentsos_detail_screens.dart';
+import 'package:giant_agent_x/domain/kernel/agent_kernel_store.dart';
 
 void main() {
   testWidgets('task details expose persisted lifecycle, step, result and recovery data', (tester) async {
@@ -51,5 +52,27 @@ void main() {
     expect(find.text('researcher'), findsOneWidget);
     expect(find.text('subtask-2'), findsOneWidget);
     expect(find.text('completed'), findsNWidgets(2));
+  });
+
+  testWidgets('agent event history shows lifecycle metadata without payload contents', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: ProAgentEventHistoryScreen(
+        agentTitle: 'Research worker',
+        events: [
+          KernelEventRecord(
+            id: 'event-1',
+            requestId: 'request-1',
+            type: 'subagent_completed',
+            status: 'completed',
+            payload: const {'private_result': 'must not be rendered in the timeline'},
+            createdAt: DateTime.utc(2026, 11, 16),
+          ),
+        ],
+      ),
+    ));
+
+    expect(find.text('subagent completed'), findsOneWidget);
+    expect(find.textContaining('completed'), findsOneWidget);
+    expect(find.textContaining('must not be rendered in the timeline'), findsNothing);
   });
 }
