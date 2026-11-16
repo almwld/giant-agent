@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'pro_feature_directory.dart';
 
 import '../services/pro_control_center.dart';
 import '../theme/pro_theme.dart';
@@ -130,7 +131,7 @@ class _ProTaskManagerState extends State<ProTaskManager> {
       animation: _control,
       builder: (context, _) => Scaffold(
         backgroundColor: ProTheme.bgDark,
-        appBar: const ProAppBar(title: 'Task Manager'),
+        appBar: ProAppBar(title: 'Task Manager', onToolsPressed: () => openProFeatureDirectory(context)),
         floatingActionButton: FloatingActionButton.extended(
           onPressed: (_creating || _control.isTaskExecuting) ? null : _createTask,
           icon: _creating
