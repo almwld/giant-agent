@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'pro_feature_directory.dart';
 import '../services/pro_control_center.dart';
 import '../theme/pro_theme.dart';
 import '../widgets/pro_app_bar.dart';
@@ -74,7 +75,7 @@ class _ProAgentFleetState extends State<ProAgentFleet> {
       animation: _control,
       builder: (context, _) => Scaffold(
       backgroundColor: ProTheme.bgDark,
-      appBar: const ProAppBar(title: 'Agent Fleet Overview'),
+      appBar: ProAppBar(title: 'Agent Fleet Overview', onToolsPressed: () => openProFeatureDirectory(context)),
       body: Container(
         decoration: const BoxDecoration(gradient: ProTheme.bgGradient),
         child: FutureBuilder<void>(
