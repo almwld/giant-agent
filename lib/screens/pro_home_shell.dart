@@ -71,9 +71,43 @@ class _ProHomeShellState extends State<ProHomeShell> {
           index: _selectedIndex,
           children: List<Widget>.generate(
             _pages.length,
-            (index) => _visited.contains(index)
-                ? _pages[index]
-                : const SizedBox.shrink(),
+            (index) {
+              if (!_visited.contains(index)) return const SizedBox.shrink();
+              if (index == 0) return _pages[index];
+              return Theme(
+                data: Theme.of(context).copyWith(
+                  brightness: Brightness.dark,
+                  scaffoldBackgroundColor: ProTheme.bgDark,
+                  colorScheme: ColorScheme.fromSeed(
+                    seedColor: ProTheme.neonGreen,
+                    brightness: Brightness.dark,
+                  ).copyWith(
+                    primary: ProTheme.neonGreen,
+                    secondary: ProTheme.neonGreenDim,
+                    surface: ProTheme.bgCard,
+                    error: ProTheme.dangerRed,
+                    onPrimary: Colors.white,
+                    onSurface: ProTheme.textPrimary,
+                  ),
+                  appBarTheme: const AppBarTheme(
+                    backgroundColor: ProTheme.bgDark,
+                    foregroundColor: ProTheme.textPrimary,
+                    surfaceTintColor: Colors.transparent,
+                    elevation: 0,
+                  ),
+                  cardTheme: CardTheme(
+                    color: ProTheme.bgCard,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: const BorderSide(color: Color(0xFF2A2A2E)),
+                    ),
+                  ),
+                  dividerColor: const Color(0xFF2A2A2E),
+                ),
+                child: _pages[index],
+              );
+            },
           ),
         ),
       ),

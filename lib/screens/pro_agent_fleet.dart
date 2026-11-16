@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/pro_control_center.dart';
 import '../theme/pro_theme.dart';
 import '../widgets/pro_app_bar.dart';
+import 'pro_agentsos_detail_screens.dart';
 
 class ProAgentFleet extends StatefulWidget {
   const ProAgentFleet({super.key});
@@ -24,6 +25,49 @@ class _ProAgentFleetState extends State<ProAgentFleet> {
     await _future;
   }
 
+  Future<void> _resumeAgent(String taskId) async {
+    final disposition = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Review subagent recovery'),
+        content: const Text(
+          'A previous attempt may have performed external actions. Inspect the saved result and external system first. Choose the statement that accurately describes the side effects before allowing another attempt.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          OutlinedButton(
+            onPressed: () => Navigator.pop(dialogContext, 'verified_no_side_effects'),
+            child: const Text('Verified no side effects'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, 'user_authorized_retry'),
+            child: const Text('Authorize retry'),
+          ),
+        ],
+      ),
+    );
+    if (disposition == null) return;
+    try {
+      await _control.resumeAgent(taskId, sideEffectDisposition: disposition);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Subagent recovery finished.')),
+      );
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.toString())),
+      );
+    }
+  }
+
+  Future<void> _openAgent(Map<String, dynamic> agent) async {
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => ProAgentDetailScreen(agent: Map<String, dynamic>.unmodifiable(agent)),
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -37,12 +81,28 @@ class _ProAgentFleetState extends State<ProAgentFleet> {
           future: _future,
           builder: (context, snapshot) {
             if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
-            if (snapshot.hasError) return Center(child: Text(snapshot.error.toString()));
-            final agents = _control.agents;
-            if (agents.isEmpty) return const Center(child: Padding(
-              padding: EdgeInsets.all(28),
-              child: Text('No persisted subagent activity yet. Delegated agents appear here when work is recorded.', textAlign: TextAlign.center, style: TextStyle(color: ProTheme.textSecondary)),
+            if (snapshot.hasError) return Center(child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Text(snapshot.error.toString(), textAlign: TextAlign.center, style: const TextStyle(color: ProTheme.dangerRed)),
+                const SizedBox(height: 12),
+                FilledButton.icon(onPressed: _refresh, icon: const Icon(Icons.refresh), label: const Text('Retry')),
+              ]),
             ));
+            final agents = _control.agents;
+            if (agents.isEmpty) return RefreshIndicator(
+              onRefresh: _refresh,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: const [
+                  SizedBox(height: 180),
+                  Padding(
+                    padding: EdgeInsets.all(28),
+                    child: Text('No persisted subagent activity yet. Delegated agents appear here when work is recorded.', textAlign: TextAlign.center, style: TextStyle(color: ProTheme.textSecondary)),
+                  ),
+                ],
+              ),
+            );
             return RefreshIndicator(
               onRefresh: _refresh,
               child: ListView.builder(
@@ -52,25 +112,31 @@ class _ProAgentFleetState extends State<ProAgentFleet> {
                   final agent = agents[index];
                   final id = agent['task_id']?.toString() ?? agent['id']?.toString() ?? '';
                   final status = agent['status']?.toString() ?? 'unknown';
+                  final canCancel = status == 'running' || status == 'queued';
+                  final canResume = status == 'interrupted' || status == 'failed' || status == 'paused';
+                  final canDismiss = status != 'running' && status != 'queued' && status != 'pending';
                   return Card(
                     color: ProTheme.bgCard,
                     child: ListTile(
+                      onTap: () => _openAgent(agent),
                       leading: const Icon(Icons.smart_toy, color: ProTheme.neonGreen),
                       title: Text(agent['title']?.toString() ?? agent['agent_id']?.toString() ?? 'Subagent', style: const TextStyle(color: ProTheme.textPrimary)),
                       subtitle: Text('$status • $id', style: const TextStyle(color: ProTheme.textSecondary, fontSize: 11)),
                       trailing: PopupMenuButton<String>(
                         onSelected: (value) async {
                           try {
-                            if (value == 'cancel') await _control.cancelAgent(id);
-                            if (value == 'dismiss') await _control.dismissAgent(id);
+                            if (value == 'cancel' && canCancel) await _control.cancelAgent(id);
+                            if (value == 'resume' && canResume) await _resumeAgent(id);
+                            if (value == 'dismiss' && canDismiss) await _control.dismissAgent(id);
                             if (mounted) setState(() {});
                           } catch (error) {
                             if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
                           }
                         },
-                        itemBuilder: (_) => const [
-                          PopupMenuItem(value: 'cancel', child: Text('Cancel')),
-                          PopupMenuItem(value: 'dismiss', child: Text('Dismiss')),
+                        itemBuilder: (_) => [
+                          if (canCancel) const PopupMenuItem(value: 'cancel', child: Text('Cancel')),
+                          if (canResume) const PopupMenuItem(value: 'resume', child: Text('Review & resume')),
+                          if (canDismiss) const PopupMenuItem(value: 'dismiss', child: Text('Dismiss')),
                         ],
                       ),
                     ),

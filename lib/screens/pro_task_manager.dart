@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/pro_control_center.dart';
 import '../theme/pro_theme.dart';
 import '../widgets/pro_app_bar.dart';
+import 'pro_agentsos_detail_screens.dart';
 
 class ProTaskManager extends StatefulWidget {
   const ProTaskManager({super.key});
@@ -14,11 +15,66 @@ class _ProTaskManagerState extends State<ProTaskManager> {
   final _control = ProControlCenter.instance;
   late Future<void> _loading;
   String _filter = 'All';
+  bool _creating = false;
 
   @override
   void initState() {
     super.initState();
     _loading = _control.initialize();
+  }
+
+  Future<void> _createTask() async {
+    final controller = TextEditingController();
+    try {
+      final description = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Create agent task'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            minLines: 2,
+            maxLines: 5,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(
+              labelText: 'Task objective',
+              hintText: 'Describe the outcome you want Giant Agent to deliver.',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () {
+                final value = controller.text.trim();
+                if (value.isNotEmpty) Navigator.pop(dialogContext, value);
+              },
+              child: const Text('Create and run'),
+            ),
+          ],
+        ),
+      );
+      if (description == null || description.trim().isEmpty) return;
+      setState(() => _creating = true);
+      final task = await _control.createTask(description);
+      final taskId = task['id']?.toString() ?? '';
+      if (taskId.isEmpty) throw StateError('The task was saved without an identifier.');
+      final result = await _control.startTask(taskId);
+      if (!mounted) return;
+      final status = result['status']?.toString() ?? 'unknown';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Task execution finished with status: $status')),
+      );
+      setState(() => _loading = Future<void>.value());
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
+        setState(() => _loading = _control.refresh());
+      }
+    } finally {
+      controller.dispose();
+      if (mounted) setState(() => _creating = false);
+    }
   }
 
   Future<void> _resume(String taskId) async {
@@ -62,6 +118,12 @@ class _ProTaskManagerState extends State<ProTaskManager> {
     }
   }
 
+  Future<void> _openTask(Map<String, dynamic> task) async {
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => ProTaskDetailScreen(task: Map<String, dynamic>.unmodifiable(task)),
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -69,13 +131,29 @@ class _ProTaskManagerState extends State<ProTaskManager> {
       builder: (context, _) => Scaffold(
         backgroundColor: ProTheme.bgDark,
         appBar: const ProAppBar(title: 'Task Manager'),
+        floatingActionButton: FloatingActionButton.extended(
+          onPressed: (_creating || _control.isTaskExecuting) ? null : _createTask,
+          icon: _creating
+              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Icon(Icons.add_task),
+          label: Text(_creating ? 'Starting…' : _control.isTaskExecuting ? 'Task running' : 'New task'),
+        ),
         body: Container(
           decoration: const BoxDecoration(gradient: ProTheme.bgGradient),
           child: FutureBuilder<void>(
             future: _loading,
             builder: (context, state) {
               if (state.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
-              if (state.hasError) return Center(child: Text(state.error.toString()));
+              if (state.hasError) {
+                return Center(child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    Text(state.error.toString(), textAlign: TextAlign.center, style: const TextStyle(color: ProTheme.dangerRed)),
+                    const SizedBox(height: 12),
+                    FilledButton.icon(onPressed: () => setState(() => _loading = _control.refresh()), icon: const Icon(Icons.refresh), label: const Text('Retry')),
+                  ]),
+                ));
+              }
               final tasks = _control.tasks.where((task) {
                 final status = task['status']?.toString() ?? '';
                 return _filter == 'All' ||
@@ -121,18 +199,18 @@ class _ProTaskManagerState extends State<ProTaskManager> {
                             return Card(
                               color: ProTheme.bgCard,
                               child: ListTile(
+                                onTap: () => _openTask(task),
                                 title: Text(task['description']?.toString() ?? 'Task', style: const TextStyle(color: ProTheme.textPrimary)),
                                 subtitle: Text('$status • ${task['updated_at'] ?? task['created_at'] ?? ''}', style: const TextStyle(color: ProTheme.textSecondary, fontSize: 11)),
-                                trailing: canResume
-                                  ? IconButton(
+                                trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                                  if (canResume)
+                                    IconButton(
                                       tooltip: 'Review and resume',
                                       icon: const Icon(Icons.play_circle_outline, color: ProTheme.neonGreen),
                                       onPressed: () => _resume(id),
-                                    )
-                                  : Icon(
-                                      status == 'failed' ? Icons.error_outline : status == 'completed' ? Icons.check_circle : status == 'running' ? Icons.sync : Icons.pending,
-                                      color: status == 'failed' ? ProTheme.dangerRed : ProTheme.neonGreen,
                                     ),
+                                  const Icon(Icons.chevron_right, color: ProTheme.textSecondary),
+                                ]),
                               ),
                             );
                           },

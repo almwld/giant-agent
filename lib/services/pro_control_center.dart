@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../agent/task_manager.dart';
 import '../agent/architecture/agent_event_bus.dart';
 import '../domain/kernel/agent_observability.dart';
+import '../domain/kernel/agent_kernel_store.dart';
 import '../domain/mcp/mcp_client.dart';
 import 'agent_service.dart';
 
@@ -21,6 +22,7 @@ class ProControlCenter extends ChangeNotifier {
   final TaskManager _tasks = TaskManager();
 
   AgentObservabilitySummary? metrics;
+  List<AgentObservabilityEvent> recentEvents = const [];
   List<Map<String, dynamic>> tasks = const [];
   List<Map<String, dynamic>> agents = const [];
   List<McpServerConfig> integrations = const [];
@@ -37,13 +39,10 @@ class ProControlCenter extends ChangeNotifier {
   void _listenForRuntimeChanges() {
     if (_eventSubscription != null) return;
     _eventSubscription = AgentEventBus.instance.events.listen((event) {
-      // Streaming tokens are presentation deltas, not control-plane state.
       if (event['type'] == 'stream_token') return;
       _refreshDebounce?.cancel();
       _refreshDebounce = Timer(const Duration(milliseconds: 350), () {
-        unawaited(refresh().catchError((Object _) {
-          // Keep the last good snapshot visible; lastError exposes the issue.
-        }));
+        unawaited(refresh().catchError((Object _) {}));
       });
     });
   }
@@ -66,19 +65,25 @@ class ProControlCenter extends ChangeNotifier {
     try {
       await _agent.initialize();
       await _tasks.initialize();
-      // Refresh every AgentsOS panel from the same durable runtime snapshot.
-      // TaskManager's local list is only a UI cache, never a second authority.
       await _tasks.refreshFromStore();
       _listenForRuntimeChanges();
       final results = await Future.wait<Object>([
         _agent.observabilitySummaryForConversation('global'),
-        _agent.subagentsForConversation('global'),
         _agent.mcpServers(),
+        _agent.observabilityEventsForConversation('global', limit: 20),
       ]);
       metrics = results[0] as AgentObservabilitySummary;
-      agents = results[1] as List<Map<String, dynamic>>;
-      integrations = results[2] as List<McpServerConfig>;
+      integrations = results[1] as List<McpServerConfig>;
+      recentEvents = (results[2] as AgentObservabilityPage).events;
       tasks = _tasks.getTasks();
+
+      // Fleet scope is global to AgentsOS, not limited to the special
+      // "global" conversation. Use the same durable task projection.
+      agents = tasks
+          .where((task) =>
+              task['kind'] == 'subagent' && task['is_dismissed'] != true)
+          .map((task) => Map<String, dynamic>.unmodifiable(task))
+          .toList(growable: false);
       lastUpdated = DateTime.now();
     } catch (error) {
       lastError = error;
@@ -89,10 +94,51 @@ class ProControlCenter extends ChangeNotifier {
     }
   }
 
+  Future<Map<String, dynamic>> createTask(String description) async {
+    if (_tasks.isExecuting || isTaskExecuting) {
+      throw StateError('أوقف المهمة النشطة أو انتظر اكتمالها قبل بدء مهمة أخرى.');
+    }
+    await _agent.initialize();
+    final task = await _tasks.createTask(description);
+    await refresh();
+    return task;
+  }
+
+  Future<Map<String, dynamic>> startTask(String taskId) async {
+    await _agent.initialize();
+    final selected = await _tasks.selectTask(taskId);
+    if (!selected) {
+      throw StateError('تعذر تحديد المهمة؛ قد تكون هناك مهمة أخرى قيد التنفيذ.');
+    }
+    try {
+      final result = await _tasks.executeNextStep();
+      await refresh();
+      return result;
+    } catch (_) {
+      await refresh();
+      rethrow;
+    }
+  }
+
+  Future<List<KernelEventRecord>> eventsForAgent(String taskId) =>
+      _agent.eventsForSubagent(taskId);
+
   Future<bool> cancelAgent(String taskId) async {
     final accepted = await _agent.cancelSubagent(taskId);
     await refresh();
     return accepted;
+  }
+
+  Future<String> resumeAgent(
+    String taskId, {
+    required String sideEffectDisposition,
+  }) async {
+    final result = await _agent.resumeSubagent(
+      taskId,
+      sideEffectDisposition: sideEffectDisposition,
+    );
+    await refresh();
+    return result;
   }
 
   Future<bool> dismissAgent(String taskId) async {
@@ -101,7 +147,6 @@ class ProControlCenter extends ChangeNotifier {
     return accepted;
   }
 
-  // Derive active state from the persisted task projection, not a process-local flag.
   bool get isTaskExecuting => tasks.any((task) => task['status'] == 'running');
 
   Future<bool> cancelCurrentTask() async {
@@ -115,6 +160,10 @@ class ProControlCenter extends ChangeNotifier {
     await refresh();
     return result;
   }
+
+  /// Reads the durable task lifecycle journal without exposing event payloads.
+  Future<List<KernelEventRecord>> eventsForTask(String taskId) =>
+      _tasks.eventsForTask(taskId);
 
   @override
   void dispose() {

@@ -86,7 +86,7 @@ class AgentKernelStore {
     await Directory(directory.path).create(recursive: true);
     return openDatabase(
       '${directory.path}/giant_agent_kernel.db',
-      version: 6,
+      version: 7,
       onConfigure: (db) async {
         await db.execute('PRAGMA foreign_keys = ON');
         await db.rawQuery('PRAGMA journal_mode = WAL');
@@ -152,6 +152,7 @@ class AgentKernelStore {
         await _createTaskTable(db);
         await _createOutputTable(db);
         await _createSubagentRuntimeStateTable(db);
+        await _createBattleCardTable(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) await _createTaskTable(db);
@@ -190,6 +191,7 @@ class AgentKernelStore {
             }
           }
         }
+        if (oldVersion < 7) await _createBattleCardTable(db);
       },
     );
   }
@@ -314,6 +316,82 @@ class AgentKernelStore {
       }
       return Map<String, dynamic>.from(decoded);
     }).toList(growable: false);
+  }
+
+  static Future<void> _createBattleCardTable(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS agent_battle_cards (
+        id TEXT PRIMARY KEY,
+        competitor TEXT NOT NULL,
+        product TEXT NOT NULL DEFAULT '',
+        pricing TEXT NOT NULL DEFAULT '',
+        source_url TEXT NOT NULL,
+        source_date TEXT NOT NULL,
+        evidence_excerpt TEXT NOT NULL,
+        confidence TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_agent_battle_cards_competitor
+      ON agent_battle_cards(competitor, source_date DESC)
+    ''');
+  }
+
+  /// Persists human-entered, source-backed competitor evidence.
+  Future<void> saveBattleCard(Map<String, dynamic> card) async {
+    final id = card['id']?.toString().trim() ?? '';
+    final competitor = card['competitor']?.toString().trim() ?? '';
+    final sourceUrl = card['source_url']?.toString().trim() ?? '';
+    final sourceDate = card['source_date']?.toString().trim() ?? '';
+    final excerpt = card['evidence_excerpt']?.toString().trim() ?? '';
+    final confidence = card['confidence']?.toString().trim() ?? '';
+    final uri = Uri.tryParse(sourceUrl);
+    if (id.isEmpty || competitor.isEmpty || competitor.length > 120 ||
+        uri == null || uri.scheme != 'https' || uri.host.isEmpty ||
+        sourceDate.isEmpty || DateTime.tryParse(sourceDate) == null ||
+        excerpt.length < 20 || excerpt.length > 5000 ||
+        !const {'low', 'medium', 'high'}.contains(confidence)) {
+      throw ArgumentError('Battle-card evidence requires a competitor, HTTPS source, valid date, 20–5000 character excerpt and confidence level.');
+    }
+    final now = DateTime.now().toUtc().toIso8601String();
+    final existing = await (await database).query(
+      'agent_battle_cards',
+      columns: ['created_at'],
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    await (await database).insert('agent_battle_cards', <String, Object?>{
+      'id': id,
+      'competitor': competitor,
+      'product': card['product']?.toString().trim() ?? '',
+      'pricing': card['pricing']?.toString().trim() ?? '',
+      'source_url': sourceUrl,
+      'source_date': sourceDate,
+      'evidence_excerpt': excerpt,
+      'confidence': confidence,
+      'created_at': existing.isEmpty ? now : existing.single['created_at'],
+      'updated_at': now,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<List<Map<String, dynamic>>> getBattleCards() async {
+    final rows = await (await database).query(
+      'agent_battle_cards',
+      orderBy: 'competitor COLLATE NOCASE ASC, source_date DESC, created_at DESC',
+    );
+    return rows.map((row) => Map<String, dynamic>.from(row)).toList(growable: false);
+  }
+
+  Future<void> deleteBattleCard(String id) async {
+    if (id.trim().isEmpty) throw ArgumentError.value(id, 'id', 'Evidence id is required.');
+    await (await database).delete(
+      'agent_battle_cards',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 
   static Future<void> _createSubagentRuntimeStateTable(DatabaseExecutor db) async {

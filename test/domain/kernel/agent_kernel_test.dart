@@ -13,7 +13,7 @@ Future<AgentKernelStore> _store(String path) async {
     databaseProvider: () => databaseFactoryFfi.openDatabase(
       path,
       options: OpenDatabaseOptions(
-        version: 6,
+        version: 7,
         onConfigure: (db) async {
           await db.execute('PRAGMA foreign_keys = ON');
           await db.rawQuery('PRAGMA journal_mode = WAL');
@@ -52,6 +52,16 @@ Future<AgentKernelStore> _store(String path) async {
             )
           ''');
           await db.execute('CREATE INDEX idx_agent_events_request ON agent_events(request_id, row_id)');
+          await db.execute('''
+            CREATE TABLE agent_battle_cards (
+              id TEXT PRIMARY KEY, competitor TEXT NOT NULL,
+              product TEXT NOT NULL DEFAULT '', pricing TEXT NOT NULL DEFAULT '',
+              source_url TEXT NOT NULL, source_date TEXT NOT NULL,
+              evidence_excerpt TEXT NOT NULL, confidence TEXT NOT NULL,
+              created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+            )
+          ''');
+          await db.execute('CREATE INDEX idx_agent_battle_cards_competitor ON agent_battle_cards(competitor, source_date DESC)');
           await db.execute("""
             CREATE TRIGGER agent_events_no_update
             BEFORE UPDATE ON agent_events
@@ -72,6 +82,53 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
+
+  test('persists only dated HTTPS competitor evidence and supports deletion', () async {
+    final directory = await _tempDirectory();
+    final store = await _store('${directory.path}/battle-cards.db');
+    try {
+      await expectLater(
+        store.saveBattleCard({
+          'id': 'bad-source',
+          'competitor': 'Example',
+          'source_url': 'http://example.com',
+          'source_date': '2026-11-17',
+          'evidence_excerpt': 'This excerpt is long enough for validation.',
+          'confidence': 'medium',
+        }),
+        throwsArgumentError,
+      );
+      final record = <String, dynamic>{
+        'id': 'evidence-1',
+        'competitor': 'Example Competitor',
+        'product': 'Example Suite',
+        'pricing': 'Published annual price observation',
+        'source_url': 'https://example.com/pricing',
+        'source_date': '2026-11-17',
+        'evidence_excerpt': 'The official pricing page lists an annual plan with a published price.',
+        'confidence': 'high',
+      };
+      await store.saveBattleCard(record);
+      final saved = await store.getBattleCards();
+      expect(saved, hasLength(1));
+      expect(saved.single['source_url'], record['source_url']);
+      expect(saved.single['confidence'], 'high');
+      await store.saveBattleCard({
+        ...record,
+        'evidence_excerpt': 'Updated official evidence confirms the annual plan and published price.',
+        'confidence': 'medium',
+      });
+      final updated = await store.getBattleCards();
+      expect(updated, hasLength(1));
+      expect(updated.single['evidence_excerpt'], contains('Updated official evidence'));
+      expect(updated.single['confidence'], 'medium');
+      await store.deleteBattleCard('evidence-1');
+      expect(await store.getBattleCards(), isEmpty);
+    } finally {
+      await store.close();
+      await directory.delete(recursive: true);
+    }
+  });
 
   test('atomically links task snapshots to every durable execution attempt', () async {
     final directory = await _tempDirectory();

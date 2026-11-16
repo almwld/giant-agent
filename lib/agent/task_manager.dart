@@ -31,6 +31,7 @@ class TaskManager {
   /// Confirms production task projections use the exact runtime store instance.
   /// Injected stores remain available through [withStore] for isolated tests.
   bool get usesCanonicalStore => identical(_store, AgentKernelStore.shared);
+
   final List<Map<String, dynamic>> _tasks = [];
   String _currentTask = '';
   bool _executing = false;
