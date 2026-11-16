@@ -90,10 +90,19 @@ class _ProAgentFleetState extends State<ProAgentFleet> {
               ]),
             ));
             final agents = _control.agents;
-            if (agents.isEmpty) return const Center(child: Padding(
-              padding: EdgeInsets.all(28),
-              child: Text('No persisted subagent activity yet. Delegated agents appear here when work is recorded.', textAlign: TextAlign.center, style: TextStyle(color: ProTheme.textSecondary)),
-            ));
+            if (agents.isEmpty) return RefreshIndicator(
+              onRefresh: _refresh,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: const [
+                  SizedBox(height: 180),
+                  Padding(
+                    padding: EdgeInsets.all(28),
+                    child: Text('No persisted subagent activity yet. Delegated agents appear here when work is recorded.', textAlign: TextAlign.center, style: TextStyle(color: ProTheme.textSecondary)),
+                  ),
+                ],
+              ),
+            );
             return RefreshIndicator(
               onRefresh: _refresh,
               child: ListView.builder(
@@ -105,6 +114,7 @@ class _ProAgentFleetState extends State<ProAgentFleet> {
                   final status = agent['status']?.toString() ?? 'unknown';
                   final canCancel = status == 'running' || status == 'queued';
                   final canResume = status == 'interrupted' || status == 'failed' || status == 'paused';
+                  final canDismiss = status != 'running' && status != 'queued' && status != 'pending';
                   return Card(
                     color: ProTheme.bgCard,
                     child: ListTile(
@@ -117,7 +127,7 @@ class _ProAgentFleetState extends State<ProAgentFleet> {
                           try {
                             if (value == 'cancel' && canCancel) await _control.cancelAgent(id);
                             if (value == 'resume' && canResume) await _resumeAgent(id);
-                            if (value == 'dismiss') await _control.dismissAgent(id);
+                            if (value == 'dismiss' && canDismiss) await _control.dismissAgent(id);
                             if (mounted) setState(() {});
                           } catch (error) {
                             if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
@@ -126,7 +136,7 @@ class _ProAgentFleetState extends State<ProAgentFleet> {
                         itemBuilder: (_) => [
                           if (canCancel) const PopupMenuItem(value: 'cancel', child: Text('Cancel')),
                           if (canResume) const PopupMenuItem(value: 'resume', child: Text('Review & resume')),
-                          const PopupMenuItem(value: 'dismiss', child: Text('Dismiss')),
+                          if (canDismiss) const PopupMenuItem(value: 'dismiss', child: Text('Dismiss')),
                         ],
                       ),
                     ),
