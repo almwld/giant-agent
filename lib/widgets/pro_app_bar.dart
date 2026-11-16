@@ -10,6 +10,7 @@ class ProAppBar extends StatelessWidget implements PreferredSizeWidget {
   final VoidCallback? onSearchPressed;
   final VoidCallback? onNotificationPressed;
   final VoidCallback? onAvatarPressed;
+  final VoidCallback? onToolsPressed;
 
   const ProAppBar({
     super.key,
@@ -20,6 +21,7 @@ class ProAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.onSearchPressed,
     this.onNotificationPressed,
     this.onAvatarPressed,
+    this.onToolsPressed,
   });
 
   @override
@@ -38,6 +40,8 @@ class ProAppBar extends StatelessWidget implements PreferredSizeWidget {
             const SizedBox(width: 8),
             const Text('AgentOS', style: TextStyle(color: ProTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 19)),
             const Spacer(),
+            if (onToolsPressed != null)
+              IconButton(tooltip: 'Tools & services', onPressed: onToolsPressed, icon: const Icon(Icons.apps_outlined, color: ProTheme.neonGreen)),
             if (showAddButton)
               IconButton(tooltip: 'Add', onPressed: onAddPressed, icon: const Icon(Icons.add, color: ProTheme.neonGreen)),
             IconButton(tooltip: 'Search', onPressed: onSearchPressed, icon: const Icon(Icons.search, color: ProTheme.textSecondary)),
