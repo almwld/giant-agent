@@ -21,6 +21,7 @@ class ProControlCenter extends ChangeNotifier {
   final TaskManager _tasks = TaskManager();
 
   AgentObservabilitySummary? metrics;
+  List<AgentObservabilityEvent> recentEvents = const [];
   List<Map<String, dynamic>> tasks = const [];
   List<Map<String, dynamic>> agents = const [];
   List<McpServerConfig> integrations = const [];
@@ -68,9 +69,11 @@ class ProControlCenter extends ChangeNotifier {
       final results = await Future.wait<Object>([
         _agent.observabilitySummaryForConversation('global'),
         _agent.mcpServers(),
+        _agent.observabilityEventsForConversation('global', limit: 20),
       ]);
       metrics = results[0] as AgentObservabilitySummary;
       integrations = results[1] as List<McpServerConfig>;
+      recentEvents = (results[2] as AgentObservabilityPage).events;
       tasks = _tasks.getTasks();
 
       // Fleet scope is global to AgentsOS, not limited to the special
@@ -87,6 +90,29 @@ class ProControlCenter extends ChangeNotifier {
     } finally {
       loading = false;
       notifyListeners();
+    }
+  }
+
+  Future<Map<String, dynamic>> createTask(String description) async {
+    await _agent.initialize();
+    final task = await _tasks.createTask(description);
+    await refresh();
+    return task;
+  }
+
+  Future<Map<String, dynamic>> startTask(String taskId) async {
+    await _agent.initialize();
+    final selected = await _tasks.selectTask(taskId);
+    if (!selected) {
+      throw StateError('تعذر تحديد المهمة؛ قد تكون هناك مهمة أخرى قيد التنفيذ.');
+    }
+    try {
+      final result = await _tasks.executeNextStep();
+      await refresh();
+      return result;
+    } catch (_) {
+      await refresh();
+      rethrow;
     }
   }
 
