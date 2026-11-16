@@ -15,11 +15,66 @@ class _ProTaskManagerState extends State<ProTaskManager> {
   final _control = ProControlCenter.instance;
   late Future<void> _loading;
   String _filter = 'All';
+  bool _creating = false;
 
   @override
   void initState() {
     super.initState();
     _loading = _control.initialize();
+  }
+
+  Future<void> _createTask() async {
+    final controller = TextEditingController();
+    try {
+      final description = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Create agent task'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            minLines: 2,
+            maxLines: 5,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(
+              labelText: 'Task objective',
+              hintText: 'Describe the outcome you want Giant Agent to deliver.',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () {
+                final value = controller.text.trim();
+                if (value.isNotEmpty) Navigator.pop(dialogContext, value);
+              },
+              child: const Text('Create and run'),
+            ),
+          ],
+        ),
+      );
+      if (description == null || description.trim().isEmpty) return;
+      setState(() => _creating = true);
+      final task = await _control.createTask(description);
+      final taskId = task['id']?.toString() ?? '';
+      if (taskId.isEmpty) throw StateError('The task was saved without an identifier.');
+      final result = await _control.startTask(taskId);
+      if (!mounted) return;
+      final status = result['status']?.toString() ?? 'unknown';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Task execution finished with status: $status')),
+      );
+      setState(() => _loading = Future<void>.value());
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
+        setState(() => _loading = _control.refresh());
+      }
+    } finally {
+      controller.dispose();
+      if (mounted) setState(() => _creating = false);
+    }
   }
 
   Future<void> _resume(String taskId) async {
@@ -76,6 +131,13 @@ class _ProTaskManagerState extends State<ProTaskManager> {
       builder: (context, _) => Scaffold(
         backgroundColor: ProTheme.bgDark,
         appBar: const ProAppBar(title: 'Task Manager'),
+        floatingActionButton: FloatingActionButton.extended(
+          onPressed: _creating ? null : _createTask,
+          icon: _creating
+              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Icon(Icons.add_task),
+          label: Text(_creating ? 'Starting…' : 'New task'),
+        ),
         body: Container(
           decoration: const BoxDecoration(gradient: ProTheme.bgGradient),
           child: FutureBuilder<void>(
