@@ -132,11 +132,11 @@ class _ProTaskManagerState extends State<ProTaskManager> {
         backgroundColor: ProTheme.bgDark,
         appBar: const ProAppBar(title: 'Task Manager'),
         floatingActionButton: FloatingActionButton.extended(
-          onPressed: _creating ? null : _createTask,
+          onPressed: (_creating || _control.isTaskExecuting) ? null : _createTask,
           icon: _creating
               ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
               : const Icon(Icons.add_task),
-          label: Text(_creating ? 'Starting…' : 'New task'),
+          label: Text(_creating ? 'Starting…' : _control.isTaskExecuting ? 'Task running' : 'New task'),
         ),
         body: Container(
           decoration: const BoxDecoration(gradient: ProTheme.bgGradient),
