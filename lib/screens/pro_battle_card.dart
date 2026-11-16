@@ -93,7 +93,7 @@ class _ProBattleCardState extends State<ProBattleCard> {
         ),
       );
       if (values == null) return;
-      final id = 'battle_${DateTime.now().microsecondsSinceEpoch}';
+      final id = existing?['id']?.toString() ?? 'battle_${DateTime.now().microsecondsSinceEpoch}';
       await _store.saveBattleCard({'id': id, ...values});
       await _refresh();
       if (mounted) _message('Source evidence saved.');
