@@ -141,7 +141,32 @@ class ProAgentDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final entries = agent.entries.toList()
+    // Render only stable operational metadata. Child prompts, raw payloads,
+    // model context and credential-like fields are intentionally excluded.
+    const visibleMetadataKeys = <String>{
+      'id',
+      'task_id',
+      'agent_id',
+      'title',
+      'status',
+      'kind',
+      'agent_type',
+      'worker_role',
+      'parent_task_id',
+      'parent_request_id',
+      'conversation_id',
+      'created_at',
+      'updated_at',
+      'started_at',
+      'completed_at',
+      'attempt',
+      'attempts',
+      'recovery_state',
+      'is_dismissed',
+    };
+    final entries = agent.entries
+        .where((entry) => visibleMetadataKeys.contains(entry.key))
+        .toList()
       ..sort((a, b) => a.key.compareTo(b.key));
     return Scaffold(
       backgroundColor: ProTheme.bgDark,
@@ -169,7 +194,7 @@ class ProAgentDetailScreen extends StatelessWidget {
           const Padding(
             padding: EdgeInsets.only(top: 12),
             child: Text(
-              'Values shown here come from the persisted subagent snapshot. Actions remain available from the fleet screen.',
+              'Operational metadata comes from the persisted subagent snapshot. Prompts, model context and raw payloads are intentionally hidden. Actions remain available from the fleet screen.',
               style: TextStyle(color: ProTheme.textSecondary, height: 1.4),
             ),
           ),
