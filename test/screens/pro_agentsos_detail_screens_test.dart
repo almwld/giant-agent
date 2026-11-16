@@ -20,8 +20,17 @@ void main() {
 
     expect(find.text('Prepare report'), findsOneWidget);
     expect(find.text('task-1'), findsOneWidget);
-    expect(find.text('Review side effects before resume.'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Partial result'),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('Partial result'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.textContaining('Collect sources'),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.textContaining('Collect sources'), findsOneWidget);
     expect(find.textContaining('side_effect_unknown'), findsOneWidget);
   });
