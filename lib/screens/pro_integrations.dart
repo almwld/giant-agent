@@ -36,51 +36,85 @@ class _ProIntegrationsState extends State<ProIntegrations> {
     return AnimatedBuilder(
       animation: _control,
       builder: (context, _) => Scaffold(
-      backgroundColor: ProTheme.bgDark,
-      appBar: ProAppBar(title: 'Integrations', showAddButton: true, onAddPressed: _openMcpSettings),
-      body: Container(
-        decoration: const BoxDecoration(gradient: ProTheme.bgGradient),
-        child: FutureBuilder<void>(
-          future: _future,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
-            if (snapshot.hasError) return Center(child: Text(snapshot.error.toString()));
-            final List<McpServerConfig> servers = _control.integrations;
-            return RefreshIndicator(
-              onRefresh: _refresh,
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(gradient: ProTheme.cardGradient, borderRadius: BorderRadius.circular(14)),
-                    child: Row(children: [
-                      const Icon(Icons.hub, color: ProTheme.neonGreen),
-                      const SizedBox(width: 12),
-                      Expanded(child: Text('${servers.length} MCP server configuration(s). Discover tools in server settings to verify connectivity.', style: const TextStyle(color: ProTheme.textSecondary, fontSize: 12))),
-                    ]),
-                  ),
-                  const SizedBox(height: 12),
-                  if (servers.isEmpty) const Padding(
-                    padding: EdgeInsets.all(30),
-                    child: Text('No MCP integrations configured yet.', textAlign: TextAlign.center, style: TextStyle(color: ProTheme.textSecondary)),
-                  ),
-                  ...servers.map((server) => Card(
-                    color: ProTheme.bgCard,
-                    child: ListTile(
-                      leading: const Icon(Icons.link, color: ProTheme.neonGreen),
-                      title: Text(server.name, style: const TextStyle(color: ProTheme.textPrimary)),
-                      subtitle: Text(server.endpoint, style: const TextStyle(color: ProTheme.textSecondary, fontSize: 11)),
-                      trailing: const Icon(Icons.chevron_right, color: ProTheme.neonGreen),
-                      onTap: _openMcpSettings,
+        backgroundColor: ProTheme.bgDark,
+        appBar: ProAppBar(title: 'Integrations', showAddButton: true, onAddPressed: _openMcpSettings),
+        body: Container(
+          decoration: const BoxDecoration(gradient: ProTheme.bgGradient),
+          child: FutureBuilder<void>(
+            future: _future,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(24),
+                  children: [
+                    const SizedBox(height: 100),
+                    const Icon(Icons.cloud_off_outlined, color: ProTheme.dangerRed, size: 40),
+                    const SizedBox(height: 12),
+                    const Text('Integrations could not be loaded',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: ProTheme.textPrimary, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Text(snapshot.error.toString(),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: ProTheme.textSecondary)),
+                    const SizedBox(height: 16),
+                    Center(
+                      child: FilledButton.icon(
+                        onPressed: _refresh,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Retry'),
+                      ),
                     ),
-                  )),
-                ],
-              ),
-            );
-          },
+                  ],
+                );
+              }
+              final List<McpServerConfig> servers = _control.integrations;
+              return RefreshIndicator(
+                onRefresh: _refresh,
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(gradient: ProTheme.cardGradient, borderRadius: BorderRadius.circular(14)),
+                      child: Row(children: [
+                        const Icon(Icons.hub, color: ProTheme.neonGreen),
+                        const SizedBox(width: 12),
+                        Expanded(child: Text(
+                          '${servers.length} MCP server configuration(s). Discover tools in server settings to verify connectivity.',
+                          style: const TextStyle(color: ProTheme.textSecondary, fontSize: 12),
+                        )),
+                      ]),
+                    ),
+                    const SizedBox(height: 12),
+                    if (servers.isEmpty) const Padding(
+                      padding: EdgeInsets.all(30),
+                      child: Text('No MCP integrations configured yet.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: ProTheme.textSecondary)),
+                    ),
+                    ...servers.map((server) => Card(
+                      color: ProTheme.bgCard,
+                      child: ListTile(
+                        leading: const Icon(Icons.link, color: ProTheme.neonGreen),
+                        title: Text(server.name, style: const TextStyle(color: ProTheme.textPrimary)),
+                        subtitle: Text(server.endpoint, style: const TextStyle(color: ProTheme.textSecondary, fontSize: 11)),
+                        trailing: const Icon(Icons.chevron_right, color: ProTheme.neonGreen),
+                        onTap: _openMcpSettings,
+                      ),
+                    )),
+                  ],
+                ),
+              );
+            },
+          ),
         ),
       ),
-    ));
+    );
   }
 }
