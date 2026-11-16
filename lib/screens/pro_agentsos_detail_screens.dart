@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../theme/pro_theme.dart';
+import '../domain/kernel/agent_kernel_store.dart';
+import '../services/pro_control_center.dart';
 import '../widgets/pro_app_bar.dart';
 
 /// Read-only detail projections for durable task and subagent records.
@@ -81,6 +83,18 @@ class ProAgentDetailScreen extends StatelessWidget {
             agent['status']?.toString() ?? 'unknown',
           ),
           _section('Runtime record', entries.map((entry) => _row(entry.key, entry.value)).toList()),
+          if ((agent['task_id'] ?? agent['id'])?.toString().isNotEmpty == true)
+            Padding(
+              padding: const EdgeInsets.only(top: 14),
+              child: SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _openEventHistory(context),
+                  icon: const Icon(Icons.timeline),
+                  label: const Text('Open persisted lifecycle history'),
+                ),
+              ),
+            ),
           const Padding(
             padding: EdgeInsets.only(top: 12),
             child: Text(
@@ -91,7 +105,64 @@ class ProAgentDetailScreen extends StatelessWidget {
         ],
       ),
     );
+  Future<void> _openEventHistory(BuildContext context) async {
+    final taskId = (agent['task_id'] ?? agent['id']).toString();
+    try {
+      final events = await ProControlCenter.instance.eventsForAgent(taskId);
+      if (!context.mounted) return;
+      await Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => ProAgentEventHistoryScreen(
+          agentTitle: agent['title']?.toString() ?? agent['agent_id']?.toString() ?? taskId,
+          events: events,
+        ),
+      ));
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not load lifecycle history: $error')),
+      );
+    }
   }
+}
+
+class ProAgentEventHistoryScreen extends StatelessWidget {
+  const ProAgentEventHistoryScreen({
+    super.key,
+    required this.agentTitle,
+    required this.events,
+  });
+
+  final String agentTitle;
+  final List<KernelEventRecord> events;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: ProTheme.bgDark,
+    appBar: ProAppBar(title: 'Agent activity'),
+    body: events.isEmpty
+        ? const Center(child: Text('No persisted lifecycle events found.', style: TextStyle(color: ProTheme.textSecondary)))
+        : ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: events.length,
+            separatorBuilder: (_, __) => const Divider(color: Colors.white12),
+            itemBuilder: (context, index) {
+              final event = events[index];
+              final failed = event.status == 'failed' || event.status == 'error';
+              final completed = event.status == 'completed';
+              return ListTile(
+                leading: Icon(
+                  failed ? Icons.error_outline : completed ? Icons.check_circle_outline : Icons.timeline,
+                  color: failed ? ProTheme.dangerRed : completed ? ProTheme.neonGreen : ProTheme.textSecondary,
+                ),
+                title: Text(event.type.replaceAll('_', ' '), style: const TextStyle(color: ProTheme.textPrimary)),
+                subtitle: Text(
+                  '${event.status} • ${event.createdAt.toLocal()}',
+                  style: const TextStyle(color: ProTheme.textSecondary, fontSize: 11),
+                ),
+              );
+            },
+          ),
+  );
 }
 
 Widget _header(String title, String status) => Container(
