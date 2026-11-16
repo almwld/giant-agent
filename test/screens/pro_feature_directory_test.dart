@@ -19,8 +19,8 @@ void main() {
       'Engine performance',
       'Usage statistics',
       'Model benchmark',
-      'Preferences',
-      'Advanced app settings',
+      'Integrations & configuration',
+      'MCP servers',
     ];
     for (final label in destinations) {
       await tester.scrollUntilVisible(
