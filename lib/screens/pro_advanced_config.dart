@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'pro_feature_directory.dart';
 
 import '../services/app_preferences.dart';
 import '../services/model_provider_settings.dart';
@@ -97,7 +98,7 @@ class _ProAdvancedConfigState extends State<ProAdvancedConfig> {
       animation: _control,
       builder: (context, _) => Scaffold(
         backgroundColor: ProTheme.bgDark,
-        appBar: const ProAppBar(title: 'Advanced Configuration'),
+        appBar: ProAppBar(title: 'Advanced Configuration', onToolsPressed: () => openProFeatureDirectory(context)),
         body: Container(
           decoration: const BoxDecoration(gradient: ProTheme.bgGradient),
           child: _busy
