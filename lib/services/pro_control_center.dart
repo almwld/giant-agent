@@ -37,13 +37,10 @@ class ProControlCenter extends ChangeNotifier {
   void _listenForRuntimeChanges() {
     if (_eventSubscription != null) return;
     _eventSubscription = AgentEventBus.instance.events.listen((event) {
-      // Streaming tokens are presentation deltas, not control-plane state.
       if (event['type'] == 'stream_token') return;
       _refreshDebounce?.cancel();
       _refreshDebounce = Timer(const Duration(milliseconds: 350), () {
-        unawaited(refresh().catchError((Object _) {
-          // Keep the last good snapshot visible; lastError exposes the issue.
-        }));
+        unawaited(refresh().catchError((Object _) {}));
       });
     });
   }
@@ -66,19 +63,23 @@ class ProControlCenter extends ChangeNotifier {
     try {
       await _agent.initialize();
       await _tasks.initialize();
-      // Refresh every AgentsOS panel from the same durable runtime snapshot.
-      // TaskManager's local list is only a UI cache, never a second authority.
       await _tasks.refreshFromStore();
       _listenForRuntimeChanges();
       final results = await Future.wait<Object>([
         _agent.observabilitySummaryForConversation('global'),
-        _agent.subagentsForConversation('global'),
         _agent.mcpServers(),
       ]);
       metrics = results[0] as AgentObservabilitySummary;
-      agents = results[1] as List<Map<String, dynamic>>;
-      integrations = results[2] as List<McpServerConfig>;
+      integrations = results[1] as List<McpServerConfig>;
       tasks = _tasks.getTasks();
+
+      // Fleet scope is global to AgentsOS, not limited to the special
+      // "global" conversation. Use the same durable task projection.
+      agents = tasks
+          .where((task) =>
+              task['kind'] == 'subagent' && task['is_dismissed'] != true)
+          .map((task) => Map<String, dynamic>.unmodifiable(task))
+          .toList(growable: false);
       lastUpdated = DateTime.now();
     } catch (error) {
       lastError = error;
@@ -101,7 +102,6 @@ class ProControlCenter extends ChangeNotifier {
     return accepted;
   }
 
-  // Derive active state from the persisted task projection, not a process-local flag.
   bool get isTaskExecuting => tasks.any((task) => task['status'] == 'running');
 
   Future<bool> cancelCurrentTask() async {
