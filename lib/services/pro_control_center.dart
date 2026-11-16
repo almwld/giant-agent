@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../agent/task_manager.dart';
 import '../agent/architecture/agent_event_bus.dart';
 import '../domain/kernel/agent_observability.dart';
+import '../domain/kernel/agent_kernel_store.dart';
 import '../domain/mcp/mcp_client.dart';
 import 'agent_service.dart';
 
@@ -115,6 +116,9 @@ class ProControlCenter extends ChangeNotifier {
       rethrow;
     }
   }
+
+  Future<List<KernelEventRecord>> eventsForAgent(String taskId) =>
+      _agent.eventsForSubagent(taskId);
 
   Future<bool> cancelAgent(String taskId) async {
     final accepted = await _agent.cancelSubagent(taskId);
