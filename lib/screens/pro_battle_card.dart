@@ -34,22 +34,23 @@ class _ProBattleCardState extends State<ProBattleCard> {
     if (mounted) setState(() {});
   }
 
-  Future<void> _addEvidence() async {
-    final competitor = TextEditingController();
-    final product = TextEditingController();
-    final pricing = TextEditingController();
-    final sourceUrl = TextEditingController();
+  Future<void> _addEvidence([Map<String, dynamic>? existing]) async {
+    final competitor = TextEditingController(text: existing?['competitor']?.toString() ?? '');
+    final product = TextEditingController(text: existing?['product']?.toString() ?? '');
+    final pricing = TextEditingController(text: existing?['pricing']?.toString() ?? '');
+    final sourceUrl = TextEditingController(text: existing?['source_url']?.toString() ?? '');
     final sourceDate = TextEditingController(
-      text: DateTime.now().toIso8601String().substring(0, 10),
+      text: existing?['source_date']?.toString() ??
+          DateTime.now().toIso8601String().substring(0, 10),
     );
-    final excerpt = TextEditingController();
-    String confidence = 'medium';
+    final excerpt = TextEditingController(text: existing?['evidence_excerpt']?.toString() ?? '');
+    String confidence = existing?['confidence']?.toString() ?? 'medium';
     try {
       final values = await showDialog<Map<String, String>>(
         context: context,
         builder: (dialogContext) => StatefulBuilder(
           builder: (context, setDialogState) => AlertDialog(
-            title: const Text('Add competitor evidence'),
+            title: Text(existing == null ? 'Add competitor evidence' : 'Edit competitor evidence'),
             content: SingleChildScrollView(
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 TextField(controller: competitor, decoration: const InputDecoration(labelText: 'Competitor name')),
@@ -85,7 +86,7 @@ class _ProBattleCardState extends State<ProBattleCard> {
                   'evidence_excerpt': excerpt.text.trim(),
                   'confidence': confidence,
                 }),
-                child: const Text('Save evidence'),
+                child: Text(existing == null ? 'Save evidence' : 'Update evidence'),
               ),
             ],
           ),
@@ -224,7 +225,16 @@ class _ProBattleCardState extends State<ProBattleCard> {
           const Icon(Icons.business_outlined, color: ProTheme.neonGreen),
           const SizedBox(width: 8),
           Expanded(child: Text(item['competitor']?.toString() ?? 'Competitor', style: const TextStyle(color: ProTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 16))),
-          IconButton(tooltip: 'Delete evidence', onPressed: () => _deleteEvidence(item['id'].toString()), icon: const Icon(Icons.delete_outline, color: ProTheme.textSecondary)),
+          IconButton(
+            tooltip: 'Edit evidence',
+            onPressed: () => _addEvidence(item),
+            icon: const Icon(Icons.edit_outlined, color: ProTheme.neonGreen),
+          ),
+          IconButton(
+            tooltip: 'Delete evidence',
+            onPressed: () => _deleteEvidence(item['id'].toString()),
+            icon: const Icon(Icons.delete_outline, color: ProTheme.textSecondary),
+          ),
         ]),
         if ((item['product'] ?? '').toString().isNotEmpty) _line('Product', item['product'].toString()),
         if ((item['pricing'] ?? '').toString().isNotEmpty) _line('Pricing', item['pricing'].toString()),
