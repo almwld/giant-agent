@@ -71,7 +71,6 @@ class _ChatScreenState extends State<ChatScreen> {
   static const String _toolCallOpen = '<tool_call>';
   static const String _toolCallClose = '</tool_call>';
   final Terminal _terminal = Terminal(maxLines: 5000);
-  bool _terminalHasActivity = false;
   final LocalSpeechRecognitionService _localSpeech = LocalSpeechRecognitionService.instance;
   final VoiceOutputService _voiceOutput = VoiceOutputService.instance;
   final VoiceSessionController _voiceSession = VoiceSessionController.instance;
@@ -177,7 +176,6 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
     if (step['tool_name'] == 'execute_python' || step['tool_name'] == 'ipython' || step['tool_name'] == 'gain_terminal') {
-      _terminalHasActivity = true;
       final type = step['type']?.toString();
       if (type == 'tool_start') {
         _terminal.write('\r\n\x1B[33m>>> ${step['tool_name'] == 'gain_terminal' ? 'Gain terminal' : step['tool_name'] == 'ipython' ? 'IPython REPL' : 'Python execution'} started\x1B[0m\r\n');
