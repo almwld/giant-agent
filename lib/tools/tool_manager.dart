@@ -318,7 +318,7 @@ class ToolManager {
     ),
     AgentToolDefinition(
       name: 'dmail',
-      description: 'استرجاع مقتطفات من المحادثات المحلية السابقة عبر البحث الدلالي بالكلمات المفتاحية؛ لا يرسل بريداً إلكترونياً.',
+      description: 'استرجاع مقتطفات من المحادثات المحلية بترتيب يعتمد على تطابق العبارة وتغطية الكلمات وحداثة المحادثة؛ لا يستخدم تضمينات دلالية ولا يرسل بريداً إلكترونياً.',
       example: '{"name":"dmail","arguments":{"query":"previous discussion about MCP streaming","limit":5}}',
     ),
     AgentToolDefinition(
