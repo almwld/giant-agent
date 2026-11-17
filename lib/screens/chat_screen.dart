@@ -1205,68 +1205,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  void _showTerminal({Map<String, dynamic>? step}) {
-    if (step == null && !_terminalHasActivity) {
-      _terminal.write('\x1B[2J\x1B[H');
-      _terminal.write('Giant Agent — سجل مخرجات الوكيل فقط؛ هذه ليست جلسة Shell تفاعلية.\r\n');
-    }
-    if (step != null) {
-      _terminal.write('\x1B[2J\x1B[H');
-      final title = step['title']?.toString() ?? 'Agent execution';
-      final tool = step['tool_name']?.toString() ?? '';
-      final code = step['content']?.toString() ?? '';
-      final output = step['output']?.toString() ?? step['details']?.toString() ?? '';
-      _terminal.write('\x1B[36m$title\x1B[0m\r\n');
-      if (tool.isNotEmpty) _terminal.write('\x1B[90mTool: $tool\x1B[0m\r\n');
-      if (code.isNotEmpty) _terminal.write('\x1B[33m>>>\x1B[0m\r\n$code\r\n');
-      if (output.isNotEmpty) _terminal.write('$output\r\n');
-      final status = step['status']?.toString() ?? 'unknown';
-      _terminal.write(status == 'failed'
-          ? '\x1B[31m[failed]\x1B[0m\r\n'
-          : status == 'completed'
-              ? '\x1B[32m[completed]\x1B[0m\r\n'
-              : '\x1B[33m[$status]\x1B[0m\r\n');
-    }
-
-    // A dedicated route keeps terminal output separate from the chat composer
-    // and conversation instead of covering them with a modal overlay.
-    Navigator.of(context).push<void>(MaterialPageRoute(
-      builder: (terminalContext) => Scaffold(
-        backgroundColor: GiantPalette.background,
-        body: SafeArea(
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Row(children: [
-                  const Icon(Icons.terminal, color: GiantPalette.primaryLight),
-                  const SizedBox(width: 8),
-                  Expanded(child: Text(
-                    step == null ? 'Agent Output Console' : (step['title']?.toString() ?? 'نتيجة التنفيذ'),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                  )),
-                  IconButton(
-                    onPressed: () {
-                      _terminal.write('\x1B[2J\x1B[H');
-                      _terminalHasActivity = false;
-                      _terminal.write('Giant Agent — سجل مخرجات الوكيل فقط؛ هذه ليست جلسة Shell تفاعلية.\r\n');
-                    },
-                    icon: const Icon(Icons.delete_sweep, color: Colors.white70),
-                  ),
-                  IconButton(onPressed: () => Navigator.pop(terminalContext), icon: const Icon(Icons.close, color: Colors.white70)),
-                ]),
-              ),
-              const Divider(height: 1, color: Colors.white24),
-              Expanded(child: TerminalView(_terminal, readOnly: true)),
-            ],
-          ),
-        ),
-      ),
-    ));
-  }
-
   Future<void> _init() async {
     await AgentService.instance.initialize();
     final selectedMode = await ModelProviderSettings.instance.getMode();
