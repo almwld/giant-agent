@@ -245,6 +245,42 @@ class AgentMemoryService {
     return rows.map((row) => Map<String, dynamic>.from(row)).toList(growable: false);
   }
 
+  /// Aggregates real local conversation usage from the canonical turns table.
+  /// A turn contributes one user and/or assistant message when that side is non-empty.
+  Future<Map<String, int>> getUsageStatistics() async {
+    final db = await database;
+    final now = DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day)
+        .millisecondsSinceEpoch;
+    final rows = await db.rawQuery('''
+      SELECT
+        COUNT(*) AS total_turns,
+        COUNT(DISTINCT session_id) AS total_conversations,
+        COALESCE(SUM(CASE WHEN length(trim(user_text)) > 0 THEN 1 ELSE 0 END), 0)
+          AS user_messages,
+        COALESCE(SUM(CASE WHEN length(trim(assistant_text)) > 0 THEN 1 ELSE 0 END), 0)
+          AS assistant_messages,
+        COALESCE(SUM(
+          CASE WHEN created_at >= ? THEN
+            (CASE WHEN length(trim(user_text)) > 0 THEN 1 ELSE 0 END) +
+            (CASE WHEN length(trim(assistant_text)) > 0 THEN 1 ELSE 0 END)
+          ELSE 0 END
+        ), 0) AS today_messages
+      FROM turns
+    ''', [todayStart]);
+    final row = rows.single;
+    final userMessages = (row['user_messages'] as num?)?.toInt() ?? 0;
+    final assistantMessages =
+        (row['assistant_messages'] as num?)?.toInt() ?? 0;
+    return <String, int>{
+      'total_turns': (row['total_turns'] as num?)?.toInt() ?? 0,
+      'total_conversations':
+          (row['total_conversations'] as num?)?.toInt() ?? 0,
+      'total_messages': userMessages + assistantMessages,
+      'today_messages': (row['today_messages'] as num?)?.toInt() ?? 0,
+    };
+  }
+
   /// Searches prior local conversations across chat sessions, as a bounded
   /// recall operation. Results are excerpts, not new instructions.
   Future<List<Map<String, dynamic>>> recallChats(
