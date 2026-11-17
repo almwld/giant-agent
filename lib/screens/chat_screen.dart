@@ -2696,8 +2696,10 @@ class _ChatScreenState extends State<ChatScreen> {
       step['id']?.toString() ??
       step['tool_call_id']?.toString() ??
       step['step_id']?.toString() ??
+      step['sequence']?.toString() ??
       (step['type']?.toString() ?? 'event') + ':' +
-          (step['timestamp']?.toString() ?? '');
+          (step['timestamp']?.toString() ?? '') + ':' +
+          (step['title']?.toString() ?? '');
 
   void _toggleTimelineStep(Map<String, dynamic> step) {
     final key = _timelineStepKey(step);
@@ -2842,10 +2844,14 @@ class _ChatScreenState extends State<ChatScreen> {
                       final opensTerminal = _opensTerminalFromStep(step);
                       final hasPreview = opensTerminal ||
                           step['content'] != null ||
+                          step['input'] != null ||
+                          step['arguments'] != null ||
                           step['output'] != null ||
+                          step['result'] != null ||
                           step['command'] != null ||
                           step['details'] != null ||
-                          step['file_name'] != null;
+                          step['file_name'] != null ||
+                          step['tool_name'] != null;
                       final toolName = step['tool_name']?.toString() ?? '';
                       final toolCallId = step['tool_call_id']?.toString() ?? '';
                       final isTool = toolName.isNotEmpty ||
