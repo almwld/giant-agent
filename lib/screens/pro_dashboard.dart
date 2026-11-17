@@ -86,7 +86,12 @@ class _ProDashboardState extends State<ProDashboard> {
                     ]),
                     const SizedBox(height: 18),
                     _panel('Execution quality', [
-                      _line('Tool success rate', '${(metrics.toolSuccessRate * 100).toStringAsFixed(1)}%'),
+                      _line(
+                        'Tool success rate',
+                        metrics.toolSuccessRate == null
+                            ? 'Not available (no tool calls)'
+                            : '${(metrics.toolSuccessRate! * 100).toStringAsFixed(1)}%',
+                      ),
                       _line('Tool failures', metrics.toolFailureCount.toString()),
                       _line('Interrupted requests', metrics.interruptedRequests.toString()),
                       _line('Average tool latency', metrics.averageToolLatencyMs == null ? '—' : '${metrics.averageToolLatencyMs!.toStringAsFixed(0)} ms'),
