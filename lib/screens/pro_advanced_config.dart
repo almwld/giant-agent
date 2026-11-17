@@ -193,14 +193,22 @@ class _ProAdvancedConfigState extends State<ProAdvancedConfig> {
                         value: ModelProviderMode.openRouter,
                         groupValue: _mode,
                         title: const Text('OpenRouter'),
-                        onChanged: (value) => setState(() => _mode = value),
+                        onChanged: (value) async {
+                          if (value == null) return;
+                          final selected = await OpenAICompatibleProvider.instance.getModel();
+                          if (mounted) setState(() { _mode = value; _model.text = selected; });
+                        },
                       ),
                       RadioListTile<ModelProviderMode>(
                         value: ModelProviderMode.zeroConfig,
                         groupValue: _mode,
                         title: const Text('Kilo Gateway · Anonymous Free'),
                         subtitle: const Text('Free inference without account, API key, or Authorization header.'),
-                        onChanged: (value) => setState(() => _mode = value),
+                        onChanged: (value) async {
+                          if (value == null) return;
+                          final selected = await KiloGatewayProvider.instance.getModel();
+                          if (mounted) setState(() { _mode = value; _model.text = selected; });
+                        },
                       ),
                       if (_mode == ModelProviderMode.zeroConfig)
                         const Padding(
