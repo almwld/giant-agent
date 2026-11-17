@@ -112,6 +112,12 @@ void main() {
         conversationId: 'session-en',
       );
 
+      final usage = await memory.getUsageStatistics();
+      expect(usage['total_turns'], 3);
+      expect(usage['total_conversations'], 3);
+      expect(usage['total_messages'], 6);
+      expect(usage['today_messages'], 6);
+
       final arabicContext = await memory.buildContext(
         'العربية الفصحى',
         conversationId: 'session-ar',
