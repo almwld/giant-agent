@@ -26,6 +26,14 @@ void main() {
         'stealth/glyph-cluster',
       ]));
     });
+    test('sends no Authorization header for anonymous free inference', () {
+      final request = KiloGatewayProvider.buildRequest(
+        model: KiloGatewayProvider.defaultModel,
+        prompt: 'hello',
+      );
+      expect(request.headers.containsKey('Authorization'), isFalse);
+      expect(request.url, KiloGatewayProvider.chatCompletionsUri);
+    });
     test('extracts OpenAI-compatible completion text', () {
       expect(KiloGatewayProvider.extractText({
         'choices': [{'message': {'content': 'OK'}}]
