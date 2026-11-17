@@ -1,5 +1,23 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:giant_agent_x/tools/tool_manager.dart';
+import 'package:giant_agent_x/services/media/media_capability.dart';
+import 'package:giant_agent_x/services/media/media_provider_adapter.dart';
+import 'package:giant_agent_x/services/media/media_provider_registry.dart';
+
+class _ImageProvider implements MediaProviderAdapter {
+  @override
+  String get id => 'tool-manager-test-image-provider';
+  @override
+  String get displayName => 'Test image provider';
+  @override
+  Set<MediaCapability> get capabilities => {MediaCapability.generateImage};
+  @override
+  Future<MediaProviderResult> execute(MediaTaskRequest request) async =>
+      MediaProviderResult(
+        providerId: id,
+        assets: const [GeneratedMediaAsset(mimeType: 'image/png')],
+      );
+}
 
 void main() {
   group('ToolManager registry', () {
@@ -38,6 +56,25 @@ void main() {
       expect(registry.promptCatalog, isNot(contains('image_search')));
       expect(registry.supports('dmail'), isTrue);
       expect(registry.supports('show_widget'), isTrue);
+    });
+
+    test('reveals a media tool only when a capable provider is connected', () {
+      final media = MediaProviderRegistry.instance;
+      const providerId = 'tool-manager-test-image-provider';
+      media.unregister(providerId);
+      expect(registry.supports('generate_image'), isFalse);
+
+      media.register(_ImageProvider());
+      addTearDown(() => media.unregister(providerId));
+
+      expect(registry.supports('generate_image'), isTrue);
+      expect(registry.promptCatalog, contains('generate_image'));
+      expect(
+        registry.promptCatalogFor({'generate_image'}),
+        contains('generate_image'),
+      );
+      expect(registry.supports('edit_image'), isFalse);
+      expect(registry.supports('image_search'), isFalse);
     });
 
     test('builds prompt catalogue from the registered definitions', () {
