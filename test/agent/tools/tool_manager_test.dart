@@ -1,5 +1,23 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:giant_agent_x/tools/tool_manager.dart';
+import 'package:giant_agent_x/services/media/media_capability.dart';
+import 'package:giant_agent_x/services/media/media_provider_adapter.dart';
+import 'package:giant_agent_x/services/media/media_provider_registry.dart';
+
+class _ImageProvider implements MediaProviderAdapter {
+  @override
+  String get id => 'tool-manager-test-image-provider';
+  @override
+  String get displayName => 'Test image provider';
+  @override
+  Set<MediaCapability> get capabilities => {MediaCapability.generateImage};
+  @override
+  Future<MediaProviderResult> execute(MediaTaskRequest request) async =>
+      MediaProviderResult(
+        providerId: id,
+        assets: const [GeneratedMediaAsset(mimeType: 'image/png')],
+      );
+}
 
 void main() {
   group('ToolManager registry', () {
@@ -8,7 +26,7 @@ void main() {
     test('exposes only tools implemented by the runtime', () {
       expect(
         registry.getAvailableTools(),
-        ['create_file', 'read_file', 'edit_file', 'write_file', 'list_files', 'ipython', 'reset_ipython', 'execute_python', 'mcp_read_resource', 'mcp_call', 'create_subagent', 'spawn_subagent', 'delete_subagent', 'report_subagent_progress', 'check_subagent_status', 'send_message', 'wait_for_message', 'ask_user', 'update_goal', 'web_search', 'task', 'todo_read', 'todo_write', 'memory_space_insert', 'memory_space_update', 'memory_space_delete', 'memory_space_edits', 'generate_speech', 'get_available_voices', 'get_data_source', 'get_data_source_desc', 'generate_slides_outline', 'slides_generator', 'website_version_manager', 'website_version_manager_rollback', 'lbs_tool', 'fetch_urls', 'visit', 'click', 'input', 'find', 'scrollup', 'scrolldown', 'browser_visit', 'browser_click', 'browser_find', 'browser_input', 'browser_state', 'browser_scroll_up', 'browser_scroll_down', 'image_search', 'search_image_by_text', 'search_image_by_image', 'generate_image', 'edit_image', 'generate_sound_effects', 'find_asset_bbox', 'crop_and_replicate_assets_in_image', 'dmail', 'show_widget', 'gain_terminal'],
+        ['create_file', 'read_file', 'edit_file', 'write_file', 'list_files', 'ipython', 'reset_ipython', 'execute_python', 'mcp_read_resource', 'mcp_call', 'create_subagent', 'spawn_subagent', 'delete_subagent', 'report_subagent_progress', 'check_subagent_status', 'send_message', 'wait_for_message', 'ask_user', 'update_goal', 'web_search', 'task', 'todo_read', 'todo_write', 'memory_space_insert', 'memory_space_update', 'memory_space_delete', 'memory_space_edits', 'generate_speech', 'get_available_voices', 'get_data_source', 'get_data_source_desc', 'generate_slides_outline', 'slides_generator', 'website_version_manager', 'website_version_manager_rollback', 'lbs_tool', 'fetch_urls', 'visit', 'click', 'input', 'find', 'scrollup', 'scrolldown', 'browser_visit', 'browser_click', 'browser_find', 'browser_input', 'browser_state', 'browser_scroll_up', 'browser_scroll_down', 'dmail', 'show_widget', 'gain_terminal'],
       );
       expect(registry.supports('delete_file'), isFalse);
       expect(registry.supports('execute_python'), isTrue);
@@ -31,11 +49,32 @@ void main() {
       expect(registry.supports('browser_click'), isTrue);
       expect(registry.supports('browser_input'), isTrue);
       expect(registry.supports('browser_state'), isTrue);
-      expect(registry.supports('generate_image'), isTrue);
-      expect(registry.supports('image_search'), isTrue);
-      expect(registry.supports('generate_sound_effects'), isTrue);
+      expect(registry.supports('generate_image'), isFalse);
+      expect(registry.supports('image_search'), isFalse);
+      expect(registry.supports('generate_sound_effects'), isFalse);
+      expect(registry.promptCatalog, isNot(contains('generate_image')));
+      expect(registry.promptCatalog, isNot(contains('image_search')));
       expect(registry.supports('dmail'), isTrue);
       expect(registry.supports('show_widget'), isTrue);
+    });
+
+    test('reveals a media tool only when a capable provider is connected', () {
+      final media = MediaProviderRegistry.instance;
+      const providerId = 'tool-manager-test-image-provider';
+      media.unregister(providerId);
+      expect(registry.supports('generate_image'), isFalse);
+
+      media.register(_ImageProvider());
+      addTearDown(() => media.unregister(providerId));
+
+      expect(registry.supports('generate_image'), isTrue);
+      expect(registry.promptCatalog, contains('generate_image'));
+      expect(
+        registry.promptCatalogFor({'generate_image'}),
+        contains('generate_image'),
+      );
+      expect(registry.supports('edit_image'), isFalse);
+      expect(registry.supports('image_search'), isFalse);
     });
 
     test('builds prompt catalogue from the registered definitions', () {
@@ -89,14 +128,14 @@ void main() {
       expect(catalogue, contains('browser_state'));
       expect(catalogue, contains('browser_scroll_up'));
       expect(catalogue, contains('browser_scroll_down'));
-      expect(catalogue, contains('image_search'));
-      expect(catalogue, contains('search_image_by_text'));
-      expect(catalogue, contains('search_image_by_image'));
-      expect(catalogue, contains('generate_image'));
-      expect(catalogue, contains('edit_image'));
-      expect(catalogue, contains('generate_sound_effects'));
-      expect(catalogue, contains('find_asset_bbox'));
-      expect(catalogue, contains('crop_and_replicate_assets_in_image'));
+      expect(catalogue, isNot(contains('image_search')));
+      expect(catalogue, isNot(contains('search_image_by_text')));
+      expect(catalogue, isNot(contains('search_image_by_image')));
+      expect(catalogue, isNot(contains('generate_image')));
+      expect(catalogue, isNot(contains('edit_image')));
+      expect(catalogue, isNot(contains('generate_sound_effects')));
+      expect(catalogue, isNot(contains('find_asset_bbox')));
+      expect(catalogue, isNot(contains('crop_and_replicate_assets_in_image')));
       expect(catalogue, contains('dmail'));
       expect(catalogue, contains('show_widget'));
       expect(catalogue, contains('\n'));

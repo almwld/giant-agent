@@ -1,3 +1,6 @@
+import '../services/media/media_capability.dart';
+import '../services/media/media_provider_registry.dart';
+
 /// Canonical registry of tools exposed to the agent model.
 ///
 /// The registry is the single source for the model-facing tool catalogue and
@@ -315,7 +318,7 @@ class ToolManager {
     ),
     AgentToolDefinition(
       name: 'dmail',
-      description: 'استرجاع مقتطفات من المحادثات المحلية السابقة عبر البحث الدلالي بالكلمات المفتاحية؛ لا يرسل بريداً إلكترونياً.',
+      description: 'استرجاع مقتطفات من المحادثات المحلية بترتيب يعتمد على تطابق العبارة وتغطية الكلمات وحداثة المحادثة؛ لا يستخدم تضمينات دلالية ولا يرسل بريداً إلكترونياً.',
       example: '{"name":"dmail","arguments":{"query":"previous discussion about MCP streaming","limit":5}}',
     ),
     AgentToolDefinition(
@@ -330,20 +333,43 @@ class ToolManager {
     ),
   ];
 
+  /// Only expose tools whose required runtime provider is currently connected.
+  /// Availability is evaluated on every read so a provider connected later in
+  /// the session becomes visible without rebuilding the singleton.
   List<AgentToolDefinition> get definitions =>
-      List<AgentToolDefinition>.unmodifiable(_definitions);
+      List<AgentToolDefinition>.unmodifiable(
+        _definitions.where(_isAvailable),
+      );
 
   List<String> getAvailableTools() =>
-      List<String>.unmodifiable(_definitions.map((tool) => tool.name));
+      List<String>.unmodifiable(definitions.map((tool) => tool.name));
 
-  bool supports(String name) =>
-      _definitions.any((tool) => tool.name == name);
+  bool supports(String name) => definitionFor(name) != null;
 
   AgentToolDefinition? definitionFor(String name) {
     for (final definition in _definitions) {
-      if (definition.name == name) return definition;
+      if (definition.name == name && _isAvailable(definition)) {
+        return definition;
+      }
     }
     return null;
+  }
+
+  bool _isAvailable(AgentToolDefinition definition) {
+    final capability = switch (definition.name) {
+      'image_search' || 'search_image_by_text' =>
+        MediaCapability.searchImagesByText,
+      'search_image_by_image' => MediaCapability.searchImagesByImage,
+      'generate_image' => MediaCapability.generateImage,
+      'edit_image' => MediaCapability.editImage,
+      'generate_sound_effects' => MediaCapability.generateSoundEffects,
+      'find_asset_bbox' => MediaCapability.findAssetBboxes,
+      'crop_and_replicate_assets_in_image' =>
+        MediaCapability.cropAndReplicateAssets,
+      _ => null,
+    };
+    return capability == null ||
+        MediaProviderRegistry.instance.providersFor(capability).isNotEmpty;
   }
 
   /// Text inserted into the model system prompt from the same definitions
@@ -351,7 +377,7 @@ class ToolManager {
   String get promptCatalog => promptCatalogFor(getAvailableTools().toSet());
 
   String promptCatalogFor(Set<String> allowedTools) => _definitions
-      .where((tool) => allowedTools.contains(tool.name))
+      .where((tool) => allowedTools.contains(tool.name) && _isAvailable(tool))
       .map((tool) => '- ${tool.name}: ${tool.description}\n  مثال: ${tool.example}')
       .join('\n');
 }
