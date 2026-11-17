@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'pro_feature_directory.dart';
 
 import '../domain/kernel/agent_kernel_store.dart';
 import '../services/pro_control_center.dart';
@@ -147,6 +148,7 @@ class _ProBattleCardState extends State<ProBattleCard> {
           title: 'Battle Cards',
           showAddButton: true,
           onAddPressed: _addEvidence,
+          onToolsPressed: () => openProFeatureDirectory(context),
         ),
         body: Container(
           decoration: const BoxDecoration(gradient: ProTheme.bgGradient),

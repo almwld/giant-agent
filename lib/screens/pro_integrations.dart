@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'pro_feature_directory.dart';
 import '../services/pro_control_center.dart';
 import '../domain/mcp/mcp_client.dart';
 import '../theme/pro_theme.dart';
@@ -37,7 +38,7 @@ class _ProIntegrationsState extends State<ProIntegrations> {
       animation: _control,
       builder: (context, _) => Scaffold(
         backgroundColor: ProTheme.bgDark,
-        appBar: ProAppBar(title: 'Integrations', showAddButton: true, onAddPressed: _openMcpSettings),
+        appBar: ProAppBar(title: 'Integrations', showAddButton: true, onAddPressed: _openMcpSettings, onToolsPressed: () => openProFeatureDirectory(context)),
         body: Container(
           decoration: const BoxDecoration(gradient: ProTheme.bgGradient),
           child: FutureBuilder<void>(
