@@ -65,6 +65,12 @@ class KiloGatewayProvider {
               .where((part) => part.isNotEmpty).join('\n').trim();
           if (text.isNotEmpty) return text;
         }
+        if (message is Map) {
+          for (final key in ['reasoning_content', 'reasoning', 'output_text']) {
+            final value = message[key];
+            if (value is String && value.trim().isNotEmpty) return value.trim();
+          }
+        }
       }
       final error = decoded['error'];
       if (error != null) {
