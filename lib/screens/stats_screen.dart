@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:sqflite/sqflite.dart';
-import 'package:path_provider/path_provider.dart';
+import '../services/agent_memory_service.dart';
 
 class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
@@ -10,71 +9,107 @@ class StatsScreen extends StatefulWidget {
 }
 
 class _StatsScreenState extends State<StatsScreen> {
-  Map<String, dynamic> _stats = {};
-  
+  Map<String, int> _stats = const {};
+  bool _loading = true;
+  String? _error;
+  DateTime? _lastUpdated;
+
   @override
   void initState() {
     super.initState();
     _loadStats();
   }
-  
+
   Future<void> _loadStats() async {
-    final dir = await getApplicationDocumentsDirectory();
-    final db = await openDatabase('${dir.path}/giant_agent.db');
-    
-    final messageCount = Sqflite.firstIntValue(
-      await db.rawQuery('SELECT COUNT(*) FROM messages')
-    ) ?? 0;
-    
-    final userCount = Sqflite.firstIntValue(
-      await db.rawQuery('SELECT COUNT(DISTINCT user_id) FROM messages')
-    ) ?? 0;
-    
-    final todayCount = Sqflite.firstIntValue(
-      await db.rawQuery('''
-        SELECT COUNT(*) FROM messages 
-        WHERE date(timestamp/1000, 'unixepoch') = date('now')
-      ''')
-    ) ?? 0;
-    
     setState(() {
-      _stats = {
-        'total_messages': messageCount,
-        'total_users': userCount,
-        'today_messages': todayCount,
-        'last_updated': DateTime.now(),
-      };
+      _loading = true;
+      _error = null;
     });
-    
-    await db.close();
+    try {
+      final stats =
+          await AgentMemoryService.instance.getUsageStatistics();
+      if (!mounted) return;
+      setState(() {
+        _stats = stats;
+        _lastUpdated = DateTime.now();
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _error = error.toString());
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
-  
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Statistics'),
         centerTitle: true,
+        actions: [
+          IconButton(
+            tooltip: 'Refresh statistics',
+            onPressed: _loading ? null : _loadStats,
+            icon: const Icon(Icons.refresh_rounded),
+          ),
+        ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            _buildStatCard('Total Messages', '${_stats['total_messages'] ?? 0}', Icons.chat),
-            const SizedBox(height: 16),
-            _buildStatCard('Total Users', '${_stats['total_users'] ?? 0}', Icons.people),
-            const SizedBox(height: 16),
-            _buildStatCard('Today\'s Messages', '${_stats['today_messages'] ?? 0}', Icons.today),
-            const SizedBox(height: 16),
-            _buildStatCard('Last Updated', 
-                '${(_stats['last_updated'] as DateTime?)?.toString().substring(0, 19) ?? 'Never'}', 
-                Icons.update),
-          ],
-        ),
-      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.error_outline, size: 36),
+                        const SizedBox(height: 12),
+                        Text(_error!, textAlign: TextAlign.center),
+                        const SizedBox(height: 12),
+                        FilledButton(
+                          onPressed: _loadStats,
+                          child: const Text('Retry'),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : RefreshIndicator(
+                  onRefresh: _loadStats,
+                  child: ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      _buildStatCard(
+                        'Total Messages',
+                        '${_stats['total_messages'] ?? 0}',
+                        Icons.chat_rounded,
+                      ),
+                      const SizedBox(height: 16),
+                      _buildStatCard(
+                        'Total Conversations',
+                        '${_stats['total_conversations'] ?? 0}',
+                        Icons.forum_rounded,
+                      ),
+                      const SizedBox(height: 16),
+                      _buildStatCard(
+                        "Today's Messages",
+                        '${_stats['today_messages'] ?? 0}',
+                        Icons.today_rounded,
+                      ),
+                      const SizedBox(height: 16),
+                      _buildStatCard(
+                        'Last Updated',
+                        _lastUpdated?.toString().substring(0, 19) ?? 'Never',
+                        Icons.update_rounded,
+                      ),
+                    ],
+                  ),
+                ),
     );
   }
-  
+
   Widget _buildStatCard(String title, String value, IconData icon) {
     return Card(
       elevation: 4,
@@ -96,15 +131,12 @@ class _StatsScreenState extends State<StatsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    title,
-                    style: const TextStyle(fontSize: 14, color: Colors.grey),
-                  ),
+                  Text(title,
+                      style: const TextStyle(fontSize: 14, color: Colors.grey)),
                   const SizedBox(height: 4),
-                  Text(
-                    value,
-                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                  ),
+                  Text(value,
+                      style: const TextStyle(
+                          fontSize: 24, fontWeight: FontWeight.bold)),
                 ],
               ),
             ),
