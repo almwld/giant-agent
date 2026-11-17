@@ -71,7 +71,6 @@ class _ChatScreenState extends State<ChatScreen> {
   static const String _toolCallOpen = '<tool_call>';
   static const String _toolCallClose = '</tool_call>';
   final Terminal _terminal = Terminal(maxLines: 5000);
-  bool _terminalHasActivity = false;
   final LocalSpeechRecognitionService _localSpeech = LocalSpeechRecognitionService.instance;
   final VoiceOutputService _voiceOutput = VoiceOutputService.instance;
   final VoiceSessionController _voiceSession = VoiceSessionController.instance;
@@ -80,6 +79,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _voiceRequestActive = false;
   bool _dictationActive = false;
   final Map<String, String> _inlineTimelinePanels = <String, String>{};
+  String? _expandedTimelineStepId;
   bool _bargeInActive = false;
   bool _voiceAecAvailable = false;
   bool _bargeInReady = false;
@@ -176,7 +176,6 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
     if (step['tool_name'] == 'execute_python' || step['tool_name'] == 'ipython' || step['tool_name'] == 'gain_terminal') {
-      _terminalHasActivity = true;
       final type = step['type']?.toString();
       if (type == 'tool_start') {
         _terminal.write('\r\n\x1B[33m>>> ${step['tool_name'] == 'gain_terminal' ? 'Gain terminal' : step['tool_name'] == 'ipython' ? 'IPython REPL' : 'Python execution'} started\x1B[0m\r\n');
@@ -1202,68 +1201,6 @@ class _ChatScreenState extends State<ChatScreen> {
         ],
       ),
     );
-  }
-
-  void _showTerminal({Map<String, dynamic>? step}) {
-    if (step == null && !_terminalHasActivity) {
-      _terminal.write('\x1B[2J\x1B[H');
-      _terminal.write('Giant Agent — سجل مخرجات الوكيل فقط؛ هذه ليست جلسة Shell تفاعلية.\r\n');
-    }
-    if (step != null) {
-      _terminal.write('\x1B[2J\x1B[H');
-      final title = step['title']?.toString() ?? 'Agent execution';
-      final tool = step['tool_name']?.toString() ?? '';
-      final code = step['content']?.toString() ?? '';
-      final output = step['output']?.toString() ?? step['details']?.toString() ?? '';
-      _terminal.write('\x1B[36m$title\x1B[0m\r\n');
-      if (tool.isNotEmpty) _terminal.write('\x1B[90mTool: $tool\x1B[0m\r\n');
-      if (code.isNotEmpty) _terminal.write('\x1B[33m>>>\x1B[0m\r\n$code\r\n');
-      if (output.isNotEmpty) _terminal.write('$output\r\n');
-      final status = step['status']?.toString() ?? 'unknown';
-      _terminal.write(status == 'failed'
-          ? '\x1B[31m[failed]\x1B[0m\r\n'
-          : status == 'completed'
-              ? '\x1B[32m[completed]\x1B[0m\r\n'
-              : '\x1B[33m[$status]\x1B[0m\r\n');
-    }
-
-    // A dedicated route keeps terminal output separate from the chat composer
-    // and conversation instead of covering them with a modal overlay.
-    Navigator.of(context).push<void>(MaterialPageRoute(
-      builder: (terminalContext) => Scaffold(
-        backgroundColor: GiantPalette.background,
-        body: SafeArea(
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Row(children: [
-                  const Icon(Icons.terminal, color: GiantPalette.primaryLight),
-                  const SizedBox(width: 8),
-                  Expanded(child: Text(
-                    step == null ? 'Agent Output Console' : (step['title']?.toString() ?? 'نتيجة التنفيذ'),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                  )),
-                  IconButton(
-                    onPressed: () {
-                      _terminal.write('\x1B[2J\x1B[H');
-                      _terminalHasActivity = false;
-                      _terminal.write('Giant Agent — سجل مخرجات الوكيل فقط؛ هذه ليست جلسة Shell تفاعلية.\r\n');
-                    },
-                    icon: const Icon(Icons.delete_sweep, color: Colors.white70),
-                  ),
-                  IconButton(onPressed: () => Navigator.pop(terminalContext), icon: const Icon(Icons.close, color: Colors.white70)),
-                ]),
-              ),
-              const Divider(height: 1, color: Colors.white24),
-              Expanded(child: TerminalView(_terminal, readOnly: true)),
-            ],
-          ),
-        ),
-      ),
-    ));
   }
 
   Future<void> _init() async {
@@ -2755,50 +2692,104 @@ class _ChatScreenState extends State<ChatScreen> {
         _stepIsSvg(step);
   }
 
-  void _showAgentStep(Map<String, dynamic> step) {
-    if (_opensTerminalFromStep(step)) {
-      _showTerminal(step: step);
-      return;
-    }
-    final title = step['title']?.toString() ?? 'تفاصيل التنفيذ';
+  String _timelineStepKey(
+    Map<String, dynamic> step, {
+    required String requestId,
+  }) {
+    final eventId = step['id']?.toString() ??
+        step['tool_call_id']?.toString() ??
+        step['step_id']?.toString() ??
+        step['sequence']?.toString() ??
+        (step['type']?.toString() ?? 'event') + ':' +
+            (step['timestamp']?.toString() ?? '') + ':' +
+            (step['title']?.toString() ?? '');
+    // Sequence numbers and tool IDs may be reused by separate agent requests.
+    // Scope expansion to its owning request to prevent multiple rows opening.
+    return '$requestId:$eventId';
+  }
+
+  void _toggleTimelineStep(
+    Map<String, dynamic> step, {
+    required String requestId,
+  }) {
+    final key = _timelineStepKey(step, requestId: requestId);
+    setState(() {
+      _expandedTimelineStepId = _expandedTimelineStepId == key ? null : key;
+    });
+  }
+
+  Widget _buildTimelineStepDetails(Map<String, dynamic> step) {
     final fileName = step['file_name']?.toString();
-    final content = step['content']?.toString();
     final command = step['command']?.toString();
+    final content = step['content']?.toString();
     final output = step['output']?.toString();
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: GiantPalette.background,
-      builder: (context) => DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: .72,
-        maxChildSize: .94,
-        minChildSize: .35,
-        builder: (context, controller) => Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
-              child: Row(children: [
-                const Icon(Icons.computer, color: GiantPalette.primaryLight),
-                const SizedBox(width: 9),
-                Expanded(child: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16))),
-                IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close, color: Colors.white70)),
-              ]),
+    final details = step['details']?.toString();
+    final result = step['result']?.toString();
+    final input = step['input']?.toString() ?? step['arguments']?.toString();
+    final toolName = step['tool_name']?.toString();
+    final status = step['status']?.toString() ?? 'completed';
+    final sections = <Widget>[];
+    if (toolName != null && toolName.isNotEmpty) {
+      sections.add(Text('الأداة: $toolName',
+          style: const TextStyle(color: GiantPalette.primaryLight, fontSize: 10)));
+    }
+    if (fileName != null && fileName.isNotEmpty) {
+      sections.add(Text('الملف: $fileName',
+          style: const TextStyle(color: GiantPalette.primaryLight, fontSize: 11)));
+    }
+    sections.add(Padding(
+      padding: const EdgeInsets.only(top: 3),
+      child: Text('الحالة: $status',
+          style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 9)),
+    ));
+    void addCode(String label, String? value, {Color color = const Color(0xFFE2E8F0)}) {
+      if (value == null || value.isEmpty) return;
+      sections.add(Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Expanded(child: Text(label,
+                style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 9))),
+            IconButton(
+              tooltip: 'نسخ $label',
+              visualDensity: VisualDensity.compact,
+              constraints: const BoxConstraints.tightFor(width: 26, height: 26),
+              padding: EdgeInsets.zero,
+              icon: const Icon(Icons.copy_rounded, size: 13, color: Color(0xFF9CA3AF)),
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: value));
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('تم نسخ $label'), duration: const Duration(seconds: 1)),
+                  );
+                }
+              },
             ),
-            if (fileName != null) Padding(padding: const EdgeInsets.symmetric(horizontal: 18), child: Text(fileName, style: const TextStyle(color: GiantPalette.primaryLight, fontSize: 12))),
-            if (command != null) Padding(padding: const EdgeInsets.all(18), child: SelectableText('\$ $command', style: const TextStyle(color: Colors.lightGreenAccent, fontFamily: 'monospace'))),
-            Expanded(child: SingleChildScrollView(
-              controller: controller,
-              padding: const EdgeInsets.all(18),
-              child: SelectableText(
-                content ?? output ?? step['details']?.toString() ?? 'لا توجد تفاصيل إضافية.',
-                style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.5, fontFamily: 'monospace'),
-              ),
-            )),
-          ],
-        ),
+          ]),
+          SelectableText(value, style: TextStyle(
+            color: color, fontSize: 11, height: 1.45, fontFamily: 'monospace')),
+        ]),
+      ));
+    }
+    addCode('الأمر', command, color: const Color(0xFF86EFAC));
+    addCode('المدخلات / الوسائط', input);
+    addCode('المحتوى', content);
+    addCode('المخرجات', output ?? result, color: const Color(0xFF86EFAC));
+    addCode('التفاصيل', details);
+    if (sections.isEmpty) {
+      sections.add(const Text('لا توجد تفاصيل إضافية لهذا الحدث.',
+          style: TextStyle(color: GiantPalette.muted, fontSize: 11)));
+    }
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsetsDirectional.only(start: 34, end: 4, top: 5, bottom: 7),
+      padding: const EdgeInsets.all(11),
+      decoration: BoxDecoration(
+        color: const Color(0xFF090D12),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: GiantPalette.border, width: .7),
       ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: sections),
     );
   }
 
@@ -2863,10 +2854,14 @@ class _ChatScreenState extends State<ChatScreen> {
                       final opensTerminal = _opensTerminalFromStep(step);
                       final hasPreview = opensTerminal ||
                           step['content'] != null ||
+                          step['input'] != null ||
+                          step['arguments'] != null ||
                           step['output'] != null ||
+                          step['result'] != null ||
                           step['command'] != null ||
                           step['details'] != null ||
-                          step['file_name'] != null;
+                          step['file_name'] != null ||
+                          step['tool_name'] != null;
                       final toolName = step['tool_name']?.toString() ?? '';
                       final toolCallId = step['tool_call_id']?.toString() ?? '';
                       final isTool = toolName.isNotEmpty ||
@@ -2883,8 +2878,15 @@ class _ChatScreenState extends State<ChatScreen> {
                               : failed
                                   ? (status == 'interrupted' ? 'متوقف' : 'فشل')
                                   : 'مكتمل';
-                      return InkWell(
-                        onTap: hasPreview ? () => _showAgentStep(step) : null,
+                      final stepKey = _timelineStepKey(step, requestId: requestId);
+                      final stepExpanded = _expandedTimelineStepId == stepKey;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                      InkWell(
+                        onTap: hasPreview
+                            ? () => _toggleTimelineStep(step, requestId: requestId)
+                            : null,
                         child: Padding(
                           padding: const EdgeInsetsDirectional.fromSTEB(4, 3, 4, 3),
                           child: Row(
@@ -2956,9 +2958,13 @@ class _ChatScreenState extends State<ChatScreen> {
                                   },
                                 ),
                               if (hasPreview)
-                                const Padding(
-                                  padding: EdgeInsetsDirectional.only(start: 5),
-                                  child: Icon(Icons.chevron_right, size: 17, color: mutedColor),
+                                Padding(
+                                  padding: const EdgeInsetsDirectional.only(start: 5),
+                                  child: Icon(
+                                    stepExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                                    size: 18,
+                                    color: stepExpanded ? GiantPalette.primaryLight : mutedColor,
+                                  ),
                                 ),
                               const SizedBox(width: 5),
                               AnimatedSwitcher(
@@ -2986,7 +2992,16 @@ class _ChatScreenState extends State<ChatScreen> {
                             ],
                           ),
                         ),
-                      );
+                      ),
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 220),
+                        curve: Curves.easeInOut,
+                        alignment: Alignment.topCenter,
+                        child: stepExpanded
+                            ? _buildTimelineStepDetails(step)
+                            : const SizedBox(width: double.infinity, height: 0),
+                      ),
+                    ]);
                     }),
                   )
                 : const SizedBox(width: double.infinity),
