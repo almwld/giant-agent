@@ -264,7 +264,9 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
                             _metric('قيد التنفيذ', '${summary.activeRequests}',
                                 Icons.pending_actions_rounded),
                             _metric('نجاح الأدوات',
-                                '${(summary.toolSuccessRate * 100).toStringAsFixed(0)}%',
+                                summary.toolSuccessRate == null
+                                    ? '—'
+                                    : '${(summary.toolSuccessRate! * 100).toStringAsFixed(0)}%',
                                 Icons.check_circle_outline_rounded),
                             _metric('إخفاقات الأدوات',
                                 '${summary.toolFailureCount}',
