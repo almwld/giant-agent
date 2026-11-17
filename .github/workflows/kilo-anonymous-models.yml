@@ -9,6 +9,10 @@ on:
       - ".github/workflows/kilo-anonymous-models.yml"
   workflow_dispatch:
 
+concurrency:
+  group: kilo-anonymous-model-smoke-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
