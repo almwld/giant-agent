@@ -36,7 +36,9 @@ class _ProAdvancedConfigState extends State<ProAdvancedConfig> {
   Future<void> _load() async {
     try {
       final mode = await ModelProviderSettings.instance.getMode();
-      final model = await KiloGatewayProvider.instance.getModel();
+      final model = mode == ModelProviderMode.openRouter
+          ? await OpenAICompatibleProvider.instance.getModel()
+          : await KiloGatewayProvider.instance.getModel();
       final savedApiKey = await OpenAICompatibleProvider.instance.getApiKey();
       if (!mounted) return;
       setState(() {
