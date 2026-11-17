@@ -83,7 +83,7 @@ class ProFeatureDirectoryScreen extends StatelessWidget {
       _FeatureRoute.workflow => const AgentWorkflowScreen(),
       _FeatureRoute.workspace => const AgentWorkspaceScreen(steps: []),
       _FeatureRoute.models => const FileBrowser(),
-      _FeatureRoute.observability => const AgentObservabilityScreen(conversationId: 'home'),
+      _FeatureRoute.observability => const AgentObservabilityScreen(),
       _FeatureRoute.performance => const PerformanceScreen(),
       _FeatureRoute.stats => const StatsScreen(),
       _FeatureRoute.benchmark => const BenchmarkScreen(),
