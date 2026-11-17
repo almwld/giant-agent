@@ -156,6 +156,22 @@ void main() {
     await store.close();
   });
 
+  test('summary does not report a success rate before any tool calls', () async {
+    final store = await _createStore('${directory.path}/empty-summary.db');
+    await store.enqueue(
+      id: 'request-no-tools',
+      prompt: 'no tools',
+      conversationId: 'chat-empty',
+    );
+
+    final summary =
+        await store.observabilitySummaryForConversation('chat-empty');
+    expect(summary.toolCallCount, 0);
+    expect(summary.toolFailureCount, 0);
+    expect(summary.toolSuccessRate, isNull);
+    await store.close();
+  });
+
   test('summary reports request states and distinct tool outcomes without content', () async {
     final store = await _createStore('${directory.path}/summary.db');
     await store.enqueue(id: 'done-1', prompt: 'do not expose me', conversationId: 'chat-a');
