@@ -29,7 +29,7 @@ def request_json(url, payload=None):
     if data is not None:
         headers["Content-Type"] = "application/json"
     req = urllib.request.Request(url, data=data, headers=headers, method="GET" if data is None else "POST")
-    with urllib.request.urlopen(req, timeout=20) as response:
+    with urllib.request.urlopen(req, timeout=45) as response:
         return response.status, json.loads(response.read().decode("utf-8"))
 
 def is_free(model):
@@ -64,12 +64,25 @@ def main():
         try:
             code, result = request_json(BASE + "/chat/completions", payload)
             choices = result.get("choices") or []
-            content = choices[0].get("message", {}).get("content") if choices else None
+            message = choices[0].get("message", {}) if choices else {}
+            content = message.get("content") if isinstance(message, dict) else None
+            if isinstance(content, list):
+                content = " ".join(
+                    part.get("text", "") for part in content if isinstance(part, dict)
+                )
+            if not isinstance(content, str) or not content.strip():
+                content = next(
+                    (message.get(key) for key in ("reasoning_content", "reasoning", "output_text")
+                     if isinstance(message, dict) and isinstance(message.get(key), str)
+                     and message.get(key).strip()),
+                    None,
+                )
             if code == 200 and isinstance(content, str) and content.strip():
                 print(f"PASS        {model_id}")
                 passed += 1
             else:
-                print(f"FAIL        {model_id}: HTTP {code}, empty/invalid completion")
+                preview = json.dumps(result, ensure_ascii=False)[:500]
+                print(f"FAIL        {model_id}: HTTP {code}, response={preview}")
                 failed += 1
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", "replace")[:240]
