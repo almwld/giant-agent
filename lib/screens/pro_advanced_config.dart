@@ -22,6 +22,7 @@ class _ProAdvancedConfigState extends State<ProAdvancedConfig> {
   ModelProviderMode? _mode;
   bool _busy = true;
   bool _hasStoredApiKey = false;
+  bool _testingModel = false;
   final _key = TextEditingController();
   final _model = TextEditingController();
 
@@ -93,6 +94,36 @@ class _ProAdvancedConfigState extends State<ProAdvancedConfig> {
     }
   }
 
+  Future<void> _testSelectedModel() async {
+    if (_mode != ModelProviderMode.openRouter || _testingModel) return;
+    setState(() => _testingModel = true);
+    try {
+      final enteredKey = _key.text.trim();
+      final savedKey = await OpenAICompatibleProvider.instance.getApiKey();
+      await OpenAICompatibleProvider.instance.configure(
+        apiKey: enteredKey.isNotEmpty ? enteredKey : (savedKey ?? ''),
+        model: _model.text,
+      );
+      await ModelProviderSettings.instance.setMode(ModelProviderMode.openRouter);
+      final answer = await OpenAICompatibleProvider.instance.generateStreaming(
+        'Reply with exactly: OK',
+        maxTokens: 32,
+        temperature: 0,
+      );
+      if (mounted) {
+        setState(() { _hasStoredApiKey = true; _key.clear(); });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Model connection successful: ${answer.trim()}')),
+        );
+      }
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Model connection failed: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _testingModel = false);
+    }
+  }
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -202,6 +233,17 @@ class _ProAdvancedConfigState extends State<ProAdvancedConfig> {
                           decoration: const InputDecoration(
                             labelText: 'Model ID (manual override)',
                             helperText: 'The selected ID is sent to OpenRouter for each generation request.',
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Align(
+                          alignment: AlignmentDirectional.centerEnd,
+                          child: OutlinedButton.icon(
+                            onPressed: _testingModel ? null : _testSelectedModel,
+                            icon: _testingModel
+                                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                : const Icon(Icons.network_check),
+                            label: Text(_testingModel ? 'Testing model…' : 'Test selected model'),
                           ),
                         ),
                         const Padding(
