@@ -4,6 +4,7 @@ import 'pro_feature_directory.dart';
 import '../services/app_preferences.dart';
 import '../services/model_provider_settings.dart';
 import '../services/openrouter_model_catalog.dart';
+import '../services/providers/kilo_gateway_provider.dart';
 import '../services/openai_compatible_provider.dart';
 import '../services/pro_control_center.dart';
 import '../theme/pro_theme.dart';
@@ -35,7 +36,7 @@ class _ProAdvancedConfigState extends State<ProAdvancedConfig> {
   Future<void> _load() async {
     try {
       final mode = await ModelProviderSettings.instance.getMode();
-      final model = await OpenAICompatibleProvider.instance.getModel();
+      final model = await KiloGatewayProvider.instance.getModel();
       final savedApiKey = await OpenAICompatibleProvider.instance.getApiKey();
       if (!mounted) return;
       setState(() {
@@ -83,6 +84,11 @@ class _ProAdvancedConfigState extends State<ProAdvancedConfig> {
           _key.clear();
         }
       } else {
+        if (_mode == ModelProviderMode.zeroConfig) {
+          await KiloGatewayProvider.instance.setModel(
+            _model.text.isEmpty ? KiloGatewayProvider.defaultModel : _model.text,
+          );
+        }
         await ModelProviderSettings.instance.setMode(
           _mode ?? ModelProviderMode.local,
         );
@@ -190,18 +196,69 @@ class _ProAdvancedConfigState extends State<ProAdvancedConfig> {
                       RadioListTile<ModelProviderMode>(
                         value: ModelProviderMode.zeroConfig,
                         groupValue: _mode,
-                        title: const Text('Pollinations (experimental)'),
-                        subtitle: const Text('Legacy endpoint; availability and authorization may change.'),
+                        title: const Text('Kilo Gateway · Anonymous Free'),
+                        subtitle: const Text('Free inference without account, API key, or Authorization header.'),
                         onChanged: (value) => setState(() => _mode = value),
                       ),
                       if (_mode == ModelProviderMode.zeroConfig)
                         const Padding(
                           padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                           child: Text(
-                            'No API key is sent by this adapter. The legacy endpoint may nevertheless require authorization or apply rate limits; access is not guaranteed.',
+                            'Anonymous free inference. Limit: 200 requests/hour/IP. Avoid confidential prompts; upstream providers may log data.',
                             style: TextStyle(color: ProTheme.textSecondary, fontSize: 12),
                           ),
                         ),
+                      if (_mode == ModelProviderMode.zeroConfig) ...[
+                        DropdownButtonFormField<String>(
+                          value: KiloGatewayProvider.models.any((item) => item.id == _model.text)
+                              ? _model.text : KiloGatewayProvider.defaultModel,
+                          isExpanded: true,
+                          dropdownColor: ProTheme.bgCard,
+                          decoration: const InputDecoration(labelText: 'Anonymous free models'),
+                          items: KiloGatewayProvider.models.map((item) =>
+                            DropdownMenuItem<String>(
+                              value: item.id,
+                              child: Text('${item.name} · ${item.contextWindow}', overflow: TextOverflow.ellipsis),
+                            ),
+                          ).toList(),
+                          onChanged: (value) { if (value != null) setState(() => _model.text = value); },
+                        ),
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: AlignmentDirectional.centerEnd,
+                          child: OutlinedButton.icon(
+                            onPressed: _testingModel ? null : () async {
+                              setState(() => _testingModel = true);
+                              try {
+                                await KiloGatewayProvider.instance.setModel(
+                                  _model.text.isEmpty ? KiloGatewayProvider.defaultModel : _model.text,
+                                );
+                                final answer = await KiloGatewayProvider.instance.testConnection();
+                                if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Anonymous model responded: $answer')),
+                                );
+                              } catch (error) {
+                                if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Connection failed: $error')),
+                                );
+                              } finally {
+                                if (mounted) setState(() => _testingModel = false);
+                              }
+                            },
+                            icon: _testingModel
+                                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                : const Icon(Icons.network_check),
+                            label: Text(_testingModel ? 'Testing…' : 'Test selected model'),
+                          ),
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.only(top: 8),
+                          child: Text(
+                            'Kilo anonymous free tier: 200 requests/hour/IP. Availability and model eligibility can change. Do not send confidential data.',
+                            style: TextStyle(color: ProTheme.textSecondary, fontSize: 12),
+                          ),
+                        ),
+                      ],
                       if (_mode == ModelProviderMode.openRouter) ...[
                         TextField(
                           controller: _key,
