@@ -17,7 +17,7 @@ import '../domain/kernel/agent_kernel_store.dart';
 import 'agent_memory_service.dart';
 import '../agent/skills/agent_skill_registry.dart';
 import 'openai_compatible_provider.dart';
-import 'providers/zero_config_provider.dart';
+import 'providers/kilo_gateway_provider.dart';
 import 'model_provider_settings.dart';
 import '../tools/tool_manager.dart';
 import '../tools/gain_terminal_tool.dart';
@@ -1948,9 +1948,9 @@ $prompt
         );
       case ModelProviderMode.zeroConfig:
         if (shouldCancel?.call() == true || _cancelRequested) {
-          return 'تم إيقاف التوليد قبل إرسال الطلب إلى Pollinations.';
+          return 'تم إيقاف التوليد قبل إرسال الطلب إلى Kilo Gateway.';
         }
-        final generated = await ZeroConfigProvider.instance.generate(
+        final generated = await KiloGatewayProvider.instance.generate(
           prompt,
           maxTokens: maxTokens,
           temperature: temperature,

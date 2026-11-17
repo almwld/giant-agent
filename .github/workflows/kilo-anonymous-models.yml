@@ -1,0 +1,32 @@
+name: Kilo Anonymous Model Smoke Test
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "lib/services/providers/kilo_gateway_provider.dart"
+      - "tool/test_kilo_anonymous_models.py"
+      - ".github/workflows/kilo-anonymous-models.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: kilo-anonymous-model-smoke-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  anonymous-inference:
+    name: Verify free model inference without credentials
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Call live free models without Authorization
+        run: python tool/test_kilo_anonymous_models.py
