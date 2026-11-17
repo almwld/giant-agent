@@ -215,6 +215,13 @@ void main() {
     expect(summary.averageToolLatencyMs, 210);
     expect(summary.eventTypes['tool_failed'], 1);
     expect(summary.toString(), isNot(contains('do not expose me')));
+    final allConversations =
+        await store.observabilitySummaryForConversation(null);
+    expect(allConversations.requestCount, 3);
+    expect(allConversations.toolCallCount, 2);
+    final allEvents = await store.observabilityEvents(limit: 50);
+    expect(allEvents.events.any((event) => event.id == 'other-chat'), isTrue);
+
     await store.close();
   });
 }
