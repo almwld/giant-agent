@@ -377,7 +377,7 @@ class ToolManager {
   String get promptCatalog => promptCatalogFor(getAvailableTools().toSet());
 
   String promptCatalogFor(Set<String> allowedTools) => _definitions
-      .where((tool) => allowedTools.contains(tool.name))
+      .where((tool) => allowedTools.contains(tool.name) && _isAvailable(tool))
       .map((tool) => '- ${tool.name}: ${tool.description}\n  مثال: ${tool.example}')
       .join('\n');
 }
