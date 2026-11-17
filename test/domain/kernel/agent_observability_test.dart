@@ -220,7 +220,7 @@ void main() {
     expect(allConversations.requestCount, 3);
     expect(allConversations.toolCallCount, 2);
     final allEvents = await store.observabilityEvents(limit: 50);
-    expect(allEvents.events.any((event) => event.id == 'other-chat'), isTrue);
+    expect(allEvents.events.any((event) => event.requestId == 'other-chat'), isTrue);
 
     await store.close();
   });
