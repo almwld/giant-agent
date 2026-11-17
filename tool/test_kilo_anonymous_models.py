@@ -29,7 +29,7 @@ def request_json(url, payload=None):
     if data is not None:
         headers["Content-Type"] = "application/json"
     req = urllib.request.Request(url, data=data, headers=headers, method="GET" if data is None else "POST")
-    with urllib.request.urlopen(req, timeout=90) as response:
+    with urllib.request.urlopen(req, timeout=20) as response:
         return response.status, json.loads(response.read().decode("utf-8"))
 
 def is_free(model):
@@ -78,7 +78,7 @@ def main():
         except Exception as exc:
             print(f"FAIL        {model_id}: {type(exc).__name__}: {exc}")
             failed += 1
-        time.sleep(1)
+        time.sleep(0.25)
     print(f"SUMMARY     passed={passed}, unavailable_or_not_free={skipped}, failed={failed}")
     if passed == 0:
         print("ERROR: No requested model completed an anonymous live inference request.")
