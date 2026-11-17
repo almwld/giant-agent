@@ -64,8 +64,8 @@ class AgentObservabilitySummary {
   final double? averageToolLatencyMs;
   final Map<String, int> eventTypes;
 
-  double get toolSuccessRate => toolCallCount == 0
-      ? 1
+  double? get toolSuccessRate => toolCallCount == 0
+      ? null
       : (toolCallCount - toolFailureCount).clamp(0, toolCallCount).toDouble() /
           toolCallCount;
 }
