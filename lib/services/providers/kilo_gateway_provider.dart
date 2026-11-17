@@ -75,6 +75,29 @@ class KiloGatewayProvider {
     throw const FormatException('Kilo Gateway returned no readable completion.');
   }
 
+  /// Builds a keyless request. Intentionally never adds Authorization.
+  static http.Request buildRequest({
+    required String model,
+    required String prompt,
+    String? systemPrompt,
+    int maxTokens = 768,
+    double temperature = 0.25,
+  }) {
+    return http.Request('POST', chatCompletionsUri)
+      ..headers['Content-Type'] = 'application/json; charset=utf-8'
+      ..body = jsonEncode({
+        'model': model,
+        'messages': [
+          if (systemPrompt != null && systemPrompt.trim().isNotEmpty)
+            {'role': 'system', 'content': systemPrompt.trim()},
+          {'role': 'user', 'content': prompt.trim()},
+        ],
+        'max_tokens': maxTokens.clamp(1, 8192),
+        'temperature': temperature.clamp(0, 2),
+        'stream': false,
+      });
+  }
+
   Future<String> generate(
     String prompt, {
     String? systemPrompt,
@@ -93,19 +116,13 @@ class KiloGatewayProvider {
       }
     });
     try {
-      final request = http.Request('POST', chatCompletionsUri)
-        ..headers['Content-Type'] = 'application/json; charset=utf-8'
-        ..body = jsonEncode({
-          'model': await getModel(),
-          'messages': [
-            if (systemPrompt != null && systemPrompt.trim().isNotEmpty)
-              {'role': 'system', 'content': systemPrompt.trim()},
-            {'role': 'user', 'content': prompt.trim()},
-          ],
-          'max_tokens': maxTokens.clamp(1, 8192),
-          'temperature': temperature.clamp(0, 2),
-          'stream': false,
-        });
+      final request = buildRequest(
+        model: await getModel(),
+        prompt: prompt,
+        systemPrompt: systemPrompt,
+        maxTokens: maxTokens,
+        temperature: temperature,
+      );
       final streamed = await client.send(request).timeout(requestTimeout);
       final response = await http.Response.fromStream(streamed).timeout(requestTimeout);
       if (isCancelled?.call() == true) throw StateError('Generation cancelled.');
