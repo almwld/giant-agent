@@ -5,14 +5,14 @@ import 'package:flutter/material.dart';
 import '../services/agent_service.dart';
 import '../domain/kernel/agent_observability.dart';
 
-/// Local-only Gain Agents timeline and diagnostics for one conversation.
+/// Local-only Gain Agents timeline; null conversationId means all conversations.
 class AgentObservabilityScreen extends StatefulWidget {
   const AgentObservabilityScreen({
     super.key,
-    required this.conversationId,
+    this.conversationId,
   });
 
-  final String conversationId;
+  final String? conversationId;
 
   @override
   State<AgentObservabilityScreen> createState() =>
@@ -71,16 +71,25 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
       });
     }
     try {
-      final summary = await AgentService.instance.observabilitySummaryForConversation(
-        widget.conversationId,
-      );
-      final page = await AgentService.instance.observabilityEventsForConversation(
-        widget.conversationId,
-        limit: 40,
-        status: _statusFilter,
-        type: _typeFilter,
-        search: _searchController.text,
-      );
+      final service = AgentService.instance;
+      final conversationId = widget.conversationId;
+      final summary = conversationId == null
+          ? await service.observabilitySummary()
+          : await service.observabilitySummaryForConversation(conversationId);
+      final page = conversationId == null
+          ? await service.observabilityEvents(
+              limit: 40,
+              status: _statusFilter,
+              type: _typeFilter,
+              search: _searchController.text,
+            )
+          : await service.observabilityEventsForConversation(
+              conversationId,
+              limit: 40,
+              status: _statusFilter,
+              type: _typeFilter,
+              search: _searchController.text,
+            );
       if (!mounted) return;
       setState(() {
         final byId = <String, AgentObservabilityEvent>{};
@@ -120,14 +129,24 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
     if (_loadingMore || !_hasMore || _cursor == null) return;
     setState(() => _loadingMore = true);
     try {
-      final page = await AgentService.instance.observabilityEventsForConversation(
-        widget.conversationId,
-        limit: 40,
-        beforeRowId: _cursor,
-        status: _statusFilter,
-        type: _typeFilter,
-        search: _searchController.text,
-      );
+      final service = AgentService.instance;
+      final conversationId = widget.conversationId;
+      final page = conversationId == null
+          ? await service.observabilityEvents(
+              limit: 40,
+              beforeRowId: _cursor,
+              status: _statusFilter,
+              type: _typeFilter,
+              search: _searchController.text,
+            )
+          : await service.observabilityEventsForConversation(
+              conversationId,
+              limit: 40,
+              beforeRowId: _cursor,
+              status: _statusFilter,
+              type: _typeFilter,
+              search: _searchController.text,
+            );
       if (!mounted) return;
       setState(() {
         _events.addAll(page.events);
@@ -245,7 +264,7 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
                     children: [
                       if (summary != null) ...[
-                        const Text('ملخص الجلسة',
+                        Text(widget.conversationId == null ? 'ملخص التنفيذ' : 'ملخص الجلسة',
                             style: TextStyle(
                                 color: Colors.white,
                                 fontSize: 16,
@@ -264,7 +283,9 @@ class _AgentObservabilityScreenState extends State<AgentObservabilityScreen> {
                             _metric('قيد التنفيذ', '${summary.activeRequests}',
                                 Icons.pending_actions_rounded),
                             _metric('نجاح الأدوات',
-                                '${(summary.toolSuccessRate * 100).toStringAsFixed(0)}%',
+                                summary.toolSuccessRate == null
+                                    ? '—'
+                                    : '${(summary.toolSuccessRate! * 100).toStringAsFixed(0)}%',
                                 Icons.check_circle_outline_rounded),
                             _metric('إخفاقات الأدوات',
                                 '${summary.toolFailureCount}',

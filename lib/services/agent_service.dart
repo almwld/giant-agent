@@ -354,6 +354,28 @@ class AgentService {
   /// Gain Agents diagnostics are queried through the same application service
   /// and durable store used by request execution. Screens must not open a
   /// parallel kernel database connection.
+  Future<AgentObservabilitySummary> observabilitySummary() async {
+    await initialize();
+    return _store.observabilitySummary();
+  }
+
+  Future<AgentObservabilityPage> observabilityEvents({
+    int? beforeRowId,
+    int limit = 50,
+    String? type,
+    String? status,
+    String? search,
+  }) async {
+    await initialize();
+    return _store.observabilityEvents(
+      beforeRowId: beforeRowId,
+      limit: limit,
+      type: type,
+      status: status,
+      search: search,
+    );
+  }
+
   Future<AgentObservabilitySummary> observabilitySummaryForConversation(
     String conversationId,
   ) async {

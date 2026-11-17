@@ -156,6 +156,22 @@ void main() {
     await store.close();
   });
 
+  test('summary does not report a success rate before any tool calls', () async {
+    final store = await _createStore('${directory.path}/empty-summary.db');
+    await store.enqueue(
+      id: 'request-no-tools',
+      prompt: 'no tools',
+      conversationId: 'chat-empty',
+    );
+
+    final summary =
+        await store.observabilitySummaryForConversation('chat-empty');
+    expect(summary.toolCallCount, 0);
+    expect(summary.toolFailureCount, 0);
+    expect(summary.toolSuccessRate, isNull);
+    await store.close();
+  });
+
   test('summary reports request states and distinct tool outcomes without content', () async {
     final store = await _createStore('${directory.path}/summary.db');
     await store.enqueue(id: 'done-1', prompt: 'do not expose me', conversationId: 'chat-a');
@@ -199,6 +215,13 @@ void main() {
     expect(summary.averageToolLatencyMs, 210);
     expect(summary.eventTypes['tool_failed'], 1);
     expect(summary.toString(), isNot(contains('do not expose me')));
+    final allConversations =
+        await store.observabilitySummaryForConversation(null);
+    expect(allConversations.requestCount, 3);
+    expect(allConversations.toolCallCount, 2);
+    final allEvents = await store.observabilityEvents(limit: 50);
+    expect(allEvents.events.any((event) => event.requestId == 'other-chat'), isTrue);
+
     await store.close();
   });
 }
