@@ -75,7 +75,7 @@ extension AgentKernelObservability on AgentKernelStore {
   /// Reads the newest events first. Pass [beforeRowId] from the previous page
   /// to continue without offset-based pagination drift while new events arrive.
   Future<AgentObservabilityPage> observabilityEventsForConversation(
-    String conversationId, {
+    String? conversationId, {
     int? beforeRowId,
     int limit = 50,
     String? type,
@@ -83,8 +83,12 @@ extension AgentKernelObservability on AgentKernelStore {
     String? search,
   }) async {
     final boundedLimit = limit.clamp(1, 200).toInt();
-    final where = <String>['r.conversation_id = ?'];
-    final args = <Object?>[conversationId];
+    final where = <String>[];
+    final args = <Object?>[];
+    if (conversationId != null) {
+      where.add('r.conversation_id = ?');
+      args.add(conversationId);
+    }
     if (beforeRowId != null) {
       where.add('e.row_id < ?');
       args.add(beforeRowId);
@@ -111,7 +115,7 @@ extension AgentKernelObservability on AgentKernelStore {
              e.payload_json, e.created_at
       FROM agent_events e
       INNER JOIN agent_requests r ON r.id = e.request_id
-      WHERE ${where.join(' AND ')}
+      WHERE ${where.isEmpty ? '1 = 1' : where.join(' AND ')}
       ORDER BY e.row_id DESC
       LIMIT ?
     ''', args);
@@ -142,18 +146,39 @@ extension AgentKernelObservability on AgentKernelStore {
     );
   }
 
-  /// Returns safe aggregate counters for a conversation. It deliberately
+  /// Aggregates persisted execution metrics across every conversation.
+  Future<AgentObservabilitySummary> observabilitySummary() =>
+      observabilitySummaryForConversation(null);
+
+  /// Reads persisted events across every conversation, newest first.
+  Future<AgentObservabilityPage> observabilityEvents({
+    int? beforeRowId,
+    int limit = 50,
+    String? type,
+    String? status,
+    String? search,
+  }) =>
+      observabilityEventsForConversation(
+        null,
+        beforeRowId: beforeRowId,
+        limit: limit,
+        type: type,
+        status: status,
+        search: search,
+      );
+
+  /// Returns safe aggregate counters for a conversation or all conversations when null. It deliberately
   /// excludes request prompts, model responses, tool arguments and tool output.
   Future<AgentObservabilitySummary> observabilitySummaryForConversation(
-    String conversationId,
+    String? conversationId,
   ) async {
     final db = await database;
     final requestRows = await db.rawQuery('''
       SELECT status, COUNT(*) AS count
       FROM agent_requests
-      WHERE conversation_id = ?
+      ${conversationId == null ? '' : 'WHERE conversation_id = ?'}
       GROUP BY status
-    ''', [conversationId]);
+    ''', conversationId == null ? [] : [conversationId]);
     final requestCounts = <String, int>{
       for (final row in requestRows)
         row['status']! as String: (row['count']! as num).toInt(),
@@ -162,9 +187,9 @@ extension AgentKernelObservability on AgentKernelStore {
       SELECT e.type, e.status, e.payload_json
       FROM agent_events e
       INNER JOIN agent_requests r ON r.id = e.request_id
-      WHERE r.conversation_id = ?
+      ${conversationId == null ? '' : 'WHERE r.conversation_id = ?'}
       ORDER BY e.row_id ASC
-    ''', [conversationId]);
+    ''', conversationId == null ? [] : [conversationId]);
 
     final eventTypes = <String, int>{};
     final toolCalls = <String>{};
