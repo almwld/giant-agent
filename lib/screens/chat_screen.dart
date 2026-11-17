@@ -80,6 +80,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _voiceRequestActive = false;
   bool _dictationActive = false;
   final Map<String, String> _inlineTimelinePanels = <String, String>{};
+  String? _expandedTimelineStepId;
   bool _bargeInActive = false;
   bool _voiceAecAvailable = false;
   bool _bargeInReady = false;
@@ -2755,50 +2756,67 @@ class _ChatScreenState extends State<ChatScreen> {
         _stepIsSvg(step);
   }
 
-  void _showAgentStep(Map<String, dynamic> step) {
-    if (_opensTerminalFromStep(step)) {
-      _showTerminal(step: step);
-      return;
-    }
-    final title = step['title']?.toString() ?? 'تفاصيل التنفيذ';
+  String _timelineStepKey(Map<String, dynamic> step) =>
+      step['id']?.toString() ??
+      step['tool_call_id']?.toString() ??
+      step['step_id']?.toString() ??
+      (step['type']?.toString() ?? 'event') + ':' +
+          (step['timestamp']?.toString() ?? '');
+
+  void _toggleTimelineStep(Map<String, dynamic> step) {
+    final key = _timelineStepKey(step);
+    setState(() {
+      _expandedTimelineStepId = _expandedTimelineStepId == key ? null : key;
+    });
+  }
+
+  Widget _buildTimelineStepDetails(Map<String, dynamic> step) {
     final fileName = step['file_name']?.toString();
-    final content = step['content']?.toString();
     final command = step['command']?.toString();
+    final content = step['content']?.toString();
     final output = step['output']?.toString();
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: GiantPalette.background,
-      builder: (context) => DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: .72,
-        maxChildSize: .94,
-        minChildSize: .35,
-        builder: (context, controller) => Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
-              child: Row(children: [
-                const Icon(Icons.computer, color: GiantPalette.primaryLight),
-                const SizedBox(width: 9),
-                Expanded(child: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16))),
-                IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close, color: Colors.white70)),
-              ]),
-            ),
-            if (fileName != null) Padding(padding: const EdgeInsets.symmetric(horizontal: 18), child: Text(fileName, style: const TextStyle(color: GiantPalette.primaryLight, fontSize: 12))),
-            if (command != null) Padding(padding: const EdgeInsets.all(18), child: SelectableText('\$ $command', style: const TextStyle(color: Colors.lightGreenAccent, fontFamily: 'monospace'))),
-            Expanded(child: SingleChildScrollView(
-              controller: controller,
-              padding: const EdgeInsets.all(18),
-              child: SelectableText(
-                content ?? output ?? step['details']?.toString() ?? 'لا توجد تفاصيل إضافية.',
-                style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.5, fontFamily: 'monospace'),
-              ),
-            )),
-          ],
-        ),
+    final details = step['details']?.toString();
+    final result = step['result']?.toString();
+    final toolName = step['tool_name']?.toString();
+    final sections = <Widget>[];
+    if (toolName != null && toolName.isNotEmpty) {
+      sections.add(Text('الأداة: $toolName',
+          style: const TextStyle(color: GiantPalette.primaryLight, fontSize: 10)));
+    }
+    if (fileName != null && fileName.isNotEmpty) {
+      sections.add(Text(fileName,
+          style: const TextStyle(color: GiantPalette.primaryLight, fontSize: 11)));
+    }
+    void addCode(String label, String? value, {Color color = const Color(0xFFE2E8F0)}) {
+      if (value == null || value.isEmpty) return;
+      sections.add(Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label, style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 9)),
+          const SizedBox(height: 4),
+          SelectableText(value, style: TextStyle(
+            color: color, fontSize: 11, height: 1.45, fontFamily: 'monospace')),
+        ]),
+      ));
+    }
+    addCode('الأمر', command, color: const Color(0xFF86EFAC));
+    addCode('المحتوى / المدخلات', content);
+    addCode('المخرجات', output ?? result, color: const Color(0xFF86EFAC));
+    addCode('التفاصيل', details);
+    if (sections.isEmpty) {
+      sections.add(const Text('لا توجد تفاصيل إضافية لهذا الحدث.',
+          style: TextStyle(color: GiantPalette.muted, fontSize: 11)));
+    }
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsetsDirectional.only(start: 34, end: 4, top: 5, bottom: 7),
+      padding: const EdgeInsets.all(11),
+      decoration: BoxDecoration(
+        color: const Color(0xFF090D12),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: GiantPalette.border, width: .7),
       ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: sections),
     );
   }
 
@@ -2883,8 +2901,13 @@ class _ChatScreenState extends State<ChatScreen> {
                               : failed
                                   ? (status == 'interrupted' ? 'متوقف' : 'فشل')
                                   : 'مكتمل';
-                      return InkWell(
-                        onTap: hasPreview ? () => _showAgentStep(step) : null,
+                      final stepKey = _timelineStepKey(step);
+                      final stepExpanded = _expandedTimelineStepId == stepKey;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                      InkWell(
+                        onTap: hasPreview ? () => _toggleTimelineStep(step) : null,
                         child: Padding(
                           padding: const EdgeInsetsDirectional.fromSTEB(4, 3, 4, 3),
                           child: Row(
@@ -2986,7 +3009,16 @@ class _ChatScreenState extends State<ChatScreen> {
                             ],
                           ),
                         ),
-                      );
+                      ),
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 220),
+                        curve: Curves.easeInOut,
+                        alignment: Alignment.topCenter,
+                        child: stepExpanded
+                            ? _buildTimelineStepDetails(step)
+                            : const SizedBox(width: double.infinity, height: 0),
+                      ),
+                    ]);
                     }),
                   )
                 : const SizedBox(width: double.infinity),
