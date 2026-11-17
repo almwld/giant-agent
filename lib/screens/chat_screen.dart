@@ -2692,17 +2692,27 @@ class _ChatScreenState extends State<ChatScreen> {
         _stepIsSvg(step);
   }
 
-  String _timelineStepKey(Map<String, dynamic> step) =>
-      step['id']?.toString() ??
-      step['tool_call_id']?.toString() ??
-      step['step_id']?.toString() ??
-      step['sequence']?.toString() ??
-      (step['type']?.toString() ?? 'event') + ':' +
-          (step['timestamp']?.toString() ?? '') + ':' +
-          (step['title']?.toString() ?? '');
+  String _timelineStepKey(
+    Map<String, dynamic> step, {
+    required String requestId,
+  }) {
+    final eventId = step['id']?.toString() ??
+        step['tool_call_id']?.toString() ??
+        step['step_id']?.toString() ??
+        step['sequence']?.toString() ??
+        (step['type']?.toString() ?? 'event') + ':' +
+            (step['timestamp']?.toString() ?? '') + ':' +
+            (step['title']?.toString() ?? '');
+    // Sequence numbers and tool IDs may be reused by separate agent requests.
+    // Scope expansion to its owning request to prevent multiple rows opening.
+    return '$requestId:$eventId';
+  }
 
-  void _toggleTimelineStep(Map<String, dynamic> step) {
-    final key = _timelineStepKey(step);
+  void _toggleTimelineStep(
+    Map<String, dynamic> step, {
+    required String requestId,
+  }) {
+    final key = _timelineStepKey(step, requestId: requestId);
     setState(() {
       _expandedTimelineStepId = _expandedTimelineStepId == key ? null : key;
     });
@@ -2868,13 +2878,15 @@ class _ChatScreenState extends State<ChatScreen> {
                               : failed
                                   ? (status == 'interrupted' ? 'متوقف' : 'فشل')
                                   : 'مكتمل';
-                      final stepKey = _timelineStepKey(step);
+                      final stepKey = _timelineStepKey(step, requestId: requestId);
                       final stepExpanded = _expandedTimelineStepId == stepKey;
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                       InkWell(
-                        onTap: hasPreview ? () => _toggleTimelineStep(step) : null,
+                        onTap: hasPreview
+                            ? () => _toggleTimelineStep(step, requestId: requestId)
+                            : null,
                         child: Padding(
                           padding: const EdgeInsetsDirectional.fromSTEB(4, 3, 4, 3),
                           child: Row(
