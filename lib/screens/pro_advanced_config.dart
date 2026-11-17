@@ -3,6 +3,7 @@ import 'pro_feature_directory.dart';
 
 import '../services/app_preferences.dart';
 import '../services/model_provider_settings.dart';
+import '../services/openrouter_model_catalog.dart';
 import '../services/openai_compatible_provider.dart';
 import '../services/pro_control_center.dart';
 import '../theme/pro_theme.dart';
@@ -181,7 +182,35 @@ class _ProAdvancedConfigState extends State<ProAdvancedConfig> {
                                 : 'Stored securely after saving.',
                           ),
                         ),
-                        TextField(controller: _model, decoration: const InputDecoration(labelText: 'Model ID')),
+                        DropdownButtonFormField<String>(
+                          value: OpenRouterModelCatalog.find(_model.text)?.id,
+                          isExpanded: true,
+                          dropdownColor: ProTheme.bgCard,
+                          decoration: const InputDecoration(labelText: 'Verified free models'),
+                          hint: const Text('Choose a model'),
+                          items: OpenRouterModelCatalog.options.map((option) =>
+                            DropdownMenuItem<String>(
+                              value: option.id,
+                              child: Text('${option.name} · ${option.contextWindow}', overflow: TextOverflow.ellipsis),
+                            ),
+                          ).toList(),
+                          onChanged: (value) { if (value != null) setState(() => _model.text = value); },
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: _model,
+                          decoration: const InputDecoration(
+                            labelText: 'Model ID (manual override)',
+                            helperText: 'The selected ID is sent to OpenRouter for each generation request.',
+                          ),
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.only(top: 8),
+                          child: Text(
+                            'Free endpoints are rate-limited and may be temporarily unavailable. Dots3-Note Preview is listed to expire on 2026-12-31.',
+                            style: TextStyle(color: ProTheme.textSecondary, fontSize: 12),
+                          ),
+                        ),
                       ],
                       Align(
                         alignment: AlignmentDirectional.centerEnd,
