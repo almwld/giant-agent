@@ -68,9 +68,9 @@ class ProControlCenter extends ChangeNotifier {
       await _tasks.refreshFromStore();
       _listenForRuntimeChanges();
       final results = await Future.wait<Object>([
-        _agent.observabilitySummaryForConversation('global'),
+        _agent.observabilitySummary(),
         _agent.mcpServers(),
-        _agent.observabilityEventsForConversation('global', limit: 20),
+        _agent.observabilityEvents(limit: 20),
       ]);
       metrics = results[0] as AgentObservabilitySummary;
       integrations = results[1] as List<McpServerConfig>;
