@@ -2713,30 +2713,55 @@ class _ChatScreenState extends State<ChatScreen> {
     final output = step['output']?.toString();
     final details = step['details']?.toString();
     final result = step['result']?.toString();
+    final input = step['input']?.toString() ?? step['arguments']?.toString();
     final toolName = step['tool_name']?.toString();
+    final status = step['status']?.toString() ?? 'completed';
     final sections = <Widget>[];
     if (toolName != null && toolName.isNotEmpty) {
       sections.add(Text('الأداة: $toolName',
           style: const TextStyle(color: GiantPalette.primaryLight, fontSize: 10)));
     }
     if (fileName != null && fileName.isNotEmpty) {
-      sections.add(Text(fileName,
+      sections.add(Text('الملف: $fileName',
           style: const TextStyle(color: GiantPalette.primaryLight, fontSize: 11)));
     }
+    sections.add(Padding(
+      padding: const EdgeInsets.only(top: 3),
+      child: Text('الحالة: $status',
+          style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 9)),
+    ));
     void addCode(String label, String? value, {Color color = const Color(0xFFE2E8F0)}) {
       if (value == null || value.isEmpty) return;
       sections.add(Padding(
         padding: const EdgeInsets.only(top: 8),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label, style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 9)),
-          const SizedBox(height: 4),
+          Row(children: [
+            Expanded(child: Text(label,
+                style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 9))),
+            IconButton(
+              tooltip: 'نسخ $label',
+              visualDensity: VisualDensity.compact,
+              constraints: const BoxConstraints.tightFor(width: 26, height: 26),
+              padding: EdgeInsets.zero,
+              icon: const Icon(Icons.copy_rounded, size: 13, color: Color(0xFF9CA3AF)),
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: value));
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('تم نسخ $label'), duration: const Duration(seconds: 1)),
+                  );
+                }
+              },
+            ),
+          ]),
           SelectableText(value, style: TextStyle(
             color: color, fontSize: 11, height: 1.45, fontFamily: 'monospace')),
         ]),
       ));
     }
     addCode('الأمر', command, color: const Color(0xFF86EFAC));
-    addCode('المحتوى / المدخلات', content);
+    addCode('المدخلات / الوسائط', input);
+    addCode('المحتوى', content);
     addCode('المخرجات', output ?? result, color: const Color(0xFF86EFAC));
     addCode('التفاصيل', details);
     if (sections.isEmpty) {
@@ -2915,9 +2940,13 @@ class _ChatScreenState extends State<ChatScreen> {
                                   },
                                 ),
                               if (hasPreview)
-                                const Padding(
-                                  padding: EdgeInsetsDirectional.only(start: 5),
-                                  child: Icon(Icons.chevron_right, size: 17, color: mutedColor),
+                                Padding(
+                                  padding: const EdgeInsetsDirectional.only(start: 5),
+                                  child: Icon(
+                                    stepExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                                    size: 18,
+                                    color: stepExpanded ? GiantPalette.primaryLight : mutedColor,
+                                  ),
                                 ),
                               const SizedBox(width: 5),
                               AnimatedSwitcher(
