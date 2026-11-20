@@ -383,6 +383,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _voiceRequestActive = _voiceSession.voiceRequestActive;
       _voiceOrbState = switch (_voiceSession.snapshot.phase) {
         VoiceSessionPhase.idle => AgentState.idle,
+        VoiceSessionPhase.preparing => AgentState.thinking,
         VoiceSessionPhase.listening => AgentState.listening,
         VoiceSessionPhase.thinking => AgentState.thinking,
         VoiceSessionPhase.speaking => AgentState.speaking,
@@ -1923,6 +1924,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final state = _voiceSession.snapshot;
     final nextOrbState = switch (state.phase) {
       VoiceSessionPhase.idle => AgentState.idle,
+      VoiceSessionPhase.preparing => AgentState.thinking,
       VoiceSessionPhase.listening => AgentState.listening,
       VoiceSessionPhase.thinking => AgentState.thinking,
       VoiceSessionPhase.speaking => AgentState.speaking,
@@ -1974,28 +1976,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final settings = ModelProviderSettings.instance;
     final currentMode = await settings.getMode();
     final loaded = await _modelService.isModelLoaded();
-    if (!loaded) {
-      if (mounted) {
-        await showDialog<void>(
-          context: context,
-          builder: (context) => AlertDialog(
-            backgroundColor: GiantPalette.surface,
-            title: const Text('النموذج المحلي غير جاهز'),
-            content: const Text(
-              'المحادثة الصوتية لا تستخدم OpenRouter أو أي API. حمّل نموذج GGUF محلياً وافتحه أولاً، ثم أعد تشغيل المساعد الصوتي.',
-              style: TextStyle(color: Colors.white70, height: 1.45),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('حسناً'),
-              ),
-            ],
-          ),
-        );
-      }
-      return false;
-    }
+    if (!loaded) return false;
     if (currentMode == ModelProviderMode.local) return true;
 
     final accepted = await showDialog<bool>(
@@ -2063,29 +2044,46 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _toggleVoiceInput() async {
-    if (_localSpeech.isListening || _voiceOrbVisible) {
+    if (_localSpeech.isListening || _voiceOrbVisible || _voiceSession.isActive) {
       await _stopVoiceInteraction();
       return;
     }
     if (!mounted) return;
-    final localReady = await _ensureLocalVoiceModel();
-    if (!localReady || !mounted) return;
+
+    // Publish an active preparing state first: the root overlay must be visible
+    // even while GGUF/provider checks and local speech models are initializing.
     _finalizingVoiceInput = false;
     _voiceRequestActive = false;
+    _voiceSession.beginSession();
     _voiceSession.setVoiceRequestActive(false);
     _voiceSession.setFinalizing(false);
-    setState(() {
+    if (mounted) setState(() {
       _voiceOrbVisible = true;
-      _voiceOrbState = AgentState.listening;
+      _voiceOrbState = AgentState.thinking;
     });
     GlobalVoiceOrbOverlayBridge.show(const VoiceSessionOverlay());
-    await _prepareLocalTtsModel();
-    if (!mounted || !_voiceOrbVisible) return;
-    await _startVoiceRecognition();
-    if (!mounted || !_localSpeech.isListening) return;
-    final capabilities = await _localSpeech.captureCapabilities();
-    _voiceAecAvailable = capabilities['aec_active'] == true;
-    _voiceSession.setAecAvailable(_voiceAecAvailable);
+
+    try {
+      final localReady = await _ensureLocalVoiceModel();
+      if (!mounted || !_voiceOrbVisible) return;
+      if (!localReady) {
+        _voiceSession.setError(
+          'النموذج المحلي غير جاهز أو لم يتم اختيار استخدامه. حمّل نموذج GGUF محلياً وافتحه، ثم أعد المحاولة.',
+        );
+        return;
+      }
+      await _prepareLocalTtsModel();
+      if (!mounted || !_voiceOrbVisible) return;
+      await _startVoiceRecognition();
+      if (!mounted || !_voiceOrbVisible || !_localSpeech.isListening) return;
+      final capabilities = await _localSpeech.captureCapabilities();
+      _voiceAecAvailable = capabilities['aec_active'] == true;
+      _voiceSession.setAecAvailable(_voiceAecAvailable);
+    } catch (error) {
+      if (mounted && _voiceOrbVisible) {
+        _voiceSession.setError('تعذر تجهيز المساعد الصوتي: $error');
+      }
+    }
   }
 
   Future<void> _finishLocalVoiceTurn() async {
@@ -2143,11 +2141,11 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
       final ready = await _prepareLocalSpeechModel();
       if (!ready || !mounted || !_voiceOrbVisible) {
-        if (mounted) setState(() {
-          _voiceOrbVisible = false;
-          _voiceOrbState = AgentState.idle;
-        });
-        await _voiceSession.stopSession();
+        if (mounted && _voiceOrbVisible) {
+          _voiceSession.setError(
+            'تعذر تجهيز نموذج Whisper المحلي. تحقق من ملفات النموذج ومساحة التخزين ثم أعد المحاولة.',
+          );
+        }
         await _restoreVoiceProviderMode();
         return;
       }
@@ -2156,16 +2154,9 @@ class _ChatScreenState extends State<ChatScreen> {
         setState(() => _voiceOrbState = AgentState.listening);
       }
     } catch (error) {
-      _voiceSession.setPhase(VoiceSessionPhase.error);
-      if (!mounted) return;
-      setState(() {
-        _voiceOrbState = AgentState.error;
-        _voiceOrbVisible = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذر بدء التسجيل الصوتي المحلي: $error')),
-      );
-      await _voiceSession.stopSession();
+      if (mounted && _voiceOrbVisible) {
+        _voiceSession.setError('تعذر بدء الاستماع الصوتي: $error');
+      }
       await _restoreVoiceProviderMode();
     }
   }
