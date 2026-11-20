@@ -120,7 +120,6 @@ class VoiceSessionController {
       active: true,
       phase: VoiceSessionPhase.preparing,
     ));
-    _listenToActivity();
   }
 
   /// Keeps the overlay mounted and exposes startup/runtime failures in-place.
