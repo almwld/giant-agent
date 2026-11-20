@@ -6,7 +6,7 @@ import 'local_speech_recognition_service.dart';
 import 'voice_output_service.dart';
 import 'model_provider_settings.dart';
 
-enum VoiceSessionPhase { idle, listening, thinking, speaking, error }
+enum VoiceSessionPhase { idle, preparing, listening, thinking, speaking, error }
 
 class VoiceSessionSnapshot {
   const VoiceSessionSnapshot({
@@ -114,6 +114,25 @@ class VoiceSessionController {
     _emit(snapshot.copyWith(phase: phase));
   }
 
+  /// Makes the app-scoped session visible before model and microphone setup.
+  void beginSession() {
+    _emit(const VoiceSessionSnapshot(
+      active: true,
+      phase: VoiceSessionPhase.preparing,
+    ));
+  }
+
+  /// Keeps the overlay mounted and exposes startup/runtime failures in-place.
+  void setError(Object error) {
+    _emit(snapshot.copyWith(
+      active: true,
+      isListening: false,
+      finalizing: false,
+      phase: VoiceSessionPhase.error,
+      error: error.toString(),
+    ));
+  }
+
   void setTranscript(String transcript) {
     _emit(snapshot.copyWith(transcript: transcript));
   }
@@ -181,7 +200,14 @@ class VoiceSessionController {
         transcript: '',
         phase: VoiceSessionPhase.listening, finalizing: false,
         clearError: true));
-    } catch (_) {
+    } catch (error) {
+      _emit(snapshot.copyWith(
+        active: true,
+        isListening: false,
+        finalizing: false,
+        phase: VoiceSessionPhase.error,
+        error: error.toString(),
+      ));
       await _activitySubscription?.cancel();
       _activitySubscription = null;
       rethrow;

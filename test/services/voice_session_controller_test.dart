@@ -10,6 +10,24 @@ void main() {
     session.state.value = const VoiceSessionSnapshot();
   });
 
+  test('beginSession activates the overlay before microphone startup', () {
+    session.beginSession();
+
+    expect(session.isActive, isTrue);
+    expect(session.snapshot.phase, VoiceSessionPhase.preparing);
+    expect(session.snapshot.isListening, isFalse);
+  });
+
+  test('startup errors preserve an active session for visible recovery', () {
+    session.beginSession();
+    session.setError(StateError('GGUF model is not loaded'));
+
+    expect(session.isActive, isTrue);
+    expect(session.snapshot.phase, VoiceSessionPhase.error);
+    expect(session.snapshot.error, contains('GGUF model is not loaded'));
+    expect(session.snapshot.isListening, isFalse);
+  });
+
   test('detaching a route does not terminate the app-scoped voice session', () {
     session.state.value = const VoiceSessionSnapshot(
       active: true,

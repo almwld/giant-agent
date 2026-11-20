@@ -44,6 +44,8 @@ class _VoiceSessionOverlayState extends State<VoiceSessionOverlay> {
     switch (phase) {
       case VoiceSessionPhase.idle:
         return AgentState.idle;
+      case VoiceSessionPhase.preparing:
+        return AgentState.thinking;
       case VoiceSessionPhase.listening:
         return AgentState.listening;
       case VoiceSessionPhase.thinking:
@@ -59,6 +61,8 @@ class _VoiceSessionOverlayState extends State<VoiceSessionOverlay> {
     switch (phase) {
       case VoiceSessionPhase.idle:
         return 'جاهز للاستماع';
+      case VoiceSessionPhase.preparing:
+        return 'أجهّز المساعد الصوتي والنماذج المحلية…';
       case VoiceSessionPhase.listening:
         return 'أستمع إليك محلياً…';
       case VoiceSessionPhase.thinking:
@@ -109,6 +113,10 @@ class _VoiceSessionOverlayState extends State<VoiceSessionOverlay> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(status, style: const TextStyle(color: Colors.white, fontSize: 12)),
+                        if (state.error != null && state.error!.isNotEmpty)
+                          Text(state.error!, maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: Color(0xFFFCA5A5), fontSize: 10)),
                         if (state.transcript.isNotEmpty)
                           Text(state.transcript, maxLines: 2,
                             overflow: TextOverflow.ellipsis,
@@ -162,6 +170,12 @@ class _VoiceSessionOverlayState extends State<VoiceSessionOverlay> {
                       Text(status, textAlign: TextAlign.center,
                         style: const TextStyle(color: Colors.white,
                           fontSize: 16, fontWeight: FontWeight.w600)),
+                      if (state.error != null && state.error!.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Text(state.error!, textAlign: TextAlign.center,
+                          style: const TextStyle(color: Color(0xFFFCA5A5),
+                            fontSize: 12, height: 1.5)),
+                      ],
                       if (state.transcript.isNotEmpty) ...[
                         const SizedBox(height: 12),
                         Text(state.transcript, maxLines: 3,

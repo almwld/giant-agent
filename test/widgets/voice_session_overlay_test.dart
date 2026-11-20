@@ -25,6 +25,36 @@ void main() {
     session.state.value = const VoiceSessionSnapshot();
   });
 
+  testWidgets('shows preparing state before microphone capture starts', (tester) async {
+    session.state.value = const VoiceSessionSnapshot(
+      active: true,
+      phase: VoiceSessionPhase.preparing,
+    );
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(body: Stack(children: [VoiceSessionOverlay()])),
+      ),
+    );
+
+    expect(find.text('أجهّز المساعد الصوتي والنماذج المحلية…'), findsOneWidget);
+  });
+
+  testWidgets('keeps the overlay visible and displays startup errors', (tester) async {
+    session.state.value = const VoiceSessionSnapshot(
+      active: true,
+      phase: VoiceSessionPhase.error,
+      error: 'نموذج GGUF غير محمّل',
+    );
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(body: Stack(children: [VoiceSessionOverlay()])),
+      ),
+    );
+
+    expect(find.text('تعذر إكمال الاتصال الصوتي'), findsOneWidget);
+    expect(find.text('نموذج GGUF غير محمّل'), findsOneWidget);
+  });
+
   testWidgets('restores the saved full-screen voice orb size', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
