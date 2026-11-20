@@ -2024,7 +2024,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  Future<void> _prepareLocalTtsModel() async {
+  Future<bool> _prepareLocalTtsModel() async {
     final tts = LocalArabicTtsService.instance;
     try {
       if (!await tts.isInstalled()) {
@@ -2034,12 +2034,12 @@ class _ChatScreenState extends State<ChatScreen> {
       }
       await tts.initialize();
       await _voiceOutput.refresh();
+      return true;
     } catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('تعذر تنزيل أو تجهيز نموذج Nabra المحلي: $error')),
-        );
+      if (mounted && _voiceOrbVisible) {
+        _voiceSession.setError('تعذر تجهيز نموذج Nabra للصوت المحلي: $error');
       }
+      return false;
     }
   }
 
@@ -2072,8 +2072,8 @@ class _ChatScreenState extends State<ChatScreen> {
         );
         return;
       }
-      await _prepareLocalTtsModel();
-      if (!mounted || !_voiceOrbVisible) return;
+      final ttsReady = await _prepareLocalTtsModel();
+      if (!mounted || !_voiceOrbVisible || !ttsReady) return;
       await _startVoiceRecognition();
       if (!mounted || !_voiceOrbVisible || !_localSpeech.isListening) return;
       final capabilities = await _localSpeech.captureCapabilities();
